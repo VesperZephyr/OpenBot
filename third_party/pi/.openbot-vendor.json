@@ -1,0 +1,42 @@
+{
+  "upstream": "https://github.com/earendil-works/pi",
+  "ref": "main",
+  "revision": "b45e0ebcc5ae2fc42a6f2f23104d10e656e6bedb",
+  "revisionDate": "2026-10-14T14:29:58Z",
+  "describe": "v1.2.0-44-gb45e0ebcc",
+  "packageVersion": "1.2.0",
+  "importedAt": "2026-10-14",
+  "method": "git archive of the exact revision (not the working tree)",
+  "scope": {
+    "packages": [
+      "packages/durable",
+      "packages/ai",
+      "packages/chord",
+      "packages/codemode",
+      "packages/telemetry"
+    ],
+    "rootFiles": [
+      "LICENSE",
+      "tsconfig.base.json"
+    ]
+  },
+  "assets": [
+    {
+      "name": "pi-ai model data",
+      "source": "generate-models.ts --strict --data-only at the baseline revision (models.dev, OpenRouter, Vercel AI Gateway, and provider endpoints)",
+      "generatedAt": "2026-10-14",
+      "output": "packages/ai/src/providers/data/",
+      "note": "The upstream Nix catalog pin (nix/model-catalog.json, 2026-10-07) predates generator fixes in this revision and fails 10 pi-ai metadata tests; it is not used."
+    },
+    {
+      "name": "Photon WASM",
+      "source": "npm @silvia-odwyer/photon (photon_rs_bg.wasm), locked by pnpm-lock.yaml"
+    },
+    {
+      "name": "QuickJS WASM",
+      "source": "npm quickjs-wasi, locked by pnpm-lock.yaml"
+    }
+  ],
+  "baseline": "BASELINE.json",
+  "changes": "OPENBOT_CHANGES.md"
+}
