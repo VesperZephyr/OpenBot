@@ -16,9 +16,12 @@ import {
 	defineTool,
 	type EntryRecord,
 	Harness,
+	InboxDoc,
+	type InboxState,
 	type LiveState,
 	LiveDoc,
 	type PromptSection,
+	type SubmissionId,
 	type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
@@ -28,6 +31,7 @@ import {
 	type ConversationSnapshot,
 	type LiveRun,
 	type MessagePart,
+	type PendingMessage,
 	type ModelRef,
 	type ModelSummary,
 	ProtocolError,
@@ -37,13 +41,17 @@ import {
 } from "@openbot/protocol";
 
 import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
+import { type RunStore, runStore } from "./runs.ts";
 
 const TOOLS_EXTENSION = "openbot.tools";
+/** Display-only transcript entry written when the user stops a Run. */
+const STOPPED_ENTRY = "openbot.stopped";
 
 /** Credential contract the Host implements over the Keychain; re-exported so the Host never imports Pi. */
 export type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
 export type { ConfigEnvironment, ConfiguredProviderStatus, ModelConfigStatus } from "./model-config.ts";
 export { SUPPORTED_MODEL_APIS } from "./model-config.ts";
+export { isTerminal, KEPT_TERMINAL_RUNS, type RunInput, type RunMessage, type RunStore, type StoredRun } from "./runs.ts";
 
 type PiConversationId = ConversationRecord["id"];
 
@@ -241,12 +249,60 @@ export class BotRuntime {
 	}
 
 	/**
-	 * Durably admit a message and return without waiting for the answer. The same `requestId` returns the existing
-	 * submission, so a retried call never starts a second Run.
+	 * Durably admit a message and return its Pi submission without waiting for the answer. `start` begins a run on an
+	 * idle conversation; `steer` joins the running work after its current tool round (Pi `whenBusy: "steer"`), or starts
+	 * a run when the conversation went idle meanwhile. The same `requestId` returns the existing submission, so a retried
+	 * call never admits the message twice.
 	 */
-	async submit(botId: BotId, requestId: string, text: string): Promise<void> {
+	async submit(botId: BotId, requestId: string, text: string, mode: "start" | "steer"): Promise<{ submissionId: string }> {
 		const conversation = await this.#conversation(await this.#requireRecord(botId));
-		await conversation.submit({ type: "input", content: text, requestId }, this.#context);
+		const submission = await conversation.submit(
+			{ type: "input", content: text, requestId, ...(mode === "steer" ? { whenBusy: "steer" as const } : {}) },
+			this.#context,
+		);
+		return { submissionId: String(submission.id) };
+	}
+
+	/** Where a submission of this Bot stands; `absent` when Pi has no such submission for the Bot's conversation. */
+	async submissionState(
+		botId: BotId,
+		submissionId: string,
+	): Promise<"queued" | "placed" | "done" | "unanswered" | "absent"> {
+		return (await this.#ownedSubmission(botId, submissionId))?.status.status ?? "absent";
+	}
+
+	/** Resolve once Pi settled the submission; also after a reopen, from the stored record. */
+	async waitSubmission(botId: BotId, submissionId: string): Promise<{ status: "done" | "unanswered"; reason?: string }> {
+		const owned = await this.#ownedSubmission(botId, submissionId);
+		if (owned === undefined) throw new ProtocolError("not_found", `Unknown submission ${submissionId} for Bot ${botId}`);
+		const settled = await owned.submission.wait(this.#context);
+		return settled.status === "done" ? { status: "done" } : { status: "unanswered", reason: settled.reason };
+	}
+
+	/**
+	 * Withdraw a submission that still waits in Pi's queue; one already placed stays with its run. Used when a run ended
+	 * without an answer, because Pi keeps queued inputs until the next input arrives.
+	 */
+	async withdraw(botId: BotId, submissionId: string): Promise<void> {
+		const record = await this.#requireRecord(botId);
+		await this.#harness.abortSubmission(
+			Number(submissionId) as SubmissionId,
+			this.#context,
+			record.conversationId as PiConversationId,
+		);
+	}
+
+	/** Durable Run records; scheduling is the Host's job. */
+	runsStore(): RunStore {
+		return runStore(this.#harness, this.#context);
+	}
+
+	async #ownedSubmission(botId: BotId, submissionId: string) {
+		const record = await this.#requireRecord(botId);
+		const submission = await this.#harness.submission(Number(submissionId) as SubmissionId, this.#context);
+		if (submission === undefined) return undefined;
+		const status = await submission.status(this.#context);
+		return status.conversationId === record.conversationId ? { submission, status } : undefined;
 	}
 
 	/** Submit and wait for the answer; for harnesses and tests. */
@@ -266,10 +322,16 @@ export class BotRuntime {
 		return { status: "answered", answer: answer === undefined ? [] : textParts(answer) };
 	}
 
-	/** Abort the active Run; queued inputs are withdrawn and the call resolves once the conversation is idle. */
+	/** Abort the Bot's work: withdraw queued inputs and abort the active run; resolves once the conversation is idle. */
 	async cancel(botId: BotId): Promise<void> {
 		const conversation = await this.#conversation(await this.#requireRecord(botId));
 		await conversation.abort(this.#context);
+	}
+
+	/** Leave a "stopped" note in the transcript, after the user cancelled a Run. */
+	async markStopped(botId: BotId): Promise<void> {
+		const conversation = await this.#conversation(await this.#requireRecord(botId));
+		await conversation.submit({ type: "write", entry: { kind: STOPPED_ENTRY } }, this.#context);
 	}
 
 	/** The Bot's conversation without pending approvals; the Host adds those (`approvals` is empty here). */
@@ -438,10 +500,13 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 				if (message?.role !== "toolResult") break;
 				const item = tools.get(message.toolCallId);
 				if (item === undefined) break;
-				item.status = message.isError ? "failed" : "succeeded";
+				item.status = !message.isError ? "succeeded" : wasAborted(entry) ? "cancelled" : "failed";
 				item.output = partsOf(message.content).map((part) => part.text).join("\n");
 				break;
 			}
+			case STOPPED_ENTRY:
+				items.push({ kind: "stopped", id });
+				break;
 			case "pi.system":
 			case "pi.reset":
 				break;
@@ -450,6 +515,19 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 		}
 	}
 	return items;
+}
+
+/** Pi marks a tool result it wrote because the run was aborted with an `aborted` diagnostic. */
+function wasAborted(entry: EntryRecord): boolean {
+	const data = entry.data as { readonly diagnostics?: readonly { readonly code?: string }[] } | undefined;
+	return data?.diagnostics?.some((diagnostic) => diagnostic.code === "aborted") === true;
+}
+
+/** Inputs Pi holds in the inbox until the next boundary: messages sent while the Bot works. */
+function pendingInputs(inbox: InboxState | undefined): PendingMessage[] {
+	return (inbox?.items ?? []).flatMap((item) =>
+		item.mode === "write" ? [] : [{ id: String(item.id), parts: partsOf(item.content as string | readonly { readonly type: string }[]) }],
+	);
 }
 
 function projectLive(live: LiveState | undefined): LiveRun | undefined {
@@ -472,12 +550,19 @@ function projectView(botId: BotId, view: ConversationView): ConversationSnapshot
 		const item = items.find((entry): entry is MutableToolItem => entry.kind === "tool" && entry.id === slot.callId) as
 			| MutableToolItem
 			| undefined;
-		if (item === undefined || item.status === "succeeded" || item.status === "failed") continue;
+		if (item === undefined || item.status === "succeeded" || item.status === "failed" || item.status === "cancelled") continue;
 		item.status = slot.status === "running" ? "running" : "pending";
 		if (slot.output !== undefined && slot.output !== "") item.output = slot.output;
 	}
 	const live = projectLive(liveDoc);
-	return { botId, items, ...(live === undefined ? {} : { live }), approvals: [] };
+	const pending = pendingInputs(view.docs[InboxDoc.definition.kind] as InboxState | undefined);
+	return {
+		botId,
+		items,
+		...(live === undefined ? {} : { live }),
+		approvals: [],
+		...(pending.length === 0 ? {} : { pending }),
+	};
 }
 
 /** A catalog tool registered with Pi. Replay-safe because the router and executor own idempotency (Section 5.1). */
@@ -501,6 +586,8 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 				signal,
 				onProgress: (output) => api.output(output),
 			});
+			// A stopped Run: let Pi record the call as aborted rather than as the transport's failure text.
+			signal.throwIfAborted();
 			const failed = outcome.status !== "succeeded";
 			return {
 				output: [{ type: "text", text: outcome.output === "" ? "(no output)" : outcome.output }],

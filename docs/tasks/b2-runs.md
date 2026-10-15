@@ -1,6 +1,6 @@
 # B2: Runs, Queue, Cancellation, and Steering
 
-Status: ready
+Status: in review
 Branch: task/b2-runs
 Depends on: none (B1 recommended first; they touch different files except `server-core/src/index.ts`)
 Architecture: Sections 6.1 (`messages.submit`, `runs.cancel`), 7.2 (scheduling)
@@ -147,4 +147,10 @@ Invariants:
 
 ## Open questions
 
-None.
+2026-10-15 (execution notes, decided locally; no contract change beyond these):
+- Messages that joined a queued Run start the Pi run as **one** input (texts joined by a blank line, Pi request ID = the first request ID), so the model reads them in one turn instead of a start plus steers.
+- `ConversationSnapshot` also gains optional `pending?: PendingMessage[]` (queued-Run messages, and steers Pi holds in `pi.inbox` until the tool round ends) so the UI shows a sent message at once; `TranscriptItem` gains `{ kind: "stopped", id }` (display-only Pi entry `openbot.stopped`, written when a Run ends cancelled); `ToolCallStatus` gains `cancelled` (Pi's `aborted` tool diagnostic); `BotActivity` gains `queued`.
+- A queued Run of a Bot whose previous Run is still being stopped waits until that Run ended: Pi withdraws inputs admitted while its abort is in progress.
+- When a Run fails (unanswered, not aborted), its steers still in Pi's inbox are withdrawn, because Pi would otherwise place them with the next input.
+- `BotRuntime.cancel(botId)` stays (abort); new `markStopped(botId)` and `withdraw(botId, submissionId)` support the scheduler.
+- The e2e suite was written but not run in this batch (integration owner's rule: no Electron launches); `pnpm run check` is green.
