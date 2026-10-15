@@ -5,10 +5,13 @@ import type {
 	ModelRef,
 	ModelSummary,
 	PendingApproval,
+	ThinkingLevel,
 	TranscriptItem,
 } from "@openbot/protocol";
 import { type FormEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "./markdown";
+import { ProfileMemory } from "./ProfileMemory";
+import { Divider, RetryButton, retryTarget, Thinking } from "./TranscriptExtras";
 import {
 	api,
 	connect,
@@ -297,13 +300,16 @@ function EmptyConversation({ bot }: { readonly bot: BotSummary }) {
 
 function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 	const approvals = new Map(snapshot.approvals.map((approval) => [approval.callId, approval]));
+	const retry = retryTarget(snapshot.items, snapshot.live !== undefined);
 	return (
 		<ol className="messages">
 			{snapshot.items.map((item) =>
 				item.kind === "tool" ? (
 					<ToolCard key={item.id} item={item} approval={approvals.get(item.id)} />
+				) : item.kind === "divider" ? (
+					<Divider key={item.id} item={item} />
 				) : (
-					<Message key={item.id} item={item} />
+					<Message key={item.id} item={item} retry={retry?.id === item.id ? { botId: snapshot.botId, text: retry.text } : undefined} />
 				),
 			)}
 			{snapshot.live !== undefined && snapshot.live.state !== "waiting_approval" && (
@@ -322,12 +328,22 @@ function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 	);
 }
 
-function Message({ item }: { readonly item: Exclude<TranscriptItem, { kind: "tool" }> }) {
+function Message(props: {
+	readonly item: Exclude<TranscriptItem, { kind: "tool" | "divider" }>;
+	readonly retry: { readonly botId: string; readonly text: string } | undefined;
+}) {
+	const { item, retry } = props;
 	if (item.kind === "other") return null;
 	return (
 		<li className={`message message-${item.kind}`}>
+			{item.kind === "assistant" && item.thinking !== undefined && <Thinking text={item.thinking} />}
 			<MessageText parts={item.parts} markdown={item.kind === "assistant"} />
-			{item.kind === "assistant" && item.error !== undefined && <div className="message-error">{item.error}</div>}
+			{item.kind === "assistant" && item.error !== undefined && (
+				<div className="message-error">
+					{item.error}
+					{retry !== undefined && <RetryButton botId={retry.botId} text={retry.text} />}
+				</div>
+			)}
 		</li>
 	);
 }
@@ -352,13 +368,14 @@ const TOOL_VERBS: Record<string, readonly [running: string, done: string]> = {
 	local_edit: ["Editing", "Edited"],
 	local_exec: ["Running", "Ran"],
 	web_fetch: ["Fetching", "Fetched"],
+	memory_update: ["Updating memory", "Updated memory"],
 };
 
 /** One row per tool call: a verb and subject, expandable to the arguments and output; failures open by default. */
 function ToolCard({ item, approval }: { readonly item: Extract<TranscriptItem, { kind: "tool" }>; readonly approval: PendingApproval | undefined }) {
 	const args = (item.args ?? {}) as Record<string, unknown>;
 	const [running, done] = TOOL_VERBS[item.tool] ?? [item.tool, item.tool];
-	const subject = String(args.description ?? args.path ?? args.url ?? args.command ?? "");
+	const subject = String(args.description ?? args.path ?? args.url ?? args.command ?? args.section ?? "");
 	const waiting = approval !== undefined;
 	const label = waiting ? "Waiting for approval" : item.status === "running" || item.status === "pending" ? running : item.status === "failed" ? `${done} · failed` : done;
 	return (
@@ -412,6 +429,14 @@ function BotMenu({ bot, onEdit }: { readonly bot: BotSummary; readonly onEdit: (
 			report(error);
 		}
 	};
+	const newTopic = async (): Promise<void> => {
+		setOpen(false);
+		try {
+			await api["conversations.reset"]({ botId: bot.botId });
+		} catch (error) {
+			report(error);
+		}
+	};
 	return (
 		<div className="menu">
 			<button type="button" className="icon-button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
@@ -432,6 +457,9 @@ function BotMenu({ bot, onEdit }: { readonly bot: BotSummary; readonly onEdit: (
 					>
 						{bot.status === "hidden" ? "Show in sidebar" : "Hide from sidebar"}
 					</button>
+					<button type="button" role="menuitem" onClick={() => void newTopic()}>
+						New topic
+					</button>
 				</div>
 			)}
 		</div>
@@ -439,14 +467,47 @@ function BotMenu({ bot, onEdit }: { readonly bot: BotSummary; readonly onEdit: (
 }
 
 function EditProfile({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
+	const [tab, setTab] = useState<"profile" | "memory">("profile");
+	return (
+		<div className="profile">
+			<div className="profile-tabs" role="tablist">
+				<button type="button" role="tab" aria-selected={tab === "profile"} onClick={() => setTab("profile")}>
+					Profile
+				</button>
+				<button type="button" role="tab" aria-selected={tab === "memory"} onClick={() => setTab("memory")}>
+					Memory
+				</button>
+			</div>
+			{tab === "profile" ? <ProfileForm bot={bot} onClose={onClose} /> : <ProfileMemory botId={bot.botId} onClose={onClose} />}
+		</div>
+	);
+}
+
+const THINKING_LABEL: Record<ThinkingLevel, string> = { off: "Off", low: "Low", medium: "Medium", high: "High" };
+
+function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
 	const [name, setName] = useState(bot.name);
 	const [role, setRole] = useState(bot.role);
 	const [instructions, setInstructions] = useState(bot.instructions);
 	const [model, setModel] = useState<ModelRef | undefined>(bot.model);
+	const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>(bot.thinkingLevel ?? "off");
+	const models = useStore((state) => state.models);
+	const defaultModel = useStore((state) => state.settings?.defaultModel);
+	const effective = model ?? defaultModel;
+	const reasoning = models.some(
+		(candidate) => candidate.reasoning && candidate.provider === effective?.provider && candidate.modelId === effective.modelId,
+	);
 	const save = async (event: FormEvent): Promise<void> => {
 		event.preventDefault();
 		try {
-			await api["bots.update"]({ botId: bot.botId, name: name.trim() || bot.name, role, instructions, model: model ?? null });
+			await api["bots.update"]({
+				botId: bot.botId,
+				name: name.trim() || bot.name,
+				role,
+				instructions,
+				model: model ?? null,
+				...(reasoning ? { thinkingLevel } : {}),
+			});
 			await refreshBots();
 			onClose();
 		} catch (error) {
@@ -454,7 +515,7 @@ function EditProfile({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 		}
 	};
 	return (
-		<form className="profile" onSubmit={save}>
+		<form className="profile-form" onSubmit={save}>
 			<div className="profile-grid">
 				<label className="field">
 					<span>Name</span>
@@ -474,10 +535,24 @@ function EditProfile({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 					onChange={(event) => setInstructions(event.target.value)}
 				/>
 			</label>
-			<label className="field">
-				<span>Model</span>
-				<ModelSelect value={model} onChange={setModel} emptyLabel="Use the default model" />
-			</label>
+			<div className="profile-grid">
+				<label className="field">
+					<span>Model</span>
+					<ModelSelect value={model} onChange={setModel} emptyLabel="Use the default model" />
+				</label>
+				{reasoning && (
+					<label className="field">
+						<span>Thinking</span>
+						<select value={thinkingLevel} onChange={(event) => setThinkingLevel(event.target.value as ThinkingLevel)}>
+							{(Object.keys(THINKING_LABEL) as ThinkingLevel[]).map((level) => (
+								<option key={level} value={level}>
+									{THINKING_LABEL[level]}
+								</option>
+							))}
+						</select>
+					</label>
+				)}
+			</div>
 			<div className="dialog-actions">
 				<button type="button" onClick={onClose}>
 					Cancel

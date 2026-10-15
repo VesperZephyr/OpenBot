@@ -390,6 +390,81 @@ code {
 	gap: 12px;
 }
 
+.profile-form,
+.profile-memory {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.profile-tabs {
+	display: flex;
+	gap: 4px;
+}
+
+.profile-tabs button {
+	border: 0;
+	background: none;
+	padding: 4px 10px;
+	border-radius: var(--radius);
+	color: var(--muted);
+}
+
+.profile-tabs button[aria-selected="true"] {
+	background: var(--surface-raised);
+	color: inherit;
+}
+
+.memory-size {
+	margin-right: auto;
+	align-self: center;
+	font-size: 12px;
+	color: var(--muted);
+}
+
+.memory-size.is-over {
+	color: var(--attention);
+}
+
+.divider {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	font-size: 12px;
+	color: var(--muted);
+}
+
+.divider::before,
+.divider::after {
+	content: "";
+	flex: 1;
+	border-top: 1px solid var(--border);
+}
+
+.thinking-block {
+	margin-bottom: 8px;
+	font-size: 13px;
+	color: var(--muted);
+}
+
+.thinking-block summary {
+	cursor: pointer;
+}
+
+.thinking-text {
+	margin-top: 4px;
+	padding-left: 10px;
+	border-left: 2px solid var(--border);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.retry {
+	margin-left: 8px;
+	padding: 2px 10px;
+	font-size: 12px;
+}
+
 .transcript {
 	flex: 1;
 	overflow-y: auto;
