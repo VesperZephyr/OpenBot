@@ -18,7 +18,8 @@ describe("ReceiptLedger", () => {
 		open.push(ledger);
 		return ledger;
 	};
-	const executorOver = (ledger: ExecutorLedger): LocalExecutor => new LocalExecutor({ targetId: "mac", workspace: root, ledger });
+	const executorOver = (ledger: ExecutorLedger): LocalExecutor =>
+		new LocalExecutor({ targetId: "mac", workspace: root, ledger, artifactsDirectory: join(root, "artifacts") });
 	const exec = (command: string): ToolInvocation => ({
 		invocationId: `conv:call-${++next}`,
 		botId: "bot",
@@ -77,6 +78,9 @@ describe("ReceiptLedger", () => {
 			recordGroup: () => {},
 			finish: () => {},
 			ack: () => {},
+			recordTask: () => {},
+			finishTask: () => {},
+			task: () => undefined,
 		};
 		expect((await executorOver(crashing).invoke(invocation, () => {})).status).toBe("failed");
 		expect(ledger.get(invocation.invocationId)?.status).toBe("accepted");

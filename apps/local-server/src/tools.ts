@@ -21,8 +21,11 @@ export function createToolRouter(options: {
 	readonly tavilyBaseUrl: string | undefined;
 	/** `BotRuntime.editMemory`; called only once tool calls flow, after the runtime opened. */
 	readonly editMemory: (botId: string, edit: MemoryEdit) => Promise<string>;
+	/** `<data>/artifacts`, where the executor saves cut output; `local_read` may read it without asking. */
+	readonly artifactsDirectory: string;
 }): ToolRouter {
 	const { workspace } = options;
+	const artifacts = canonical(options.artifactsDirectory);
 	const granted = (path: string): boolean => isWithin(canonical(absolute(path, workspace)), workspace);
 	return new ToolRouter({
 		target: options.target,
@@ -37,12 +40,14 @@ export function createToolRouter(options: {
 			memory_update: memoryUpdate(options.editMemory),
 		},
 		policy: {
-			decide: async (call, definition) => decide(call, definition, granted),
+			decide: async (call, definition) =>
+				decide(call, definition, (path) => granted(path) || (call.tool === "local_read" && isWithin(canonical(absolute(path, workspace)), artifacts))),
 			// An approved call outside the workspace may touch exactly the path the user saw on the card.
 			grants: async (call, approvedOnce) => {
 				const path = typeof call.args.path === "string" ? call.args.path : undefined;
-				if (!approvedOnce || path === undefined) return [workspace];
-				return [workspace, canonical(absolute(path, workspace))];
+				const roots = call.tool === "local_read" ? [workspace, artifacts] : [workspace];
+				if (!approvedOnce || path === undefined) return roots;
+				return [...roots, canonical(absolute(path, workspace))];
 			},
 		},
 	});

@@ -20,6 +20,8 @@ export type RunSchedulerOptions = {
 	/** Runs whenever a Bot's Runs changed, so its conversation can be republished. */
 	readonly changed: (botId: BotId) => void;
 	readonly now: () => number;
+	/** Runs right before a running Run's conversation is aborted, so work it left in the background stops too. */
+	readonly stopping?: (botId: BotId) => void;
 };
 
 export type SubmitOutcome = { readonly runId: RunId; readonly state: RunRecord["state"]; readonly steered: boolean };
@@ -32,6 +34,7 @@ export class RunScheduler {
 	readonly #cap: number;
 	readonly #changed: (botId: BotId) => void;
 	readonly #now: () => number;
+	readonly #stopping: (botId: BotId) => void;
 	/** Current Runs by ID: every non-terminal Run, and terminal ones looked up since start. */
 	readonly #runs = new Map<RunId, StoredRun>();
 	/** Running Runs the user asked to stop; new messages to their Bot start a new Run instead of steering. */
@@ -51,6 +54,7 @@ export class RunScheduler {
 		this.#cap = options.maxActiveRuns;
 		this.#changed = options.changed;
 		this.#now = options.now;
+		this.#stopping = options.stopping ?? (() => {});
 	}
 
 	/**
@@ -139,6 +143,7 @@ export class RunScheduler {
 		});
 		if ("state" in target) return target.state;
 		// Outside the line: the abort waits for Pi to settle the inputs, whose handling needs the line.
+		this.#stopping(target.abort);
 		await this.#runtime.cancel(target.abort);
 		return target.ended;
 	}

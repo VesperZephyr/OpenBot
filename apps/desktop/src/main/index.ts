@@ -65,6 +65,7 @@ const host = new HostProcess({
 		...(process.env.OPENBOT_MAX_ACTIVE_RUNS === undefined
 			? {}
 			: { OPENBOT_MAX_ACTIVE_RUNS: process.env.OPENBOT_MAX_ACTIVE_RUNS }),
+		...(process.env.OPENBOT_EXEC_YIELD_MS === undefined ? {} : { OPENBOT_EXEC_YIELD_MS: process.env.OPENBOT_EXEC_YIELD_MS }),
 	},
 	onOutput: (chunk) => hostLog.write(chunk),
 	onEvent: (event) => window?.webContents.send(CHANNELS.event, event),

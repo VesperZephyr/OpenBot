@@ -56,6 +56,8 @@ describe("RunScheduler", () => {
 	let gates: Gates;
 	let scheduler: RunScheduler;
 	let clock: number;
+	/** Bots whose running Run was stopped, as reported to the `stopping` hook. */
+	let stopped: BotId[];
 	/** Resolves when the Run reaches the state; checked after every change the scheduler reports. */
 	let reaches: (botId: BotId, runId: string, state: RunRecord["state"]) => Promise<void>;
 	let changed: () => void;
@@ -84,7 +86,13 @@ describe("RunScheduler", () => {
 			changed();
 			return promise;
 		};
-		scheduler = new RunScheduler({ runtime, maxActiveRuns: 1, changed: () => changed(), now: () => ++clock });
+		scheduler = new RunScheduler({
+			runtime,
+			maxActiveRuns: 1,
+			changed: () => changed(),
+			now: () => ++clock,
+			stopping: (botId) => stopped.push(botId),
+		});
 		runtime.resume();
 	}
 
@@ -97,6 +105,7 @@ describe("RunScheduler", () => {
 		directory = await mkdtemp(join(tmpdir(), "openbot-scheduler-"));
 		databasePath = join(directory, "openbot.sqlite");
 		clock = 0;
+		stopped = [];
 	});
 
 	afterEach(async () => {
@@ -145,6 +154,8 @@ describe("RunScheduler", () => {
 		await reaches("c", c.runId, "completed");
 		expect((await runtime.snapshot("b")).items).toEqual([]);
 		expect((await runtime.runsStore().get(a.runId))?.state).toBe("completed");
+		// Nothing ran for the queued Run, so there is no background work to stop.
+		expect(stopped).toEqual([]);
 		await close();
 	});
 
@@ -157,6 +168,7 @@ describe("RunScheduler", () => {
 		const b = await scheduler.submit("b", "m2", "Queued");
 
 		expect(await scheduler.cancel(a.runId)).toBe("cancelled");
+		expect(stopped).toEqual(["a"]);
 		await reaches("b", b.runId, "completed");
 		const items = (await runtime.snapshot("a")).items;
 		expect(items.find((item) => item.kind === "tool")).toMatchObject({ status: "cancelled" });

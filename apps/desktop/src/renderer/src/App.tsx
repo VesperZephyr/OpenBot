@@ -376,13 +376,15 @@ const TOOL_VERBS: Record<string, readonly [running: string, done: string]> = {
 	web_fetch: ["Fetching", "Fetched"],
 	web_search: ["Searching", "Searched"],
 	memory_update: ["Updating memory", "Updated memory"],
+	task_output: ["Checking task", "Checked task"],
+	task_stop: ["Stopping task", "Stopped task"],
 };
 
 /** One row per tool call: a verb and subject, expandable to the arguments and output; failures open by default. */
 function ToolCard({ item, approval }: { readonly item: Extract<TranscriptItem, { kind: "tool" }>; readonly approval: PendingApproval | undefined }) {
 	const args = (item.args ?? {}) as Record<string, unknown>;
 	const [running, done] = TOOL_VERBS[item.tool] ?? [item.tool, item.tool];
-	const subject = String(args.description ?? args.path ?? args.url ?? args.command ?? args.query ?? args.section ?? "");
+	const subject = String(args.description ?? args.path ?? args.url ?? args.command ?? args.query ?? args.section ?? args.taskId ?? "");
 	const waiting = approval !== undefined;
 	const label = waiting
 		? "Waiting for approval"
@@ -403,6 +405,7 @@ function ToolCard({ item, approval }: { readonly item: Extract<TranscriptItem, {
 					<span className="tool-status" aria-hidden />
 					<span className="tool-verb">{label}</span>
 					<span className="tool-subject">{subject}</span>
+					{item.tool === "local_exec" && item.taskId !== undefined && <span className="tool-task">background · {item.taskId}</span>}
 				</summary>
 				{item.tool === "local_exec" && typeof args.command === "string" && <pre className="tool-command">$ {args.command}</pre>}
 				{item.output !== undefined && item.output !== "" && <pre className="tool-output">{item.output}</pre>}

@@ -59,6 +59,11 @@ export class ExecutorProcess implements ExecutorTransport {
 		this.#send({ kind: "result.ack", invocationId });
 	}
 
+	/** The conversation's work was stopped: the executor stops the background commands it started. */
+	stopTasks(conversationId: string): void {
+		this.#send({ kind: "tasks.stop", conversationId });
+	}
+
 	/** Read-only receipt lookup, for diagnostics. */
 	async status(invocationId: string): Promise<StatusReply> {
 		await this.#start();

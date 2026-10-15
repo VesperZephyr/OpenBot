@@ -1,12 +1,14 @@
 /**
  * File tools. Every path is canonicalized and checked against the invocation's grants before it is opened; reads
  * refuse devices and binary files before reading them; writes go to a temporary file and are renamed into place.
+ * Reads and edits report the file's SHA-256, which `local_edit` takes back as `expected_sha256` to refuse an edit of a
+ * file that changed since the model last saw it.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { grantedPath } from "./paths.ts";
-import { headWithin, READ_MAX_BYTES } from "./output.ts";
+import { headWithin, OUTPUT_LIMITS } from "./output.ts";
 
 const MAX_READ_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_LIST_ENTRIES = 500;
@@ -26,20 +28,21 @@ export async function readText(
 	if (info.size > MAX_READ_FILE_BYTES) throw new Error(`${path} is ${info.size} bytes; files over 10 MB are not read`);
 	if (await looksBinary(path)) throw new Error(`${path} looks like a binary file`);
 
-	const lines = (await readFile(path, "utf8")).split("\n");
+	const content = await readFile(path);
+	const lines = content.toString("utf8").split("\n");
 	const first = Math.max(1, args.offset ?? 1);
-	const last = Math.min(lines.length, first - 1 + (args.limit ?? lines.length));
+	const last = Math.min(lines.length, first - 1 + Math.min(args.limit ?? OUTPUT_LIMITS.lines, OUTPUT_LIMITS.lines));
 	const numbered = lines
 		.slice(first - 1, last)
 		.map((line, index) => `${String(first + index).padStart(6)}\t${line}`)
 		.join("\n");
-	const bounded = headWithin(numbered, READ_MAX_BYTES);
+	const bounded = headWithin(numbered, OUTPUT_LIMITS.bytes);
 	const shownLast = bounded.truncated ? first - 1 + bounded.text.split("\n").filter((line) => line !== "").length : last;
 	const more =
 		shownLast < lines.length
 			? `\n[showing lines ${first}-${shownLast} of ${lines.length}; continue with offset=${shownLast + 1}]`
 			: "";
-	return { output: `${bounded.text}${more}`, truncated: bounded.truncated || more !== "" };
+	return { output: `${bounded.text}${more}\n[sha256: ${sha256(content)}]`, truncated: bounded.truncated || more !== "" };
 }
 
 export async function listDirectory(args: { path: string }, context: FileContext): Promise<string> {
@@ -58,24 +61,38 @@ export async function writeText(args: { path: string; content: string }, context
 	await mkdir(dirname(path), { recursive: true });
 	const existed = await exists(path);
 	await atomicWrite(path, args.content);
-	return `${existed ? "Overwrote" : "Created"} ${path} (${Buffer.byteLength(args.content)} bytes)`;
+	return `${existed ? "Overwrote" : "Created"} ${path} (${Buffer.byteLength(args.content)} bytes)\n[sha256: ${sha256(Buffer.from(args.content))}]`;
 }
 
 export async function editText(
-	args: { path: string; old_text: string; new_text: string; replace_all?: boolean },
+	args: { path: string; old_text: string; new_text: string; replace_all?: boolean; expected_sha256?: string },
 	context: FileContext,
 ): Promise<string> {
 	const path = await grantedPath(args.path, context.workspace, context.grants);
 	if (args.old_text === "") throw new Error("old_text is empty");
-	const original = await readFile(path, "utf8");
-	const occurrences = countOccurrences(original, args.old_text);
-	if (occurrences === 0) throw new Error(`old_text was not found in ${path}; read the file and copy the text exactly`);
-	if (occurrences > 1 && args.replace_all !== true) {
-		throw new Error(`old_text appears ${occurrences} times in ${path}; add surrounding lines or set replace_all`);
+	const content = await readFile(path);
+	const current = sha256(content);
+	if (args.expected_sha256 !== undefined && args.expected_sha256.trim().toLowerCase() !== current) {
+		throw new Error(
+			`${path} changed since you read it (expected sha256 ${args.expected_sha256}, now ${current}); read it again and redo the edit`,
+		);
+	}
+	const original = content.toString("utf8");
+	const matches = matchLines(original, args.old_text);
+	if (matches.length === 0) throw new Error(`old_text was not found in ${path}; read the file and copy the text exactly`);
+	if (matches.length > 1 && args.replace_all !== true) {
+		throw new Error(
+			`old_text appears ${matches.length} times in ${path}, starting on lines ${matches.join(", ")}; add surrounding lines to make it unique or set replace_all`,
+		);
 	}
 	const updated = args.replace_all === true ? original.split(args.old_text).join(args.new_text) : original.replace(args.old_text, () => args.new_text);
 	await atomicWrite(path, updated);
-	return `Edited ${path}: replaced ${args.replace_all === true ? occurrences : 1} occurrence${occurrences === 1 || args.replace_all !== true ? "" : "s"}`;
+	const replaced = args.replace_all === true ? matches.length : 1;
+	return `Edited ${path}: replaced ${replaced} occurrence${replaced === 1 ? "" : "s"}\n[sha256: ${sha256(Buffer.from(updated))}]`;
+}
+
+function sha256(content: Buffer): string {
+	return createHash("sha256").update(content).digest("hex");
 }
 
 async function atomicWrite(path: string, content: string): Promise<void> {
@@ -109,8 +126,15 @@ async function exists(path: string): Promise<boolean> {
 	}
 }
 
-function countOccurrences(text: string, search: string): number {
-	let count = 0;
-	for (let index = text.indexOf(search); index >= 0; index = text.indexOf(search, index + search.length)) count += 1;
-	return count;
+/** The 1-based line each non-overlapping occurrence of `search` starts on. */
+function matchLines(text: string, search: string): number[] {
+	const lines: number[] = [];
+	let line = 1;
+	let counted = 0;
+	for (let index = text.indexOf(search); index >= 0; index = text.indexOf(search, index + search.length)) {
+		for (let at = text.indexOf("\n", counted); at >= 0 && at < index; at = text.indexOf("\n", at + 1)) line += 1;
+		counted = index;
+		lines.push(line);
+	}
+	return lines;
 }

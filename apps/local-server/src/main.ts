@@ -81,6 +81,7 @@ const router = createToolRouter({
 	secrets: credentials,
 	tavilyBaseUrl: process.env.OPENBOT_TAVILY_BASE_URL,
 	editMemory: (botId, edit) => runtime.editMemory(botId, edit),
+	artifactsDirectory: join(dataDirectory, "artifacts"),
 });
 
 const runtime = await BotRuntime.open({
@@ -120,6 +121,13 @@ const service = new HostService({
 			executor.ack(`${await runtime.conversationKey(botId)}:${callId}`);
 			await approvals.settled(botId, callId);
 		})().catch((error: unknown) => console.error("Could not settle a tool call", error));
+	},
+	// Stop also ends the background commands the conversation started; they are no longer any Pi call's.
+	conversationStopped: (botId) => {
+		void runtime
+			.conversationKey(botId)
+			.then((conversationId) => executor.stopTasks(conversationId))
+			.catch((error: unknown) => console.error("Could not stop background commands", error));
 	},
 });
 approvalListeners.changed = (botId) => service.approvalsChanged(botId);

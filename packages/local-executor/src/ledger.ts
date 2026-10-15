@@ -4,7 +4,10 @@
  * terminal with the recorded outcome afterwards; a row still `accepted` when a ledger opens belonged to an executor
  * that died mid-run, so it becomes `unknown` and is never rerun.
  *
- * Commands also record their process group; opening the ledger kills groups such a dead executor left running.
+ * Commands also record their process group; opening the ledger kills groups such a dead executor left running. A
+ * command that moved to the background ends its invocation (the receipt is terminal) but keeps a `background_tasks`
+ * row with the same group until it ends; opening the ledger kills the groups of rows still `running` and marks them
+ * `unknown`.
  */
 import { execFileSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
@@ -26,6 +29,26 @@ export type Receipt = {
 
 type Row = { invocation_id: string; args_digest: string; tool: string; status: ReceiptStatus; outcome: string | null };
 
+export type TaskStatus = "running" | InvocationStatus;
+
+export type TaskRecord = {
+	readonly taskId: string;
+	readonly invocationId: string;
+	readonly conversationId: string;
+	readonly status: TaskStatus;
+	readonly exit?: { readonly code: number | null; readonly signal: string | null };
+};
+
+type TaskRow = {
+	task_id: string;
+	invocation_id: string;
+	conversation_id: string;
+	status: TaskStatus;
+	exit: string | null;
+	pgid: number | null;
+	leader_started: string | null;
+};
+
 const SCHEMA = `
 create table if not exists receipts (
 	invocation_id  text primary key,
@@ -38,6 +61,17 @@ create table if not exists receipts (
 	acked_at       integer,
 	pgid           integer,
 	leader_started text
+);
+create table if not exists background_tasks (
+	task_id         text primary key,
+	invocation_id   text not null,
+	conversation_id text not null,
+	pgid            integer,
+	leader_started  text,
+	status          text not null check (status in ('running','succeeded','failed','cancelled','unknown')),
+	exit            text,
+	started_at      integer not null,
+	finished_at     integer
 )`;
 
 /** Outcome recorded for an invocation whose executor died while it ran. */
@@ -69,6 +103,7 @@ export class ReceiptLedger {
 		const ledger = new ReceiptLedger(db, now);
 		ledger.#recover();
 		db.prepare("delete from receipts where acked_at is not null and acked_at < ?").run(now() - RETENTION_MS);
+		db.prepare("delete from background_tasks where finished_at is not null and finished_at < ?").run(now() - RETENTION_MS);
 		return ledger;
 	}
 
@@ -120,6 +155,38 @@ export class ReceiptLedger {
 			.run(this.#now(), invocationId);
 	}
 
+	/**
+	 * Record that an invocation's command moved to the background as `taskId`, with the process group its receipt
+	 * recorded. Committed before the invocation's result is reported.
+	 */
+	recordTask(taskId: string, invocationId: string, conversationId: string): void {
+		this.#db
+			.prepare(
+				`insert into background_tasks (task_id, invocation_id, conversation_id, pgid, leader_started, status, started_at)
+				 select ?, invocation_id, ?, pgid, leader_started, 'running', ? from receipts where invocation_id = ?`,
+			)
+			.run(taskId, conversationId, this.#now(), invocationId);
+	}
+
+	/** Record how a background task ended. Only a `running` row changes, as with receipts. */
+	finishTask(taskId: string, status: InvocationStatus, exit: { code: number | null; signal: string | null }): void {
+		this.#db
+			.prepare("update background_tasks set status = ?, exit = ?, finished_at = ? where task_id = ? and status = 'running'")
+			.run(status, JSON.stringify(exit), this.#now(), taskId);
+	}
+
+	task(taskId: string): TaskRecord | undefined {
+		const row = this.#db.prepare("select * from background_tasks where task_id = ?").get(taskId) as TaskRow | undefined;
+		if (row === undefined) return undefined;
+		return {
+			taskId: row.task_id,
+			invocationId: row.invocation_id,
+			conversationId: row.conversation_id,
+			status: row.status,
+			...(row.exit === null ? {} : { exit: JSON.parse(row.exit) as NonNullable<TaskRecord["exit"]> }),
+		};
+	}
+
 	#recover(): void {
 		const stale = this.#db.prepare("select invocation_id, pgid, leader_started from receipts where status = 'accepted'").all() as {
 			invocation_id: string;
@@ -131,6 +198,12 @@ export class ReceiptLedger {
 		);
 		for (const row of stale) {
 			markUnknown.run(JSON.stringify(INTERRUPTED_OUTCOME), this.#now(), row.invocation_id);
+			if (row.pgid !== null && row.leader_started !== null) killOrphanGroup(row.pgid, row.leader_started);
+		}
+		const tasks = this.#db.prepare("select * from background_tasks where status = 'running'").all() as TaskRow[];
+		const markTaskUnknown = this.#db.prepare("update background_tasks set status = 'unknown', finished_at = ? where task_id = ?");
+		for (const row of tasks) {
+			markTaskUnknown.run(this.#now(), row.task_id);
 			if (row.pgid !== null && row.leader_started !== null) killOrphanGroup(row.pgid, row.leader_started);
 		}
 	}
