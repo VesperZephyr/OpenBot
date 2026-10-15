@@ -14,7 +14,7 @@ type MemoryConfigFile = ModelConfigFile & { text: string | undefined };
 
 function memoryConfigFile(): MemoryConfigFile {
 	return {
-		path: "/home/test/.openbot/config.json",
+		path: "/home/test/.openbot/config.yaml",
 		text: undefined,
 		async read() {
 			return this.text;
@@ -108,18 +108,29 @@ describe("HostService", () => {
 	it("applies edits to the model configuration without a restart and reports problems by path", async () => {
 		expect((await service.handle("models.list", {})).some((model) => model.provider === "gateway")).toBe(false);
 
-		configFile.text = `{
-			// Comments and trailing commas are allowed.
-			"providers": {
-				"gateway": {
-					"baseUrl": "https://gateway.example/v1",
-					"api": "openai-completions",
-					"apiKey": "$GATEWAY_KEY",
-					"models": [{ "id": "gpt-5.5" }, { "id": "house-model", "name": "House", "contextWindow": 32000 },],
-				},
-				"offline": { "baseUrl": "http://localhost:1/v1", "api": "openai-completions", "apiKey": "$MISSING", "models": [{ "id": "m" }] },
-			},
-		}`;
+		configFile.text = `
+custom_provider:
+  gateway:
+    api: openai-completions
+    kind: custom        # MiniMax-only fields are ignored
+    options:
+      baseURL: https://gateway.example/v1
+      apiKey: $GATEWAY_KEY
+    models:
+      gpt-5.5:
+      house-model:
+        name: House
+        limit: { context: 32000 }
+  offline:
+    api: openai-completions
+    options: { baseURL: "http://localhost:1/v1", apiKey: $MISSING }
+    models: { m: }
+  disabled:
+    enabled: false
+    api: openai-completions
+    options: { baseURL: "http://localhost:1/v1" }
+    models: { m: }
+`;
 		const models = await service.handle("models.list", {});
 		expect(models.filter((model) => model.provider === "gateway").map((model) => model.modelId)).toEqual([
 			"gpt-5.5",
@@ -131,17 +142,17 @@ describe("HostService", () => {
 		expect(settings.providers.find((p) => p.providerId === "gateway")).toMatchObject({ source: "config", configured: true });
 		expect(settings.providers.find((p) => p.providerId === "offline")).toMatchObject({ source: "config", configured: false });
 		expect(settings.providers.find((p) => p.providerId === "faux")).toMatchObject({ source: "builtin" });
+		expect(settings.providers.some((p) => p.providerId === "disabled")).toBe(false);
 		expect(settings.modelConfig.errors).toEqual([]);
 		expect(JSON.stringify(settings)).not.toContain("sk-from-env");
 
-		configFile.text = `{ "providers": { "gateway": { "baseUrl": "https://gateway.example/v1", "api": "openai-chat", "modelz": [] } } }`;
+		configFile.text = `custom_provider:\n  gateway:\n    api: openai-chat\n    options: {}\n    models: {}\n`;
 		const broken = await service.handle("settings.get", {});
 		expect(broken.providers.some((p) => p.providerId === "gateway")).toBe(false);
 		expect(broken.modelConfig.errors).toEqual(
 			expect.arrayContaining([
-				"providers.gateway.modelz: unknown property",
-				"providers.gateway.models: required",
-				expect.stringMatching(/^providers\.gateway\.api: /),
+				"custom_provider.gateway.options.baseURL: required",
+				expect.stringMatching(/^custom_provider\.gateway\.api: must be one of /),
 			]),
 		);
 	});

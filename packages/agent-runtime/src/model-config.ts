@@ -1,8 +1,9 @@
 /**
- * Bring-your-own-key model configuration: the `providers` section of `~/.openbot/config.json`.
+ * Bring-your-own-key model configuration: the `custom_provider` section of `~/.openbot/config.yaml`.
  *
- * The provider shape follows Pi's `models.json`, restricted to the APIs OpenBot supports, so entries can be copied
- * between the two. Parsing and provider construction are pure and synchronous; reading the file, environment access,
+ * The shape is the essential subset of MiniMax Code's `custom_provider` entries, so a block copied from
+ * `~/.minimax/config.yaml` works unchanged; fields OpenBot does not use (`kind`, `authMode`, `whitelist`, `tool_call`,
+ * ...) are ignored. Parsing and provider construction are pure and synchronous; reading the file, environment access,
  * and `!command` execution are supplied by the Host. Credentials are resolved only when a request needs them and are
  * never stored in the returned status.
  */
@@ -10,62 +11,42 @@ import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messag
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { type Api, type ApiKeyAuth, createProvider, type Model, type Provider } from "@earendil-works/pi-ai";
-import { ProviderCompatSchema } from "@earendil-works/pi-ai/providers/compat-schema";
-import {
-	ModelCostSchema,
-	ModelInputModalitySchema,
-	ThinkingLevelMapSchema,
-} from "@earendil-works/pi-ai/providers/model-schema";
 import { type Static, Type } from "typebox";
 import { Compile } from "typebox/compile";
 import type { TLocalizedValidationError } from "typebox/error";
+import { parse as parseYaml } from "yaml";
 
 export const SUPPORTED_MODEL_APIS = ["openai-completions", "openai-responses", "anthropic-messages"] as const;
 
-const PROVIDER_ID = /^[a-z0-9][a-z0-9_-]*$/;
+const PROVIDER_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 const DEFAULT_MAX_TOKENS = 16_384;
 
-const ApiSchema = Type.Enum(SUPPORTED_MODEL_APIS);
 const PositiveInteger = Type.Integer({ minimum: 1 });
 
-const ModelSchema = Type.Object(
-	{
-		id: Type.String({ minLength: 1 }),
-		name: Type.Optional(Type.String()),
-		api: Type.Optional(ApiSchema),
-		baseUrl: Type.Optional(Type.String({ minLength: 1 })),
-		reasoning: Type.Optional(Type.Boolean()),
-		input: Type.Optional(Type.Array(ModelInputModalitySchema)),
-		contextWindow: Type.Optional(PositiveInteger),
-		maxTokens: Type.Optional(PositiveInteger),
-		cost: Type.Optional(ModelCostSchema),
-		thinkingLevelMap: Type.Optional(ThinkingLevelMapSchema),
-		compat: Type.Optional(ProviderCompatSchema),
-	},
-	{ additionalProperties: false },
-);
+const ModelSchema = Type.Object({
+	name: Type.Optional(Type.String()),
+	reasoning: Type.Optional(Type.Boolean()),
+	limit: Type.Optional(Type.Object({ context: Type.Optional(PositiveInteger), output: Type.Optional(PositiveInteger) })),
+	modalities: Type.Optional(Type.Object({ input: Type.Optional(Type.Array(Type.String())) })),
+});
 
-const ProviderSchema = Type.Object(
-	{
-		name: Type.Optional(Type.String()),
-		baseUrl: Type.String({ minLength: 1 }),
-		api: ApiSchema,
+const ProviderSchema = Type.Object({
+	name: Type.Optional(Type.String()),
+	enabled: Type.Optional(Type.Boolean()),
+	api: Type.Enum(SUPPORTED_MODEL_APIS),
+	options: Type.Object({
+		baseURL: Type.String({ minLength: 1 }),
 		apiKey: Type.Optional(Type.String({ minLength: 1 })),
 		headers: Type.Optional(Type.Record(Type.String(), Type.String())),
-		compat: Type.Optional(ProviderCompatSchema),
-		models: Type.Array(ModelSchema, { minItems: 1 }),
-	},
-	{ additionalProperties: false },
-);
+	}),
+	// `gpt-5.5:` with nothing after it is YAML null: a model that takes every field from the catalog or defaults.
+	models: Type.Record(Type.String(), Type.Union([ModelSchema, Type.Null()])),
+});
 
-const ConfigSchema = Type.Object(
-	{
-		$schema: Type.Optional(Type.String()),
-		providers: Type.Optional(Type.Record(Type.String(), ProviderSchema)),
-	},
-	{ additionalProperties: false },
-);
+const ConfigSchema = Type.Object({
+	custom_provider: Type.Optional(Type.Record(Type.String(), ProviderSchema)),
+});
 
 const validateConfig = Compile(ConfigSchema);
 
@@ -104,17 +85,17 @@ export type ModelConfigOptions = {
 };
 
 /**
- * Parse configuration text and build one pi-ai provider per valid entry. `undefined` text means there is no file.
- * A file that does not parse or validate yields no providers; a provider that cannot be built is skipped alone.
+ * Parse configuration text and build one pi-ai provider per valid, enabled entry. `undefined` text means there is no
+ * file. A file that does not parse or validate yields no providers; a provider that cannot be built is skipped alone.
  */
 export function buildConfiguredProviders(text: string | undefined, options: ModelConfigOptions): ModelConfigBuild {
 	if (text === undefined) return { providers: [], status: { providers: [], errors: [] } };
 
 	let parsed: unknown;
 	try {
-		parsed = JSON.parse(stripJsonComments(text.replace(/^\uFEFF/, "")));
+		parsed = parseYaml(text) ?? {};
 	} catch (error) {
-		return failed(`Not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+		return failed(`Not valid YAML: ${error instanceof Error ? error.message : String(error)}`);
 	}
 	if (!validateConfig.Check(parsed)) {
 		const errors = validateConfig.Errors(parsed).flatMap(describeValidationError);
@@ -124,18 +105,20 @@ export function buildConfiguredProviders(text: string | undefined, options: Mode
 	const providers: Provider[] = [];
 	const statuses: ConfiguredProviderStatus[] = [];
 	const errors: string[] = [];
-	for (const [providerId, config] of Object.entries(parsed.providers ?? {})) {
+	for (const [providerId, config] of Object.entries(parsed.custom_provider ?? {})) {
+		if (config.enabled === false) continue;
+		const where = `custom_provider.${providerId}`;
 		if (!PROVIDER_ID.test(providerId)) {
-			errors.push(`providers.${providerId}: IDs use lowercase letters, digits, "-" and "_"`);
+			errors.push(`${where}: IDs use letters, digits, "-" and "_"`);
 			continue;
 		}
 		if (options.reservedIds.has(providerId)) {
-			errors.push(`providers.${providerId}: "${providerId}" is a built-in provider; choose another ID`);
+			errors.push(`${where}: "${providerId}" is a built-in provider; choose another ID`);
 			continue;
 		}
-		const duplicate = findDuplicate(config.models.map((model) => model.id));
-		if (duplicate !== undefined) {
-			errors.push(`providers.${providerId}.models: model "${duplicate}" is listed twice`);
+		const modelEntries = Object.entries(config.models);
+		if (modelEntries.length === 0) {
+			errors.push(`${where}.models: list at least one model`);
 			continue;
 		}
 		const name = config.name ?? providerId;
@@ -143,9 +126,9 @@ export function buildConfiguredProviders(text: string | undefined, options: Mode
 			createProvider({
 				id: providerId,
 				name,
-				baseUrl: config.baseUrl,
+				baseUrl: config.options.baseURL,
 				auth: { apiKey: configuredKeyAuth(name, config, options.environment) },
-				models: config.models.map((model) => toModel(providerId, config, model, options.catalog)),
+				models: modelEntries.map(([id, entry]) => toModel(providerId, config, id, entry, options.catalog)),
 				api: {
 					"openai-completions": openAICompletionsApi(),
 					"openai-responses": openAIResponsesApi(),
@@ -153,10 +136,11 @@ export function buildConfiguredProviders(text: string | undefined, options: Mode
 				},
 			}),
 		);
+		const rawKey = config.options.apiKey;
 		statuses.push({
 			providerId,
 			name,
-			keyAvailable: config.apiKey === undefined || referencedVariables(config.apiKey).every((v) => options.environment.env(v) !== undefined),
+			keyAvailable: rawKey === undefined || referencedVariables(rawKey).every((v) => options.environment.env(v) !== undefined),
 		});
 	}
 	return { providers, status: { providers: statuses, errors } };
@@ -170,31 +154,44 @@ function failed(...errors: string[]): ModelConfigBuild {
  * A configured model. When the built-in catalog knows the same model ID, its capability metadata (name, reasoning,
  * input, limits, cost) fills every field the entry leaves out; thinking levels and cache metadata are inherited only
  * when the API matches too. Transport `compat` flags are never inherited: they describe the vendor's own endpoint,
- * and a gateway relaying the same model often rejects those request features. Configure `compat` explicitly instead.
+ * and a gateway relaying the same model often rejects those request features.
  */
-function toModel(providerId: string, provider: ProviderConfig, entry: ModelConfig, catalog: readonly Model<Api>[]): Model<Api> {
-	const api = entry.api ?? provider.api;
-	const sameApi = catalog.find((model) => model.id === entry.id && model.api === api);
-	const known = sameApi ?? catalog.find((model) => model.id === entry.id);
-	const thinkingLevelMap = entry.thinkingLevelMap ?? sameApi?.thinkingLevelMap;
-	// The schema accepts the union of every API's compat fields, as Pi's models.json does; each API reads only its own.
-	const compat = { ...provider.compat, ...entry.compat } as NonNullable<Model<Api>["compat"]>;
+function toModel(
+	providerId: string,
+	provider: ProviderConfig,
+	id: string,
+	entry: ModelConfig | null,
+	catalog: readonly Model<Api>[],
+): Model<Api> {
+	const api = provider.api;
+	const sameApi = catalog.find((model) => model.id === id && model.api === api);
+	const known = sameApi ?? catalog.find((model) => model.id === id);
+	// MiniMax lists inputs such as "pdf" and "video"; pi-ai models accept text and images.
+	const input = entry?.modalities?.input?.filter((modality) => modality === "text" || modality === "image");
 	return {
-		id: entry.id,
-		name: entry.name ?? known?.name ?? entry.id,
+		id,
+		name: entry?.name ?? known?.name ?? id,
 		api,
 		provider: providerId,
-		baseUrl: entry.baseUrl ?? provider.baseUrl,
-		reasoning: entry.reasoning ?? known?.reasoning ?? false,
-		input: entry.input ?? known?.input ?? ["text"],
-		cost: entry.cost ?? known?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: entry.contextWindow ?? known?.contextWindow ?? DEFAULT_CONTEXT_WINDOW,
-		maxTokens: entry.maxTokens ?? known?.maxTokens ?? DEFAULT_MAX_TOKENS,
-		...(thinkingLevelMap === undefined ? {} : { thinkingLevelMap }),
+		baseUrl: endpoint(provider),
+		reasoning: entry?.reasoning ?? known?.reasoning ?? false,
+		input: input !== undefined && input.length > 0 ? input : (known?.input ?? ["text"]),
+		cost: known?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: entry?.limit?.context ?? known?.contextWindow ?? DEFAULT_CONTEXT_WINDOW,
+		maxTokens: entry?.limit?.output ?? known?.maxTokens ?? DEFAULT_MAX_TOKENS,
+		...(sameApi?.thinkingLevelMap === undefined ? {} : { thinkingLevelMap: sameApi.thinkingLevelMap }),
 		...(sameApi?.promptCache === undefined ? {} : { promptCache: sameApi.promptCache }),
 		...(sameApi?.inputLimits === undefined ? {} : { inputLimits: sameApi.inputLimits }),
-		...(Object.keys(compat).length === 0 ? {} : { compat }),
 	};
+}
+
+/**
+ * MiniMax configs write Anthropic endpoints with the same `/v1` suffix as OpenAI ones; the Anthropic SDK appends
+ * `/v1/messages` itself, so the suffix is dropped for that API.
+ */
+function endpoint(provider: ProviderConfig): string {
+	const { baseURL } = provider.options;
+	return provider.api === "anthropic-messages" ? baseURL.replace(/\/v1\/?$/, "") : baseURL;
 }
 
 /**
@@ -202,8 +199,8 @@ function toModel(providerId: string, provider: ProviderConfig, entry: ModelConfi
  * resolved from the configuration. A provider without `apiKey` is treated as keyless.
  */
 function configuredKeyAuth(name: string, config: ProviderConfig, environment: ConfigEnvironment): ApiKeyAuth {
-	const rawKey = config.apiKey;
-	const rawHeaders = config.headers;
+	const rawKey = config.options.apiKey;
+	const rawHeaders = config.options.headers;
 	const resolveHeaders = async (): Promise<Record<string, string> | undefined> => {
 		if (rawHeaders === undefined) return undefined;
 		const entries = await Promise.all(
@@ -319,23 +316,15 @@ export async function resolveConfigValue(raw: string, environment: ConfigEnviron
 
 // ---------------------------------------------------------------------------
 
-/** Strip `//` line comments and trailing commas, leaving string literals untouched (same rules as Pi). */
-function stripJsonComments(input: string): string {
-	return input
-		.replace(/"(?:\\.|[^"\\])*"|\/\/[^\n]*/g, (match) => (match[0] === '"' ? match : ""))
-		.replace(/"(?:\\.|[^"\\])*"|,(\s*[}\]])/g, (match, tail: string | undefined) => tail ?? (match[0] === '"' ? match : ""));
-}
-
 function describeValidationError(error: TLocalizedValidationError): string[] {
 	const path = error.instancePath.replace(/^\//, "").replaceAll("/", ".");
 	switch (error.keyword) {
-		// Each unknown property also fails its `false` property schema; the additionalProperties entry names it.
-		case "boolean":
+		// A model entry fails both union branches; report the object branch only.
+		case "anyOf":
 			return [];
-		case "additionalProperties": {
-			const names = (error.params as { additionalProperties?: string[] }).additionalProperties ?? [];
-			return names.map((name) => `${path === "" ? name : `${path}.${name}`}: unknown property`);
-		}
+		case "type":
+			if ((error.params as { type?: string }).type === "null") return [];
+			return [`${path === "" ? "root" : path}: ${error.message}`];
 		case "required": {
 			const names = (error.params as { requiredProperties?: string[] }).requiredProperties ?? [];
 			return names.map((name) => `${path === "" ? name : `${path}.${name}`}: required`);
@@ -349,11 +338,4 @@ function describeValidationError(error: TLocalizedValidationError): string[] {
 	}
 }
 
-function findDuplicate(values: readonly string[]): string | undefined {
-	const seen = new Set<string>();
-	for (const value of values) {
-		if (seen.has(value)) return value;
-		seen.add(value);
-	}
-	return undefined;
-}
+

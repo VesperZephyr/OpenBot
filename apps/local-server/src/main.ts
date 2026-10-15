@@ -70,7 +70,7 @@ const service = new HostService({
 	secrets: credentials,
 	status,
 	dataDirectory,
-	modelConfig: modelConfigFile(join(openBotHome(), "config.json"), launchEnvironment),
+	modelConfig: modelConfigFile(join(openBotHome(), "config.yaml"), launchEnvironment),
 	emit: (event) =>
 		send({ ...event, protocolVersion: PROTOCOL_VERSION, kind: "event", streamId, seq: ++seq }),
 });

@@ -1,5 +1,5 @@
 /**
- * The user's model configuration file, `~/.openbot/config.json` (or `$OPENBOT_HOME/config.json`), and the environment
+ * The user's model configuration file, `~/.openbot/config.yaml` (or `$OPENBOT_HOME/config.yaml`), and the environment
  * its values resolve against. `!command` values run through `/bin/sh` with the Host's (credential-free) environment;
  * successful output is cached briefly so a key helper does not run on every model request.
  */

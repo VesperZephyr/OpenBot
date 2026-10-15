@@ -583,8 +583,8 @@ function Settings() {
 						<li key={provider.providerId}>
 							<span>{provider.name}</span>
 							<span className="muted">
-								{provider.keyStored ? "Key stored" : "Key from config.json"}
-								{provider.source === "config" && " · config.json"}
+								{provider.keyStored ? "Key stored" : "Key from config.yaml"}
+								{provider.source === "config" && " · config.yaml"}
 							</span>
 							{provider.keyStored && (
 								<button

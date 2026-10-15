@@ -32,28 +32,31 @@ describe("resolveConfigValue", () => {
 });
 
 describe("buildConfiguredProviders", () => {
-	it("rejects built-in IDs and duplicate models without dropping valid providers", () => {
+	it("rejects built-in IDs and empty model lists without dropping valid providers", () => {
+		const provider = (models: object) => ({ api: "openai-completions", options: { baseURL: "https://x/v1" }, models });
 		const { providers, status } = buildConfiguredProviders(
-			JSON.stringify({
-				providers: {
-					openai: { baseUrl: "https://x/v1", api: "openai-completions", models: [{ id: "a" }] },
-					dup: { baseUrl: "https://x/v1", api: "openai-completions", models: [{ id: "a" }, { id: "a" }] },
-					good: { baseUrl: "https://x/v1", api: "openai-completions", models: [{ id: "a" }] },
-				},
-			}),
+			JSON.stringify({ custom_provider: { openai: provider({ a: null }), empty: provider({}), good: provider({ a: null }) } }),
 			options(environment()),
 		);
-		expect(providers.map((provider) => provider.id)).toEqual(["good"]);
+		expect(providers.map((p) => p.id)).toEqual(["good"]);
 		expect(status.errors).toEqual([
-			'providers.openai: "openai" is a built-in provider; choose another ID',
-			'providers.dup.models: model "a" is listed twice',
+			'custom_provider.openai: "openai" is a built-in provider; choose another ID',
+			"custom_provider.empty.models: list at least one model",
 		]);
 	});
 
-	it("drops the whole file when it is not valid JSON", () => {
-		const { providers, status } = buildConfiguredProviders("{ providers: ", options(environment()));
+	it("drops the whole file when it is not valid YAML", () => {
+		const { providers, status } = buildConfiguredProviders("custom_provider: [unclosed", options(environment()));
 		expect(providers).toEqual([]);
-		expect(status.errors[0]).toMatch(/^Not valid JSON: /);
+		expect(status.errors[0]).toMatch(/^Not valid YAML: /);
+	});
+
+	it("drops the /v1 suffix for Anthropic endpoints, as MiniMax configs write them", () => {
+		const { providers } = buildConfiguredProviders(
+			"custom_provider:\n  c:\n    api: anthropic-messages\n    options: { baseURL: https://gw.example/v1 }\n    models: { m: }\n",
+			options(environment()),
+		);
+		expect(providers[0]?.getModels()[0]?.baseUrl).toBe("https://gw.example");
 	});
 
 	it("fills omitted fields from a catalog model with the same ID, API-specific fields only for the same API", () => {
@@ -72,9 +75,9 @@ describe("buildConfiguredProviders", () => {
 			// Vendor-endpoint features that a gateway relaying the model may reject.
 			compat: { supportsMidConvoSystemMessages: true },
 		};
-		const build = (api: string, extra: object = {}) =>
+		const build = (api: string, entry: object | null = null) =>
 			buildConfiguredProviders(
-				JSON.stringify({ providers: { gw: { baseUrl: "https://gw/v1", api, models: [{ id: "big-1", ...extra }] } } }),
+				JSON.stringify({ custom_provider: { gw: { api, options: { baseURL: "https://gw/v1" }, models: { "big-1": entry } } } }),
 				{ ...options(environment()), catalog: [known] },
 			).providers[0]?.getModels()[0];
 
@@ -88,15 +91,10 @@ describe("buildConfiguredProviders", () => {
 			thinkingLevelMap: { minimal: null },
 		});
 		expect(build("openai-responses")?.compat).toBeUndefined();
-		expect(build("openai-responses", { compat: { supportsMidConvoSystemMessages: true } })?.compat).toEqual({
-			supportsMidConvoSystemMessages: true,
-		});
 		expect(build("openai-completions")?.thinkingLevelMap).toBeUndefined();
-		expect(build("openai-completions", { contextWindow: 100, reasoning: false })).toMatchObject({
-			contextWindow: 100,
-			reasoning: false,
-			maxTokens: 64_000,
-		});
+		expect(
+			build("openai-completions", { limit: { context: 100 }, reasoning: false, modalities: { input: ["text", "pdf"] } }),
+		).toMatchObject({ contextWindow: 100, reasoning: false, maxTokens: 64_000, input: ["text"] });
 	});
 });
 
@@ -128,13 +126,11 @@ describe("configured provider requests", () => {
 
 	const config = () =>
 		JSON.stringify({
-			providers: {
+			custom_provider: {
 				gateway: {
-					baseUrl,
 					api: "openai-completions",
-					apiKey: "$GATEWAY_KEY",
-					headers: { "X-Budget-No": "${BUDGET}" },
-					models: [{ id: "house-model" }],
+					options: { baseURL: baseUrl, apiKey: "$GATEWAY_KEY", headers: { "X-Budget-No": "${BUDGET}" } },
+					models: { "house-model": null },
 				},
 			},
 		});
