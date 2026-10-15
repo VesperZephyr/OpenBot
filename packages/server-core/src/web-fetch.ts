@@ -1,49 +1,184 @@
 /**
- * `web_fetch`: a Host tool that reads a public page as text. Private, loopback, and link-local addresses are refused,
- * including after redirects and DNS resolution, so a page cannot steer the Host into the local network.
+ * `web_fetch`: a Host tool that reads a public page as Markdown. The main content is extracted with Mozilla
+ * Readability and converted with Turndown, links made absolute. A `retrieval_outcome` line tells the model whether
+ * the page was actually read or hit a login wall, a bot check, a JavaScript shell, or a missing page. Long pages are
+ * paged with `offset`.
+ *
+ * Private, loopback, and link-local addresses are refused, including after redirects and DNS resolution, so a page
+ * cannot steer the Host into the local network.
  */
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
+import { Readability } from "@mozilla/readability";
 import type { ToolOutcome } from "@openbot/protocol";
+import { parseHTML } from "linkedom";
+import TurndownService from "turndown";
+import type { WebToolHandler } from "./web-search.ts";
 
 const TIMEOUT_MS = 30_000;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
-const MAX_TEXT_BYTES = 48 * 1024;
+/** Characters of Markdown per page of output. */
+const PAGE_CHARS = 40_000;
 const MAX_REDIRECTS = 5;
+/** Below this much visible text a page with a barrier (login form, bot check) has nothing else worth reading. */
+const SUBSTANTIAL_TEXT = 200;
+/** A page with scripts and at most this much visible body text is an application shell. */
+const SHELL_TEXT = 40;
 
-export async function webFetch(args: Readonly<Record<string, unknown>>, signal: AbortSignal): Promise<ToolOutcome> {
-	let url: URL;
-	try {
-		url = new URL(String(args.url));
-	} catch {
-		return { status: "failed", output: "Not a valid URL" };
-	}
-	const timeout = AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)]);
-	try {
-		for (let redirects = 0; ; redirects += 1) {
-			if (url.protocol !== "http:" && url.protocol !== "https:") return { status: "failed", output: "Only http and https URLs can be fetched" };
-			if (await isPrivateHost(url.hostname)) return { status: "failed", output: `Refused: ${url.hostname} is a private or local address` };
-			const response = await fetch(url, { redirect: "manual", signal: timeout, headers: { "user-agent": "OpenBot/0.0", accept: "text/html, text/plain, application/json;q=0.9, */*;q=0.5" } });
-			const location = response.headers.get("location");
-			if (response.status >= 300 && response.status < 400 && location !== null) {
-				if (redirects >= MAX_REDIRECTS) return { status: "failed", output: "Too many redirects" };
-				url = new URL(location, url);
-				continue;
-			}
-			const type = response.headers.get("content-type") ?? "";
-			if (!/^(text\/|application\/(json|xml|xhtml))/.test(type)) {
-				return { status: "failed", output: `${url.href} returned ${type || "an unknown type"}, which is not text` };
-			}
-			const body = await readCapped(response, MAX_BODY_BYTES);
-			const text = type.includes("html") ? htmlToText(body) : body;
-			const clipped = Buffer.byteLength(text) > MAX_TEXT_BYTES ? `${Buffer.from(text).subarray(0, MAX_TEXT_BYTES).toString("utf8")}\n[page text truncated]` : text;
-			const header = `${response.status} ${url.href}`;
-			return { status: response.ok ? "succeeded" : "failed", output: `${header}\n\n${clipped.trim() || "(no readable text; the page may need JavaScript)"}` };
+export type RetrievalOutcome = "usable_content" | "not_found" | "access_challenge" | "auth_required" | "dynamic_page" | "http_error";
+
+const NEXT_STEP: Record<Exclude<RetrievalOutcome, "usable_content">, string> = {
+	not_found: "The page does not exist. Search for its current location instead of guessing URLs.",
+	access_challenge: "The site answered with a bot check instead of the page. Try another source.",
+	auth_required: "The page needs a login. Try a public source.",
+	dynamic_page: "The page renders with JavaScript, which web_fetch does not run. Try another source or an API.",
+	http_error: "The server returned an error instead of the page.",
+};
+
+export type WebFetchOptions = {
+	/**
+	 * Decides whether a hostname is refused. Defaults to refusing private, loopback, and link-local addresses. Only
+	 * unit tests pass another check, to serve fixtures from a local server; the Host never does.
+	 */
+	readonly isBlockedHost?: (hostname: string) => Promise<boolean>;
+};
+
+/** The `web_fetch` Host tool handler. */
+export function createWebFetch(options: WebFetchOptions = {}): WebToolHandler {
+	const isBlockedHost = options.isBlockedHost ?? isPrivateHost;
+	return async (args, signal) => {
+		let url: URL;
+		try {
+			url = new URL(String(args.url));
+		} catch {
+			return { status: "failed", output: "Not a valid URL" };
 		}
-	} catch (error) {
-		if (signal.aborted) throw error;
-		return { status: "failed", output: `Fetch failed: ${error instanceof Error ? error.message : String(error)}` };
+		const offset = typeof args.offset === "number" && Number.isInteger(args.offset) && args.offset > 0 ? args.offset : 0;
+		const timeout = AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)]);
+		try {
+			for (let redirects = 0; ; redirects += 1) {
+				if (url.protocol !== "http:" && url.protocol !== "https:") return { status: "failed", output: "Only http and https URLs can be fetched" };
+				if (await isBlockedHost(url.hostname)) return { status: "failed", output: `Refused: ${url.hostname} is a private or local address` };
+				const response = await fetch(url, {
+					redirect: "manual",
+					signal: timeout,
+					headers: { "user-agent": "OpenBot/0.0", accept: "text/html, text/plain, application/json;q=0.9, */*;q=0.5" },
+				});
+				const location = response.headers.get("location");
+				if (response.status >= 300 && response.status < 400 && location !== null) {
+					await response.body?.cancel();
+					if (redirects >= MAX_REDIRECTS) return { status: "failed", output: "Too many redirects" };
+					url = new URL(location, url);
+					continue;
+				}
+				const type = response.headers.get("content-type") ?? "";
+				if (!/^(text\/|application\/(json|xml|xhtml))/.test(type)) {
+					await response.body?.cancel();
+					return { status: "failed", output: `${url.href} returned ${type || "an unknown type"}, which is not text` };
+				}
+				const body = await readCapped(response, MAX_BODY_BYTES);
+				const page = /^(text\/html|application\/xhtml)/.test(type)
+					? readHtml(body, response.status, url)
+					: { outcome: statusOutcome(response.status), markdown: body.trim() };
+				return render(url, response.status, page, offset);
+			}
+		} catch (error) {
+			if (signal.aborted) throw error;
+			return { status: "failed", output: `Fetch failed: ${error instanceof Error ? error.message : String(error)}` };
+		}
+	};
+}
+
+type Page = { readonly outcome: RetrievalOutcome; readonly markdown: string; readonly title?: string };
+
+function render(url: URL, status: number, page: Page, offset: number): ToolOutcome {
+	const header = [`URL: ${url.href}`, `Status: ${status}`];
+	if (page.title !== undefined && page.title !== "") header.push(`Title: ${page.title}`);
+	header.push(`retrieval_outcome: ${page.outcome}`);
+	if (page.outcome !== "usable_content") header.push(NEXT_STEP[page.outcome]);
+	const outcomeStatus = page.outcome === "usable_content" ? "succeeded" : "failed";
+	const total = page.markdown.length;
+	if (total === 0) return { status: outcomeStatus, output: `${header.join("\n")}\n\n(no readable text)` };
+	if (offset >= total) return { status: "failed", output: `${header.join("\n")}\n\noffset ${offset} is past the end of the page (${total} characters)` };
+	let end = Math.min(offset + PAGE_CHARS, total);
+	if (end < total) {
+		// Prefer a line break in the last quarter of the page so a paragraph is not split mid-sentence.
+		const lineBreak = page.markdown.lastIndexOf("\n", end);
+		if (lineBreak > offset + PAGE_CHARS * 0.75) end = lineBreak + 1;
+		const code = page.markdown.charCodeAt(end - 1);
+		if (code >= 0xd800 && code <= 0xdbff) end -= 1;
 	}
+	const text = page.markdown.slice(offset, end);
+	const continuation = end < total ? `\n\n[Characters ${offset}–${end} of ${total}. Call web_fetch with offset ${end} to continue.]` : "";
+	return { status: outcomeStatus, output: `${header.join("\n")}\n\n${text}${continuation}`, ...(end < total ? { truncated: true } : {}) };
+}
+
+function readHtml(html: string, status: number, url: URL): Page {
+	const outcome = classify(status, html);
+	// Readability mutates the document it reads, so classification and extraction each parse their own copy.
+	const { document } = parseHTML(html);
+	const title = document.title.replace(/\s+/g, " ").trim();
+	for (const element of document.querySelectorAll("a[href], img[src]")) {
+		const attribute = element.tagName === "A" ? "href" : "src";
+		try {
+			element.setAttribute(attribute, new URL(element.getAttribute(attribute) ?? "", url).href);
+		} catch {
+			element.removeAttribute(attribute);
+		}
+	}
+	const article = new Readability(document).parse();
+	const content = article?.content ?? parseHTML(html).document.body?.innerHTML ?? "";
+	return { outcome, markdown: turndown.turndown(content).trim(), ...(title === "" ? {} : { title }) };
+}
+
+const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced", bulletListMarker: "-" });
+turndown.remove(["script", "style", "noscript", "template"]);
+// Inline data images would flood the context; keep only images with a fetchable address.
+turndown.addRule("webImages", {
+	filter: "img",
+	replacement: (_content, node) => {
+		// Typed structurally: the package compiles without the DOM library.
+		const image = node as unknown as { getAttribute(name: string): string | null };
+		const src = image.getAttribute("src") ?? "";
+		return /^https?:/.test(src) ? `![${image.getAttribute("alt") ?? ""}](${src})` : "";
+	},
+});
+
+const CHALLENGE_MARKER =
+	/cf-(?:challenge|chl|turnstile)|\/cdn-cgi\/challenge-platform\/|\bg-recaptcha\b|\bh-captcha\b|\bpx-captcha\b|\barkose|\bdatadome\b|\bperimeterx\b|_Incapsula_Resource/i;
+const CHALLENGE_WORDING = /verify(?:ing)? (?:that )?you are (?:a )?human|checking your browser|security check|complete the challenge|enable javascript and cookies to continue/i;
+const LOGIN_WORDING = /\b(?:sign|log) ?in\b|authentication required|请登录|需要登录/i;
+
+/**
+ * Whether the HTML is the page or a barrier in front of it. Heuristics after MCode's local web fetch: a barrier only
+ * counts when little readable text exists outside it, so an article with a comment login form stays usable.
+ */
+function classify(status: number, html: string): RetrievalOutcome {
+	if (status === 404 || status === 410) return "not_found";
+	const { document } = parseHTML(html);
+	const scripts = document.querySelectorAll("script").length;
+	for (const element of document.querySelectorAll("script, style, noscript, template")) element.remove();
+	const bodyText = visibleText(document.body?.textContent);
+	const formsText = [...document.querySelectorAll("form")].map((form) => visibleText(form.textContent)).join(" ");
+	const outsideForms = bodyText.length - formsText.length;
+	if (CHALLENGE_MARKER.test(html) && (status === 403 || status === 429 || status === 503 || CHALLENGE_WORDING.test(bodyText)) && outsideForms < SUBSTANTIAL_TEXT) {
+		return "access_challenge";
+	}
+	const loginForm = document.querySelector('form input[type="password" i], form input[autocomplete="current-password" i]') !== null;
+	if ((loginForm || (status === 401 && LOGIN_WORDING.test(bodyText))) && outsideForms < SUBSTANTIAL_TEXT) return "auth_required";
+	if (status < 200 || status >= 300) return "http_error";
+	if (scripts > 0 && bodyText.length <= SHELL_TEXT) return "dynamic_page";
+	return "usable_content";
+}
+
+function statusOutcome(status: number): RetrievalOutcome {
+	if (status === 404 || status === 410) return "not_found";
+	if (status === 401) return "auth_required";
+	return status >= 200 && status < 300 ? "usable_content" : "http_error";
+}
+
+function visibleText(text: string | null | undefined): string {
+	return (text ?? "").replace(/\s+/g, " ").trim();
 }
 
 async function readCapped(response: Response, maxBytes: number): Promise<string> {
@@ -55,7 +190,7 @@ async function readCapped(response: Response, maxBytes: number): Promise<string>
 		const { done, value } = await reader.read();
 		if (done) break;
 		chunks.push(value);
-		total += value.length;
+		total += value.byteLength;
 		if (total >= maxBytes) {
 			await reader.cancel();
 			break;
@@ -79,22 +214,4 @@ function isPrivateAddress(address: string): boolean {
 	}
 	const [a = 0, b = 0] = address.split(".").map(Number);
 	return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
-}
-
-/** Readable text of an HTML page: scripts, styles, and markup removed, block elements kept as line breaks. */
-export function htmlToText(html: string): string {
-	return html
-		.replace(/<(script|style|noscript|svg|template)[\s\S]*?<\/\1>/gi, "")
-		.replace(/<!--[\s\S]*?-->/g, "")
-		.replace(/<(br|\/p|\/div|\/li|\/h[1-6]|\/tr|\/section|\/article)[^>]*>/gi, "\n")
-		.replace(/<li[^>]*>/gi, "- ")
-		.replace(/<[^>]+>/g, "")
-		.replace(/&nbsp;/g, " ")
-		.replace(/&amp;/g, "&")
-		.replace(/&lt;/g, "<")
-		.replace(/&gt;/g, ">")
-		.replace(/&quot;/g, '"')
-		.replace(/&#39;/g, "'")
-		.replace(/[ \t]+/g, " ")
-		.replace(/\n\s*\n\s*\n+/g, "\n\n");
 }

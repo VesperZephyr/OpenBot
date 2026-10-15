@@ -151,6 +151,8 @@ export type RedactedSettings = {
 	readonly modelConfig: { readonly path: string; readonly errors: readonly string[] };
 	/** The shared folder every Bot may read and write without asking; commands still ask. */
 	readonly workspace: string;
+	/** The `web_search` provider and whether its key (provider ID `search:tavily`) is stored. */
+	readonly webSearch: { readonly provider: "tavily"; readonly configured: boolean };
 };
 
 export type ModelSummary = {
@@ -456,8 +458,28 @@ export const TOOL_CATALOG = [
 		capability: "web",
 		destination: "host",
 		description:
-			"Fetch a public web page and return its readable text. Does not run JavaScript. Private and local network addresses are refused.",
-		parameters: object({ url: string("An http or https URL.") }, ["url"]),
+			"Fetch a public web page and return its main content as Markdown with links. Does not run JavaScript. The first lines give the final URL and a retrieval_outcome; only usable_content means the page was actually read. Long pages are cut; the result names the offset to continue. Private and local network addresses are refused.",
+		parameters: object(
+			{
+				url: string("An http or https URL."),
+				offset: { type: "integer", minimum: 0, description: "Character offset into the page's Markdown to continue from." },
+			},
+			["url"],
+		),
+	},
+	{
+		name: "web_search",
+		capability: "web",
+		destination: "host",
+		description:
+			"Search the web. Returns numbered results with title, URL, snippet, and published date when known. Snippets are leads, not sources: open pages with web_fetch before relying on them.",
+		parameters: object(
+			{
+				query: string("The search query."),
+				count: { type: "integer", minimum: 1, maximum: 10, description: "Number of results. Default 5." },
+			},
+			["query"],
+		),
 	},
 ] as const satisfies readonly ToolDefinition[];
 

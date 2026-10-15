@@ -9,6 +9,7 @@ import type {
 } from "@openbot/protocol";
 import { type FormEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "./markdown";
+import { WebSearchSettings } from "./WebSearchSettings";
 import {
 	api,
 	connect,
@@ -352,13 +353,14 @@ const TOOL_VERBS: Record<string, readonly [running: string, done: string]> = {
 	local_edit: ["Editing", "Edited"],
 	local_exec: ["Running", "Ran"],
 	web_fetch: ["Fetching", "Fetched"],
+	web_search: ["Searching", "Searched"],
 };
 
 /** One row per tool call: a verb and subject, expandable to the arguments and output; failures open by default. */
 function ToolCard({ item, approval }: { readonly item: Extract<TranscriptItem, { kind: "tool" }>; readonly approval: PendingApproval | undefined }) {
 	const args = (item.args ?? {}) as Record<string, unknown>;
 	const [running, done] = TOOL_VERBS[item.tool] ?? [item.tool, item.tool];
-	const subject = String(args.description ?? args.path ?? args.url ?? args.command ?? "");
+	const subject = String(args.description ?? args.path ?? args.url ?? args.command ?? args.query ?? "");
 	const waiting = approval !== undefined;
 	const label = waiting ? "Waiting for approval" : item.status === "running" || item.status === "pending" ? running : item.status === "failed" ? `${done} · failed` : done;
 	return (
@@ -674,6 +676,7 @@ function Settings() {
 					))}
 				</ul>
 			</div>
+			<WebSearchSettings />
 
 			<div className="settings-group">
 				<h2>Your own providers</h2>

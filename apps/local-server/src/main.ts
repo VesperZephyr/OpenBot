@@ -71,7 +71,14 @@ const executor = new ExecutorProcess({
 // The approval book publishes through the service, which exists only after the runtime it needs is open.
 const approvalListeners: { changed?: (botId: string) => void } = {};
 const approvals = new ApprovalBook((botId) => approvalListeners.changed?.(botId));
-const router = createToolRouter({ target, workspace, approvals, executor });
+const router = createToolRouter({
+	target,
+	workspace,
+	approvals,
+	executor,
+	secrets: credentials,
+	tavilyBaseUrl: process.env.OPENBOT_TAVILY_BASE_URL,
+});
 
 const runtime = await BotRuntime.open({
 	databasePath: join(dataDirectory, "openbot.sqlite"),
