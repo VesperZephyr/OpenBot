@@ -3,7 +3,7 @@
  * operations and snapshots; callers never see Pi types.
  */
 import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
-import { type Api, type CredentialStore, isModelType, type Model } from "@earendil-works/pi-ai";
+import type { CredentialStore, Provider } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import type { MutableModels } from "@earendil-works/pi-ai/models";
 import {
@@ -97,17 +97,15 @@ export class BotRuntime {
 	readonly #harness: Harness;
 	readonly #models: MutableModels;
 	readonly #context: Context;
-	/** Built-in providers as registered at open; configured providers may not reuse their IDs. */
-	readonly #builtinIds: ReadonlySet<string>;
-	readonly #catalog: readonly Model<Api>[];
+	/** Built-in providers as registered at open, so a removed overlay restores the original. */
+	readonly #builtins: ReadonlyMap<string, Provider>;
 	#configuredIds: readonly string[] = [];
 
 	private constructor(harness: Harness, models: MutableModels, context: Context) {
 		this.#harness = harness;
 		this.#models = models;
 		this.#context = context;
-		this.#builtinIds = new Set(models.getProviders().map((provider) => provider.id));
-		this.#catalog = models.getModels().filter((model) => isModelType(model, "chat"));
+		this.#builtins = new Map(models.getProviders().map((provider) => [provider.id, provider]));
 	}
 
 	static async open(options: BotRuntimeOptions): Promise<BotRuntime> {
@@ -278,16 +276,17 @@ export class BotRuntime {
 	}
 
 	/**
-	 * Replace the providers declared in the user's model configuration (`undefined` when there is no file). Takes
-	 * effect from the next model request; a Bot whose configured model disappeared fails with a missing-model error.
+	 * Apply the user's model configuration (`undefined` when there is no file): new providers are added, entries with
+	 * a built-in ID replace that provider with an overlaid one, and providers from the previous load that are gone are
+	 * removed or restored. Takes effect from the next model request.
 	 */
 	reloadConfiguredProviders(text: string | undefined, environment: ConfigEnvironment): ModelConfigStatus {
-		const { providers, status } = buildConfiguredProviders(text, {
-			environment,
-			catalog: this.#catalog,
-			reservedIds: this.#builtinIds,
-		});
-		for (const providerId of this.#configuredIds) this.#models.deleteProvider(providerId);
+		const { providers, status } = buildConfiguredProviders(text, { environment, builtins: this.#builtins });
+		for (const providerId of this.#configuredIds) {
+			const builtin = this.#builtins.get(providerId);
+			if (builtin === undefined) this.#models.deleteProvider(providerId);
+			else this.#models.setProvider(builtin);
+		}
 		for (const provider of providers) this.#models.setProvider(provider);
 		this.#configuredIds = providers.map((provider) => provider.id);
 		return status;

@@ -1,7 +1,8 @@
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { createProvider, InMemoryCredentialStore, type Model, type Provider } from "@earendil-works/pi-ai";
+import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { createModels } from "@earendil-works/pi-ai/models";
-import { InMemoryCredentialStore } from "@earendil-works/pi-ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildConfiguredProviders, type ConfigEnvironment, resolveConfigValue } from "../src/model-config.ts";
 
@@ -10,7 +11,43 @@ const environment = (variables: Record<string, string> = {}, run = async (_: str
 	run,
 });
 
-const options = (env: ConfigEnvironment) => ({ environment: env, catalog: [], reservedIds: new Set(["openai"]) });
+/** A built-in-like provider whose only key source is the VENDOR_KEY variable. */
+function vendor(baseUrl = "https://vendor.example/v1"): Provider {
+	const model: Model<"openai-completions"> = {
+		id: "big-1",
+		name: "Big One",
+		api: "openai-completions",
+		provider: "vendor",
+		baseUrl,
+		reasoning: true,
+		input: ["text", "image"],
+		cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: 400_000,
+		maxTokens: 64_000,
+		thinkingLevelMap: { minimal: null },
+		// Vendor-endpoint behaviour that a gateway relaying the model may reject.
+		compat: { supportsStore: true },
+	};
+	return createProvider({
+		id: "vendor",
+		name: "Vendor",
+		baseUrl,
+		auth: {
+			apiKey: {
+				name: "Vendor key",
+				resolve: async ({ ctx, credential }) => {
+					const key = credential?.key ?? (await ctx.env("VENDOR_KEY"));
+					return key === undefined ? undefined : { auth: { apiKey: key }, source: "vendor" };
+				},
+			},
+		},
+		models: [model],
+		api: openAICompletionsApi(),
+	});
+}
+
+const build = (config: object, env = environment(), builtins = new Map([["vendor", vendor()]])) =>
+	buildConfiguredProviders(JSON.stringify(config), { environment: env, builtins });
 
 describe("resolveConfigValue", () => {
 	it("expands variables, honours escapes, and runs commands", async () => {
@@ -32,69 +69,71 @@ describe("resolveConfigValue", () => {
 });
 
 describe("buildConfiguredProviders", () => {
-	it("rejects built-in IDs and empty model lists without dropping valid providers", () => {
-		const provider = (models: object) => ({ api: "openai-completions", options: { baseURL: "https://x/v1" }, models });
-		const { providers, status } = buildConfiguredProviders(
-			JSON.stringify({ custom_provider: { openai: provider({ a: null }), empty: provider({}), good: provider({ a: null }) } }),
-			options(environment()),
-		);
+	it("reports a broken provider by path without dropping the others", () => {
+		const { providers, status } = build({
+			providers: {
+				noApi: { baseUrl: "https://x/v1", models: [{ id: "m" }] },
+				empty: { baseUrl: "https://x/v1", api: "openai-completions" },
+				good: { baseUrl: "https://x/v1", api: "openai-completions", models: [{ id: "m" }] },
+			},
+		});
 		expect(providers.map((p) => p.id)).toEqual(["good"]);
 		expect(status.errors).toEqual([
-			'custom_provider.openai: "openai" is a built-in provider; choose another ID',
-			"custom_provider.empty.models: list at least one model",
+			'providers.noApi: model m: set "api" on the model or the provider',
+			'providers.empty: list at least one model in "models"',
 		]);
 	});
 
-	it("drops the whole file when it is not valid YAML", () => {
-		const { providers, status } = buildConfiguredProviders("custom_provider: [unclosed", options(environment()));
-		expect(providers).toEqual([]);
-		expect(status.errors[0]).toMatch(/^Not valid YAML: /);
+	it("rejects unknown properties and the whole file when it does not parse", () => {
+		expect(build({ providers: { x: { baseUrl: "u", api: "openai-chat", modelz: [] } } }).status.errors).toEqual([
+			"providers.x.modelz: unknown property",
+			'providers.x.api: must be one of "openai-completions", "openai-responses", "anthropic-messages"',
+		]);
+		const broken = buildConfiguredProviders("{ providers: ", { environment: environment(), builtins: new Map() });
+		expect(broken.status.errors[0]).toMatch(/^Not valid JSON: /);
 	});
 
-	it("drops the /v1 suffix for Anthropic endpoints, as MiniMax configs write them", () => {
-		const { providers } = buildConfiguredProviders(
-			"custom_provider:\n  c:\n    api: anthropic-messages\n    options: { baseURL: https://gw.example/v1 }\n    models: { m: }\n",
-			options(environment()),
-		);
-		expect(providers[0]?.getModels()[0]?.baseUrl).toBe("https://gw.example");
-	});
-
-	it("fills omitted fields from a catalog model with the same ID, API-specific fields only for the same API", () => {
-		const known = {
-			id: "big-1",
-			name: "Big One",
-			api: "openai-responses" as const,
-			provider: "vendor",
-			baseUrl: "https://vendor/v1",
-			reasoning: true,
-			input: ["text" as const, "image" as const],
-			cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
-			contextWindow: 400_000,
-			maxTokens: 64_000,
-			thinkingLevelMap: { minimal: null },
-			// Vendor-endpoint features that a gateway relaying the model may reject.
-			compat: { supportsMidConvoSystemMessages: true },
-		};
-		const build = (api: string, entry: object | null = null) =>
-			buildConfiguredProviders(
-				JSON.stringify({ custom_provider: { gw: { api, options: { baseURL: "https://gw/v1" }, models: { "big-1": entry } } } }),
-				{ ...options(environment()), catalog: [known] },
-			).providers[0]?.getModels()[0];
-
-		expect(build("openai-responses")).toMatchObject({
-			name: "Big One",
-			provider: "gw",
-			baseUrl: "https://gw/v1",
-			reasoning: true,
-			input: ["text", "image"],
-			contextWindow: 400_000,
-			thinkingLevelMap: { minimal: null },
+	it("serves several APIs from one provider and inherits catalog metadata, but never vendor compat", () => {
+		const { providers } = build({
+			providers: {
+				gw: {
+					baseUrl: "https://gw.example/v1",
+					api: "openai-responses",
+					models: [{ id: "big-1" }, { id: "claude-x", api: "anthropic-messages", baseUrl: "https://gw.example" }],
+				},
+			},
 		});
-		expect(build("openai-responses")?.compat).toBeUndefined();
-		expect(build("openai-completions")?.thinkingLevelMap).toBeUndefined();
-		expect(
-			build("openai-completions", { limit: { context: 100 }, reasoning: false, modalities: { input: ["text", "pdf"] } }),
-		).toMatchObject({ contextWindow: 100, reasoning: false, maxTokens: 64_000, input: ["text"] });
+		const [big, claude] = providers[0]?.getModels() ?? [];
+		expect(big).toMatchObject({ provider: "gw", api: "openai-responses", baseUrl: "https://gw.example/v1", reasoning: true });
+		expect(big?.compat).toBeUndefined();
+		// Thinking levels describe one API's request format; a different API does not inherit them.
+		expect(big?.thinkingLevelMap).toBeUndefined();
+		expect(claude).toMatchObject({ api: "anthropic-messages", baseUrl: "https://gw.example", reasoning: false });
+	});
+
+	it("overlays a built-in provider: endpoint, extra models, and per-model overrides", () => {
+		const { providers, status } = build({
+			providers: {
+				vendor: {
+					baseUrl: "https://proxy.example/v1",
+					models: [{ id: "house-model", contextWindow: 32_000 }],
+					modelOverrides: { "big-1": { name: "Big (proxy)", compat: { supportsStore: false } } },
+				},
+			},
+		});
+		expect(status.errors).toEqual([]);
+		expect(status.providers).toEqual([
+			{ providerId: "vendor", name: "Vendor", overlay: true, keyConfigured: false, keyAvailable: true },
+		]);
+		const models = providers[0]?.getModels() ?? [];
+		expect(models.map((m) => m.id)).toEqual(["big-1", "house-model"]);
+		expect(models[0]).toMatchObject({
+			name: "Big (proxy)",
+			baseUrl: "https://proxy.example/v1",
+			thinkingLevelMap: { minimal: null },
+			compat: { supportsStore: false },
+		});
+		expect(models[1]).toMatchObject({ api: "openai-completions", baseUrl: "https://proxy.example/v1", contextWindow: 32_000 });
 	});
 });
 
@@ -124,25 +163,29 @@ describe("configured provider requests", () => {
 		await new Promise<void>((resolve) => server.close(() => resolve()));
 	});
 
-	const config = () =>
-		JSON.stringify({
-			custom_provider: {
-				gateway: {
-					api: "openai-completions",
-					options: { baseURL: baseUrl, apiKey: "$GATEWAY_KEY", headers: { "X-Budget-No": "${BUDGET}" } },
-					models: { "house-model": null },
-				},
+	async function ask(providers: readonly Provider[], providerId: string, modelId: string, credentials = new InMemoryCredentialStore()) {
+		const models = createModels({ credentials });
+		for (const provider of providers) models.setProvider(provider);
+		const model = models.getModel(providerId, modelId);
+		if (model === undefined) throw new Error("model missing");
+		return models.completeSimple(model, { messages: [{ role: "user", content: "ping", timestamp: 0 }] });
+	}
+
+	const gateway = () => ({
+		providers: {
+			gateway: {
+				baseUrl,
+				api: "openai-completions",
+				apiKey: "$GATEWAY_KEY",
+				headers: { "X-Budget-No": "${BUDGET}" },
+				models: [{ id: "house-model" }],
 			},
-		});
+		},
+	});
 
 	it("sends the configured key and resolved headers to the configured endpoint", async () => {
-		const { providers } = buildConfiguredProviders(config(), options(environment({ GATEWAY_KEY: "sk-env", BUDGET: "BUD-1" })));
-		const models = createModels();
-		for (const provider of providers) models.setProvider(provider);
-		const model = models.getModel("gateway", "house-model");
-		if (model === undefined) throw new Error("model missing");
-
-		const answer = await models.completeSimple(model, { messages: [{ role: "user", content: "ping", timestamp: 0 }] });
+		const { providers } = build(gateway(), environment({ GATEWAY_KEY: "sk-env", BUDGET: "BUD-1" }));
+		const answer = await ask(providers, "gateway", "house-model");
 		expect(answer.content).toEqual([{ type: "text", text: "pong" }]);
 		expect(seen[0]?.url).toBe("/v1/chat/completions");
 		expect(seen[0]?.headers.authorization).toBe("Bearer sk-env");
@@ -151,20 +194,27 @@ describe("configured provider requests", () => {
 	});
 
 	it("prefers a key stored in the credential store over the configured one", async () => {
-		const { providers } = buildConfiguredProviders(config(), options(environment({ GATEWAY_KEY: "sk-env", BUDGET: "BUD-1" })));
+		const { providers } = build(gateway(), environment({ GATEWAY_KEY: "sk-env", BUDGET: "BUD-1" }));
 		const credentials = new InMemoryCredentialStore();
 		await credentials.modify("gateway", async () => ({ type: "api_key", key: "sk-stored" }));
-		const models = createModels({ credentials });
-		for (const provider of providers) models.setProvider(provider);
-		const model = models.getModel("gateway", "house-model");
-		if (model === undefined) throw new Error("model missing");
-
-		await models.completeSimple(model, { messages: [{ role: "user", content: "ping", timestamp: 0 }] });
+		await ask(providers, "gateway", "house-model", credentials);
 		expect(seen[0]?.headers.authorization).toBe("Bearer sk-stored");
 	});
 
+	it("routes an overlaid built-in to the proxy with the built-in's own key source", async () => {
+		const { providers } = build({ providers: { vendor: { baseUrl } } }, environment({ VENDOR_KEY: "sk-vendor" }));
+		const credentials = new InMemoryCredentialStore();
+		const models = createModels({ credentials, authContext: { env: async (name) => (name === "VENDOR_KEY" ? "sk-vendor" : undefined), fileExists: async () => false } });
+		for (const provider of providers) models.setProvider(provider);
+		const model = models.getModel("vendor", "big-1");
+		if (model === undefined) throw new Error("model missing");
+		await models.completeSimple(model, { messages: [{ role: "user", content: "ping", timestamp: 0 }] });
+		expect(seen[0]?.url).toBe("/v1/chat/completions");
+		expect(seen[0]?.headers.authorization).toBe("Bearer sk-vendor");
+	});
+
 	it("is unavailable until the referenced variable exists", async () => {
-		const { providers } = buildConfiguredProviders(config(), options(environment({ BUDGET: "BUD-1" })));
+		const { providers } = build(gateway(), environment({ BUDGET: "BUD-1" }));
 		const models = createModels();
 		for (const provider of providers) models.setProvider(provider);
 		expect(await models.getAvailable("gateway")).toEqual([]);

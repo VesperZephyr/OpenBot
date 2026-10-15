@@ -1,57 +1,110 @@
 /**
- * Bring-your-own-key model configuration: the `custom_provider` section of `~/.openbot/config.yaml`.
+ * Bring-your-own-key model configuration: `~/.openbot/models.json`, with the same shape and meaning as Pi's
+ * `models.json`, restricted to the chat APIs OpenBot ships:
  *
- * The shape is the essential subset of MiniMax Code's `custom_provider` entries, so a block copied from
- * `~/.minimax/config.yaml` works unchanged; fields OpenBot does not use (`kind`, `authMode`, `whitelist`, `tool_call`,
- * ...) are ignored. Parsing and provider construction are pure and synchronous; reading the file, environment access,
- * and `!command` execution are supplied by the Host. Credentials are resolved only when a request needs them and are
- * never stored in the returned status.
+ * - An entry whose ID is a built-in provider overlays it: `baseUrl`, `headers`, `compat`, and `apiKey` apply to every
+ *   built-in model, `models` adds or replaces models, and `modelOverrides` patches individual ones. Streaming and
+ *   stored-key login come from the built-in provider.
+ * - Any other ID declares a new provider; every model needs a `baseUrl` and an `api`, at model or provider level.
+ *
+ * The file may use `//` comments and trailing commas. Building providers is pure and synchronous; reading the file,
+ * environment access, and `!command` execution belong to the Host. Credentials are resolved only for a request and are
+ * never part of the returned status.
  */
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
-import { type Api, type ApiKeyAuth, createProvider, type Model, type Provider } from "@earendil-works/pi-ai";
+import {
+	type Api,
+	type ApiKeyAuth,
+	type AuthResult,
+	createProvider,
+	isModelType,
+	type Model,
+	type Provider,
+	type ProviderStreams,
+} from "@earendil-works/pi-ai";
+import { ProviderCompatSchema } from "@earendil-works/pi-ai/providers/compat-schema";
+import {
+	ModelCostSchema,
+	ModelInputLimitsSchema,
+	ModelInputModalitySchema,
+	ModelPromptCacheSchema,
+	ThinkingLevelMapSchema,
+} from "@earendil-works/pi-ai/providers/model-schema";
 import { type Static, Type } from "typebox";
 import { Compile } from "typebox/compile";
 import type { TLocalizedValidationError } from "typebox/error";
-import { parse as parseYaml } from "yaml";
 
 export const SUPPORTED_MODEL_APIS = ["openai-completions", "openai-responses", "anthropic-messages"] as const;
 
-const PROVIDER_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+const STREAMS: Record<(typeof SUPPORTED_MODEL_APIS)[number], ProviderStreams> = {
+	"openai-completions": openAICompletionsApi(),
+	"openai-responses": openAIResponsesApi(),
+	"anthropic-messages": anthropicMessagesApi(),
+};
+
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 const DEFAULT_MAX_TOKENS = 16_384;
 
-const PositiveInteger = Type.Integer({ minimum: 1 });
+const ApiSchema = Type.Enum(SUPPORTED_MODEL_APIS);
+const TokenCount = Type.Number({ exclusiveMinimum: 0 });
+const HeadersSchema = Type.Record(Type.String(), Type.String());
 
-const ModelSchema = Type.Object({
-	name: Type.Optional(Type.String()),
+const modelFields = {
+	name: Type.Optional(Type.String({ minLength: 1 })),
 	reasoning: Type.Optional(Type.Boolean()),
-	limit: Type.Optional(Type.Object({ context: Type.Optional(PositiveInteger), output: Type.Optional(PositiveInteger) })),
-	modalities: Type.Optional(Type.Object({ input: Type.Optional(Type.Array(Type.String())) })),
-});
+	thinkingLevelMap: Type.Optional(ThinkingLevelMapSchema),
+	input: Type.Optional(Type.Array(ModelInputModalitySchema)),
+	inputLimits: Type.Optional(ModelInputLimitsSchema),
+	promptCache: Type.Optional(ModelPromptCacheSchema),
+	contextWindow: Type.Optional(TokenCount),
+	maxTokens: Type.Optional(TokenCount),
+	headers: Type.Optional(HeadersSchema),
+	compat: Type.Optional(ProviderCompatSchema),
+};
 
-const ProviderSchema = Type.Object({
-	name: Type.Optional(Type.String()),
-	enabled: Type.Optional(Type.Boolean()),
-	api: Type.Enum(SUPPORTED_MODEL_APIS),
-	options: Type.Object({
-		baseURL: Type.String({ minLength: 1 }),
+const ModelDefinitionSchema = Type.Object(
+	{
+		id: Type.String({ minLength: 1 }),
+		api: Type.Optional(ApiSchema),
+		baseUrl: Type.Optional(Type.String({ minLength: 1 })),
+		cost: Type.Optional(ModelCostSchema),
+		...modelFields,
+	},
+	{ additionalProperties: false },
+);
+
+const ModelOverrideSchema = Type.Object(
+	{ cost: Type.Optional(Type.Partial(ModelCostSchema)), ...modelFields },
+	{ additionalProperties: false },
+);
+
+const ProviderConfigSchema = Type.Object(
+	{
+		name: Type.Optional(Type.String({ minLength: 1 })),
+		baseUrl: Type.Optional(Type.String({ minLength: 1 })),
+		api: Type.Optional(ApiSchema),
 		apiKey: Type.Optional(Type.String({ minLength: 1 })),
-		headers: Type.Optional(Type.Record(Type.String(), Type.String())),
-	}),
-	// `gpt-5.5:` with nothing after it is YAML null: a model that takes every field from the catalog or defaults.
-	models: Type.Record(Type.String(), Type.Union([ModelSchema, Type.Null()])),
-});
+		headers: Type.Optional(HeadersSchema),
+		authHeader: Type.Optional(Type.Boolean()),
+		compat: Type.Optional(ProviderCompatSchema),
+		models: Type.Optional(Type.Array(ModelDefinitionSchema)),
+		modelOverrides: Type.Optional(Type.Record(Type.String(), ModelOverrideSchema)),
+	},
+	{ additionalProperties: false },
+);
 
-const ConfigSchema = Type.Object({
-	custom_provider: Type.Optional(Type.Record(Type.String(), ProviderSchema)),
-});
+const ConfigSchema = Type.Object(
+	{ $schema: Type.Optional(Type.String()), providers: Type.Record(Type.String(), ProviderConfigSchema) },
+	{ additionalProperties: false },
+);
 
 const validateConfig = Compile(ConfigSchema);
 
-type ProviderConfig = Static<typeof ProviderSchema>;
-type ModelConfig = Static<typeof ModelSchema>;
+type ProviderConfig = Static<typeof ProviderConfigSchema>;
+type ModelDefinition = Static<typeof ModelDefinitionSchema>;
+type ModelOverride = Static<typeof ModelOverrideSchema>;
 
 /** How the Host lets configuration values reach the environment and the shell. */
 export type ConfigEnvironment = {
@@ -64,6 +117,10 @@ export type ConfigEnvironment = {
 export type ConfiguredProviderStatus = {
 	readonly providerId: string;
 	readonly name: string;
+	/** The entry overlays a built-in provider instead of declaring a new one. */
+	readonly overlay: boolean;
+	/** The entry sets its own `apiKey`. */
+	readonly keyConfigured: boolean;
 	/** False when the configured key names an environment variable that is not set. */
 	readonly keyAvailable: boolean;
 };
@@ -78,70 +135,55 @@ export type ModelConfigBuild = { readonly providers: readonly Provider[]; readon
 
 export type ModelConfigOptions = {
 	readonly environment: ConfigEnvironment;
-	/** Built-in models whose metadata a configured model with the same ID inherits. */
-	readonly catalog: readonly Model<Api>[];
-	/** Provider IDs that are already taken by built-in providers. */
-	readonly reservedIds: ReadonlySet<string>;
+	/** Built-in providers by ID: entries with these IDs overlay them. */
+	readonly builtins: ReadonlyMap<string, Provider>;
 };
 
 /**
- * Parse configuration text and build one pi-ai provider per valid, enabled entry. `undefined` text means there is no
- * file. A file that does not parse or validate yields no providers; a provider that cannot be built is skipped alone.
+ * Parse configuration text and build one pi-ai provider per valid entry; the Host registers each with
+ * `setProvider`, replacing a built-in of the same ID. `undefined` text means there is no file. A file that does not
+ * parse or validate yields no providers; a provider that cannot be built is skipped alone.
  */
 export function buildConfiguredProviders(text: string | undefined, options: ModelConfigOptions): ModelConfigBuild {
 	if (text === undefined) return { providers: [], status: { providers: [], errors: [] } };
 
 	let parsed: unknown;
 	try {
-		parsed = parseYaml(text) ?? {};
+		parsed = JSON.parse(stripJsonComments(text.replace(/^\uFEFF/, "")));
 	} catch (error) {
-		return failed(`Not valid YAML: ${error instanceof Error ? error.message : String(error)}`);
+		return failed(`Not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
 	}
 	if (!validateConfig.Check(parsed)) {
 		const errors = validateConfig.Errors(parsed).flatMap(describeValidationError);
 		return failed(...(errors.length > 0 ? errors : ["Invalid configuration"]));
 	}
 
+	const catalog = [...options.builtins.values()].flatMap((provider) =>
+		provider.getModels().filter((model) => isModelType(model, "chat")),
+	);
 	const providers: Provider[] = [];
 	const statuses: ConfiguredProviderStatus[] = [];
 	const errors: string[] = [];
-	for (const [providerId, config] of Object.entries(parsed.custom_provider ?? {})) {
-		if (config.enabled === false) continue;
-		const where = `custom_provider.${providerId}`;
-		if (!PROVIDER_ID.test(providerId)) {
-			errors.push(`${where}: IDs use letters, digits, "-" and "_"`);
-			continue;
+	for (const [providerId, config] of Object.entries(parsed.providers)) {
+		try {
+			const base = options.builtins.get(providerId);
+			const provider =
+				base === undefined
+					? newProvider(providerId, config, catalog, options.environment)
+					: overlayProvider(base, config, options.environment);
+			providers.push(provider);
+			statuses.push({
+				providerId,
+				name: provider.name,
+				overlay: base !== undefined,
+				keyConfigured: config.apiKey !== undefined,
+				keyAvailable:
+					config.apiKey === undefined ||
+					referencedVariables(config.apiKey).every((name) => options.environment.env(name) !== undefined),
+			});
+		} catch (error) {
+			errors.push(`providers.${providerId}: ${error instanceof Error ? error.message : String(error)}`);
 		}
-		if (options.reservedIds.has(providerId)) {
-			errors.push(`${where}: "${providerId}" is a built-in provider; choose another ID`);
-			continue;
-		}
-		const modelEntries = Object.entries(config.models);
-		if (modelEntries.length === 0) {
-			errors.push(`${where}.models: list at least one model`);
-			continue;
-		}
-		const name = config.name ?? providerId;
-		providers.push(
-			createProvider({
-				id: providerId,
-				name,
-				baseUrl: config.options.baseURL,
-				auth: { apiKey: configuredKeyAuth(name, config, options.environment) },
-				models: modelEntries.map(([id, entry]) => toModel(providerId, config, id, entry, options.catalog)),
-				api: {
-					"openai-completions": openAICompletionsApi(),
-					"openai-responses": openAIResponsesApi(),
-					"anthropic-messages": anthropicMessagesApi(),
-				},
-			}),
-		);
-		const rawKey = config.options.apiKey;
-		statuses.push({
-			providerId,
-			name,
-			keyAvailable: rawKey === undefined || referencedVariables(rawKey).every((v) => options.environment.env(v) !== undefined),
-		});
 	}
 	return { providers, status: { providers: statuses, errors } };
 }
@@ -150,83 +192,195 @@ function failed(...errors: string[]): ModelConfigBuild {
 	return { providers: [], status: { providers: [], errors } };
 }
 
-/**
- * A configured model. When the built-in catalog knows the same model ID, its capability metadata (name, reasoning,
- * input, limits, cost) fills every field the entry leaves out; thinking levels and cache metadata are inherited only
- * when the API matches too. Transport `compat` flags are never inherited: they describe the vendor's own endpoint,
- * and a gateway relaying the same model often rejects those request features.
- */
-function toModel(
+function newProvider(
 	providerId: string,
-	provider: ProviderConfig,
-	id: string,
-	entry: ModelConfig | null,
+	config: ProviderConfig,
 	catalog: readonly Model<Api>[],
-): Model<Api> {
-	const api = provider.api;
-	const sameApi = catalog.find((model) => model.id === id && model.api === api);
-	const known = sameApi ?? catalog.find((model) => model.id === id);
-	// MiniMax lists inputs such as "pdf" and "video"; pi-ai models accept text and images.
-	const input = entry?.modalities?.input?.filter((modality) => modality === "text" || modality === "image");
+	environment: ConfigEnvironment,
+): Provider {
+	const definitions = config.models ?? [];
+	if (definitions.length === 0) throw new Error(`list at least one model in "models"`);
+	const models = definitions.map((definition) => {
+		const known = findDefaults(catalog, definition.id, definition.api ?? config.api);
+		return applyOverride(modelFromDefinition(providerId, config, definition, known), config.modelOverrides?.[definition.id]);
+	});
+	return createProvider({
+		id: providerId,
+		name: config.name ?? providerId,
+		...(config.baseUrl === undefined ? {} : { baseUrl: config.baseUrl }),
+		auth: { apiKey: configuredKeyAuth(config, environment, undefined) },
+		models,
+		api: STREAMS,
+	});
+}
+
+/** A built-in provider with the user's endpoint, headers, key, extra models, and per-model overrides. */
+function overlayProvider(base: Provider, config: ProviderConfig, environment: ConfigEnvironment): Provider {
+	if (
+		config.baseUrl === undefined &&
+		config.headers === undefined &&
+		config.compat === undefined &&
+		config.apiKey === undefined &&
+		config.authHeader === undefined &&
+		(config.models?.length ?? 0) === 0 &&
+		Object.keys(config.modelOverrides ?? {}).length === 0
+	) {
+		throw new Error(`set "baseUrl", "apiKey", "headers", "compat", "models", or "modelOverrides"`);
+	}
+	const baseModels = base.getModels();
+	const models: Model<Api>[] = baseModels.map((model) => ({
+		...model,
+		baseUrl: config.baseUrl ?? model.baseUrl,
+		...mergedCompat(model.compat, config.compat),
+	}));
+	// A new model without `api`/`baseUrl` uses the transport of the provider's first model, as in Pi.
+	const transport = models[0];
+	for (const definition of config.models ?? []) {
+		const known = findDefaults(models, definition.id, definition.api ?? config.api);
+		const model = modelFromDefinition(base.id, config, definition, known, transport);
+		const index = models.findIndex((entry) => entry.id === definition.id);
+		if (index >= 0) models[index] = model;
+		else models.push(model);
+	}
+	const patched = models.map((model) => applyOverride(model, config.modelOverrides?.[model.id]));
+	const baseApis = new Set(baseModels.map((model) => model.api));
+	const streamFor = (model: Model<Api>) =>
+		baseApis.has(model.api) ? base : STREAMS[model.api as keyof typeof STREAMS];
+	// The built-in's dynamic catalog would replace the configured list, so an overlaid provider is static.
+	const { refreshModels: _dynamicCatalog, ...builtin } = base;
 	return {
-		id,
-		name: entry?.name ?? known?.name ?? id,
+		...builtin,
+		name: config.name ?? base.name,
+		...(config.baseUrl === undefined ? {} : { baseUrl: config.baseUrl }),
+		auth: { ...base.auth, apiKey: configuredKeyAuth(config, environment, base.auth.apiKey) },
+		getModels: () => patched,
+		getAllModels: () => patched,
+		stream: (model, context, options) => streamFor(model).stream(model, context, options),
+		streamSimple: (model, context, options) => streamFor(model).streamSimple(model, context, options),
+	};
+}
+
+/** The catalog model a definition inherits omitted fields from: same ID and API first, then same ID. */
+function findDefaults(catalog: readonly Model<Api>[], id: string, api: string | undefined): Model<Api> | undefined {
+	return (
+		catalog.find((model) => model.id === id && (api === undefined || model.api === api)) ??
+		catalog.find((model) => model.id === id)
+	);
+}
+
+/**
+ * A model from a `models` entry. Capability metadata (name, reasoning, input, limits, cost) comes from a known
+ * model with the same ID when the entry omits it; thinking levels and cache metadata only when the API matches.
+ * Transport `compat` is never inherited across providers: it describes a vendor endpoint, and gateways relaying the
+ * same model often reject those request features. Set `compat` explicitly when the endpoint supports them.
+ */
+function modelFromDefinition(
+	providerId: string,
+	config: ProviderConfig,
+	definition: ModelDefinition,
+	known: Model<Api> | undefined,
+	transport?: Pick<Model<Api>, "api" | "baseUrl">,
+): Model<Api> {
+	const api = definition.api ?? config.api ?? known?.api ?? transport?.api;
+	if (api === undefined) throw new Error(`model ${definition.id}: set "api" on the model or the provider`);
+	const baseUrl = definition.baseUrl ?? config.baseUrl ?? known?.baseUrl ?? transport?.baseUrl;
+	if (baseUrl === undefined) throw new Error(`model ${definition.id}: set "baseUrl" on the model or the provider`);
+	const sameApi = known?.api === api ? known : undefined;
+	const thinkingLevelMap = definition.thinkingLevelMap ?? sameApi?.thinkingLevelMap;
+	const promptCache = definition.promptCache ?? sameApi?.promptCache;
+	const inputLimits = definition.inputLimits ?? sameApi?.inputLimits;
+	return {
+		id: definition.id,
+		name: definition.name ?? known?.name ?? definition.id,
 		api,
 		provider: providerId,
-		baseUrl: endpoint(provider),
-		reasoning: entry?.reasoning ?? known?.reasoning ?? false,
-		input: input !== undefined && input.length > 0 ? input : (known?.input ?? ["text"]),
-		cost: known?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: entry?.limit?.context ?? known?.contextWindow ?? DEFAULT_CONTEXT_WINDOW,
-		maxTokens: entry?.limit?.output ?? known?.maxTokens ?? DEFAULT_MAX_TOKENS,
-		...(sameApi?.thinkingLevelMap === undefined ? {} : { thinkingLevelMap: sameApi.thinkingLevelMap }),
-		...(sameApi?.promptCache === undefined ? {} : { promptCache: sameApi.promptCache }),
-		...(sameApi?.inputLimits === undefined ? {} : { inputLimits: sameApi.inputLimits }),
+		baseUrl,
+		reasoning: definition.reasoning ?? known?.reasoning ?? false,
+		input: definition.input ?? known?.input ?? ["text"],
+		cost: definition.cost ?? known?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: definition.contextWindow ?? known?.contextWindow ?? DEFAULT_CONTEXT_WINDOW,
+		maxTokens: definition.maxTokens ?? known?.maxTokens ?? DEFAULT_MAX_TOKENS,
+		...(thinkingLevelMap === undefined ? {} : { thinkingLevelMap }),
+		...(promptCache === undefined ? {} : { promptCache }),
+		...(inputLimits === undefined ? {} : { inputLimits }),
+		...(definition.headers === undefined ? {} : { headers: definition.headers }),
+		...mergedCompat(config.compat, definition.compat),
 	};
 }
 
-/**
- * MiniMax configs write Anthropic endpoints with the same `/v1` suffix as OpenAI ones; the Anthropic SDK appends
- * `/v1/messages` itself, so the suffix is dropped for that API.
- */
-function endpoint(provider: ProviderConfig): string {
-	const { baseURL } = provider.options;
-	return provider.api === "anthropic-messages" ? baseURL.replace(/\/v1\/?$/, "") : baseURL;
+function applyOverride(model: Model<Api>, override: ModelOverride | undefined): Model<Api> {
+	if (override === undefined) return model;
+	const { cost, compat, headers, thinkingLevelMap, promptCache, ...fields } = override;
+	return {
+		...model,
+		...fields,
+		...(cost === undefined ? {} : { cost: { ...model.cost, ...cost } }),
+		...(thinkingLevelMap === undefined ? {} : { thinkingLevelMap: { ...model.thinkingLevelMap, ...thinkingLevelMap } }),
+		...(promptCache === undefined ? {} : { promptCache: { ...model.promptCache, ...promptCache } }),
+		...(headers === undefined ? {} : { headers: { ...model.headers, ...headers } }),
+		...mergedCompat(model.compat, compat),
+	};
+}
+
+function mergedCompat(base: Model<Api>["compat"], extra: object | undefined): { compat?: NonNullable<Model<Api>["compat"]> } {
+	// The schema accepts the union of every API's compat fields, as Pi does; each API reads only its own.
+	const compat = { ...base, ...extra } as NonNullable<Model<Api>["compat"]>;
+	return Object.keys(compat).length === 0 ? {} : { compat };
 }
 
 /**
- * A key stored in the Keychain (pi-ai's credential store) wins over the configured `apiKey`; headers are always
- * resolved from the configuration. A provider without `apiKey` is treated as keyless.
+ * Key precedence, as in Pi: a key stored in the Keychain, then the configured `apiKey`, then the built-in provider's
+ * own sources (its environment variables). Configured headers apply to every resolution, and `authHeader` also sends
+ * the key as `Authorization: Bearer`.
  */
-function configuredKeyAuth(name: string, config: ProviderConfig, environment: ConfigEnvironment): ApiKeyAuth {
-	const rawKey = config.options.apiKey;
-	const rawHeaders = config.options.headers;
-	const resolveHeaders = async (): Promise<Record<string, string> | undefined> => {
-		if (rawHeaders === undefined) return undefined;
-		const entries = await Promise.all(
-			Object.entries(rawHeaders).map(
-				async ([header, value]) => [header, await resolveConfigValue(value, environment, `header "${header}"`)] as const,
-			),
-		);
-		return Object.fromEntries(entries);
+function configuredKeyAuth(
+	config: ProviderConfig,
+	environment: ConfigEnvironment,
+	inherited: ApiKeyAuth | undefined,
+): ApiKeyAuth {
+	const rawKey = config.apiKey;
+	const withConfigured = async (result: AuthResult | undefined): Promise<AuthResult | undefined> => {
+		if (result === undefined) return undefined;
+		let headers = result.auth.headers;
+		if (config.headers !== undefined) {
+			const resolved = await Promise.all(
+				Object.entries(config.headers).map(
+					async ([name, value]) => [name, await resolveConfigValue(value, environment, `header "${name}"`)] as const,
+				),
+			);
+			headers = { ...headers, ...Object.fromEntries(resolved) };
+		}
+		if (config.authHeader === true) {
+			if (result.auth.apiKey === undefined) throw new Error('"authHeader" needs an API key');
+			headers = { ...headers, Authorization: `Bearer ${result.auth.apiKey}` };
+		}
+		return headers === undefined ? result : { ...result, auth: { ...result.auth, headers } };
 	};
 	return {
-		name: `${name} API key`,
-		check: async ({ credential }) => {
-			if (credential?.key) return { type: "api_key", source: "stored credential" };
-			if (rawKey === undefined) return { type: "api_key", source: "keyless" };
-			const available = referencedVariables(rawKey).every((variable) => environment.env(variable) !== undefined);
-			return available ? { type: "api_key", source: "configured API key" } : undefined;
+		name: inherited?.name ?? "API key",
+		check: async (input) => {
+			if (input.credential?.key) return { type: "api_key", source: "stored credential" };
+			if (rawKey !== undefined) {
+				const available = referencedVariables(rawKey).every((name) => environment.env(name) !== undefined);
+				return available ? { type: "api_key", source: "configured API key" } : undefined;
+			}
+			if (inherited === undefined) return { type: "api_key", source: "keyless" };
+			if (inherited.check !== undefined) return inherited.check(input);
+			const resolved = await inherited.resolve(input);
+			return resolved === undefined ? undefined : { type: "api_key", source: resolved.source ?? "provider" };
 		},
-		resolve: async ({ credential, signal }) => {
-			signal.throwIfAborted();
-			const headers = await resolveHeaders();
-			const withHeaders = headers === undefined ? {} : { headers };
-			if (credential?.key) return { auth: { apiKey: credential.key, ...withHeaders }, source: "stored credential" };
-			if (rawKey === undefined) return { auth: withHeaders, source: "keyless" };
-			const apiKey = await resolveConfigValue(rawKey, environment, "apiKey");
-			signal.throwIfAborted();
-			return { auth: { apiKey, ...withHeaders }, source: "configured API key" };
+		resolve: async (input) => {
+			input.signal.throwIfAborted();
+			if (input.credential?.key) {
+				return withConfigured({ auth: { apiKey: input.credential.key }, source: "stored credential" });
+			}
+			if (rawKey !== undefined) {
+				const apiKey = await resolveConfigValue(rawKey, environment, "apiKey");
+				input.signal.throwIfAborted();
+				return withConfigured({ auth: { apiKey }, source: "configured API key" });
+			}
+			if (inherited === undefined) return withConfigured({ auth: {}, source: "keyless" });
+			return withConfigured(await inherited.resolve(input));
 		},
 	};
 }
@@ -316,26 +470,33 @@ export async function resolveConfigValue(raw: string, environment: ConfigEnviron
 
 // ---------------------------------------------------------------------------
 
-function describeValidationError(error: TLocalizedValidationError): string[] {
-	const path = error.instancePath.replace(/^\//, "").replaceAll("/", ".");
-	switch (error.keyword) {
-		// A model entry fails both union branches; report the object branch only.
-		case "anyOf":
-			return [];
-		case "type":
-			if ((error.params as { type?: string }).type === "null") return [];
-			return [`${path === "" ? "root" : path}: ${error.message}`];
-		case "required": {
-			const names = (error.params as { requiredProperties?: string[] }).requiredProperties ?? [];
-			return names.map((name) => `${path === "" ? name : `${path}.${name}`}: required`);
-		}
-		case "enum": {
-			const allowed = (error.params as { allowedValues?: unknown[] }).allowedValues ?? [];
-			return [`${path === "" ? "root" : path}: must be one of ${allowed.map((value) => JSON.stringify(value)).join(", ")}`];
-		}
-		default:
-			return [`${path === "" ? "root" : path}: ${error.message}`];
-	}
+/** Strip `//` line comments and trailing commas, leaving string literals untouched (same rules as Pi). */
+function stripJsonComments(input: string): string {
+	return input
+		.replace(/"(?:\\.|[^"\\])*"|\/\/[^\n]*/g, (match) => (match[0] === '"' ? match : ""))
+		.replace(/"(?:\\.|[^"\\])*"|,(\s*[}\]])/g, (match, tail: string | undefined) => tail ?? (match[0] === '"' ? match : ""));
 }
 
-
+function describeValidationError(error: TLocalizedValidationError): string[] {
+	const path = error.instancePath.replace(/^\//, "").replaceAll("/", ".");
+	const at = (name?: string) => (name === undefined ? path || "root" : path === "" ? name : `${path}.${name}`);
+	switch (error.keyword) {
+		// Each unknown property also fails its `false` property schema; the additionalProperties entry names it.
+		case "boolean":
+			return [];
+		case "additionalProperties":
+			return ((error.params as { additionalProperties?: string[] }).additionalProperties ?? []).map(
+				(name) => `${at(name)}: unknown property`,
+			);
+		case "required":
+			return ((error.params as { requiredProperties?: string[] }).requiredProperties ?? []).map(
+				(name) => `${at(name)}: required`,
+			);
+		case "enum": {
+			const allowed = (error.params as { allowedValues?: unknown[] }).allowedValues ?? [];
+			return [`${at()}: must be one of ${allowed.map((value) => JSON.stringify(value)).join(", ")}`];
+		}
+		default:
+			return [`${at()}: ${error.message}`];
+	}
+}

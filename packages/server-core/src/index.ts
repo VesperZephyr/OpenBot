@@ -168,11 +168,13 @@ export class HostService {
 			providers: this.#runtime.listProviders().map(({ providerId, name }) => {
 				const configured = fromConfig.get(providerId);
 				const keyStored = stored.has(providerId);
+				// An overlay without its own `apiKey` still needs a stored key: the Host clears provider variables.
+				const keyFromConfig = configured?.keyAvailable === true && !(configured.overlay && !configured.keyConfigured);
 				return {
 					providerId,
 					name,
 					source: configured === undefined ? ("builtin" as const) : ("config" as const),
-					configured: keyStored || configured?.keyAvailable === true,
+					configured: keyStored || keyFromConfig,
 					keyStored,
 				};
 			}),
