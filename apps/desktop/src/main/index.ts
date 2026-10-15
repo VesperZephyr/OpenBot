@@ -13,6 +13,9 @@ const isDev = !app.isPackaged;
 // ship the Host outside app.asar (architecture §3) and set OPENBOT_HOST_ENTRY.
 const hostEntry = process.env.OPENBOT_HOST_ENTRY ?? resolve(app.getAppPath(), "../local-server/src/main.ts");
 
+// A custom data directory (tests, parallel checkouts) also gets its own Electron profile, so the single-instance lock
+// and Chromium state do not collide with the user's installed OpenBot.
+if (process.env.OPENBOT_DATA_DIR !== undefined) app.setPath("userData", join(process.env.OPENBOT_DATA_DIR, "electron"));
 if (!app.requestSingleInstanceLock()) app.quit();
 
 let window: BrowserWindow | undefined;

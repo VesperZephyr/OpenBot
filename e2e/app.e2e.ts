@@ -3,6 +3,7 @@
  * the provider so runs are free and deterministic. Every run gets fresh state under e2e/.run/ and leaves screenshots
  * there for review.
  */
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright-core";
@@ -12,6 +13,8 @@ import { ScriptedModel } from "./scripted-model.ts";
 const repo = resolve(import.meta.dirname, "..");
 const run = join(repo, "e2e", ".run");
 const workspace = join(run, "workspace");
+// One Keychain service per checkout, so suites in parallel worktrees never share stored keys.
+const keychainService = `ai.openbot.e2e.${createHash("sha256").update(repo).digest("hex").slice(0, 8)}`;
 const model = new ScriptedModel();
 let app: ElectronApplication;
 let page: Page;
@@ -45,7 +48,7 @@ beforeAll(async () => {
 			OPENBOT_DATA_DIR: join(run, "data"),
 			OPENBOT_HOME: join(run, "home"),
 			OPENBOT_WORKSPACE: workspace,
-			OPENBOT_KEYCHAIN_SERVICE: "ai.openbot.e2e",
+			OPENBOT_KEYCHAIN_SERVICE: keychainService,
 		},
 	});
 	page = await app.firstWindow();
