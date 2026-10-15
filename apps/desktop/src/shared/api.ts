@@ -19,6 +19,9 @@ export const RENDERER_METHODS = [
 	"models.list",
 	"credentials.set",
 	"credentials.delete",
+	"bots.memory.get",
+	"bots.memory.update",
+	"conversations.reset",
 ] as const satisfies readonly HostMethod[];
 
 export type RendererMethod = (typeof RENDERER_METHODS)[number];

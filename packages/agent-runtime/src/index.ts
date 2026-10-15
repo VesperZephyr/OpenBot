@@ -18,7 +18,6 @@ import {
 	Harness,
 	type LiveState,
 	LiveDoc,
-	type PromptSection,
 	type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
@@ -31,19 +30,24 @@ import {
 	type ModelRef,
 	type ModelSummary,
 	ProtocolError,
+	type ThinkingLevel,
 	type ToolCallStatus,
 	type ToolDefinition,
 	type TranscriptItem,
 } from "@openbot/protocol";
 
+import { applyMemoryEdit, checkMemorySize, type MemoryEdit, MemoryDoc } from "./memory.ts";
 import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
+import { botSections } from "./prompt.ts";
 
-const TOOLS_EXTENSION = "openbot.tools";
+/** The OpenBot extension every conversation selects: prompt sections, and routed tools when the Host passes them. */
+const BOT_EXTENSION = "openbot.bot";
 
 /** Credential contract the Host implements over the Keychain; re-exported so the Host never imports Pi. */
 export type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
 export type { ConfigEnvironment, ConfiguredProviderStatus, ModelConfigStatus } from "./model-config.ts";
 export { SUPPORTED_MODEL_APIS } from "./model-config.ts";
+export type { MemoryEdit } from "./memory.ts";
 
 type PiConversationId = ConversationRecord["id"];
 
@@ -110,6 +114,7 @@ export type UpdateBotInput = {
 	readonly role?: string;
 	readonly instructions?: string;
 	readonly model?: ModelRef | null;
+	readonly thinkingLevel?: ThinkingLevel;
 	readonly pinned?: boolean;
 	readonly status?: BotProfile["status"];
 };
@@ -125,6 +130,8 @@ export class BotRuntime {
 	/** Built-in providers as registered at open, so a removed overlay restores the original. */
 	readonly #builtins: ReadonlyMap<string, Provider>;
 	#configuredIds: readonly string[] = [];
+	/** Stored entries before each conversation's current head marker; entries are immutable, so one read per head. */
+	readonly #history = new Map<number, { readonly head: number; readonly entries: readonly EntryRecord[] }>();
 
 	private constructor(harness: Harness, models: MutableModels, context: Context) {
 		this.#harness = harness;
@@ -138,16 +145,19 @@ export class BotRuntime {
 		const models =
 			options.models ?? builtinModels(options.credentials === undefined ? {} : { credentials: options.credentials });
 		const registry = createRegistry();
-		if (options.tools !== undefined) {
-			const { invoke, definitions } = options.tools;
-			registry.install(
-				defineExtension({
-					name: TOOLS_EXTENSION,
-					tools: definitions.map((definition) => routedTool(definition, invoke)),
-					sections: [workspaceSection],
+		registry.install(
+			defineExtension({
+				name: BOT_EXTENSION,
+				tools:
+					options.tools === undefined
+						? []
+						: options.tools.definitions.map((definition) => routedTool(definition, options.tools!.invoke)),
+				sections: botSections(async (input, context) => {
+					const bots = (await input.read.snapshot(BotsDoc, context))?.bots ?? {};
+					return Object.values(bots).find((bot) => bot.conversationId === Number(input.conversationId));
 				}),
-			);
-		}
+			}),
+		);
 		const harness = await Harness.open(
 			await openNodeSqliteStorage(options.databasePath),
 			{
@@ -221,6 +231,7 @@ export class BotRuntime {
 			...(change.name === undefined ? {} : { name: change.name }),
 			...(change.role === undefined ? {} : { role: change.role }),
 			...(change.instructions === undefined ? {} : { instructions: change.instructions }),
+			...(change.thinkingLevel === undefined ? {} : { thinkingLevel: change.thinkingLevel }),
 			...(change.pinned === undefined ? {} : { pinned: change.pinned }),
 			...(change.status === undefined ? {} : { status: change.status }),
 			...(model === undefined ? {} : { model }),
@@ -231,6 +242,7 @@ export class BotRuntime {
 		const agent: AgentChange = {
 			...(change.instructions === undefined ? {} : { instructions: change.instructions || null }),
 			...(effectiveModel === undefined ? {} : { model: effectiveModel }),
+			...(change.thinkingLevel === undefined ? {} : { thinkingLevel: change.thinkingLevel }),
 		};
 		const conversation = await this.#conversation(record);
 		if (Object.keys(agent).length > 0) await conversation.configure(agent, this.#context);
@@ -272,12 +284,49 @@ export class BotRuntime {
 		await conversation.abort(this.#context);
 	}
 
+	/**
+	 * New topic: the next request starts from an empty context. Older entries stay in storage and in the transcript;
+	 * memory is a document, so it carries over. Pi queues the reset while the conversation is busy.
+	 */
+	async reset(botId: BotId): Promise<void> {
+		const conversation = await this.#conversation(await this.#requireRecord(botId));
+		await conversation.reset(undefined, this.#context);
+	}
+
+	async memory(botId: BotId): Promise<string> {
+		await this.#requireRecord(botId);
+		return (await this.#harness.snapshot(MemoryDoc, botId, this.#context))?.content ?? "";
+	}
+
+	/** Replace the whole memory, as the user's editor does. Rejects content above the limit. */
+	async setMemory(botId: BotId, content: string): Promise<string> {
+		await this.#requireRecord(botId);
+		checkMemorySize(content);
+		return this.#harness.commit(async (tx) => {
+			const doc = await tx.doc(MemoryDoc, botId, null);
+			doc.content = content;
+			return content;
+		}, this.#context);
+	}
+
+	/** Edit one memory section in a single commit, as `memory_update` does. Rejects a result above the limit. */
+	async editMemory(botId: BotId, edit: MemoryEdit): Promise<string> {
+		await this.#requireRecord(botId);
+		return this.#harness.commit(async (tx) => {
+			const doc = await tx.doc(MemoryDoc, botId, null);
+			const next = applyMemoryEdit(doc.content, edit);
+			checkMemorySize(next);
+			doc.content = next;
+			return next;
+		}, this.#context);
+	}
+
 	/** The Bot's conversation without pending approvals; the Host adds those (`approvals` is empty here). */
 	async snapshot(botId: BotId): Promise<ConversationSnapshot> {
 		const record = await this.#requireRecord(botId);
 		const view = await (await this.#conversation(record)).viewState(this.#context);
 		try {
-			return projectView(botId, view.value);
+			return await this.#project(record, view.value);
 		} finally {
 			view.dispose();
 		}
@@ -285,14 +334,25 @@ export class BotRuntime {
 
 	/**
 	 * Observe a Bot's conversation. The listener receives a projected snapshot after every commit that changes the
-	 * view, starting with the current one. Returns a function that stops observation.
+	 * view, starting with the current one, in commit order. Returns a function that stops observation.
 	 */
 	async observe(botId: BotId, listener: (snapshot: ConversationSnapshot) => void): Promise<() => void> {
 		const record = await this.#requireRecord(botId);
 		const view = await (await this.#conversation(record)).viewState(this.#context);
-		listener(projectView(botId, view.value));
-		const unsubscribe = view.subscribe((value) => listener(projectView(botId, value)));
+		listener(await this.#project(record, view.value));
+		// Projection may read older entries, so updates are serialized to keep snapshots in commit order.
+		let queue = Promise.resolve();
+		let stopped = false;
+		const unsubscribe = view.subscribe((value) => {
+			queue = queue
+				.then(async () => {
+					const snapshot = await this.#project(record, value);
+					if (!stopped) listener(snapshot);
+				})
+				.catch((error: unknown) => console.error(`Projecting the conversation of ${botId} failed`, error));
+		});
 		return () => {
+			stopped = true;
 			unsubscribe();
 			view.dispose();
 		};
@@ -365,6 +425,33 @@ export class BotRuntime {
 		if (conversation === undefined) throw new ProtocolError("not_found", `Missing conversation for Bot: ${record.botId}`);
 		return conversation;
 	}
+
+	/** Pi's view holds only the active context; prepend the stored entries before its head so history stays visible. */
+	async #project(record: BotRecord, view: ConversationView): Promise<ConversationSnapshot> {
+		const marker = view.entries[0]?.head === undefined ? undefined : view.entries[0];
+		const earlier = marker === undefined ? [] : await this.#earlierEntries(record, marker);
+		return projectView(record.botId, view, earlier);
+	}
+
+	async #earlierEntries(record: BotRecord, marker: EntryRecord): Promise<readonly EntryRecord[]> {
+		const cached = this.#history.get(record.conversationId);
+		if (cached?.head === marker.id) return cached.entries;
+		const conversation = await this.#conversation(record);
+		const entries: EntryRecord[] = [];
+		let cursor: Parameters<typeof conversation.entries>[2];
+		do {
+			const page = await conversation.entries(
+				{ maxEntryId: marker.id, order: "ascending" },
+				500,
+				cursor,
+				this.#context,
+			);
+			entries.push(...page.items);
+			cursor = page.next;
+		} while (cursor !== undefined);
+		this.#history.set(record.conversationId, { head: marker.id, entries });
+		return entries;
+	}
 }
 
 function agentChange(input: { readonly model?: ModelRef; readonly instructions?: string }): AgentChange {
@@ -379,7 +466,7 @@ function toProfile(record: BotRecord): BotProfile {
 	return profile;
 }
 
-/** Text blocks of a user or assistant message; images and thinking are not projected yet. */
+/** Text blocks of a user or assistant message; images are not projected yet. */
 function partsOf(content: string | readonly { readonly type: string }[]): MessagePart[] {
 	if (typeof content === "string") return content === "" ? [] : [{ type: "text", text: content }];
 	return content.flatMap((block) =>
@@ -399,6 +486,16 @@ function toolCallsOf(entry: EntryRecord): ToolCall[] {
 	const message = entry.model?.[0];
 	if (message?.role !== "assistant") return [];
 	return message.content.filter((block): block is ToolCall => block.type === "toolCall");
+}
+
+/** Visible reasoning of an assistant entry; redacted blocks carry only an opaque payload and are left out. */
+function thinkingOf(entry: EntryRecord): string | undefined {
+	const message = entry.model?.[0];
+	if (message?.role !== "assistant") return undefined;
+	const text = message.content
+		.flatMap((block) => (block.type === "thinking" && block.redacted !== true && block.thinking.trim() !== "" ? [block.thinking.trim()] : []))
+		.join("\n\n");
+	return text === "" ? undefined : text;
 }
 
 type MutableToolItem = { kind: "tool"; id: string; tool: string; args: unknown; status: ToolCallStatus; output?: string };
@@ -423,8 +520,15 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 						? (message.errorMessage ?? message.stopReason)
 						: undefined;
 				const parts = textParts(entry);
-				if (parts.length > 0 || error !== undefined) {
-					items.push({ kind: "assistant", id, parts, ...(error === undefined ? {} : { error }) });
+				const thinking = thinkingOf(entry);
+				if (parts.length > 0 || error !== undefined || thinking !== undefined) {
+					items.push({
+						kind: "assistant",
+						id,
+						parts,
+						...(thinking === undefined ? {} : { thinking }),
+						...(error === undefined ? {} : { error }),
+					});
 				}
 				for (const call of toolCallsOf(entry)) {
 					const item: MutableToolItem = { kind: "tool", id: call.id, tool: call.name, args: call.arguments, status: "pending" };
@@ -442,8 +546,13 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 				item.output = partsOf(message.content).map((part) => part.text).join("\n");
 				break;
 			}
-			case "pi.system":
+			case "pi.compaction":
+				items.push({ kind: "divider", id, reason: "compaction" });
+				break;
 			case "pi.reset":
+				items.push({ kind: "divider", id, reason: "reset" });
+				break;
+			case "pi.system":
 				break;
 			default:
 				items.push({ kind: "other", id, entryKind: entry.kind });
@@ -463,10 +572,19 @@ function projectLive(live: LiveState | undefined): LiveRun | undefined {
 	};
 }
 
-function projectView(botId: BotId, view: ConversationView): ConversationSnapshot {
+/**
+ * `earlier` holds stored entries up to the view's head marker; together with the view's active entries, ordered by
+ * ID and without duplicates, they are the whole transcript, including head markers the view leaves out. A compaction
+ * marker is appended after the entries it keeps, so it is placed right before its head, where the summary ends.
+ */
+function projectView(botId: BotId, view: ConversationView, earlier: readonly EntryRecord[]): ConversationSnapshot {
 	// Pi's view exposes built-in documents as untyped JSON keyed by kind; `pi.live` always holds a LiveState.
 	const liveDoc: LiveState | undefined = view.docs[LiveDoc.definition.kind];
-	const items = toTranscript(view.entries);
+	const byId = new Map<number, EntryRecord>();
+	for (const entry of [...earlier, ...view.entries]) byId.set(entry.id, entry);
+	const position = (entry: EntryRecord): number =>
+		entry.kind === "pi.compaction" && entry.head !== undefined ? entry.head - 0.5 : entry.id;
+	const items = toTranscript([...byId.values()].sort((a, b) => position(a) - position(b)));
 	// Running tool slots carry live status and output until their result entry exists.
 	for (const slot of liveDoc?.tools ?? []) {
 		const item = items.find((entry): entry is MutableToolItem => entry.kind === "tool" && entry.id === slot.callId) as
@@ -520,16 +638,3 @@ async function botOfConversation(
 	if (record === undefined) throw new Error(`No Bot owns conversation ${conversationId}`);
 	return record.botId;
 }
-
-/** Tells the model where it works and how the tools behave. */
-const workspaceSection: PromptSection = {
-	key: "openbot",
-	render: () =>
-		[
-			"You are a Bot in OpenBot, working on the user's own Mac through tools.",
-			"Reply briefly before you start a multi-step task, then work; keep the user informed in short sentences.",
-			"File tools work inside folders the user granted, starting with the shared workspace; relative paths are resolved against it.",
-			"Every shell command waits for the user's approval. A denied call means the user declined it: adjust instead of retrying it unchanged.",
-			"Prefer the file tools over shell commands for reading and editing files. Write answers in GitHub-flavored Markdown.",
-		].join("\n"),
-};

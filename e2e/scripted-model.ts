@@ -9,7 +9,9 @@ import type { AddressInfo } from "node:net";
 
 export type ScriptedTurn =
 	| { readonly text: string }
-	| { readonly tool: string; readonly args: Record<string, unknown> };
+	| { readonly tool: string; readonly args: Record<string, unknown> }
+	/** The provider rejects the request with HTTP 400 and this message; not retried by Pi. */
+	| { readonly error: string };
 
 export type ModelRequest = { readonly messages: readonly { role: string; content?: unknown }[]; readonly tools?: readonly unknown[] };
 
@@ -36,6 +38,11 @@ export class ScriptedModel {
 				}
 				this.requests.push(JSON.parse(body) as ModelRequest);
 				const turn = this.#turns.shift() ?? { text: "(the script has no more turns)" };
+				if ("error" in turn) {
+					response.writeHead(400, { "content-type": "application/json" });
+					response.end(JSON.stringify({ error: { message: turn.error, type: "invalid_request_error" } }));
+					return;
+				}
 				response.writeHead(200, { "content-type": "text/event-stream" });
 				response.end(this.#stream(turn));
 			});
@@ -48,7 +55,7 @@ export class ScriptedModel {
 		await new Promise<void>((resolve) => (this.#server ? this.#server.close(() => resolve()) : resolve()));
 	}
 
-	#stream(turn: ScriptedTurn): string {
+	#stream(turn: Exclude<ScriptedTurn, { readonly error: string }>): string {
 		const chunk = (delta: object, finish: string | null) =>
 			`data: ${JSON.stringify({ id: "s", object: "chat.completion.chunk", created: 0, model: "scripted", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
 		if ("text" in turn) return `${chunk({ role: "assistant", content: turn.text }, null)}${chunk({}, "stop")}data: [DONE]\n\n`;

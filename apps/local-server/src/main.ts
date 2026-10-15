@@ -71,6 +71,7 @@ const executor = new ExecutorProcess({
 // The approval book publishes through the service, which exists only after the runtime it needs is open.
 const approvalListeners: { changed?: (botId: string) => void } = {};
 const approvals = new ApprovalBook((botId) => approvalListeners.changed?.(botId));
+// The router is built before the runtime; memory edits reach it once tool calls flow, after it opened.
 const router = createToolRouter({
 	target,
 	workspace,
@@ -78,6 +79,7 @@ const router = createToolRouter({
 	executor,
 	secrets: credentials,
 	tavilyBaseUrl: process.env.OPENBOT_TAVILY_BASE_URL,
+	editMemory: (botId, edit) => runtime.editMemory(botId, edit),
 });
 
 const runtime = await BotRuntime.open({

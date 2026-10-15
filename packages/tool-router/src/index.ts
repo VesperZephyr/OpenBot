@@ -46,7 +46,12 @@ export interface ExecutorTransport {
 	invoke(invocation: ToolInvocation, onProgress: (output: string) => void, signal: AbortSignal): Promise<ToolOutcome>;
 }
 
-export type HostToolHandler = (args: Readonly<Record<string, unknown>>, signal: AbortSignal) => Promise<ToolOutcome>;
+/** `call` identifies the Bot and conversation, for handlers whose state is per Bot, such as memory. */
+export type HostToolHandler = (
+	args: Readonly<Record<string, unknown>>,
+	signal: AbortSignal,
+	call: ToolCall,
+) => Promise<ToolOutcome>;
 
 export type ToolRouterOptions = {
 	readonly target: ExecutionTarget;
@@ -112,7 +117,7 @@ export class ToolRouter {
 		if (definition.destination === "host") {
 			const handler = this.#options.hostTools[definition.name];
 			if (handler === undefined) return { status: "failed", output: `No handler for ${definition.name}` };
-			return handler(call.args, call.signal);
+			return handler(call.args, call.signal, call);
 		}
 		const invocation: ToolInvocation = {
 			invocationId: `${call.conversationId}:${call.callId}`,

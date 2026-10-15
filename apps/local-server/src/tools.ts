@@ -6,7 +6,8 @@ import { realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
 import { type ExecutionTarget, TOOL_CATALOG } from "@openbot/protocol";
-import { type ApprovalBook, createWebFetch, createWebSearch, decide, type SecretStore } from "@openbot/server-core";
+import type { MemoryEdit } from "@openbot/agent-runtime";
+import { type ApprovalBook, createWebFetch, createWebSearch, decide, memoryUpdate, type SecretStore } from "@openbot/server-core";
 import { ToolRouter } from "@openbot/tool-router";
 import type { ExecutorProcess } from "./executor.ts";
 
@@ -18,6 +19,8 @@ export function createToolRouter(options: {
 	readonly secrets: SecretStore;
 	/** Tavily endpoint override (`OPENBOT_TAVILY_BASE_URL`), for tests against a local fake. */
 	readonly tavilyBaseUrl: string | undefined;
+	/** `BotRuntime.editMemory`; called only once tool calls flow, after the runtime opened. */
+	readonly editMemory: (botId: string, edit: MemoryEdit) => Promise<string>;
 }): ToolRouter {
 	const { workspace } = options;
 	const granted = (path: string): boolean => isWithin(canonical(absolute(path, workspace)), workspace);
@@ -31,6 +34,7 @@ export function createToolRouter(options: {
 				secrets: options.secrets,
 				...(options.tavilyBaseUrl === undefined ? {} : { tavilyBaseUrl: options.tavilyBaseUrl }),
 			}),
+			memory_update: memoryUpdate(options.editMemory),
 		},
 		policy: {
 			decide: async (call, definition) => decide(call, definition, granted),

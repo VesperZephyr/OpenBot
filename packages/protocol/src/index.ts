@@ -44,6 +44,9 @@ export type RunId = string;
 
 export type ModelRef = { readonly provider: string; readonly modelId: string };
 
+/** How much a reasoning model thinks before answering; Pi's levels this product offers. */
+export type ThinkingLevel = "off" | "low" | "medium" | "high";
+
 export type BotProfile = {
 	readonly botId: BotId;
 	readonly name: string;
@@ -52,10 +55,15 @@ export type BotProfile = {
 	/** Standing instructions: the Bot's description in Grok Bot terms. */
 	readonly instructions: string;
 	readonly model?: ModelRef;
+	/** Applies only to reasoning models; absent means Pi's default (off). */
+	readonly thinkingLevel?: ThinkingLevel;
 	readonly pinned: boolean;
 	readonly status: "active" | "hidden";
 	readonly createdAt: number;
 };
+
+/** Largest Bot memory, in UTF-8 bytes of Markdown. */
+export const MEMORY_LIMIT_BYTES = 8192;
 
 /** Sidebar state, in priority order: needs_attention > working > unread > idle. */
 export type BotActivity = "needs_attention" | "working" | "unread" | "idle";
@@ -72,6 +80,8 @@ export type TranscriptItem =
 			readonly kind: "assistant";
 			readonly id: string;
 			readonly parts: readonly MessagePart[];
+			/** The model's visible reasoning, when it returned any. */
+			readonly thinking?: string;
 			/** Set when the response ended without a normal stop, such as an error or abort. */
 			readonly error?: string;
 	  }
@@ -85,6 +95,8 @@ export type TranscriptItem =
 			/** Bounded text the model received, or the running output while the call is live. */
 			readonly output?: string;
 	  }
+	/** Where earlier messages left the model's context: a compaction summary or a new topic. */
+	| { readonly kind: "divider"; readonly id: string; readonly reason: "compaction" | "reset" }
 	| { readonly kind: "other"; readonly id: string; readonly entryKind: string };
 
 export type RunState =
@@ -186,6 +198,7 @@ export type HostMethods = {
 			readonly role?: string;
 			readonly instructions?: string;
 			readonly model?: ModelRef | null;
+			readonly thinkingLevel?: ThinkingLevel;
 			readonly pinned?: boolean;
 			readonly status?: BotProfile["status"];
 		};
@@ -207,6 +220,13 @@ export type HostMethods = {
 		result: RedactedSettings;
 	};
 	"credentials.delete": { params: { readonly providerId: string }; result: RedactedSettings };
+	"bots.memory.get": { params: { readonly botId: BotId }; result: { readonly content: string } };
+	"bots.memory.update": {
+		params: { readonly botId: BotId; readonly content: string };
+		result: { readonly content: string };
+	};
+	/** New topic: the Bot's next request starts from an empty context; memory and stored history stay. */
+	"conversations.reset": { params: { readonly botId: BotId }; result: null };
 };
 
 export type HostMethod = keyof HostMethods;
@@ -228,6 +248,9 @@ export const HOST_METHODS = [
 	"models.list",
 	"credentials.set",
 	"credentials.delete",
+	"bots.memory.get",
+	"bots.memory.update",
+	"conversations.reset",
 ] as const satisfies readonly HostMethod[];
 
 export function isHostMethod(value: unknown): value is HostMethod {
@@ -369,7 +392,7 @@ export type ExecutorMessage =
 // ---------------------------------------------------------------------------
 // Tool catalog: what the model is offered. Schemas are plain JSON Schema so that this package stays dependency-free.
 
-export type ToolCapability = "files.read" | "files.write" | "commands" | "web";
+export type ToolCapability = "files.read" | "files.write" | "commands" | "web" | "memory";
 
 export type ToolDefinition = {
 	readonly name: string;
@@ -479,6 +502,25 @@ export const TOOL_CATALOG = [
 				count: { type: "integer", minimum: 1, maximum: 10, description: "Number of results. Default 5." },
 			},
 			["query"],
+		),
+	},
+	{
+		name: "memory_update",
+		capability: "memory",
+		destination: "host",
+		description:
+			"Save something worth remembering across conversations to your memory: the user's lasting preferences, facts about them and their work, and notes on your role. Memory is Markdown split into ## sections and is limited to 8 KB.",
+		parameters: object(
+			{
+				action: {
+					type: "string",
+					enum: ["replace", "append"],
+					description: "append adds a line to the section; replace sets the whole section, and empty content removes it.",
+				},
+				section: string("Section heading without the ## prefix, such as Preferences."),
+				content: string("Markdown to add, or the complete new section text."),
+			},
+			["action", "section", "content"],
 		),
 	},
 ] as const satisfies readonly ToolDefinition[];
