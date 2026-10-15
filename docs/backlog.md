@@ -18,7 +18,7 @@ Known demo shortcuts, each owned by a batch below: approvals and executor receip
 
 ## B1. Durable approvals and receipts (M1 completion)
 
-Make the safety story hold across restarts. Architecture Sections 5.1, 6.2, 8.2.
+Make the safety story hold across restarts. Architecture Sections 5.1, 6.2, 8.2. **Spec: [tasks/b1-durable-approvals.md](tasks/b1-durable-approvals.md) (ready).**
 
 - Persist pending approvals as an OpenBot document before the call waits; on restart, a rerun of the same Pi tool task finds its approval by `approvalId` and waits on it instead of asking again.
 - Executor receipt ledger: `node:sqlite` file under `<data>/executor/`, acceptance recorded before the side effect, terminal receipt after, kept until the Host acknowledges (`result.ack`).
@@ -29,7 +29,7 @@ Make the safety story hold across restarts. Architecture Sections 5.1, 6.2, 8.2.
 
 ## B2. Runs, cancellation, and steering (M1 completion)
 
-Architecture Section 7.2.
+Architecture Section 7.2. **Spec: [tasks/b2-runs.md](tasks/b2-runs.md) (ready).**
 
 - OpenBot Run records: `runId` from `messages.submit`, states from Section 7.2, global active-Run cap (default 3) with a per-conversation queue.
 - `runs.cancel` by `runId`; cancelling a tool cancels its executor invocation and reports confirmed termination or `unknown`.
