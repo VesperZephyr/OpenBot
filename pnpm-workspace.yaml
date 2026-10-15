@@ -1,0 +1,8 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "third_party/pi/packages/durable"
+  - "third_party/pi/packages/ai"
+  - "third_party/pi/packages/chord"
+  - "third_party/pi/packages/codemode"
+  - "third_party/pi/packages/telemetry"

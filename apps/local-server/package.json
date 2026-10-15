@@ -1,0 +1,17 @@
+{
+	"name": "@openbot/local-server",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"bin": {
+		"openbot-host": "./src/main.ts"
+	},
+	"scripts": {
+		"start": "node --disable-warning=ExperimentalWarning src/main.ts"
+	},
+	"dependencies": {
+		"@openbot/agent-runtime": "workspace:*",
+		"@openbot/protocol": "workspace:*",
+		"@openbot/server-core": "workspace:*"
+	}
+}
