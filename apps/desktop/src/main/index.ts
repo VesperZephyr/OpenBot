@@ -34,6 +34,7 @@ const host = new HostProcess({
 			? {}
 			: { OPENBOT_KEYCHAIN_SERVICE: process.env.OPENBOT_KEYCHAIN_SERVICE }),
 		...(process.env.OPENBOT_HOME === undefined ? {} : { OPENBOT_HOME: process.env.OPENBOT_HOME }),
+		...(process.env.OPENBOT_WORKSPACE === undefined ? {} : { OPENBOT_WORKSPACE: process.env.OPENBOT_WORKSPACE }),
 	},
 	onEvent: (event) => window?.webContents.send(CHANNELS.event, event),
 	onState: (state: HostState) => window?.webContents.send(CHANNELS.hostState, state),
