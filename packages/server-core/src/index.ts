@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import type { BotRuntime, ConfigEnvironment, ModelConfigStatus } from "@openbot/agent-runtime";
 import type { ApprovalBook } from "./approvals.ts";
 import { SEARCH_PROVIDER_PREFIX, TAVILY_PROVIDER_ID } from "./web-search.ts";
+import { DEFAULT_MAX_ACTIVE_RUNS, RunScheduler } from "./runs.ts";
 import {
 	type BotActivity,
 	type BotId,
@@ -58,6 +59,8 @@ export type HostServiceOptions = {
 	/** The shared folder every Bot may use without asking. */
 	readonly workspace: string;
 	readonly emit: EventSink;
+	/** Most Runs that may be running at once, across all Bots; default 3. */
+	readonly maxActiveRuns?: number;
 	readonly now?: () => number;
 };
 
@@ -76,6 +79,7 @@ export class HostService {
 	readonly #now: () => number;
 	/** Per-Bot observation of its Pi conversation; drives sidebar activity and conversation events. */
 	readonly #observers = new Map<BotId, ObserverState>();
+	readonly #runs: RunScheduler;
 	readonly #handlers: Handlers;
 	#configStatus: ModelConfigStatus = { providers: [], errors: [] };
 
@@ -90,6 +94,12 @@ export class HostService {
 		this.#workspace = options.workspace;
 		this.#emit = options.emit;
 		this.#now = options.now ?? Date.now;
+		this.#runs = new RunScheduler({
+			runtime: this.#runtime,
+			maxActiveRuns: options.maxActiveRuns ?? DEFAULT_MAX_ACTIVE_RUNS,
+			changed: (botId) => this.#republish(botId),
+			now: this.#now,
+		});
 		this.#handlers = {
 			"host.status": async () => this.#status,
 			"bots.list": () => this.#listBots(),
@@ -111,7 +121,7 @@ export class HostService {
 				this.#emit({ type: "bots.changed", payload: {} });
 				return profile;
 			},
-			"conversations.snapshot": async ({ botId }) => this.#withApprovals(await this.#runtime.snapshot(botId)),
+			"conversations.snapshot": async ({ botId }) => this.#view(await this.#runtime.snapshot(botId)),
 			"conversations.markRead": async ({ botId }) => {
 				const observer = this.#observers.get(botId);
 				if (observer?.activity === "unread") {
@@ -127,13 +137,9 @@ export class HostService {
 				if (bot.model === undefined && (await this.#runtime.defaultModel()) === undefined) {
 					throw new ProtocolError("invalid_request", "Choose a model in Settings before messaging a Bot");
 				}
-				await this.#runtime.submit(botId, requestId, text);
-				return { accepted: true };
+				return this.#runs.submit(botId, requestId, text);
 			},
-			"runs.cancel": async ({ botId }) => {
-				await this.#runtime.cancel(botId);
-				return null;
-			},
+			"runs.cancel": async ({ runId }) => ({ state: await this.#runs.cancel(runId) }),
 			"approvals.decide": async ({ approvalId, decision }) => {
 				if (!(await this.#approvals.decide(approvalId, decision))) {
 					throw new ProtocolError("not_found", "This request was already answered or its task ended");
@@ -168,18 +174,21 @@ export class HostService {
 	}
 
 	/**
-	 * Load the model configuration and pending approvals, then attach observers to every existing Bot. Call once
-	 * after the runtime opened and before it resumes, so approvals from before a restart show before Pi reruns.
+	 * Load the model configuration and pending approvals, attach observers to every existing Bot, then sweep Runs left
+	 * by the last shutdown. Call once after the runtime opened and before it resumes, so approvals from before a
+	 * restart show before Pi reruns.
 	 */
 	async start(): Promise<void> {
 		await this.#reloadModelConfig();
 		await this.#approvals.start(this.#runtime.approvals());
 		for (const bot of await this.#runtime.listBots()) await this.#observe(bot.botId);
+		await this.#runs.start();
 	}
 
 	/** Call before the runtime closes: the shutdown aborts waiting calls, and their approvals must stay pending. */
 	async stop(): Promise<void> {
 		this.#approvals.close();
+		this.#runs.stop();
 		for (const observer of this.#observers.values()) observer.stop();
 		this.#observers.clear();
 	}
@@ -238,8 +247,17 @@ export class HostService {
 
 	/** Republish a Bot's conversation after its pending approvals changed. Wire to the `ApprovalBook` callback. */
 	approvalsChanged(botId: BotId): void {
+		this.#republish(botId);
+	}
+
+	#republish(botId: BotId): void {
 		const state = this.#observers.get(botId);
 		if (state?.last !== undefined) this.#publish(botId, state, state.last);
+	}
+
+	/** The runtime's snapshot with what the Host adds: pending approvals and the Bot's current Run. */
+	#view(snapshot: ConversationSnapshot): ConversationSnapshot {
+		return this.#withRun(this.#withApprovals(snapshot));
 	}
 
 	#withApprovals(snapshot: ConversationSnapshot): ConversationSnapshot {
@@ -249,9 +267,19 @@ export class HostService {
 		return { ...snapshot, approvals, ...(live === undefined ? {} : { live }) };
 	}
 
+	/** A queued Run's messages are not in Pi yet; they show as pending until the Run starts. */
+	#withRun(snapshot: ConversationSnapshot): ConversationSnapshot {
+		const stored = this.#runs.active(snapshot.botId);
+		if (stored === undefined) return snapshot;
+		const { messages, inputs: _inputs, ...run } = stored;
+		if (run.state !== "queued") return { ...snapshot, run };
+		const queued = messages.map(({ requestId, text }) => ({ id: requestId, parts: [{ type: "text" as const, text }] }));
+		return { ...snapshot, run, pending: [...(snapshot.pending ?? []), ...queued] };
+	}
+
 	#publish(botId: BotId, state: ObserverState, snapshot: ConversationSnapshot): void {
 		state.last = snapshot;
-		const view = this.#withApprovals(snapshot);
+		const view = this.#view(snapshot);
 		const before = state.activity;
 		state.activity = nextActivity(state, view);
 		if (state.activity !== before) this.#emit({ type: "bots.changed", payload: {} });
@@ -282,8 +310,8 @@ type ObserverState = {
 
 /**
  * Sidebar state from a conversation snapshot: needs attention while an approval waits or after an interrupted call
- * (until the user writes again), working while a Run is live, unread once a new answer arrives after observation
- * started; otherwise unchanged until the user reads it.
+ * (until the user writes again), working while a Run is live, queued while its Run waits for a free slot, unread
+ * once a new answer arrives after observation started; otherwise unchanged until the user reads it.
  */
 function nextActivity(state: { activity: BotActivity; answered: number }, snapshot: ConversationSnapshot): BotActivity {
 	const answered = snapshot.items.filter((item) => item.kind === "assistant").length;
@@ -293,9 +321,11 @@ function nextActivity(state: { activity: BotActivity; answered: number }, snapsh
 	if (snapshot.approvals.length > 0) return "needs_attention";
 	const sinceUser = snapshot.items.slice(snapshot.items.findLastIndex((item) => item.kind === "user") + 1);
 	if (sinceUser.some((item) => item.kind === "tool" && item.status === "interrupted")) return "needs_attention";
+	// Pi's live state, not the Run record: the answer lands before the Run is marked ended.
 	if (snapshot.live !== undefined) return "working";
+	if (snapshot.run?.state === "queued") return "queued";
 	if (grew) return "unread";
-	return state.activity === "working" || state.activity === "needs_attention" ? "idle" : state.activity;
+	return state.activity === "unread" || state.activity === "idle" ? state.activity : "idle";
 }
 
 /** In-memory `SecretStore` for tests and development without a Keychain. */
@@ -323,6 +353,7 @@ export const newRequestId = (): string => randomUUID();
 
 export type { HostMethods };
 export { ApprovalBook, decide, type Decision, type PolicyCall } from "./approvals.ts";
+export { DEFAULT_MAX_ACTIVE_RUNS, RunScheduler, type RunSchedulerOptions, type SubmitOutcome } from "./runs.ts";
 export { createWebFetch, type RetrievalOutcome, type WebFetchOptions } from "./web-fetch.ts";
 export {
 	createWebSearch,

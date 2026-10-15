@@ -62,6 +62,9 @@ const host = new HostProcess({
 		...(process.env.OPENBOT_TAVILY_BASE_URL === undefined
 			? {}
 			: { OPENBOT_TAVILY_BASE_URL: process.env.OPENBOT_TAVILY_BASE_URL }),
+		...(process.env.OPENBOT_MAX_ACTIVE_RUNS === undefined
+			? {}
+			: { OPENBOT_MAX_ACTIVE_RUNS: process.env.OPENBOT_MAX_ACTIVE_RUNS }),
 	},
 	onOutput: (chunk) => hostLog.write(chunk),
 	onEvent: (event) => window?.webContents.send(CHANNELS.event, event),

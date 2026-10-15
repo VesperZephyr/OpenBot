@@ -5,6 +5,7 @@ import type {
 	ModelRef,
 	ModelSummary,
 	PendingApproval,
+	RunRecord,
 	ThinkingLevel,
 	TranscriptItem,
 } from "@openbot/protocol";
@@ -13,6 +14,7 @@ import { Markdown } from "./markdown";
 import { WebSearchSettings } from "./WebSearchSettings";
 import { ProfileMemory } from "./ProfileMemory";
 import { Divider, RetryButton, retryTarget, Thinking } from "./TranscriptExtras";
+import { PendingMessages, StopButton, StoppedNote } from "./runs";
 import {
 	api,
 	connect,
@@ -151,6 +153,7 @@ function BotSection(props: {
 const ACTIVITY_LABEL: Record<BotSummary["activity"], string | undefined> = {
 	needs_attention: "Needs attention",
 	working: "Working",
+	queued: "Queued",
 	unread: "Unread",
 	idle: undefined,
 };
@@ -260,7 +263,7 @@ function Conversation({ botId }: { readonly botId: string }) {
 	}, [snapshot]);
 
 	if (bot === undefined) return null;
-	const running = snapshot?.live !== undefined;
+	const running = snapshot?.live !== undefined || snapshot?.run !== undefined || (snapshot?.pending?.length ?? 0) > 0;
 
 	return (
 		<section className="conversation" aria-label={`Conversation with ${bot.name}`}>
@@ -281,7 +284,7 @@ function Conversation({ botId }: { readonly botId: string }) {
 				)}
 				<div ref={transcriptEnd} />
 			</div>
-			<Composer bot={bot} running={running} />
+			<Composer bot={bot} run={snapshot?.run} />
 		</section>
 	);
 }
@@ -313,6 +316,7 @@ function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 					<Message key={item.id} item={item} retry={retry?.id === item.id ? { botId: snapshot.botId, text: retry.text } : undefined} />
 				),
 			)}
+			<PendingMessages snapshot={snapshot} />
 			{snapshot.live !== undefined && snapshot.live.state !== "waiting_approval" && (
 				<li className="message message-assistant is-live">
 					{snapshot.live.partial === undefined ? (
@@ -335,6 +339,7 @@ function Message(props: {
 }) {
 	const { item, retry } = props;
 	if (item.kind === "other") return null;
+	if (item.kind === "stopped") return <StoppedNote />;
 	return (
 		<li className={`message message-${item.kind}`}>
 			{item.kind === "assistant" && item.thinking !== undefined && <Thinking text={item.thinking} />}
@@ -387,7 +392,9 @@ function ToolCard({ item, approval }: { readonly item: Extract<TranscriptItem, {
 				? `${done} · failed`
 				: item.status === "interrupted"
 					? "Interrupted"
-					: done;
+					: item.status === "cancelled"
+						? `${running} · stopped`
+						: done;
 	const open = waiting || item.status === "failed" || item.status === "interrupted";
 	return (
 		<li className={`tool-card tool-${waiting ? "waiting" : item.status}`}>
@@ -576,7 +583,7 @@ function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 	);
 }
 
-function Composer({ bot, running }: { readonly bot: BotSummary; readonly running: boolean }) {
+function Composer({ bot, run }: { readonly bot: BotSummary; readonly run: RunRecord | undefined }) {
 	const [text, setText] = useState("");
 	const input = useRef<HTMLTextAreaElement>(null);
 
@@ -612,15 +619,7 @@ function Composer({ bot, running }: { readonly bot: BotSummary; readonly running
 			/>
 			<div className="composer-actions">
 				<span className="composer-hint">Enter to send · Shift+Enter for a new line</span>
-				{running && (
-					<button
-						type="button"
-						className="stop"
-						onClick={() => void api["runs.cancel"]({ botId: bot.botId }).catch(report)}
-					>
-						Stop
-					</button>
-				)}
+				<StopButton run={run} />
 				<button type="button" className="primary send" disabled={text.trim() === ""} onClick={() => void send()}>
 					Send
 				</button>

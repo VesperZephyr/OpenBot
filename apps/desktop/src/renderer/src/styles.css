@@ -222,6 +222,11 @@ code {
 	background: var(--attention);
 }
 
+/* Waiting for a free slot: amber outline, not yet breathing. */
+.activity-queued {
+	border: 1.5px solid var(--signal);
+}
+
 /* The signature: a Bot that is working breathes in amber. */
 .activity-working {
 	background: var(--signal);
@@ -503,6 +508,18 @@ code {
 	border-radius: 16px 16px 4px 16px;
 }
 
+/* Sent, not read by the Bot yet: queued for a slot or waiting to join the current turn. */
+.message-user.is-pending {
+	opacity: 0.6;
+	border-style: dashed;
+}
+
+.run-note {
+	align-self: center;
+	color: var(--muted);
+	font-size: 12px;
+}
+
 .message-assistant {
 	align-self: stretch;
 }
@@ -614,6 +631,9 @@ code {
 .tool-failed .tool-status,
 .tool-interrupted .tool-status {
 	background: var(--attention);
+}
+.tool-cancelled .tool-status {
+	background: var(--muted);
 }
 .tool-waiting .tool-status {
 	background: var(--signal);

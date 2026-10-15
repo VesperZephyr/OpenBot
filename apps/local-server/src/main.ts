@@ -18,7 +18,7 @@ import {
 	ProtocolError,
 	type ResponseEnvelope,
 } from "@openbot/protocol";
-import { ApprovalBook, HostService } from "@openbot/server-core";
+import { ApprovalBook, DEFAULT_MAX_ACTIVE_RUNS, HostService } from "@openbot/server-core";
 import { ExecutorProcess } from "./executor.ts";
 import { KeychainCredentials } from "./keychain.ts";
 import { modelConfigFile, openBotHome } from "./model-config-file.ts";
@@ -111,6 +111,7 @@ const service = new HostService({
 	modelConfig: modelConfigFile(join(openBotHome(), "models.json"), launchEnvironment),
 	approvals,
 	workspace,
+	maxActiveRuns: maxActiveRuns(process.env.OPENBOT_MAX_ACTIVE_RUNS),
 	emit: (event) =>
 		send({ ...event, protocolVersion: PROTOCOL_VERSION, kind: "event", streamId, seq: ++seq }),
 	// Pi committed the call's result: the executor may prune its receipt, and the call's approval is used up.
@@ -185,4 +186,12 @@ function isAlive(pid: number): boolean {
 	} catch {
 		return false;
 	}
+}
+
+/** The active-Run cap from `OPENBOT_MAX_ACTIVE_RUNS`; unset means the default. */
+function maxActiveRuns(value: string | undefined): number {
+	if (value === undefined || value === "") return DEFAULT_MAX_ACTIVE_RUNS;
+	const cap = Number(value);
+	if (!Number.isInteger(cap) || cap < 1) throw new Error(`OPENBOT_MAX_ACTIVE_RUNS must be a positive integer, got ${value}`);
+	return cap;
 }

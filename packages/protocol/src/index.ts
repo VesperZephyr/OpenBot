@@ -65,15 +65,18 @@ export type BotProfile = {
 /** Largest Bot memory, in UTF-8 bytes of Markdown. */
 export const MEMORY_LIMIT_BYTES = 8192;
 
-/** Sidebar state, in priority order: needs_attention > working > unread > idle. */
-export type BotActivity = "needs_attention" | "working" | "unread" | "idle";
+/** Sidebar state, in priority order: needs_attention > working > queued > unread > idle. */
+export type BotActivity = "needs_attention" | "working" | "queued" | "unread" | "idle";
 
 export type BotSummary = BotProfile & { readonly activity: BotActivity };
 
 export type MessagePart = { readonly type: "text"; readonly text: string };
 
-/** `interrupted`: the call may have partly run and its effect is unknown (Section 5.1); the user should check it. */
-export type ToolCallStatus = "pending" | "running" | "succeeded" | "failed" | "interrupted";
+/**
+ * `interrupted`: the call may have partly run and its effect is unknown (Section 5.1); the user should check it.
+ * `cancelled`: the call was aborted because the user stopped its Run.
+ */
+export type ToolCallStatus = "pending" | "running" | "succeeded" | "failed" | "interrupted" | "cancelled";
 
 export type TranscriptItem =
 	| { readonly kind: "user"; readonly id: string; readonly parts: readonly MessagePart[] }
@@ -98,7 +101,9 @@ export type TranscriptItem =
 	  }
 	/** Where earlier messages left the model's context: a compaction summary or a new topic. */
 	| { readonly kind: "divider"; readonly id: string; readonly reason: "compaction" | "reset" }
-	| { readonly kind: "other"; readonly id: string; readonly entryKind: string };
+	| { readonly kind: "other"; readonly id: string; readonly entryKind: string }
+	/** The user stopped a Run at this point. */
+	| { readonly kind: "stopped"; readonly id: string };
 
 export type RunState =
 	| "queued"
@@ -126,6 +131,31 @@ export type ConversationSnapshot = {
 	readonly live?: LiveRun;
 	/** Tool calls of this Bot that wait for the user's decision, oldest first. */
 	readonly approvals: readonly PendingApproval[];
+	/** The Bot's latest non-terminal Run, if any. */
+	readonly run?: RunRecord;
+	/**
+	 * Messages accepted but not in the transcript yet, oldest first: the messages of a queued Run, and messages sent
+	 * while the Bot works, which join its Run after the current tool round.
+	 */
+	readonly pending?: readonly PendingMessage[];
+};
+
+export type PendingMessage = { readonly id: string; readonly parts: readonly MessagePart[] };
+
+/**
+ * The work one message starts (Section 7.2). Messages sent while a Run is queued or running join it. A Run counts
+ * against the active-Run cap from `running` until it is terminal; waiting for approval counts as running.
+ */
+export type RunRecord = {
+	readonly runId: RunId;
+	readonly botId: BotId;
+	readonly state: "queued" | "running" | "completed" | "failed" | "cancelled";
+	/** OpenBot request IDs of every message in this Run, first one starts it. */
+	readonly requestIds: readonly string[];
+	readonly createdAt: number;
+	readonly startedAt?: number;
+	readonly endedAt?: number;
+	readonly error?: string;
 };
 
 /** A tool call stopped before dispatch until the user decides (Section 5.3). */
@@ -222,9 +252,10 @@ export type HostMethods = {
 	"conversations.markRead": { params: { readonly botId: BotId }; result: null };
 	"messages.submit": {
 		params: { readonly botId: BotId; readonly requestId: string; readonly text: string };
-		result: { readonly accepted: true };
+		/** `steered`: the message joined the Bot's running or queued Run instead of starting one. */
+		result: { readonly runId: RunId; readonly state: RunRecord["state"]; readonly steered: boolean };
 	};
-	"runs.cancel": { params: { readonly botId: BotId }; result: null };
+	"runs.cancel": { params: { readonly runId: RunId }; result: { readonly state: RunRecord["state"] } };
 	"approvals.decide": { params: { readonly approvalId: string; readonly decision: ApprovalDecision }; result: null };
 	"settings.get": { params: Record<string, never>; result: RedactedSettings };
 	"settings.update": { params: { readonly defaultModel?: ModelRef | null }; result: RedactedSettings };

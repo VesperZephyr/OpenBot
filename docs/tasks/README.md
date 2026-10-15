@@ -62,7 +62,7 @@ Phase 1 (MVP). Batches without a spec have an approach in the [backlog](../backl
 | ID                            | Title                                   | Status        |
 | ----------------------------- | --------------------------------------- | ------------- |
 | [B1](b1-durable-approvals.md) | Durable approvals and executor receipts | in review     |
-| [B2](b2-runs.md)              | Runs, queue, cancellation, and steering | ready         |
+| [B2](b2-runs.md)              | Runs, queue, cancellation, and steering | in review     |
 | B3                            | Coding-agent tools                      | approach only |
 | [B4](b4-web-research.md)      | Web research                            | in review     |
 | B5                            | Always allow and folder grants          | approach only |
