@@ -1,12 +1,12 @@
 /**
  * Local executor process. Started by the Host with an IPC channel; serves the executor protocol (Section 6.2) for the
- * bound local target over the receipt ledger in `<data>/executor/receipts.sqlite`, and exits when the Host goes away,
- * stopping the commands it supervises.
+ * bound local target over the receipt ledger in `<data>/executor/receipts.sqlite`, saves cut tool output under
+ * `<data>/artifacts`, and exits when the Host goes away, stopping the commands it supervises.
  */
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
-import { EXECUTOR_TOOLS, LocalExecutor, ReceiptLedger } from "@openbot/local-executor";
+import { DEFAULT_YIELD_MS, EXECUTOR_TOOLS, LocalExecutor, pruneArtifacts, ReceiptLedger } from "@openbot/local-executor";
 import { type ExecutorMessage, type ExecutorRequest, PROTOCOL_VERSION } from "@openbot/protocol";
 
 const targetId = process.env.OPENBOT_TARGET_ID;
@@ -16,12 +16,25 @@ if (targetId === undefined || workspace === undefined || dataDirectory === undef
 	console.error("The local executor must be started by the Host Runtime");
 	process.exit(2);
 }
+/** Tests shorten how long a foreground command runs before it moves to the background. */
+const yieldMs = Number(process.env.OPENBOT_EXEC_YIELD_MS ?? DEFAULT_YIELD_MS);
 
 const ledgerDirectory = join(dataDirectory, "executor");
 mkdirSync(ledgerDirectory, { recursive: true, mode: 0o700 });
-// Opening converts receipts a previous executor left `accepted` to `unknown` and kills their orphaned process groups.
+// Canonical, because `local_read` compares canonical paths against it.
+mkdirSync(join(dataDirectory, "artifacts"), { recursive: true, mode: 0o700 });
+const artifactsDirectory = realpathSync(join(dataDirectory, "artifacts"));
+pruneArtifacts(artifactsDirectory);
+// Opening converts receipts a previous executor left `accepted` to `unknown`, marks its background tasks `unknown`,
+// and kills their orphaned process groups.
 const ledger = ReceiptLedger.open(join(ledgerDirectory, "receipts.sqlite"));
-const executor = new LocalExecutor({ targetId, workspace, ledger });
+const executor = new LocalExecutor({
+	targetId,
+	workspace,
+	ledger,
+	artifactsDirectory,
+	...(Number.isFinite(yieldMs) && yieldMs >= 0 ? { yieldMs } : {}),
+});
 const send = (message: ExecutorMessage): void => {
 	if (process.connected) process.send?.(message);
 };
@@ -54,6 +67,9 @@ process.on("message", (message: ExecutorRequest) => {
 		}
 		case "result.ack":
 			executor.ack(message.invocationId);
+			return;
+		case "tasks.stop":
+			executor.stopTasks(message.conversationId);
 	}
 });
 

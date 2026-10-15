@@ -1,25 +1,34 @@
 /**
  * Supervised shell commands. Each runs in its own process group with no stdin and a scrubbed environment;
  * cancellation and timeouts signal the whole group (SIGTERM, then SIGKILL after a grace period), and the outcome is
- * `unknown` when the group could not be confirmed gone.
+ * `unknown` when the group could not be confirmed gone. Output goes to an `OutputLog`, which bounds what is kept in
+ * memory and saves the full output when it is cut.
  */
 import { spawn } from "node:child_process";
 import type { ToolOutcome } from "@openbot/protocol";
-import { COMMAND_MAX_BYTES, headAndTailWithin } from "./output.ts";
+import type { OutputLog } from "./output.ts";
 
-const DEFAULT_TIMEOUT_SECONDS = 120;
 const KILL_GRACE_MS = 3_000;
-/** Raw output kept in memory; the model gets a bounded head and tail of it. */
-const MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
 const SECRET_VARIABLE = /(API_?KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|PRIVATE_KEY)/i;
 const KEEP_VARIABLES = new Set(["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL", "TERM"]);
 
+/** `timeout_seconds` ends the command when reached, in the foreground or the background; without it there is none. */
 export type CommandArgs = { command: string; cwd: string; timeout_seconds?: number };
+
+/** How a command ended. `groupGone` is false when its group survived SIGKILL, so it may still be running. */
+export type CommandExit = {
+	readonly code: number | null;
+	readonly signal: string | null;
+	readonly reason: "cancelled" | "timeout" | undefined;
+	readonly groupGone: boolean;
+	/** Set when the shell could not start. */
+	readonly startError?: string;
+};
 
 export type RunningCommand = {
 	/** Process ID of the shell, which leads the command's process group; undefined when it could not start. */
 	readonly pid: number | undefined;
-	readonly outcome: Promise<ToolOutcome>;
+	readonly exited: Promise<CommandExit>;
 	cancel(): void;
 };
 
@@ -33,21 +42,16 @@ export function commandEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv
 	return env;
 }
 
-export function runCommand(args: CommandArgs, onOutput: (chunk: string) => void): RunningCommand {
+export function runCommand(args: CommandArgs, log: OutputLog, onOutput: (chunk: string) => void): RunningCommand {
 	const child = spawn("/bin/zsh", ["-c", args.command], {
 		cwd: args.cwd,
 		detached: true,
 		stdio: ["ignore", "pipe", "pipe"],
 		env: commandEnvironment(process.env),
 	});
-	let captured = "";
-	let capturedBytes = 0;
 	const capture = (chunk: Buffer): void => {
-		const text = chunk.toString("utf8");
-		onOutput(text);
-		if (capturedBytes >= MAX_CAPTURE_BYTES) return;
-		captured += text;
-		capturedBytes += chunk.length;
+		log.append(chunk);
+		onOutput(chunk.toString("utf8"));
 	};
 	child.stdout.on("data", capture);
 	child.stderr.on("data", capture);
@@ -77,31 +81,32 @@ export function runCommand(args: CommandArgs, onOutput: (chunk: string) => void)
 		}, KILL_GRACE_MS);
 		killer.unref();
 	};
-	const timeoutSeconds = args.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS;
-	const timer = setTimeout(() => stop("timeout"), timeoutSeconds * 1000);
+	const timer = args.timeout_seconds === undefined ? undefined : setTimeout(() => stop("timeout"), args.timeout_seconds * 1000);
 
-	const outcome = new Promise<ToolOutcome>((resolve) => {
+	const exited = new Promise<CommandExit>((resolve) => {
 		child.on("error", (error) => {
 			clearTimeout(timer);
-			resolve({ status: "failed", output: `Could not start the command: ${error.message}` });
+			resolve({ code: null, signal: null, reason, groupGone: true, startError: error.message });
 		});
 		child.on("close", (code, signal) => {
 			clearTimeout(timer);
-			// Background children left in the group would outlive the call; end them without changing the outcome.
+			// Background children left in the group would outlive the command; end them without changing the outcome.
 			if (reason === undefined) signalGroup("SIGTERM");
-			const bounded = headAndTailWithin(captured, COMMAND_MAX_BYTES);
-			const exit = { code, signal };
-			const body = bounded.text === "" ? "(no output)" : bounded.text;
-			if (reason === "timeout") {
-				resolve({ status: "failed", output: `${body}\n[timed out after ${timeoutSeconds}s]`, exit, truncated: bounded.truncated });
-			} else if (reason === "cancelled") {
-				resolve({ status: groupGone ? "cancelled" : "unknown", output: `${body}\n[cancelled]`, exit, truncated: bounded.truncated });
-			} else {
-				const status = code === 0 ? "succeeded" : "failed";
-				const footer = code === 0 ? "" : `\n[exit ${code ?? signal}]`;
-				resolve({ status, output: `${body}${footer}`, exit, truncated: bounded.truncated });
-			}
+			resolve({ code, signal, reason, groupGone });
 		});
 	});
-	return { pid: child.pid, outcome, cancel: () => stop("cancelled") };
+	return { pid: child.pid, exited, cancel: () => stop("cancelled") };
+}
+
+/** The tool outcome of a command that ended in the foreground; `body` is its bounded output. */
+export function commandOutcome(exit: CommandExit, body: string, truncated: boolean, timeoutSeconds: number | undefined): ToolOutcome {
+	if (exit.startError !== undefined) return { status: "failed", output: `Could not start the command: ${exit.startError}` };
+	const text = body === "" ? "(no output)" : body;
+	const details = { exit: { code: exit.code, signal: exit.signal }, truncated };
+	if (exit.reason === "timeout") return { status: "failed", output: `${text}\n[timed out after ${timeoutSeconds}s]`, ...details };
+	if (exit.reason === "cancelled") {
+		return { status: exit.groupGone ? "cancelled" : "unknown", output: `${text}\n[cancelled]`, ...details };
+	}
+	const footer = exit.code === 0 ? "" : `\n[exit ${exit.code ?? exit.signal}]`;
+	return { status: exit.code === 0 ? "succeeded" : "failed", output: `${text}${footer}`, ...details };
 }

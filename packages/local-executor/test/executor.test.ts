@@ -35,7 +35,7 @@ describe("LocalExecutor", () => {
 		await mkdir(outside);
 		await writeFile(join(outside, "secret.txt"), "secret");
 		ledger = ReceiptLedger.open(join(root, "receipts.sqlite"));
-		executor = new LocalExecutor({ targetId: "mac", workspace, ledger });
+		executor = new LocalExecutor({ targetId: "mac", workspace, ledger, artifactsDirectory: join(root, "artifacts") });
 	});
 
 	afterEach(async () => {
