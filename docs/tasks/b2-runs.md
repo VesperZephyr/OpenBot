@@ -20,7 +20,7 @@ In:
 
 Out:
 - Pause and resume (`runs.pause`, `runs.resume`): need desktop control and browser gating, later.
-- Routine-originated Runs: B8 reuses this queue.
+- Routine-originated Runs: B11 (Phase 2) reuses this queue.
 - `needs_attention` from unknown outcomes: B1.
 
 ## Design

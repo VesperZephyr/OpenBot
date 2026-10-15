@@ -20,7 +20,7 @@ In:
 
 Out:
 - Run records, queue, cap: B2.
-- Approval expiry for unattended work and Always allow rules: B5 and B8.
+- Always allow rules and folder grants: B5. Approval expiry for unattended work: B12 (Phase 2).
 - Process-tree tracking beyond the process group (descendants that call `setsid` leave the group and are not killed): recorded as a known limit.
 
 ## Design

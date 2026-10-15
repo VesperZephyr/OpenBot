@@ -4,13 +4,13 @@ A task spec turns one backlog batch into work that an agent or contributor can f
 
 ## Lifecycle
 
-| Status | Meaning | Who changes it |
-| --- | --- | --- |
-| `draft` | Being designed; do not start | Design |
-| `ready` | Contracts and acceptance are fixed; anyone may pick it up | Design |
-| `in progress` | Claimed: the spec names the branch | Executor |
-| `in review` | Pull request open, acceptance checked | Executor |
-| `done` | Merged to `main`; backlog and technical plan updated | Owner merges, executor updates docs |
+| Status        | Meaning                                                   | Who changes it                      |
+| ------------- | --------------------------------------------------------- | ----------------------------------- |
+| `draft`       | Being designed; do not start                              | Design                              |
+| `ready`       | Contracts and acceptance are fixed; anyone may pick it up | Design                              |
+| `in progress` | Claimed: the spec names the branch                        | Executor                            |
+| `in review`   | Pull request open, acceptance checked                     | Executor                            |
+| `done`        | Merged to `main`; backlog and technical plan updated      | Owner merges, executor updates docs |
 
 To claim a task, set **Status** to `in progress`, fill in **Branch**, push the branch, and open a draft pull request that links the spec. One task per branch.
 
@@ -57,7 +57,15 @@ Dated entries added during execution. Empty when ready.
 
 ## Index
 
-| ID | Title | Status |
-| --- | --- | --- |
-| [B1](b1-durable-approvals.md) | Durable approvals and executor receipts | ready |
-| [B2](b2-runs.md) | Runs, queue, cancellation, and steering | ready |
+Phase 1 (MVP). Batches without a spec have an approach in the [backlog](../backlog.md); design writes their spec before execution starts.
+
+| ID                            | Title                                   | Status        |
+| ----------------------------- | --------------------------------------- | ------------- |
+| [B1](b1-durable-approvals.md) | Durable approvals and executor receipts | ready         |
+| [B2](b2-runs.md)              | Runs, queue, cancellation, and steering | ready         |
+| B3                            | Coding-agent tools                      | approach only |
+| B4                            | Web research                            | approach only |
+| B5                            | Always allow and folder grants          | approach only |
+| B6                            | Bot quality and memory                  | approach only |
+| B7                            | Desktop MVP                             | approach only |
+| B8                            | Installable build                       | approach only |

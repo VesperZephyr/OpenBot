@@ -20,9 +20,9 @@ Each section marks state explicitly: **Implemented** means code in the repositor
 | `packages/local-executor`, `apps/local-executor` | Implemented: separate process with handshake; grant re-check with symlink-safe canonical paths; `local_read` (line numbers, offset, device and binary refusal), `local_list`, atomic `local_write`, unique-match `local_edit`, `local_exec` (own process group, SIGTERM then SIGKILL, timeout, scrubbed environment, head-and-tail output); in-memory receipts dedupe repeated invocation IDs | `local-executor/test/executor.test.ts` (grant escape via `..` and symlink, foreign target, edit uniqueness, exactly-once repeat, exit status, group cancel, env scrub) |
 | `apps/local-server` | Implemented: data directory, exclusive `host.lock`, provider-key environment scrubbing, Keychain secret store, `models.json` loading, shared workspace (`~/OpenBot` or `OPENBOT_WORKSPACE`), executor process supervision, Tool Router composition, IPC dispatch, ordered events, recovery gate, clean shutdown | Real-model smoke on 2026-10-15 through the Mafia gateway (`claude-sonnet-5-5`): a Bot wrote `hello.md` in the workspace without asking, `wc -c hello.md` waited for approval, ran after **Allow once**, and the Bot reported the size |
 | `apps/desktop` | Implemented: Electron shell, sandboxed preload, Grok Bot-style sidebar and conversation, sanitized Markdown (`marked` + DOMPurify), one row per tool call with status and output, inline approval card (**Allow once** / **Deny**), Stop, settings | Electron run over CDP (chat flows); tool UI built and type-checked, not yet exercised in the window |
-| `browser`, `computer-use` | Planned (M3, M6) | — |
+| `browser`, `computer-use` | Planned (Phase 3: architecture M3 browser part, M6) | — |
 
-The demo runs the M1 path end to end with in-memory approvals and receipts. [The backlog](backlog.md) splits the remaining work into batches.
+The demo runs the M1 path end to end with in-memory approvals and receipts. [The backlog](backlog.md) splits the remaining work into three phases: **Phase 1 MVP** (B1–B8, a standard agent Bot: files, terminal, web research, approvals with Always allow, memory, installable build), Phase 2 enhancements (B9–B15), and Phase 3 computer control.
 
 ### 1.2 Known Gaps in Existing Code
 
@@ -30,18 +30,18 @@ These are deliberate shortcuts or missing pieces in implemented code. Each one i
 
 | Gap | Where | Milestone |
 | --- | --- | --- |
-| Request parameters are checked only for shape; there is no per-method schema validation in main or the Host | `apps/desktop/src/main/ipc.ts`, `apps/local-server/src/main.ts` | M2 |
+| Request parameters are checked only for shape; there is no per-method schema validation in main or the Host | `apps/desktop/src/main/ipc.ts`, `apps/local-server/src/main.ts` | Backlog B7 |
 | `messages.submit` forwards straight to Pi `submit` and returns `{ accepted: true }`; there is no OpenBot Run, queue, `runId`, or active-Run cap. `runs.cancel` aborts by `botId` | `server-core`, `agent-runtime` | Backlog B2 |
 | Pending approvals and executor receipts live in memory; a Host restart drops a pending approval (Pi reruns the call, which asks again) | `server-core/src/approvals.ts`, `local-executor` | Backlog B1 |
-| The transcript does not project images or thinking blocks | `agent-runtime` `toTranscript` | Backlog B3, B6 |
-| Every conversation update is broadcast as a full snapshot; there is no per-conversation subscription, token-delta coalescing, or event backpressure | `server-core`, `apps/local-server`, renderer store | M2 |
-| The renderer ignores `seq` and resynchronizes only when the Host restarts | `apps/desktop/src/renderer/src/store.ts` | M2 |
-| Power and lock events are logged, not forwarded to the Host; no `powerSaveBlocker` | `apps/desktop/src/main/index.ts` | M2 (forwarding), M9 (behavior) |
-| The renderer loads from `file://`; no `app://` protocol, fuses, packaging, or signing | `apps/desktop` | M2 (protocol), M9 (packaging) |
-| Keychain access runs in the Host on a general-purpose Node binary (development path in architecture Section 5.9) | `apps/local-server/src/keychain.ts` | M2 decision, M9 signed verification |
-| The Host runs on Node from `PATH` (`.node-version` is 22.22.2); the architecture targets a bundled Node 24 | `apps/desktop/src/main/index.ts`, `.node-version` | M9, with a dev-Node alignment check in M1 |
-| A crash between Pi conversation creation and the Bot-index commit leaves an orphan conversation | `agent-runtime` `createBot` | M9 recovery sweep |
-| A fixed 30-second request timeout applies to every Host method | `apps/desktop/src/main/host.ts` | Backlog B6 (no long-running method exists yet) |
+| The transcript does not project images or thinking blocks | `agent-runtime` `toTranscript` | Backlog B6 (thinking), B15 (images) |
+| Every conversation update is broadcast as a full snapshot; there is no per-conversation subscription, token-delta coalescing, or event backpressure | `server-core`, `apps/local-server`, renderer store | Backlog B7 (one subscribed Bot, coalescing), B14 (backpressure) |
+| The renderer ignores `seq` and resynchronizes only when the Host restarts | `apps/desktop/src/renderer/src/store.ts` | Backlog B14 |
+| Power and lock events are logged, not forwarded to the Host; no `powerSaveBlocker` | `apps/desktop/src/main/index.ts` | Backlog B7 (`powerSaveBlocker`), B14 (forwarding) |
+| The renderer loads from `file://`; no `app://` protocol, fuses, packaging, or signing | `apps/desktop` | Backlog B8 |
+| Keychain access runs in the Host through `/usr/bin/security` on a general-purpose Node binary (development path in architecture Section 5.9) | `apps/local-server/src/keychain.ts` | Kept for the MVP (B8 records the risk); moved in B14 |
+| The Host runs on Node from `PATH` (`.node-version` is 22.22.2); the architecture targets a bundled Node 24 | `apps/desktop/src/main/index.ts`, `.node-version` | Backlog B8 |
+| A crash between Pi conversation creation and the Bot-index commit leaves an orphan conversation | `agent-runtime` `createBot` | Backlog B14 |
+| A fixed 30-second request timeout applies to every Host method | `apps/desktop/src/main/host.ts` | Revisit when a long-running method appears (none in Phase 1) |
 | BYOK supports three APIs (`openai-completions`, `openai-responses`, `anthropic-messages`); there is no model discovery from a gateway's `/v1/models` | `agent-runtime/src/model-config.ts` | When a user needs another API or discovery |
 
 ## 2. Rules for Every Milestone
@@ -55,6 +55,16 @@ These are deliberate shortcuts or missing pieces in implemented code. Each one i
 - **Secrets in tests:** use `MemorySecretStore` in package tests and a dedicated `OPENBOT_KEYCHAIN_SERVICE` plus `OPENBOT_DATA_DIR` for process smoke runs. Delete the test Keychain item afterwards.
 
 ## 3. Milestone Plans
+
+The milestones below follow the architecture's capability areas. Delivery is phased; [the backlog](backlog.md) owns the batch order:
+
+| Phase | Milestone content it delivers |
+| --- | --- |
+| **1. MVP** (B1–B8) | M1 completion (B1, B2); coding tools beyond M1 (B3); `web_search` and `web_fetch` from M3 (B4); Always allow and folder grants from M5 (B5); memory from M4 and prompt quality (B6); the user-facing part of M2 (B7); a signed installable build from M9 (B8) |
+| 2. Enhancements (B9–B15) | M7 connectors; skills, routines, and the rest of Auto Review from M5; group chats, handoff, and templates from M4; the rest of M2 and M9 |
+| 3. Computer control | M3 managed browser, takeover, and secrets; M6 desktop computer use; M8 voice and teach-a-task |
+
+The milestone sections stay as the reference for what each area needs; where a phase-1 batch takes part of a milestone, the batch's spec is authoritative.
 
 ### M1: Host and Local Execution (next)
 
@@ -226,9 +236,9 @@ Goal: architecture Section 11 passes on a real Mac with the packaged app.
 
 | Track | Plan |
 | --- | --- |
-| Grok Bot interface parity | Each Section 6.5 surface is built in the milestone that supplies its data: sidebar and conversation (done), tool activity and approval card (M1), search, badges, shortcuts, notifications, menu bar (M2), work panel Browser and takeover card (M3), groups (M4), Routines, Skills, and Always allow (M5), Screen tab and HUD (M6), Connect apps (M7), dictation (M8) |
+| Grok Bot interface parity | Each Section 6.5 surface is built in the batch that supplies its data: sidebar and conversation (done), tool activity and approval card (demo), Always allow and folders (B5), memory tab (B6), onboarding, collapsed steps, notifications (B7), skills, routines, Connect apps, groups, search, menu bar (Phase 2), work panel Browser and Screen, takeover card, dictation (Phase 3) |
 | Persistence | Every OpenBot document is versioned from M1. Format changes ship with a migration and a reopen test against data written by the previous version |
-| Logging | Correlate by `botId`, `runId`, and `invocationId`; never log credentials, secret values, full file or page contents, or screenshots. A bounded log file under the data directory arrives in M2 |
+| Logging | Correlate by `botId`, `runId`, and `invocationId`; never log credentials, secret values, full file or page contents, or screenshots. A bounded log file under the data directory arrives with B8 so packaged builds can be diagnosed |
 | Pi baseline | Synchronize only as a dedicated task (architecture Section 2.4). Before M1, re-read the vendored tool-task and recovery code that M1 relies on |
 | Dependency versions | Pin exact versions. Review electron-vite 6 after it settles; keep Electron within supported majors |
 
@@ -236,14 +246,14 @@ Goal: architecture Section 11 passes on a real Mac with the packaged app.
 
 | Decision | Options | Decide by |
 | --- | --- | --- |
-| Executor receipt storage | `node:sqlite` file per executor (recommended: same engine Pi uses, no new dependency) or an append-only log | Start of M1 |
-| Tool argument schemas in `protocol` | Plain JSON Schema objects (no dependency) or TypeBox (already used by Pi; adds a dependency to `protocol`) | Start of M1 |
-| IPC schema validation library | TypeBox (shared with tool schemas) or zod | Start of M2 |
-| Keychain placement | Electron main or a dedicated signed helper (architecture Section 5.9) | M2 |
-| Development Node version | Keep 22.22.2 for development or move to Node 24 now to match the bundled runtime | M1 |
-| Web search provider | Configurable endpoint; choose the default adapter | M3 |
-| Transcription | On-device only, or an optional configured endpoint | M8 |
-| Update channel | electron-updater with a static feed (GitHub Releases or self-hosted) | M9 |
+| Executor receipt storage | **Decided:** `node:sqlite` file per executor (B1). Electron 44's Node 24.21 and the development Node 22.22 both provide it | — |
+| Tool argument schemas in `protocol` | **Decided:** plain JSON Schema objects (implemented in `TOOL_CATALOG`) | — |
+| IPC schema validation library | **Decided:** TypeBox (B7), already a Pi dependency; tool schemas stay plain JSON Schema | — |
+| Keychain placement | MVP keeps `/usr/bin/security` in the Host (B8 records the risk); Electron main with `safeStorage` or a signed helper later | B14 |
+| Development Node version | Keep 22.22.2 for development; the packaged build bundles Node 24 (B8), and CI should run e2e on the bundled version once it exists | B8 |
+| Web search provider | Tavily first behind a `SearchProvider` interface; confirm in the B4 spec | B4 spec |
+| Transcription | On-device only, or an optional configured endpoint | Phase 3 |
+| Update channel | electron-updater with GitHub Releases | B14 |
 
 ## 6. Risks
 

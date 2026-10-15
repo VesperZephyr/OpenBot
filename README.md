@@ -6,7 +6,9 @@ The desktop UI, Host Runtime, Pi-based agent loop, local executor, and managed b
 
 Model inference uses a configurable API endpoint. Application state is stored locally.
 
-The project is a working demo on the way to milestone M1. Bots chat through any configured model and work on your Mac with file tools (read, list, write, edit) and shell commands, plus public web fetches. File tools run freely inside the shared workspace `~/OpenBot`; anything outside it, and every shell command, stops for your **Allow once** or **Deny**. Commands run in a separate executor process with credentials removed from their environment. API keys are stored in the macOS Keychain. See [the backlog](docs/backlog.md) for what comes next.
+The project is a working demo on the way to its first usable release. Bots chat through any configured model and work on your Mac with file tools (read, list, write, edit) and shell commands, plus public web fetches. File tools run freely inside the shared workspace `~/OpenBot`; anything outside it, and every shell command, stops for your **Allow once** or **Deny**. Commands run in a separate executor process with credentials removed from their environment. API keys are stored in the macOS Keychain.
+
+Delivery is phased: **Phase 1 (MVP)** is a standard agent Bot you can install and use daily (coding tools, web research, Always allow, memory, restart-safe approvals, a signed build); Phase 2 adds connectors, skills, routines, and Bots working together; Phase 3 adds the managed browser and desktop computer use. See [the backlog](docs/backlog.md).
 
 ## Development
 

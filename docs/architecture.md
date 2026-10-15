@@ -320,7 +320,7 @@ Pi runs inside the Host. One Pi `Harness` opens the store and runs every Bot's c
 | Bot thread | `harness.createConversation({ ownership: { kind: "ownerless" } })` | One main conversation per Bot; record `botId`, workspace, and local-target binding in OpenBot documents |
 | Bot profile | `conversation.configure({ model, thinkingLevel, instructions, extensions, tools, modelTools, cwd })` | Applied when the profile changes; takes effect from the next model request |
 | Start work | `conversation.submit({ type: "input", content, requestId, entry })` | Stable Pi request ID derived from the OpenBot request ID; OpenBot entry kinds use the `openbot.` prefix |
-| Steer a running Bot | `submit({ ..., whenBusy: "steer" })` | Only for an explicit user steer; ordinary messages wait in the OpenBot queue |
+| Steer a running Bot | `submit({ ..., whenBusy: "steer" })` | A user message to a Bot with an active Run joins that Run at the next tool boundary; routine and handoff input waits in the OpenBot queue instead |
 | Non-model transcript records | `submit({ type: "write", entry })` | Routine reports, handoff notices, and group messages that should not start a model request |
 | New topic or handoff | `conversation.reset(handoff)` | Older entries remain in storage |
 | Observe | `conversation.watch()`, `viewState()`, or `watchEvents()` | Project Pi state into OpenBot snapshots and sequenced events |
@@ -500,7 +500,7 @@ The transport is private IPC with versioned request, response, and event envelop
 | `bots.memory.get`, `bots.memory.update` | View and edit a Bot's memory |
 | `conversations.list`, `conversations.snapshot`, `conversations.subscribe` | List Bot, group, and routine-run conversations; deliver the current view followed by ordered updates |
 | `groups.create`, `groups.update`, `groups.delete` | Manage group chats and membership |
-| `messages.submit` | Accept `requestId`, conversation, content, mentions, skill and connector attachments, artifact references, and `mode` (`queue` or `steer`); return `runId` and state after durable receipt |
+| `messages.submit` | Accept `requestId`, conversation, content, mentions, skill and connector attachments, and artifact references; return `runId`, state, and whether the message steered an active Run, after durable receipt |
 | `runs.cancel`, `runs.pause`, `runs.resume` | Persist an idempotent cancellation or pause request and report its outcome separately |
 | `approvals.decide` | `allow_once`, `always_allow` with a confirmed rule scope, or `deny` for the exact pending invocation |
 | `policy.rules.list`, `policy.rules.upsert`, `policy.rules.delete`, `policy.settings.update` | Manage Ask first and Allow automatically rules, capability defaults, and Auto Review |
@@ -633,7 +633,7 @@ The desktop interface follows Grok Bot's layout and vocabulary so that users and
 
 ### 7.2 Scheduling
 
-OpenBot keeps a durable queue per conversation. A Run starts when its conversation is idle and the number of active Runs is below the configurable cap (default 3). Routine occurrences wait for a slot like user work but run in their own conversations. Ordinary messages to a busy Bot stay in the OpenBot queue; only an explicit user steer goes to Pi immediately as `whenBusy: "steer"`. Pi's submission ID is associated with the OpenBot Run; the stable request ID reconciles a crash between Pi admission and recording that association.
+OpenBot keeps a durable Run queue. A Run starts when its conversation is idle and the number of active Runs is below the configurable cap (default 3); queued Runs are admitted oldest first across Bots. Routine occurrences wait for a slot like user work but run in their own conversations. A user message to a Bot with an active Run steers that Run (`whenBusy: "steer"`) instead of starting a new one; a message to a Bot whose Run is still queued joins that queued Run. Pi's submission ID is associated with the OpenBot Run; the stable request ID reconciles a crash between Pi admission and recording that association.
 
 Within a Run, tools are sequential. Across Runs, the executor accepts concurrent invocations; it serializes writes to the same file, and desktop input waits for the single control lease.
 
@@ -748,6 +748,8 @@ Removing access follows the same steps as in a hosted product: pause or delete r
 | Packaging | Bundled runtime and helpers, stable macOS application identity, startup diagnostics, and backup guidance |
 
 Not in the first release: cloud computer, mobile clients, multi-device sync, live voice conversation, inbound event webhooks, additional targets, and isolated execution environments.
+
+The first release is delivered in phases ([backlog](backlog.md)). **Phase 1 (MVP)** ships a standard agent Bot: Bots with profiles and memory, parallel Runs up to the cap with steering and cancellation, files and commands with grants, Always allow for commands and folders, `web_search` and `web_fetch`, durable approvals and receipts, compaction, and a signed installable build. Phase 2 adds connectors, skills, routines, the rest of Auto Review, group chats, handoff, and templates. Phase 3 adds the managed browser, desktop computer use, voice, and teach-a-task. The contracts in this document cover all phases so that later ones attach without reworking Phase 1.
 
 ## 10. Development Sequence and Milestone Acceptance
 
