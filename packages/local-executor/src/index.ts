@@ -99,7 +99,7 @@ export class LocalExecutor {
 	async #run(invocation: ToolInvocation, entry: Running, onProgress: (output: string) => void): Promise<ToolOutcome> {
 		assertLocalTarget(invocation.target, this.#options.targetId);
 		if (Date.now() > invocation.deadline) return { status: "failed", output: "Refused: the invocation's deadline passed" };
-		const context: FileContext = { workspace: this.#options.workspace, grants: invocation.grants };
+		const context: FileContext = { workspace: this.#options.workspace, grants: invocation.grants, readGrants: invocation.readGrants };
 		// Pi validated the arguments against the catalog schema before the call reached the router.
 		const args = invocation.args as never;
 		switch (invocation.tool) {

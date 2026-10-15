@@ -13,6 +13,8 @@ import { Markdown } from "./markdown";
 import { WebSearchSettings } from "./WebSearchSettings";
 import { ProfileMemory } from "./ProfileMemory";
 import { Divider, RetryButton, retryTarget, Thinking } from "./TranscriptExtras";
+import { AlwaysAllow } from "./AlwaysAllow";
+import { CommandSettings, FolderSettings } from "./PolicySettings";
 import {
 	api,
 	connect,
@@ -425,6 +427,7 @@ function ApprovalCard({ approval }: { readonly approval: PendingApproval }) {
 					Allow once
 				</button>
 			</div>
+			<AlwaysAllow approval={approval} />
 		</div>
 	);
 }
@@ -761,6 +764,8 @@ function Settings() {
 				</ul>
 			</div>
 			<WebSearchSettings />
+			<CommandSettings />
+			<FolderSettings workspace={settings.workspace} />
 
 			<div className="settings-group">
 				<h2>Your own providers</h2>

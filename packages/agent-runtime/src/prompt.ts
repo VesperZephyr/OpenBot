@@ -76,7 +76,7 @@ function toolGuidance(tools: ReadonlySet<string>): string | undefined {
 	if (tools.has("local_exec")) {
 		lines.push(
 			"- Search files with `rg` through local_exec; when `rg` is not installed, use `grep -rn` and `find`.",
-			"- Every shell command waits for the user's approval, so batch related work into one command where it stays readable. A denied call means the user declined it: adjust instead of retrying it unchanged.",
+			"- Read-only commands (`rg`, `grep`, `find`, `ls`, `cat`, `git status`, and similar) inside folders you may use run without asking; other commands wait for the user's approval unless the user allowed them, so batch related work into one command where it stays readable. A denied call means the user declined it: adjust instead of retrying it unchanged.",
 		);
 	}
 	const search = tools.has("web_search");

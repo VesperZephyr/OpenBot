@@ -37,6 +37,7 @@ import {
 } from "@openbot/protocol";
 
 import { type ApprovalStore, approvalStore } from "./approvals.ts";
+import { type PolicyStore, policyStore } from "./policy.ts";
 import { applyMemoryEdit, checkMemorySize, type MemoryEdit, MemoryDoc } from "./memory.ts";
 import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
 import { botSections } from "./prompt.ts";
@@ -47,6 +48,7 @@ const BOT_EXTENSION = "openbot.bot";
 /** Credential contract the Host implements over the Keychain; re-exported so the Host never imports Pi. */
 export type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
 export type { ApprovalStore } from "./approvals.ts";
+export type { PolicyStore, SavedScope } from "./policy.ts";
 export type { ConfigEnvironment, ConfiguredProviderStatus, ModelConfigStatus } from "./model-config.ts";
 export { SUPPORTED_MODEL_APIS } from "./model-config.ts";
 export type { MemoryEdit } from "./memory.ts";
@@ -185,6 +187,11 @@ export class BotRuntime {
 	/** The durable approval records; Host code (the approval book) is their only writer. */
 	approvals(): ApprovalStore {
 		return approvalStore(this.#harness, this.#context);
+	}
+
+	/** Command policy and folder grants; Host code is their only writer. */
+	policy(): PolicyStore {
+		return policyStore(this.#harness, this.#context);
 	}
 
 	/**
