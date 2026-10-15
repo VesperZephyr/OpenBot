@@ -135,7 +135,7 @@ Invariants:
 
 ## Acceptance
 
-1. Onboarding with a custom endpoint, test request, first Bot: e2e `desktop-mvp.e2e.ts › sets up a custom OpenAI-compatible provider…` (written, not run). Host level: smoke `models.addProvider` / `models.test` checks; unit `host-service.test.ts › adds a custom provider…`, `› tests a model…`.
+1. Onboarding with a custom endpoint, test request, first Bot: e2e `desktop-mvp.e2e.ts › sets up a custom OpenAI-compatible provider…` (passes in CI). Host level: smoke `models.addProvider` / `models.test` checks; unit `host-service.test.ts › adds a custom provider…`, `› tests a model…`.
 2. Only the subscribed Bot streams, coalesced: unit `conversation-feed.test.ts` (deterministic timers), `host-service.test.ts › sends conversation updates only for the subscribed Bot`; smoke "updates coalesced" and "only the subscribed Bot".
 3. Collapsed steps: unit `steps.test.ts`; e2e `› collapses consecutive successful tool calls…` (also Copy and Reveal).
 4. Duplicate and Delete: unit `host-service.test.ts › duplicates…`, `› deletes a Bot…`; e2e `› duplicates a Bot … deletes one after confirmation`; smoke checks.
@@ -156,4 +156,4 @@ Invariants:
 - The Host method for Reveal is `files.resolveReveal { path } → string | null` (canonical path or null) rather than a boolean, so main reveals exactly the path the Host checked. It is not in `RENDERER_METHODS`; only main calls it.
 - Granted folders (B5) are not Reveal roots in this branch; `revealablePath(path, base, roots)` takes the roots list, and the integration should pass the workspace plus `loadPolicy(...).grants` lists.
 - B5's methods (`policy.*`, `grants.*`, and the `always_allow` decision object) need schema entries when B5 and B7 are merged; the `satisfies` clause makes the merge fail type checking until they exist.
-- The e2e suite was written but not run in this batch (integration owner's rule: no Electron launches); `pnpm run check` is green and a Host-level smoke script exercised the Host methods.
+- The e2e suite was not run locally in this batch (no Electron launches); it passed in CI on the integrated branch, and a Host-level smoke script exercised the Host methods.

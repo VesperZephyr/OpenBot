@@ -146,4 +146,4 @@ Invariants:
 
 ## Open questions
 
-- 2026-10-15: The integration owner ruled that e2e suites must not be run in this wave (no Electron windows). `always-allow.e2e.ts` is written and typechecks; it has not been run. Acceptance 7 stays open until the owner runs it.
+- 2026-10-15: The e2e suite was not run locally during this wave (no Electron windows); it passed in CI on the integrated branch. git was removed from the read-only default after review (see Design).

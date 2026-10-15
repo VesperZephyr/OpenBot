@@ -22,7 +22,7 @@ The MVP deliberately leaves out the managed browser, computer use, connectors, s
 
 ## Phase 1: MVP (implemented, awaiting acceptance)
 
-All eight batches are implemented on `feat/mvp`. Each spec in [`tasks/`](tasks/README.md) holds the design, contracts, and as-built notes. Unit tests and Host-level smoke runs pass; the e2e suites are written but have not been run.
+All eight batches are implemented on `feat/mvp`. Each spec in [`tasks/`](tasks/README.md) holds the design, contracts, and as-built notes. Unit tests, Host-level smoke runs, and the e2e suites (in CI on macOS) pass. The acceptance list below still needs a real model and a packaged build.
 
 | Batch | What it delivers | Spec |
 | --- | --- | --- |

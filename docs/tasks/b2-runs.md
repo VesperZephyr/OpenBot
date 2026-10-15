@@ -153,4 +153,4 @@ Invariants:
 - A queued Run of a Bot whose previous Run is still being stopped waits until that Run ended: Pi withdraws inputs admitted while its abort is in progress.
 - When a Run fails (unanswered, not aborted), its steers still in Pi's inbox are withdrawn, because Pi would otherwise place them with the next input.
 - `BotRuntime.cancel(botId)` stays (abort); new `markStopped(botId)` and `withdraw(botId, submissionId)` support the scheduler.
-- The e2e suite was written but not run in this batch (integration owner's rule: no Electron launches); `pnpm run check` is green.
+- The e2e suite was not run locally in this batch (no Electron launches); it passed in CI on the integrated branch.
