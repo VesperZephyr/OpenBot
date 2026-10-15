@@ -1,19 +1,27 @@
 /**
- * Local executor process. Started by the Host with an IPC channel; serves `tool.invoke` and `tool.cancel` for the
- * bound local target and exits when the Host goes away, stopping the commands it supervises.
+ * Local executor process. Started by the Host with an IPC channel; serves the executor protocol (Section 6.2) for the
+ * bound local target over the receipt ledger in `<data>/executor/receipts.sqlite`, and exits when the Host goes away,
+ * stopping the commands it supervises.
  */
-import { EXECUTOR_TOOLS, LocalExecutor } from "@openbot/local-executor";
+import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { EXECUTOR_TOOLS, LocalExecutor, ReceiptLedger } from "@openbot/local-executor";
 import { type ExecutorMessage, type ExecutorRequest, PROTOCOL_VERSION } from "@openbot/protocol";
 
 const targetId = process.env.OPENBOT_TARGET_ID;
 const workspace = process.env.OPENBOT_WORKSPACE;
-if (targetId === undefined || workspace === undefined || process.send === undefined) {
+const dataDirectory = process.env.OPENBOT_DATA_DIR;
+if (targetId === undefined || workspace === undefined || dataDirectory === undefined || process.send === undefined) {
 	console.error("The local executor must be started by the Host Runtime");
 	process.exit(2);
 }
 
-const executor = new LocalExecutor({ targetId, workspace });
-const running = new Set<string>();
+const ledgerDirectory = join(dataDirectory, "executor");
+mkdirSync(ledgerDirectory, { recursive: true, mode: 0o700 });
+// Opening converts receipts a previous executor left `accepted` to `unknown` and kills their orphaned process groups.
+const ledger = ReceiptLedger.open(join(ledgerDirectory, "receipts.sqlite"));
+const executor = new LocalExecutor({ targetId, workspace, ledger });
 const send = (message: ExecutorMessage): void => {
 	if (process.connected) process.send?.(message);
 };
@@ -22,27 +30,45 @@ process.on("message", (message: ExecutorRequest) => {
 	switch (message.kind) {
 		case "tool.invoke": {
 			const { invocationId } = message.invocation;
-			running.add(invocationId);
 			void executor
 				.invoke(message.invocation, (output) => send({ kind: "tool.progress", invocationId, output }))
-				.then((outcome) => {
-					running.delete(invocationId);
-					send({ kind: "tool.result", invocationId, outcome });
-					// Demo: the Host records results in Pi's transcript; a persistent receipt ledger is backlog work.
-					executor.forget(invocationId);
-				});
+				.catch((error: unknown) => ({
+					status: "unknown" as const,
+					output: `The executor could not record this action's result: ${error instanceof Error ? error.message : String(error)}`,
+				}))
+				.then((outcome) => send({ kind: "tool.result", invocationId, outcome }));
 			return;
 		}
 		case "tool.cancel":
 			executor.cancel(message.invocationId);
+			return;
+		case "tool.status": {
+			const receipt = ledger.get(message.invocationId);
+			send({
+				kind: "tool.status",
+				invocationId: message.invocationId,
+				status: receipt?.status ?? "absent",
+				...(receipt?.outcome === undefined ? {} : { outcome: receipt.outcome }),
+			});
+			return;
+		}
+		case "result.ack":
+			executor.ack(message.invocationId);
 	}
 });
 
-// Losing the Host means nobody can receive results: stop supervised commands, then exit.
-process.on("disconnect", () => {
-	for (const invocationId of running) executor.cancel(invocationId);
+// Losing the Host means nobody can receive results: stop supervised commands, record their outcomes, then exit.
+let stopping = false;
+const shutdown = (): void => {
+	if (stopping) return;
+	stopping = true;
 	setTimeout(() => process.exit(0), 3_500).unref();
-	if (running.size === 0) process.exit(0);
-});
+	void executor.cancelAll().finally(() => {
+		ledger.close();
+		process.exit(0);
+	});
+};
+process.on("disconnect", shutdown);
+process.on("SIGTERM", shutdown);
 
-send({ kind: "executor.hello", protocolVersion: PROTOCOL_VERSION, targetId, tools: EXECUTOR_TOOLS });
+send({ kind: "executor.hello", protocolVersion: PROTOCOL_VERSION, targetId, instanceId: randomUUID(), tools: EXECUTOR_TOOLS });

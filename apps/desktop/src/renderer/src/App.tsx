@@ -379,10 +379,19 @@ function ToolCard({ item, approval }: { readonly item: Extract<TranscriptItem, {
 	const [running, done] = TOOL_VERBS[item.tool] ?? [item.tool, item.tool];
 	const subject = String(args.description ?? args.path ?? args.url ?? args.command ?? args.query ?? args.section ?? "");
 	const waiting = approval !== undefined;
-	const label = waiting ? "Waiting for approval" : item.status === "running" || item.status === "pending" ? running : item.status === "failed" ? `${done} · failed` : done;
+	const label = waiting
+		? "Waiting for approval"
+		: item.status === "running" || item.status === "pending"
+			? running
+			: item.status === "failed"
+				? `${done} · failed`
+				: item.status === "interrupted"
+					? "Interrupted"
+					: done;
+	const open = waiting || item.status === "failed" || item.status === "interrupted";
 	return (
 		<li className={`tool-card tool-${waiting ? "waiting" : item.status}`}>
-			<details open={waiting || item.status === "failed"}>
+			<details open={open}>
 				<summary>
 					<span className="tool-status" aria-hidden />
 					<span className="tool-verb">{label}</span>

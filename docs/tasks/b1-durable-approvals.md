@@ -1,6 +1,6 @@
 # B1: Durable Approvals and Executor Receipts
 
-Status: ready
+Status: in review
 Branch: task/b1-durable-approvals
 Depends on: none
 Architecture: Sections 5.1 (replay policy), 5.3 (approvals), 6.2 (executor protocol), 7.1, 8.2
@@ -33,6 +33,8 @@ Out:
 - `invocationId = <conversationId>:<callId>` (already used by Tool Router).
 
 The safety argument is therefore: **the approval decides whether dispatch may happen; the receipt ledger decides whether it already happened.** Both are durable, both are keyed by the same stable ID, and neither is recomputed on rerun.
+
+Evidence, checked in the vendored Pi: `ToolTask`'s `call` phase commits the checkpoint `{ phase: "execute", arguments, replay }` before it runs the tool; on recovery the `execute` phase calls `run()` again with the stored arguments only when both the stored and the current registration say `replay: "safe"`, and `run()` passes the same `call.id` as `api.callId`. Otherwise it settles the call with an `interrupted` diagnostic. `Harness.close()` signals and joins running tasks but writes no task outcome, so a clean quit leaves the call in `execute` for the next start. No difference from the description above.
 
 ```mermaid
 sequenceDiagram
@@ -119,6 +121,19 @@ No explicit `tool.status` sweep is needed for the local executor because the rer
 ### Unknown outcomes
 
 An `unknown` outcome returns to the model as an error result with a fixed text: "This action was interrupted and may have partly run. Check its effect before doing anything else." The Bot's activity becomes `needs_attention` until the user sends a new message. The transcript tool row shows status **Interrupted**.
+
+### As built
+
+Additions to the contracts below, all additive:
+- `ToolCallStatus` gains `"interrupted"`. Agent-runtime derives it from the result's `details.status === "unknown"` (set by the routed tool) or a Pi `interrupted` diagnostic.
+- `ApprovalRecord` also stores `decision`, so a `consumed` record still answers a rerun with the decision it consumed.
+- `ApprovalStore` gains `prune(before)`: it deletes non-pending records older than 7 days when the Host starts.
+- `ApprovalBook` gains `start(store)` (prune, load pending), `close()`, and `settled(botId, callId)` (marks `consumed`). `decide` now returns `Promise<boolean>` because it commits before it wakes the waiter. `request` and `forBot` are unchanged.
+- `HostService` takes an optional `toolSettled(botId, callId)`, called once per tool item the first time the conversation view shows it settled (also for results already present at start). The Host wires it to `result.ack` and `ApprovalBook.settled`. `BotRuntime.conversationKey(botId)` gives the conversation ID that the invocation IDs use.
+- The recovery gate is `executor.start()` (the ledger opens, `accepted` becomes `unknown`, orphans are killed), then `service.start()`, then `runtime.resume()`.
+- `LocalExecutor` takes a `ledger`, and `forget` is replaced by `ack`. `cancelAll()` stops every running command on disconnect or SIGTERM and records its outcome before exit.
+- Orphan guard: when the recorded leader no longer exists but its group still does, the group is killed too. A PID is not reused while a process group with that ID exists, so the group is still ours.
+- The architecture's `tool.ack` (durable acceptance) is not a separate message: the local executor answers a repeated `tool.invoke` with `tool.result` carrying the recorded outcome.
 
 ## Contracts
 

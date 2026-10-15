@@ -47,8 +47,14 @@ export type HostServiceOptions = {
 	readonly status: HostStatus;
 	readonly dataDirectory: string;
 	readonly modelConfig: ModelConfigFile;
-	/** Pending approvals; the Host passes the same book to Tool Router. */
+	/** Pending approvals; the Host passes the same book to Tool Router. `start()` attaches it to the runtime's store. */
 	readonly approvals: ApprovalBook;
+	/**
+	 * Runs once per tool call when the conversation first shows its result, that is after Pi committed it. The Host
+	 * acknowledges the executor receipt and consumes the call's approval here. Also runs for results already present
+	 * when observation starts.
+	 */
+	readonly toolSettled?: (botId: BotId, callId: string) => void;
 	/** The shared folder every Bot may use without asking. */
 	readonly workspace: string;
 	readonly emit: EventSink;
@@ -64,6 +70,7 @@ export class HostService {
 	readonly #dataDirectory: string;
 	readonly #modelConfig: ModelConfigFile;
 	readonly #approvals: ApprovalBook;
+	readonly #toolSettled: (botId: BotId, callId: string) => void;
 	readonly #workspace: string;
 	readonly #emit: EventSink;
 	readonly #now: () => number;
@@ -79,6 +86,7 @@ export class HostService {
 		this.#dataDirectory = options.dataDirectory;
 		this.#modelConfig = options.modelConfig;
 		this.#approvals = options.approvals;
+		this.#toolSettled = options.toolSettled ?? (() => {});
 		this.#workspace = options.workspace;
 		this.#emit = options.emit;
 		this.#now = options.now ?? Date.now;
@@ -127,7 +135,7 @@ export class HostService {
 				return null;
 			},
 			"approvals.decide": async ({ approvalId, decision }) => {
-				if (!this.#approvals.decide(approvalId, decision)) {
+				if (!(await this.#approvals.decide(approvalId, decision))) {
 					throw new ProtocolError("not_found", "This request was already answered or its task ended");
 				}
 				return null;
@@ -159,13 +167,19 @@ export class HostService {
 		};
 	}
 
-	/** Load the model configuration and attach observers to every existing Bot. Call once after the runtime opened. */
+	/**
+	 * Load the model configuration and pending approvals, then attach observers to every existing Bot. Call once
+	 * after the runtime opened and before it resumes, so approvals from before a restart show before Pi reruns.
+	 */
 	async start(): Promise<void> {
 		await this.#reloadModelConfig();
+		await this.#approvals.start(this.#runtime.approvals());
 		for (const bot of await this.#runtime.listBots()) await this.#observe(bot.botId);
 	}
 
+	/** Call before the runtime closes: the shutdown aborts waiting calls, and their approvals must stay pending. */
 	async stop(): Promise<void> {
+		this.#approvals.close();
 		for (const observer of this.#observers.values()) observer.stop();
 		this.#observers.clear();
 	}
@@ -225,7 +239,7 @@ export class HostService {
 	/** Republish a Bot's conversation after its pending approvals changed. Wire to the `ApprovalBook` callback. */
 	approvalsChanged(botId: BotId): void {
 		const state = this.#observers.get(botId);
-		if (state?.last !== undefined) this.#publish(state, state.last);
+		if (state?.last !== undefined) this.#publish(botId, state, state.last);
 	}
 
 	#withApprovals(snapshot: ConversationSnapshot): ConversationSnapshot {
@@ -235,28 +249,41 @@ export class HostService {
 		return { ...snapshot, approvals, ...(live === undefined ? {} : { live }) };
 	}
 
-	#publish(state: ObserverState, snapshot: ConversationSnapshot): void {
+	#publish(botId: BotId, state: ObserverState, snapshot: ConversationSnapshot): void {
 		state.last = snapshot;
 		const view = this.#withApprovals(snapshot);
 		const before = state.activity;
 		state.activity = nextActivity(state, view);
 		if (state.activity !== before) this.#emit({ type: "bots.changed", payload: {} });
 		this.#emit({ type: "conversation.updated", payload: view });
+		for (const item of snapshot.items) {
+			if (item.kind !== "tool" || item.status === "pending" || item.status === "running" || state.settled.has(item.id)) continue;
+			state.settled.add(item.id);
+			this.#toolSettled(botId, item.id);
+		}
 	}
 
 	async #observe(botId: BotId): Promise<void> {
 		if (this.#observers.has(botId)) return;
-		const state: ObserverState = { stop: () => {}, activity: "idle", answered: -1 };
+		const state: ObserverState = { stop: () => {}, activity: "idle", answered: -1, settled: new Set() };
 		this.#observers.set(botId, state);
-		state.stop = await this.#runtime.observe(botId, (snapshot) => this.#publish(state, snapshot));
+		state.stop = await this.#runtime.observe(botId, (snapshot) => this.#publish(botId, state, snapshot));
 	}
 }
 
-type ObserverState = { stop: () => void; activity: BotActivity; answered: number; last?: ConversationSnapshot };
+type ObserverState = {
+	stop: () => void;
+	activity: BotActivity;
+	answered: number;
+	/** Tool calls whose result this observer has seen, so `toolSettled` runs once per call. */
+	readonly settled: Set<string>;
+	last?: ConversationSnapshot;
+};
 
 /**
- * Sidebar state from a conversation snapshot: needs attention while an approval waits, working while a Run is live,
- * unread once a new answer arrives after observation started; otherwise unchanged until the user reads it.
+ * Sidebar state from a conversation snapshot: needs attention while an approval waits or after an interrupted call
+ * (until the user writes again), working while a Run is live, unread once a new answer arrives after observation
+ * started; otherwise unchanged until the user reads it.
  */
 function nextActivity(state: { activity: BotActivity; answered: number }, snapshot: ConversationSnapshot): BotActivity {
 	const answered = snapshot.items.filter((item) => item.kind === "assistant").length;
@@ -264,6 +291,8 @@ function nextActivity(state: { activity: BotActivity; answered: number }, snapsh
 	const grew = !first && answered > state.answered;
 	state.answered = answered;
 	if (snapshot.approvals.length > 0) return "needs_attention";
+	const sinceUser = snapshot.items.slice(snapshot.items.findLastIndex((item) => item.kind === "user") + 1);
+	if (sinceUser.some((item) => item.kind === "tool" && item.status === "interrupted")) return "needs_attention";
 	if (snapshot.live !== undefined) return "working";
 	if (grew) return "unread";
 	return state.activity === "working" || state.activity === "needs_attention" ? "idle" : state.activity;

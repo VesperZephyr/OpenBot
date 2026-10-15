@@ -611,7 +611,8 @@ code {
 	background: var(--signal);
 	animation: pulse 1.2s ease-in-out infinite;
 }
-.tool-failed .tool-status {
+.tool-failed .tool-status,
+.tool-interrupted .tool-status {
 	background: var(--attention);
 }
 .tool-waiting .tool-status {

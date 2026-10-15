@@ -16,7 +16,12 @@ const KEEP_VARIABLES = new Set(["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMP
 
 export type CommandArgs = { command: string; cwd: string; timeout_seconds?: number };
 
-export type RunningCommand = { readonly outcome: Promise<ToolOutcome>; cancel(): void };
+export type RunningCommand = {
+	/** Process ID of the shell, which leads the command's process group; undefined when it could not start. */
+	readonly pid: number | undefined;
+	readonly outcome: Promise<ToolOutcome>;
+	cancel(): void;
+};
 
 /** The environment commands run with: the executor's own, minus anything that looks like a credential. */
 export function commandEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -98,5 +103,5 @@ export function runCommand(args: CommandArgs, onOutput: (chunk: string) => void)
 			}
 		});
 	});
-	return { outcome, cancel: () => stop("cancelled") };
+	return { pid: child.pid, outcome, cancel: () => stop("cancelled") };
 }
