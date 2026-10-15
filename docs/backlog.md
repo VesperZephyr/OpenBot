@@ -47,7 +47,7 @@ B1, B2, B4, and B6 can start in parallel. B8 is last because it packages everyth
 The MVP is done when all of these pass on a packaged build installed on a Mac that never ran the development setup:
 
 1. First launch walks through choosing a model and creating a first Bot; the API key lands in the Keychain.
-2. A Bot finds code across a repository in the workspace, edits it, runs its tests in the background, and reports the result, asking before the commands.
+2. A Bot searches a repository in the workspace with `rg` or `grep` (no approval card), edits code, runs its tests in the background after **Allow once**, and reports the result.
 3. A Bot researches a question with `web_search` and `web_fetch`, cites the pages it opened, and saves a report in the workspace.
 4. **Always allow** on a command card stops later identical commands from asking; the rule is visible and deletable in Settings.
 5. Telling a Bot a preference ("always answer in Chinese") persists in its memory and applies in a new topic after restart.
