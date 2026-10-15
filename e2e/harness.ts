@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 /**
  * Shared launcher for end-to-end suites. Each suite gets its own state directory under e2e/.run/<name>/ (data,
  * workspace, models.json, screenshots), a scripted model, and the real Electron app, Host, and executor.
