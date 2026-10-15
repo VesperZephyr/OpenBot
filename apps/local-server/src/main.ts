@@ -65,6 +65,7 @@ const executor = new ExecutorProcess({
 	entry: process.env.OPENBOT_EXECUTOR_ENTRY ?? resolve(dirname(fileURLToPath(import.meta.url)), "../../local-executor/src/main.ts"),
 	targetId: target.targetId,
 	workspace,
+	dataDirectory,
 	env: process.env,
 });
 
@@ -103,12 +104,21 @@ const service = new HostService({
 	workspace,
 	emit: (event) =>
 		send({ ...event, protocolVersion: PROTOCOL_VERSION, kind: "event", streamId, seq: ++seq }),
+	// Pi committed the call's result: the executor may prune its receipt, and the call's approval is used up.
+	toolSettled: (botId, callId) => {
+		void (async () => {
+			executor.ack(`${await runtime.conversationKey(botId)}:${callId}`);
+			await approvals.settled(botId, callId);
+		})().catch((error: unknown) => console.error("Could not settle a tool call", error));
+	},
 });
 approvalListeners.changed = (botId) => service.approvalsChanged(botId);
 
+// Recovery gate (Section 5.1): before anything schedules, storage is open, pending approvals are loaded, observers
+// are attached, and the executor has opened its ledger, turning invocations left unfinished into `unknown`. Pi then
+// reruns interrupted calls with their stable call IDs; each finds its approval and its receipt.
+await executor.start();
 await service.start();
-// Recovery gate: nothing schedules before storage is open and observers are attached. Executor receipt
-// reconciliation joins this gate with the persistent ledger (technical plan backlog).
 runtime.resume();
 
 process.on("message", async (message: unknown) => {

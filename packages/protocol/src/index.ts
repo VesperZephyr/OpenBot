@@ -64,7 +64,8 @@ export type BotSummary = BotProfile & { readonly activity: BotActivity };
 
 export type MessagePart = { readonly type: "text"; readonly text: string };
 
-export type ToolCallStatus = "pending" | "running" | "succeeded" | "failed";
+/** `interrupted`: the call may have partly run and its effect is unknown (Section 5.1); the user should check it. */
+export type ToolCallStatus = "pending" | "running" | "succeeded" | "failed" | "interrupted";
 
 export type TranscriptItem =
 	| { readonly kind: "user"; readonly id: string; readonly parts: readonly MessagePart[] }
@@ -130,6 +131,19 @@ export type PendingApproval = {
 };
 
 export type ApprovalDecision = "allow_once" | "deny";
+
+/**
+ * Lifecycle of an approval in the Host's store (Section 5.3): `pending` until the user decides, `allowed` or `denied`
+ * until the call's result is committed (`consumed`), or `withdrawn` when its Run was cancelled first.
+ */
+export type ApprovalState = "pending" | "allowed" | "denied" | "withdrawn" | "consumed";
+
+export type ApprovalRecord = PendingApproval & {
+	readonly state: ApprovalState;
+	/** The user's answer; kept when the record becomes `consumed`, so a rerun gets the same answer. */
+	readonly decision?: ApprovalDecision;
+	readonly decidedAt?: number;
+};
 
 export type ProviderSummary = {
 	readonly providerId: string;
@@ -351,7 +365,11 @@ export type ToolOutcome = {
 /** Host to executor. */
 export type ExecutorRequest =
 	| { readonly kind: "tool.invoke"; readonly invocation: ToolInvocation }
-	| { readonly kind: "tool.cancel"; readonly invocationId: string };
+	| { readonly kind: "tool.cancel"; readonly invocationId: string }
+	/** Read-only receipt lookup; the executor answers with `tool.status`. */
+	| { readonly kind: "tool.status"; readonly invocationId: string }
+	/** The Host committed the outcome; the receipt may be pruned after the retention period. */
+	| { readonly kind: "result.ack"; readonly invocationId: string };
 
 /** Executor to Host. */
 export type ExecutorMessage =
@@ -359,10 +377,18 @@ export type ExecutorMessage =
 			readonly kind: "executor.hello";
 			readonly protocolVersion: typeof PROTOCOL_VERSION;
 			readonly targetId: string;
+			/** New for every executor process, so the Host can tell a restarted executor apart. */
+			readonly instanceId: string;
 			readonly tools: readonly ExecutorToolName[];
 	  }
 	| { readonly kind: "tool.progress"; readonly invocationId: string; readonly output: string }
-	| { readonly kind: "tool.result"; readonly invocationId: string; readonly outcome: ToolOutcome };
+	| { readonly kind: "tool.result"; readonly invocationId: string; readonly outcome: ToolOutcome }
+	| {
+			readonly kind: "tool.status";
+			readonly invocationId: string;
+			readonly status: InvocationStatus | "accepted" | "absent";
+			readonly outcome?: ToolOutcome;
+	  };
 
 // ---------------------------------------------------------------------------
 // Tool catalog: what the model is offered. Schemas are plain JSON Schema so that this package stays dependency-free.

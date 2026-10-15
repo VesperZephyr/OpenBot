@@ -36,12 +36,14 @@ import {
 	type TranscriptItem,
 } from "@openbot/protocol";
 
+import { type ApprovalStore, approvalStore } from "./approvals.ts";
 import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
 
 const TOOLS_EXTENSION = "openbot.tools";
 
 /** Credential contract the Host implements over the Keychain; re-exported so the Host never imports Pi. */
 export type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
+export type { ApprovalStore } from "./approvals.ts";
 export type { ConfigEnvironment, ConfiguredProviderStatus, ModelConfigStatus } from "./model-config.ts";
 export { SUPPORTED_MODEL_APIS } from "./model-config.ts";
 
@@ -168,6 +170,19 @@ export class BotRuntime {
 
 	async close(): Promise<void> {
 		await this.#harness.close(this.#context);
+	}
+
+	/** The durable approval records; Host code (the approval book) is their only writer. */
+	approvals(): ApprovalStore {
+		return approvalStore(this.#harness, this.#context);
+	}
+
+	/**
+	 * The conversation ID routed tool calls of this Bot carry (`ToolInvoker` `conversationId`), from which the Tool
+	 * Router derives approval and invocation IDs.
+	 */
+	async conversationKey(botId: BotId): Promise<string> {
+		return String((await this.#requireRecord(botId)).conversationId);
 	}
 
 	async listBots(): Promise<BotProfile[]> {
@@ -403,6 +418,10 @@ function toolCallsOf(entry: EntryRecord): ToolCall[] {
 
 type MutableToolItem = { kind: "tool"; id: string; tool: string; args: unknown; status: ToolCallStatus; output?: string };
 
+/** What the model receives for an `unknown` outcome, instead of the executor's text (Section 5.1). */
+export const UNKNOWN_OUTCOME_TEXT =
+	"This action was interrupted and may have partly run. Check its effect before doing anything else.";
+
 /**
  * Transcript items in order. A tool call becomes a `tool` item right after the assistant text that made it; its
  * `pi.tool-result` entry completes that item instead of adding one.
@@ -438,7 +457,12 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 				if (message?.role !== "toolResult") break;
 				const item = tools.get(message.toolCallId);
 				if (item === undefined) break;
-				item.status = message.isError ? "failed" : "succeeded";
+				// Interrupted: the executor reported `unknown`, or Pi itself settled the call as interrupted by a restart.
+				const diagnostics = (entry.data as { diagnostics?: readonly { code?: string }[] } | undefined)?.diagnostics ?? [];
+				const unknown =
+					(message.details as { status?: string } | undefined)?.status === "unknown" ||
+					diagnostics.some((diagnostic) => diagnostic.code === "interrupted");
+				item.status = unknown ? "interrupted" : message.isError ? "failed" : "succeeded";
 				item.output = partsOf(message.content).map((part) => part.text).join("\n");
 				break;
 			}
@@ -472,7 +496,7 @@ function projectView(botId: BotId, view: ConversationView): ConversationSnapshot
 		const item = items.find((entry): entry is MutableToolItem => entry.kind === "tool" && entry.id === slot.callId) as
 			| MutableToolItem
 			| undefined;
-		if (item === undefined || item.status === "succeeded" || item.status === "failed") continue;
+		if (item === undefined || item.status === "succeeded" || item.status === "failed" || item.status === "interrupted") continue;
 		item.status = slot.status === "running" ? "running" : "pending";
 		if (slot.output !== undefined && slot.output !== "") item.output = slot.output;
 	}
@@ -501,10 +525,12 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 				signal,
 				onProgress: (output) => api.output(output),
 			});
-			const failed = outcome.status !== "succeeded";
+			// An `unknown` outcome may have had an effect: the model must check it instead of retrying (Section 5.1).
+			const text = outcome.status === "unknown" ? UNKNOWN_OUTCOME_TEXT : outcome.output === "" ? "(no output)" : outcome.output;
 			return {
-				output: [{ type: "text", text: outcome.output === "" ? "(no output)" : outcome.output }],
-				isError: failed,
+				output: [{ type: "text", text }],
+				isError: outcome.status !== "succeeded",
+				details: { status: outcome.status },
 			};
 		},
 	});

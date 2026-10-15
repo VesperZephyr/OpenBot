@@ -3,13 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolInvocation } from "@openbot/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { LocalExecutor } from "../src/index.ts";
+import { LocalExecutor, ReceiptLedger } from "../src/index.ts";
 
 describe("LocalExecutor", () => {
 	let root: string;
 	let workspace: string;
 	let outside: string;
 	let executor: LocalExecutor;
+	let ledger: ReceiptLedger;
 	let next = 0;
 
 	const invocation = (tool: ToolInvocation["tool"], args: Record<string, unknown>, overrides: Partial<ToolInvocation> = {}): ToolInvocation => ({
@@ -33,10 +34,12 @@ describe("LocalExecutor", () => {
 		await mkdir(workspace);
 		await mkdir(outside);
 		await writeFile(join(outside, "secret.txt"), "secret");
-		executor = new LocalExecutor({ targetId: "mac", workspace });
+		ledger = ReceiptLedger.open(join(root, "receipts.sqlite"));
+		executor = new LocalExecutor({ targetId: "mac", workspace, ledger });
 	});
 
 	afterEach(async () => {
+		ledger.close();
 		await rm(root, { recursive: true, force: true });
 	});
 
