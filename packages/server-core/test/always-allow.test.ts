@@ -28,7 +28,12 @@ describe("Always allow and grants", () => {
 			secrets: new MemorySecretStore(),
 			status: { protocolVersion: PROTOCOL_VERSION, hostVersion: "test", nodeVersion: "test", targetId: "mac", startedAt: 0 },
 			dataDirectory: root,
-			modelConfig: { path: join(root, "models.json"), read: async () => undefined, environment: { env: () => undefined, run: async () => "" } },
+			modelConfig: {
+				path: join(root, "models.json"),
+				read: async () => undefined,
+				write: async () => {},
+				environment: { env: () => undefined, run: async () => "" },
+			},
 			approvals: book,
 			workspace,
 			emit: () => {},

@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { app, BrowserWindow, Menu, nativeImage, powerMonitor, session, shell, Tray } from "electron";
 import { CHANNELS, type HostState } from "../shared/api";
 import { APP_ENTRY_URL, registerAppScheme, serveAppScheme } from "./app-protocol";
+import { AttentionWatcher } from "./attention-watcher";
 import { RotatingLog } from "./host-log";
 import { HostProcess } from "./host";
 import { registerIpc } from "./ipc";
@@ -68,8 +69,24 @@ const host = new HostProcess({
 		...(process.env.OPENBOT_EXEC_YIELD_MS === undefined ? {} : { OPENBOT_EXEC_YIELD_MS: process.env.OPENBOT_EXEC_YIELD_MS }),
 	},
 	onOutput: (chunk) => hostLog.write(chunk),
-	onEvent: (event) => window?.webContents.send(CHANNELS.event, event),
-	onState: (state: HostState) => window?.webContents.send(CHANNELS.hostState, state),
+	// Both callbacks first fire after `host.start()` below, when `attentionWatcher` exists.
+	onEvent: (event) => {
+		attentionWatcher.onEvent(event);
+		window?.webContents.send(CHANNELS.event, event);
+	},
+	onState: (state: HostState) => {
+		attentionWatcher.onHostState(state);
+		window?.webContents.send(CHANNELS.hostState, state);
+	},
+});
+
+const attentionWatcher = new AttentionWatcher({
+	host,
+	focused: () => BrowserWindow.getFocusedWindow() !== null,
+	openBot: (botId) => {
+		showWindow();
+		window?.webContents.send(CHANNELS.openBot, botId);
+	},
 });
 
 function createWindow(): BrowserWindow {
@@ -138,6 +155,7 @@ app.on("before-quit", (event) => {
 	if (quitting) return;
 	quitting = true;
 	event.preventDefault();
+	attentionWatcher.stop();
 	void host.stop().finally(() => app.quit());
 });
 

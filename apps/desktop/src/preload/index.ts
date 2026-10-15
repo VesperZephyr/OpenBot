@@ -23,6 +23,9 @@ const api: OpenBotApi = {
 	onHostState: (listener) => subscribe<HostState>(CHANNELS.hostState, listener),
 	hostState: () => ipcRenderer.invoke(CHANNELS.getHostState),
 	pickFolder: () => ipcRenderer.invoke(CHANNELS.pickFolder),
+	copyText: (text) => ipcRenderer.invoke(CHANNELS.copyText, text),
+	revealPath: (path) => ipcRenderer.invoke(CHANNELS.revealPath, path),
+	onOpenBot: (listener) => subscribe<string>(CHANNELS.openBot, listener),
 };
 
 contextBridge.exposeInMainWorld("openbot", api);

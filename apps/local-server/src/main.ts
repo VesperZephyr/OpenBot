@@ -18,6 +18,7 @@ import {
 	ProtocolError,
 	type ResponseEnvelope,
 } from "@openbot/protocol";
+import { paramsError } from "@openbot/protocol/schemas";
 import { ApprovalBook, DEFAULT_MAX_ACTIVE_RUNS, HostService } from "@openbot/server-core";
 import { ExecutorProcess } from "./executor.ts";
 import { KeychainCredentials } from "./keychain.ts";
@@ -146,7 +147,8 @@ process.on("message", async (message: unknown) => {
 	try {
 		const { method } = message;
 		if (!isHostMethod(method)) throw new ProtocolError("unknown_method", `Unknown method: ${method}`);
-		// Params are validated per method by schema in M2; until then handlers check the fields they use.
+		const invalid = paramsError(method, message.params);
+		if (invalid !== undefined) throw new ProtocolError("invalid_request", invalid);
 		const result = await service.handle(method, message.params as HostParams<typeof method>);
 		response = { protocolVersion: PROTOCOL_VERSION, kind: "response", messageId: message.messageId, ok: true, result };
 	} catch (error) {

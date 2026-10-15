@@ -16,6 +16,8 @@ const keychainService = `ai.openbot.e2e.${createHash("sha256").update(repo).dige
 
 export type AppHarness = {
 	readonly model: ScriptedModel;
+	/** The scripted model's OpenAI-compatible base URL. */
+	readonly modelBaseUrl: string;
 	/** State root of this suite: data/, home/, workspace/, and screenshots. */
 	readonly run: string;
 	readonly dataDirectory: string;
@@ -33,6 +35,12 @@ export type AppHarness = {
 export type HarnessOptions = {
 	/** Extra environment for the app, for example `OPENBOT_MAX_ACTIVE_RUNS`. */
 	readonly env?: Readonly<Record<string, string>>;
+	/**
+	 * Write no `models.json`, so the app starts as on a fresh Mac and shows the setup screen; the scripted model is then
+	 * reachable at `modelBaseUrl` for the onboarding flow. By default the scripted provider is configured, which skips
+	 * onboarding.
+	 */
+	readonly firstLaunch?: boolean;
 };
 
 export async function launchApp(name: string, options: HarnessOptions = {}): Promise<AppHarness> {
@@ -44,12 +52,14 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 	await mkdir(workspace, { recursive: true });
 	const model = new ScriptedModel();
 	const baseUrl = await model.start();
-	await writeFile(
-		join(run, "home", "models.json"),
-		JSON.stringify({
-			providers: { scripted: { baseUrl, api: "openai-completions", apiKey: "test", models: [{ id: "scripted", name: "Scripted" }] } },
-		}),
-	);
+	if (options.firstLaunch !== true) {
+		await writeFile(
+			join(run, "home", "models.json"),
+			JSON.stringify({
+				providers: { scripted: { baseUrl, api: "openai-completions", apiKey: "test", models: [{ id: "scripted", name: "Scripted" }] } },
+			}),
+		);
+	}
 
 	let app: ElectronApplication | undefined;
 	let page: Page | undefined;
@@ -77,6 +87,7 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 	};
 	return {
 		model,
+		modelBaseUrl: baseUrl,
 		run,
 		dataDirectory,
 		workspace,

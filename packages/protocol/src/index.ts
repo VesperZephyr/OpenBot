@@ -1,6 +1,7 @@
 /**
  * Versioned OpenBot data contracts shared by Desktop, the Host Runtime, and executors.
- * This package contains types and pure helpers only: no Pi, Electron, or Node dependencies.
+ * This package contains types, parameter schemas, and pure helpers only: no Pi, Electron, or Node dependencies. Its one
+ * dependency is TypeBox, for the runtime schemas in `schemas.ts`.
  */
 
 export const PROTOCOL_VERSION = 1 as const;
@@ -44,6 +45,10 @@ export type RunId = string;
 
 export type ModelRef = { readonly provider: string; readonly modelId: string };
 
+/** Chat APIs a provider declared in the model configuration file may use. */
+export const MODEL_APIS = ["openai-completions", "openai-responses", "anthropic-messages"] as const;
+export type ModelApi = (typeof MODEL_APIS)[number];
+
 /** How much a reasoning model thinks before answering; Pi's levels this product offers. */
 export type ThinkingLevel = "off" | "low" | "medium" | "high";
 
@@ -58,7 +63,8 @@ export type BotProfile = {
 	/** Applies only to reasoning models; absent means Pi's default (off). */
 	readonly thinkingLevel?: ThinkingLevel;
 	readonly pinned: boolean;
-	readonly status: "active" | "hidden";
+	/** `deleted` Bots are hidden everywhere; their conversation stays on disk (Section 8.3). */
+	readonly status: "active" | "hidden" | "deleted";
 	readonly createdAt: number;
 };
 
@@ -68,7 +74,13 @@ export const MEMORY_LIMIT_BYTES = 8192;
 /** Sidebar state, in priority order: needs_attention > working > queued > unread > idle. */
 export type BotActivity = "needs_attention" | "working" | "queued" | "unread" | "idle";
 
-export type BotSummary = BotProfile & { readonly activity: BotActivity };
+export type BotSummary = BotProfile & {
+	readonly activity: BotActivity;
+	/** Tool calls of this Bot waiting for the user's decision. */
+	readonly pendingApprovals: number;
+	/** The Bot's newest Run since the Host started, including a finished one; drives notifications. */
+	readonly lastRun?: Pick<RunRecord, "runId" | "state" | "error">;
+};
 
 export type MessagePart = { readonly type: "text"; readonly text: string };
 
@@ -79,7 +91,7 @@ export type MessagePart = { readonly type: "text"; readonly text: string };
 export type ToolCallStatus = "pending" | "running" | "succeeded" | "failed" | "interrupted" | "cancelled";
 
 export type TranscriptItem =
-	| { readonly kind: "user"; readonly id: string; readonly parts: readonly MessagePart[] }
+	| { readonly kind: "user"; readonly id: string; readonly parts: readonly MessagePart[]; readonly at?: number }
 	| {
 			readonly kind: "assistant";
 			readonly id: string;
@@ -88,6 +100,8 @@ export type TranscriptItem =
 			readonly thinking?: string;
 			/** Set when the response ended without a normal stop, such as an error or abort. */
 			readonly error?: string;
+			/** When the response started, in epoch milliseconds. */
+			readonly at?: number;
 	  }
 	| {
 			/** One tool call: placed after the assistant text that made it, updated live until its result exists. */
@@ -291,7 +305,8 @@ export type HostMethods = {
 			readonly model?: ModelRef | null;
 			readonly thinkingLevel?: ThinkingLevel;
 			readonly pinned?: boolean;
-			readonly status?: BotProfile["status"];
+			/** `deleted` is reached only through `bots.delete`. */
+			readonly status?: Exclude<BotProfile["status"], "deleted">;
 		};
 		result: BotProfile;
 	};
@@ -332,6 +347,37 @@ export type HostMethods = {
 	 * opaque `selection` token instead (see `apps/desktop/src/shared/api.ts`) and never supplies a path.
 	 */
 	"grants.add": { params: { readonly path: string; readonly access: GrantAccess }; result: readonly FolderGrant[] };
+	/**
+	 * Declare an OpenAI- or Anthropic-compatible provider in the model configuration file, merged with the entries
+	 * already there; an entry with the same ID is replaced. Never carries a key: store it with `credentials.set` under
+	 * the same ID.
+	 */
+	"models.addProvider": {
+		params: {
+			readonly id: string;
+			readonly name: string;
+			readonly baseUrl: string;
+			readonly api: ModelApi;
+			readonly modelIds: readonly string[];
+		};
+		result: RedactedSettings;
+	};
+	/** Send one tiny real request to the model. A failing endpoint or key is reported in the result, not thrown. */
+	"models.test": { params: ModelRef; result: { readonly ok: boolean; readonly error?: string } };
+	/**
+	 * Choose the one Bot whose `conversation.updated` events Desktop receives; `null` receives none. Replaces the
+	 * previous choice. `bots.changed` is always sent.
+	 */
+	"conversations.subscribe": { params: { readonly botId: BotId | null }; result: null };
+	/** A new Bot with the same profile and memory, without history. Idempotent per `requestId`. */
+	"bots.duplicate": { params: { readonly botId: BotId; readonly requestId: string }; result: BotProfile };
+	/** Cancel the Bot's Run, then mark it `deleted`. Its conversation stays on disk. */
+	"bots.delete": { params: { readonly botId: BotId }; result: null };
+	/**
+	 * The canonical absolute path of an existing file or folder inside the workspace, else `null`. A relative path is
+	 * resolved against the workspace. Desktop main asks before it reveals a path in Finder.
+	 */
+	"files.resolveReveal": { params: { readonly path: string }; result: string | null };
 };
 
 export type HostMethod = keyof HostMethods;
@@ -362,6 +408,12 @@ export const HOST_METHODS = [
 	"grants.list",
 	"grants.revoke",
 	"grants.add",
+	"models.addProvider",
+	"models.test",
+	"conversations.subscribe",
+	"bots.duplicate",
+	"bots.delete",
+	"files.resolveReveal",
 ] as const satisfies readonly HostMethod[];
 
 export function isHostMethod(value: unknown): value is HostMethod {
@@ -436,10 +488,13 @@ export type ReadyEnvelope = {
 export type HostToDesktop = ResponseEnvelope | EventEnvelope | ReadyEnvelope;
 
 /**
- * Shape check for an incoming request. The method is only checked to be a string, so a request for an unknown
- * method still gets an `unknown_method` response instead of being dropped; check it with `isHostMethod`.
+ * Shape check for an incoming request envelope. The method is only checked to be a string and `params` only to be
+ * present, so a request for an unknown method or with malformed params still gets a response (`unknown_method`, or
+ * `invalid_request` from the method's schema in `schemas.ts`) instead of being dropped.
  */
-export function isRequestEnvelope(value: unknown): value is Omit<RequestEnvelope, "method"> & { readonly method: string } {
+export function isRequestEnvelope(
+	value: unknown,
+): value is Omit<RequestEnvelope, "method" | "params"> & { readonly method: string; readonly params: unknown } {
 	if (typeof value !== "object" || value === null) return false;
 	return (
 		"protocolVersion" in value &&
@@ -450,9 +505,7 @@ export function isRequestEnvelope(value: unknown): value is Omit<RequestEnvelope
 		typeof value.messageId === "string" &&
 		"method" in value &&
 		typeof value.method === "string" &&
-		"params" in value &&
-		typeof value.params === "object" &&
-		value.params !== null
+		"params" in value
 	);
 }
 

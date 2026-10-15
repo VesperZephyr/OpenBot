@@ -4,9 +4,10 @@
  * successful output is cached briefly so a key helper does not run on every model request.
  */
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { ModelConfigFile } from "@openbot/server-core";
 
 const COMMAND_TIMEOUT_MS = 10_000;
@@ -32,6 +33,18 @@ export function modelConfigFile(path: string, variables: Readonly<Record<string,
 			} catch (error) {
 				if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
 				throw new Error(`Cannot read ${path}: ${error instanceof Error ? error.message : String(error)}`);
+			}
+		},
+		async write(text) {
+			await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+			// Write beside the file and rename, so a crash never leaves a half-written configuration.
+			const temporary = `${path}.${randomUUID()}.tmp`;
+			try {
+				await writeFile(temporary, text, { mode: 0o600 });
+				await rename(temporary, path);
+			} catch (error) {
+				await rm(temporary, { force: true });
+				throw error;
 			}
 		},
 		environment: {

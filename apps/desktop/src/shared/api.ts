@@ -28,6 +28,11 @@ export const RENDERER_METHODS = [
 	"grants.list",
 	"grants.revoke",
 	"grants.add",
+	"models.addProvider",
+	"models.test",
+	"conversations.subscribe",
+	"bots.duplicate",
+	"bots.delete",
 ] as const satisfies readonly HostMethod[];
 
 export type RendererMethod = (typeof RENDERER_METHODS)[number];
@@ -54,6 +59,12 @@ export type OpenBotApi = {
 	readonly hostState: () => Promise<HostState>;
 	/** Open the native folder picker; null when the user cancels. */
 	readonly pickFolder: () => Promise<FolderSelection | null>;
+	/** Put text on the system clipboard (web clipboard access is denied by the session). */
+	readonly copyText: (text: string) => Promise<void>;
+	/** Show a workspace file in Finder; main asks the Host whether the path may be revealed. */
+	readonly revealPath: (path: string) => Promise<void>;
+	/** Main asks the renderer to open a Bot, for example after a notification was clicked. */
+	readonly onOpenBot: (listener: (botId: string) => void) => () => void;
 };
 
 /** IPC channel names between preload and main. */
@@ -63,6 +74,9 @@ export const CHANNELS = {
 	hostState: "openbot:host-state",
 	getHostState: "openbot:get-host-state",
 	pickFolder: "openbot:dialog.pickFolder",
+	copyText: "openbot:copy-text",
+	revealPath: "openbot:reveal-path",
+	openBot: "openbot:open-bot",
 } as const;
 
 /** Errors crossing the IPC boundary keep their protocol code in the message prefix, e.g. `[not_found] …`. */

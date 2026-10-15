@@ -17,6 +17,10 @@ import { Divider, RetryButton, retryTarget, Thinking } from "./TranscriptExtras"
 import { PendingMessages, StopButton, StoppedNote } from "./runs";
 import { AlwaysAllow } from "./AlwaysAllow";
 import { CommandSettings, FolderSettings } from "./PolicySettings";
+import { ConfirmDeleteBot, DeleteBotItem, DuplicateBotItem } from "./BotLifecycle";
+import { Onboarding } from "./Onboarding";
+import { transcriptRows } from "./steps";
+import { MessageTime, RevealButton, StepsRow } from "./TranscriptDetails";
 import {
 	api,
 	connect,
@@ -33,6 +37,7 @@ export function App() {
 	const host = useStore((state) => state.host);
 	const view = useStore((state) => state.view);
 	const notice = useStore((state) => state.notice);
+	const onboarding = useStore((state) => state.onboarding);
 	const [creating, setCreating] = useState(false);
 
 	useEffect(() => connect(), []);
@@ -60,16 +65,22 @@ export function App() {
 
 	return (
 		<div className="app">
-			<Sidebar onNew={() => setCreating(true)} />
+			{onboarding !== true && <Sidebar onNew={() => setCreating(true)} />}
 			<main className="main">
 				{host.status !== "ready" && (
 					<div className={`banner banner-${host.status}`}>
 						{host.status === "starting" ? "Starting OpenBot…" : `OpenBot stopped. ${host.detail ?? ""}`}
 					</div>
 				)}
-				{view.kind === "bot" && <Conversation botId={view.botId} />}
-				{view.kind === "settings" && <Settings />}
-				{view.kind === "home" && <Home onNew={() => setCreating(true)} />}
+				{onboarding === true ? (
+					<Onboarding />
+				) : (
+					<>
+						{view.kind === "bot" && <Conversation botId={view.botId} />}
+						{view.kind === "settings" && <Settings />}
+						{view.kind === "home" && <Home onNew={() => setCreating(true)} />}
+					</>
+				)}
 			</main>
 			{creating && <NewBotDialog onClose={() => setCreating(false)} />}
 			{notice !== undefined && (
@@ -307,15 +318,23 @@ function EmptyConversation({ bot }: { readonly bot: BotSummary }) {
 function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 	const approvals = new Map(snapshot.approvals.map((approval) => [approval.callId, approval]));
 	const retry = retryTarget(snapshot.items, snapshot.live !== undefined);
+	const item = (entry: TranscriptItem) =>
+		entry.kind === "tool" ? (
+			<ToolCard key={entry.id} item={entry} approval={approvals.get(entry.id)} />
+		) : entry.kind === "divider" ? (
+			<Divider key={entry.id} item={entry} />
+		) : (
+			<Message key={entry.id} item={entry} retry={retry?.id === entry.id ? { botId: snapshot.botId, text: retry.text } : undefined} />
+		);
 	return (
 		<ol className="messages">
-			{snapshot.items.map((item) =>
-				item.kind === "tool" ? (
-					<ToolCard key={item.id} item={item} approval={approvals.get(item.id)} />
-				) : item.kind === "divider" ? (
-					<Divider key={item.id} item={item} />
+			{transcriptRows(snapshot.items, new Set(approvals.keys())).map((row) =>
+				row.kind === "item" ? (
+					item(row.item)
 				) : (
-					<Message key={item.id} item={item} retry={retry?.id === item.id ? { botId: snapshot.botId, text: retry.text } : undefined} />
+					<StepsRow key={row.id} count={row.items.length}>
+						{row.items.map(item)}
+					</StepsRow>
 				),
 			)}
 			<PendingMessages snapshot={snapshot} />
@@ -344,6 +363,7 @@ function Message(props: {
 	if (item.kind === "stopped") return <StoppedNote />;
 	return (
 		<li className={`message message-${item.kind}`}>
+			<MessageTime at={item.at} />
 			{item.kind === "assistant" && item.thinking !== undefined && <Thinking text={item.thinking} />}
 			<MessageText parts={item.parts} markdown={item.kind === "assistant"} />
 			{item.kind === "assistant" && item.error !== undefined && (
@@ -411,6 +431,7 @@ function ToolCard({ item, approval }: { readonly item: Extract<TranscriptItem, {
 				</summary>
 				{item.tool === "local_exec" && typeof args.command === "string" && <pre className="tool-command">$ {args.command}</pre>}
 				{item.output !== undefined && item.output !== "" && <pre className="tool-output">{item.output}</pre>}
+				<RevealButton item={item} />
 			</details>
 			{approval !== undefined && <ApprovalCard approval={approval} />}
 		</li>
@@ -444,7 +465,8 @@ function ApprovalCard({ approval }: { readonly approval: PendingApproval }) {
 
 function BotMenu({ bot, onEdit }: { readonly bot: BotSummary; readonly onEdit: () => void }) {
 	const [open, setOpen] = useState(false);
-	const update = async (change: { pinned?: boolean; status?: BotSummary["status"] }): Promise<void> => {
+	const [deleting, setDeleting] = useState(false);
+	const update = async (change: { pinned?: boolean; status?: "active" | "hidden" }): Promise<void> => {
 		setOpen(false);
 		try {
 			await api["bots.update"]({ botId: bot.botId, ...change });
@@ -484,8 +506,11 @@ function BotMenu({ bot, onEdit }: { readonly bot: BotSummary; readonly onEdit: (
 					<button type="button" role="menuitem" onClick={() => void newTopic()}>
 						New topic
 					</button>
+					<DuplicateBotItem bot={bot} onDone={() => setOpen(false)} />
+					<DeleteBotItem onChoose={() => (setOpen(false), setDeleting(true))} />
 				</div>
 			)}
+			{deleting && <ConfirmDeleteBot bot={bot} onClose={() => setDeleting(false)} />}
 		</div>
 	);
 }
