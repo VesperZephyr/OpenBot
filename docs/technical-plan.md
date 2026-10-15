@@ -33,6 +33,7 @@ These are deliberate shortcuts or missing pieces in implemented code. Each one i
 | --- | --- | --- |
 | The e2e suites (`e2e/*.e2e.ts`) for B1–B7 are written and type-checked but were not run during Phase 1 implementation | `e2e/` | Owner's MVP acceptance run |
 | Revoking a grant or rule re-checks pending approvals but does not cancel commands already running (architecture 5.3 asks for cancellation) | `server-core` `PolicyService` | Backlog B12 |
+| Desktop starts the Host with a minimal environment (`PATH`, `HOME`, `USER`, `TMPDIR`): `$NAME` key references in `models.json` cannot resolve, and a Finder launch gives commands launchd's short `PATH` | `apps/desktop/src/main/index.ts` | Before the first release: resolve the login shell's `PATH` once at startup |
 | Artifact spill files have no per-file size cap; files older than 7 days are deleted at executor start | `local-executor` | Backlog B15 |
 | macOS notifications, dock badge, and power assertion are unit-tested as logic only | `apps/desktop/src/main` | Owner's packaged run |
 | The renderer ignores `seq` and resynchronizes only when the Host restarts; no event backpressure | `apps/desktop/src/renderer/src/store.ts` | Backlog B14 |
