@@ -71,7 +71,14 @@ const executor = new ExecutorProcess({
 // The approval book publishes through the service, which exists only after the runtime it needs is open.
 const approvalListeners: { changed?: (botId: string) => void } = {};
 const approvals = new ApprovalBook((botId) => approvalListeners.changed?.(botId));
-const router = createToolRouter({ target, workspace, approvals, executor });
+// The router is built before the runtime; memory edits reach it once tool calls flow, after it opened.
+const router = createToolRouter({
+	target,
+	workspace,
+	approvals,
+	executor,
+	editMemory: (botId, edit) => runtime.editMemory(botId, edit),
+});
 
 const runtime = await BotRuntime.open({
 	databasePath: join(dataDirectory, "openbot.sqlite"),

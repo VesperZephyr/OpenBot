@@ -70,7 +70,8 @@ export type Decision =
 /**
  * First-release policy: hard rules, then capability defaults (Section 5.3). File tools inside a granted folder run
  * without asking; outside every grant they ask, and an approval grants that one path for that one call. Commands
- * always ask. Fetching public pages is allowed; the handler refuses private addresses itself.
+ * always ask. Fetching public pages is allowed; the handler refuses private addresses itself. A Bot's own memory is
+ * Host state the user can see and edit, so updating it is allowed.
  */
 export function decide(
 	call: PolicyCall,
@@ -89,6 +90,7 @@ export function decide(
 			return { kind: "ask", reason: `${verb} a file outside the workspace` };
 		}
 		case "web":
+		case "memory":
 			return { kind: "allow" };
 	}
 }

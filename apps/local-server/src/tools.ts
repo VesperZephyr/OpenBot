@@ -6,7 +6,8 @@ import { realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
 import { type ExecutionTarget, TOOL_CATALOG } from "@openbot/protocol";
-import { type ApprovalBook, decide, webFetch } from "@openbot/server-core";
+import type { MemoryEdit } from "@openbot/agent-runtime";
+import { type ApprovalBook, decide, memoryUpdate, webFetch } from "@openbot/server-core";
 import { ToolRouter } from "@openbot/tool-router";
 import type { ExecutorProcess } from "./executor.ts";
 
@@ -15,6 +16,8 @@ export function createToolRouter(options: {
 	readonly workspace: string;
 	readonly approvals: ApprovalBook;
 	readonly executor: ExecutorProcess;
+	/** `BotRuntime.editMemory`; called only once tool calls flow, after the runtime opened. */
+	readonly editMemory: (botId: string, edit: MemoryEdit) => Promise<string>;
 }): ToolRouter {
 	const { workspace } = options;
 	const granted = (path: string): boolean => isWithin(canonical(absolute(path, workspace)), workspace);
@@ -22,7 +25,7 @@ export function createToolRouter(options: {
 		target: options.target,
 		approvals: options.approvals,
 		executor: options.executor,
-		hostTools: { web_fetch: webFetch },
+		hostTools: { web_fetch: webFetch, memory_update: memoryUpdate(options.editMemory) },
 		policy: {
 			decide: async (call, definition) => decide(call, definition, granted),
 			// An approved call outside the workspace may touch exactly the path the user saw on the card.

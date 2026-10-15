@@ -147,6 +147,12 @@ export class HostService {
 				await this.#secrets.deleteApiKey(providerId);
 				return this.#settings();
 			},
+			"bots.memory.get": async ({ botId }) => ({ content: await this.#runtime.memory(botId) }),
+			"bots.memory.update": async ({ botId, content }) => ({ content: await this.#runtime.setMemory(botId, content) }),
+			"conversations.reset": async ({ botId }) => {
+				await this.#runtime.reset(botId);
+				return null;
+			},
 		};
 	}
 
@@ -285,3 +291,4 @@ export const newRequestId = (): string => randomUUID();
 export type { HostMethods };
 export { ApprovalBook, decide, type Decision, type PolicyCall } from "./approvals.ts";
 export { webFetch } from "./web-fetch.ts";
+export { memoryUpdate } from "./memory-tool.ts";
