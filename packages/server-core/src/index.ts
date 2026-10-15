@@ -5,6 +5,7 @@
 import { randomUUID } from "node:crypto";
 import type { BotRuntime, ConfigEnvironment, ModelConfigStatus } from "@openbot/agent-runtime";
 import type { ApprovalBook } from "./approvals.ts";
+import { SEARCH_PROVIDER_PREFIX, TAVILY_PROVIDER_ID } from "./web-search.ts";
 import {
 	type BotActivity,
 	type BotId,
@@ -26,6 +27,8 @@ export interface SecretStore {
 	configuredProviders(): Promise<ReadonlySet<string>>;
 	setApiKey(providerId: string, apiKey: string): Promise<void>;
 	deleteApiKey(providerId: string): Promise<void>;
+	/** The stored key, for Host tools that call a keyed service (`search:tavily`). Never sent to renderers. */
+	getApiKey(providerId: string): Promise<string | undefined>;
 }
 
 export type EventSink = (event: HostEvent) => void;
@@ -136,7 +139,7 @@ export class HostService {
 			},
 			"models.list": async () => {
 				await this.#reloadModelConfig();
-				return this.#runtime.listChatModels();
+				return this.#runtime.listChatModels().filter((model) => !model.provider.startsWith(SEARCH_PROVIDER_PREFIX));
 			},
 			"credentials.set": async ({ providerId, apiKey }) => {
 				if (apiKey.trim() === "") throw new ProtocolError("invalid_request", "API key is empty");
@@ -180,7 +183,7 @@ export class HostService {
 		const defaultModel = await this.#runtime.defaultModel();
 		return {
 			...(defaultModel === undefined ? {} : { defaultModel }),
-			providers: this.#runtime.listProviders().map(({ providerId, name }) => {
+			providers: this.#runtime.listProviders().filter(({ providerId }) => !providerId.startsWith(SEARCH_PROVIDER_PREFIX)).map(({ providerId, name }) => {
 				const configured = fromConfig.get(providerId);
 				const keyStored = stored.has(providerId);
 				// An overlay without its own `apiKey` still needs a stored key: the Host clears provider variables.
@@ -196,6 +199,7 @@ export class HostService {
 			dataDirectory: this.#dataDirectory,
 			modelConfig: { path: this.#modelConfig.path, errors: this.#configStatus.errors },
 			workspace: this.#workspace,
+			webSearch: { provider: "tavily", configured: stored.has(TAVILY_PROVIDER_ID) },
 		};
 	}
 
@@ -275,7 +279,7 @@ export class MemorySecretStore implements SecretStore {
 		this.#keys.delete(providerId);
 	}
 
-	read(providerId: string): string | undefined {
+	async getApiKey(providerId: string): Promise<string | undefined> {
 		return this.#keys.get(providerId);
 	}
 }
@@ -284,4 +288,15 @@ export const newRequestId = (): string => randomUUID();
 
 export type { HostMethods };
 export { ApprovalBook, decide, type Decision, type PolicyCall } from "./approvals.ts";
-export { webFetch } from "./web-fetch.ts";
+export { createWebFetch, type RetrievalOutcome, type WebFetchOptions } from "./web-fetch.ts";
+export {
+	createWebSearch,
+	SEARCH_PROVIDER_PREFIX,
+	type SearchProvider,
+	type SearchResult,
+	TAVILY_PROVIDER_ID,
+	TavilySearch,
+	WEB_SEARCH_NOT_CONFIGURED,
+	type WebSearchOptions,
+	type WebToolHandler,
+} from "./web-search.ts";

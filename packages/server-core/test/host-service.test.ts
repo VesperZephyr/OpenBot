@@ -104,7 +104,16 @@ describe("HostService", () => {
 	it("never returns stored API keys in settings", async () => {
 		const settings = await service.handle("credentials.set", { providerId: "openai", apiKey: " sk-secret " });
 		expect(JSON.stringify(settings)).not.toContain("sk-secret");
-		expect(secrets.read("openai")).toBe("sk-secret");
+		expect(await secrets.getApiKey("openai")).toBe("sk-secret");
+	});
+
+	it("reports the search key as web search, never as a model provider", async () => {
+		expect((await service.handle("settings.get", {})).webSearch).toEqual({ provider: "tavily", configured: false });
+		const settings = await service.handle("credentials.set", { providerId: "search:tavily", apiKey: "tvly-secret" });
+		expect(settings.webSearch).toEqual({ provider: "tavily", configured: true });
+		expect(settings.providers.some((provider) => provider.providerId.startsWith("search:"))).toBe(false);
+		expect(JSON.stringify(settings)).not.toContain("tvly-secret");
+		expect((await service.handle("credentials.delete", { providerId: "search:tavily" })).webSearch.configured).toBe(false);
 	});
 
 	it("applies edits to the model configuration without a restart and reports problems by path", async () => {
