@@ -9,3 +9,4 @@ coverage/
 .env
 .env.*
 e2e/.run/
+apps/desktop/.cache/

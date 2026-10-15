@@ -14,7 +14,8 @@
 		"check": "pnpm run check:boundaries && pnpm run typecheck && pnpm run test",
 		"dev": "pnpm --filter @openbot/desktop run dev",
 		"e2e": "pnpm --filter @openbot/desktop run build && vitest run --config e2e/vitest.config.ts",
-		"dev:debug": "pnpm --filter @openbot/desktop exec electron-vite dev --remoteDebuggingPort 9339"
+		"dev:debug": "pnpm --filter @openbot/desktop exec electron-vite dev --remoteDebuggingPort 9339",
+		"package": "pnpm --filter @openbot/desktop run package"
 	},
 	"devDependencies": {
 		"@types/node": "22.19.19",
