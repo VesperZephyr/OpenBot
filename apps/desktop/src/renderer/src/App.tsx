@@ -428,10 +428,10 @@ function ToolCard({ item, approval }: { readonly item: Extract<TranscriptItem, {
 					<span className="tool-verb">{label}</span>
 					<span className="tool-subject">{subject}</span>
 					{item.tool === "local_exec" && item.taskId !== undefined && <span className="tool-task">background · {item.taskId}</span>}
+					<RevealButton item={item} />
 				</summary>
 				{item.tool === "local_exec" && typeof args.command === "string" && <pre className="tool-command">$ {args.command}</pre>}
 				{item.output !== undefined && item.output !== "" && <pre className="tool-output">{item.output}</pre>}
-				<RevealButton item={item} />
 			</details>
 			{approval !== undefined && <ApprovalCard approval={approval} />}
 		</li>

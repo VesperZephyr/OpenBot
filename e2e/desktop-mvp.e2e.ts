@@ -47,7 +47,7 @@ describe("Desktop MVP", () => {
 		h.model.script({ text: "Hello from Forge." });
 		await h.send("Hi");
 		// The suggested role's instructions reach the model.
-		expect(JSON.stringify(h.model.requests.at(-1)?.messages)).toContain("run the tests after every change");
+		await expect.poll(() => JSON.stringify(h.model.requests.at(-1)?.messages)).toContain("run the tests after every change");
 		expect(JSON.stringify(h.model.requests.at(-1)?.messages)).toContain("Forge");
 	});
 

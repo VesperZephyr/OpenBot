@@ -34,7 +34,7 @@ afterAll(async () => {
 
 describe("always allow", () => {
 	it("a read-only search in the workspace runs without a card", async () => {
-		h.model.script({ tool: "local_exec", args: { command: "rg needle .", description: "Search notes" } }, { text: "Found it." });
+		h.model.script({ tool: "local_exec", args: { command: "grep -rn needle .", description: "Search notes" } }, { text: "Found it." });
 		await h.send("Find the needle");
 		await h.page().locator(".tool-card.tool-succeeded", { hasText: "Search notes" }).waitFor();
 		await h.page().getByText("Found it.").waitFor();
@@ -46,7 +46,8 @@ describe("always allow", () => {
 		// git is not in the read-only default; turning it off as well proves the rule alone lets git status through.
 		await h.page().getByRole("button", { name: /^Settings/ }).click();
 		const commands = h.page().getByLabel("Commands", { exact: true });
-		await commands.getByRole("checkbox").uncheck();
+		// Controlled by the Host: the box changes once the policy update returns, which `uncheck()` does not wait for.
+		await commands.getByRole("checkbox").click();
 		await expect.poll(() => commands.getByRole("checkbox").isChecked()).toBe(false);
 		await openBot("Warden");
 

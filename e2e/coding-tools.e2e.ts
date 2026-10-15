@@ -41,7 +41,8 @@ describe("coding tools", () => {
 		expect(await row.locator(".tool-task").textContent()).toMatch(/task_[0-9a-f]+/);
 		await h.shot("01-backgrounded");
 
-		await h.page().locator(".tool-card.tool-succeeded", { hasText: "Checked task" }).waitFor({ timeout: 30_000 });
+		// Consecutive successful calls fold into "Ran N steps", so the task_output row may sit inside a closed group.
+		await h.page().locator(".tool-card.tool-succeeded", { hasText: "Checked task" }).waitFor({ state: "attached", timeout: 30_000 });
 		await h.page().getByText("The slow job finished.").waitFor();
 		const result = JSON.stringify(h.model.requests.at(-1)?.messages.at(-1));
 		expect(result).toContain("done");

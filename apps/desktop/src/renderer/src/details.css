@@ -139,9 +139,11 @@
 	opacity: 1;
 }
 
+/* Sits at the end of a tool row's summary line, so it shows while the row is collapsed. */
 .reveal {
-	margin-top: 6px;
-	padding: 2px 8px;
+	flex: none;
+	margin-left: auto;
+	padding: 0 8px;
 	font-size: 12px;
 }
 

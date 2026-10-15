@@ -43,7 +43,15 @@ export function RevealButton({ item }: { readonly item: Extract<TranscriptItem, 
 	const path = typeof args === "object" && args !== null && "path" in args && typeof args.path === "string" ? args.path : undefined;
 	if (path === undefined) return null;
 	return (
-		<button type="button" className="reveal" onClick={() => void window.openbot.revealPath(path).catch(report)}>
+		<button
+			type="button"
+			className="reveal"
+			onClick={(event) => {
+				// Inside the row's summary: revealing must not also open or close the row.
+				event.preventDefault();
+				void window.openbot.revealPath(path).catch(report);
+			}}
+		>
 			Reveal in Finder
 		</button>
 	);

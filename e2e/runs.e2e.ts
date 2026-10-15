@@ -75,7 +75,7 @@ describe("Runs", () => {
 	it("a message sent while working redirects the turn", async () => {
 		const page = h.page();
 		h.model.script(
-			{ tool: "local_exec", args: { command: "cat notes.txt", description: "Read notes" } },
+			{ tool: "local_exec", args: { command: "sort notes.txt", description: "Read notes" } },
 			{ text: "Switched to the other file." },
 		);
 		await h.send("Read notes.txt");

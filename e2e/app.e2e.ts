@@ -36,11 +36,11 @@ describe("OpenBot desktop", () => {
 
 	it("runs a command only after Allow once", async () => {
 		const page = h.page();
-		h.model.script({ tool: "local_exec", args: { command: "wc -c hello.md", description: "Count bytes" } }, { text: "It is 17 bytes." });
+		h.model.script({ tool: "local_exec", args: { command: "wc -c hello.md | tee size.txt", description: "Count bytes" } }, { text: "It is 17 bytes." });
 		await h.send("How big is it?");
 		const card = page.getByRole("group", { name: "Approval request" });
 		await card.waitFor();
-		await expect.poll(() => card.locator(".approval-args").textContent()).toContain("wc -c hello.md");
+		await expect.poll(() => card.locator(".approval-args").textContent()).toContain("wc -c hello.md | tee size.txt");
 		await expect.poll(() => page.locator(".bot-row").first().textContent()).toContain("Needs attention");
 		await h.shot("03-approval");
 
