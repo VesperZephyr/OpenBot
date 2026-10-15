@@ -13,16 +13,17 @@ Each section marks state explicitly: **Implemented** means code in the repositor
 | Component | State | Verified by |
 | --- | --- | --- |
 | Workspace, boundary check, Pi vendor (`third_party/pi`, baseline `b45e0ebcc`) | Implemented (M0) | `pnpm run check`; provenance in `.openbot-vendor.json`, `BASELINE.json`, `OPENBOT_CHANGES.md` |
-| `packages/protocol` | Implemented: Host methods (including `approvals.decide`), events, envelopes, `ExecutionTarget`, transcript `tool` items, `PendingApproval`, executor request/message envelopes, and the tool catalog (`TOOL_CATALOG`, plain JSON Schema) | `protocol/test/target.test.ts` |
-| `packages/agent-runtime` | Implemented: Bot index and settings as Pi documents, one ownerless Pi conversation per Bot, async and awaited submit with stable request IDs, abort, snapshot and observe projections, model and provider listing, `CredentialStore` re-export, scripted-model test seam, BYOK from `~/.openbot/models.json` with Pi semantics (new providers, built-in overlays, `modelOverrides`) in `model-config.ts` | `agent-runtime/test/bot-runtime.test.ts`, `model-config.test.ts` (value grammar, validation, catalog inheritance, overlays, Keychain-over-config precedence, requests to a local endpoint) |
-| `packages/server-core` | Implemented: `HostService` with handlers for every Host method, sidebar activity (`needs_attention`, `working`, `unread`, `idle`), `SecretStore` port, in-memory `ApprovalBook`, first-release policy (`decide`), `web_fetch` Host tool with private-address blocking | `server-core/test/host-service.test.ts` |
-| `packages/tool-router` | Implemented: policy and approval gate, per-conversation sequential gate, stable invocation and approval IDs from the Pi call ID, argument digest, dispatch to executor or Host tool | Real-model smoke through the Host (below) |
-| `packages/local-executor`, `apps/local-executor` | Implemented: separate process with handshake; grant re-check with symlink-safe canonical paths; `local_read` (line numbers, offset, device and binary refusal), `local_list`, atomic `local_write`, unique-match `local_edit`, `local_exec` (own process group, SIGTERM then SIGKILL, timeout, scrubbed environment, head-and-tail output); in-memory receipts dedupe repeated invocation IDs | `local-executor/test/executor.test.ts` (grant escape via `..` and symlink, foreign target, edit uniqueness, exactly-once repeat, exit status, group cancel, env scrub) |
-| `apps/local-server` | Implemented: data directory, exclusive `host.lock`, provider-key environment scrubbing, Keychain secret store, `models.json` loading, shared workspace (`~/OpenBot` or `OPENBOT_WORKSPACE`), executor process supervision, Tool Router composition, IPC dispatch, ordered events, recovery gate, clean shutdown | Real-model smoke on 2026-10-15 through the Mafia gateway (`claude-sonnet-5-5`): a Bot wrote `hello.md` in the workspace without asking, `wc -c hello.md` waited for approval, ran after **Allow once**, and the Bot reported the size |
-| `apps/desktop` | Implemented: Electron shell, sandboxed preload, Grok Bot-style sidebar and conversation, sanitized Markdown (`marked` + DOMPurify), one row per tool call with status and output, inline approval card (**Allow once** / **Deny**), Stop, settings | Electron run over CDP (chat flows); tool UI built and type-checked, not yet exercised in the window |
+| `packages/protocol` | Implemented: Host methods and events, envelopes, `ExecutionTarget`, transcript items (messages, tool calls with `interrupted`/`cancelled`, dividers, stopped notes, thinking, timestamps), Runs, approvals with Always allow scopes, policy and grants, executor envelopes (`tool.status`, `result.ack`, `tasks.stop`), tool catalog, and one TypeBox schema per Host method (`@openbot/protocol/schemas`) | `protocol/test/*.test.ts` |
+| `packages/agent-runtime` | Implemented: Bots, settings, memory, approvals, Runs, policy, and grants as Pi documents; prompt sections (identity, working style, tools, memory); thinking level; New topic (`reset`); submit with start/steer modes; snapshot projection with history before the context head; BYOK from `~/.openbot/models.json`; one-shot model test | `agent-runtime/test/*.test.ts` |
+| `packages/server-core` | Implemented: `HostService` for every Host method; durable `ApprovalBook`; `RunScheduler` (cap, FIFO across Bots, steer, Stop, crash sweep); policy (`decide`, conservative zsh lexer, read-only default, rules, folder grants, re-evaluation); `web_search` (Tavily) and `web_fetch` (Readability + Markdown, retrieval outcomes); `memory_update`; subscribed and coalesced conversation feed; reveal-path check | `server-core/test/*.test.ts` |
+| `packages/tool-router` | Implemented: policy and approval gate, per-conversation sequential gate, stable invocation and approval IDs from the Pi call ID, argument digest, read and read-write grant lists, dispatch to executor or Host tool | Host smoke (below) |
+| `packages/local-executor`, `apps/local-executor` | Implemented: receipt ledger (`<data>/executor/receipts.sqlite`, accepted before effect, unknown after crash, digest check, ack and pruning); orphan process-group guard; read vs read-write grants; one output limiter with spill files under `<data>/artifacts`; `local_edit` expected SHA-256; background commands (`task_output`, `task_stop`, Stop ends them) | `local-executor/test/*.test.ts` |
+| `apps/local-server` | Implemented: data directory, `host.lock`, provider-key scrubbing, Keychain secret store, executor supervision, Tool Router composition, schema-checked IPC dispatch, recovery gate (executor ledger, approvals, Runs) before `resume()` | Host smoke scripts driving the real Host over IPC with a scripted model (memory, prompt, Runs and cap, approvals, web search, New topic, background tasks, Stop, read-only commands, Always allow, onboarding methods, subscriptions, duplicate and delete, schema rejection) |
+| `apps/desktop` | Implemented: onboarding, sidebar with Queued and Needs attention, transcript with collapsed steps, Copy, Reveal in Finder, thinking, dividers, Retry, Always allow card, Stop and pending messages, Settings (models, web search, commands, folders), Memory tab, Duplicate and Delete, notifications, dock badge, power assertion, `app://` renderer, TypeBox validation in main | Type check and unit tests; e2e suites written for every batch, not run in this phase; packaged smoke of an ad-hoc DMG (Host on bundled Node, UI over `app://`) |
+| Packaging | Implemented: electron-builder arm64 DMG, esbuild-bundled Host and executor, pinned Node 24.22.0, fuses, ad-hoc or Developer ID signing, notarization when secrets exist, `v*` tag release workflow, `<data>/logs/host.log` | Local ad-hoc package; Developer ID signing and notarization unexercised (no certificate) |
 | `browser`, `computer-use` | Planned (Phase 3: architecture M3 browser part, M6) | — |
 
-The demo runs the M1 path end to end with in-memory approvals and receipts. [The backlog](backlog.md) splits the remaining work into three phases: **Phase 1 MVP** (B1–B8, a standard agent Bot: files, terminal, web research, approvals with Always allow, memory, installable build), Phase 2 enhancements (B9–B15), and Phase 3 computer control.
+Phase 1 (MVP, backlog B1–B8) is implemented on `feat/mvp`; each batch's design and as-built notes are in [`docs/tasks/`](tasks/README.md). The MVP acceptance list in [the backlog](backlog.md) still needs the owner's run of the real app and the e2e suites. Phase 2 enhancements (B9–B15) and Phase 3 computer control follow.
 
 ### 1.2 Known Gaps in Existing Code
 
@@ -30,18 +31,16 @@ These are deliberate shortcuts or missing pieces in implemented code. Each one i
 
 | Gap | Where | Milestone |
 | --- | --- | --- |
-| Request parameters are checked only for shape; there is no per-method schema validation in main or the Host | `apps/desktop/src/main/ipc.ts`, `apps/local-server/src/main.ts` | Backlog B7 |
-| `messages.submit` forwards straight to Pi `submit` and returns `{ accepted: true }`; there is no OpenBot Run, queue, `runId`, or active-Run cap. `runs.cancel` aborts by `botId` | `server-core`, `agent-runtime` | Backlog B2 |
-| Pending approvals and executor receipts live in memory; a Host restart drops a pending approval (Pi reruns the call, which asks again) | `server-core/src/approvals.ts`, `local-executor` | Backlog B1 |
-| The transcript does not project images or thinking blocks | `agent-runtime` `toTranscript` | Backlog B6 (thinking), B15 (images) |
-| Every conversation update is broadcast as a full snapshot; there is no per-conversation subscription, token-delta coalescing, or event backpressure | `server-core`, `apps/local-server`, renderer store | Backlog B7 (one subscribed Bot, coalescing), B14 (backpressure) |
-| The renderer ignores `seq` and resynchronizes only when the Host restarts | `apps/desktop/src/renderer/src/store.ts` | Backlog B14 |
-| Power and lock events are logged, not forwarded to the Host; no `powerSaveBlocker` | `apps/desktop/src/main/index.ts` | Backlog B7 (`powerSaveBlocker`), B14 (forwarding) |
-| The renderer loads from `file://`; no `app://` protocol, fuses, packaging, or signing | `apps/desktop` | Backlog B8 |
-| Keychain access runs in the Host through `/usr/bin/security` on a general-purpose Node binary (development path in architecture Section 5.9) | `apps/local-server/src/keychain.ts` | Kept for the MVP (B8 records the risk); moved in B14 |
-| The Host runs on Node from `PATH` (`.node-version` is 22.22.2); the architecture targets a bundled Node 24 | `apps/desktop/src/main/index.ts`, `.node-version` | Backlog B8 |
+| The e2e suites (`e2e/*.e2e.ts`) for B1–B7 are written and type-checked but were not run during Phase 1 implementation | `e2e/` | Owner's MVP acceptance run |
+| Revoking a grant or rule re-checks pending approvals but does not cancel commands already running (architecture 5.3 asks for cancellation) | `server-core` `PolicyService` | Backlog B12 |
+| Artifact spill files have no per-file size cap; files older than 7 days are deleted at executor start | `local-executor` | Backlog B15 |
+| macOS notifications, dock badge, and power assertion are unit-tested as logic only | `apps/desktop/src/main` | Owner's packaged run |
+| The renderer ignores `seq` and resynchronizes only when the Host restarts; no event backpressure | `apps/desktop/src/renderer/src/store.ts` | Backlog B14 |
+| Power and lock events are not forwarded to the Host | `apps/desktop/src/main/index.ts` | Backlog B14 |
+| Keychain access runs in the Host through `/usr/bin/security`; items it creates trust that tool | `apps/local-server/src/keychain.ts` | Backlog B14 |
+| Developer ID signing and notarization are wired but have never run | `.github/workflows/release.yml`, `apps/desktop/scripts/package.mjs` | First release |
 | A crash between Pi conversation creation and the Bot-index commit leaves an orphan conversation | `agent-runtime` `createBot` | Backlog B14 |
-| A fixed 30-second request timeout applies to every Host method | `apps/desktop/src/main/host.ts` | Revisit when a long-running method appears (none in Phase 1) |
+| A fixed 30-second request timeout applies to every Host method | `apps/desktop/src/main/host.ts` | Revisit when a long-running method appears |
 | BYOK supports three APIs (`openai-completions`, `openai-responses`, `anthropic-messages`); there is no model discovery from a gateway's `/v1/models` | `agent-runtime/src/model-config.ts` | When a user needs another API or discovery |
 
 ## 2. Rules for Every Milestone
@@ -250,8 +249,8 @@ Goal: architecture Section 11 passes on a real Mac with the packaged app.
 | Tool argument schemas in `protocol` | **Decided:** plain JSON Schema objects (implemented in `TOOL_CATALOG`) | — |
 | IPC schema validation library | **Decided:** TypeBox (B7), already a Pi dependency; tool schemas stay plain JSON Schema | — |
 | Keychain placement | MVP keeps `/usr/bin/security` in the Host (B8 records the risk); Electron main with `safeStorage` or a signed helper later | B14 |
-| Development Node version | Keep 22.22.2 for development; the packaged build bundles Node 24 (B8), and CI should run e2e on the bundled version once it exists | B8 |
-| Web search provider | Tavily first behind a `SearchProvider` interface; confirm in the B4 spec | B4 spec |
+| Development Node version | Keep 22.22.2 for development; the packaged build bundles Node 24.22.0 (B8). CI should also run the Host tests on the bundled Node | B14 |
+| Web search provider | **Decided:** Tavily behind a `SearchProvider` interface (B4) | — |
 | Transcription | On-device only, or an optional configured endpoint | Phase 3 |
 | Update channel | electron-updater with GitHub Releases | B14 |
 
@@ -261,7 +260,7 @@ Goal: architecture Section 11 passes on a real Mac with the packaged app.
 | --- | --- | --- |
 | Pi Durable's API is experimental | Upstream changes can break the runtime adapter | All Pi use stays in `agent-runtime`; deliberate synchronizations only; adapter tests cover the used surface |
 | `node:sqlite` is experimental in Node 22 | Warnings today; behavior changes across Node majors | Validate on the bundled Node 24 in M9; storage reopen tests in every milestone |
-| Replay safety depends on stable tool-task identity | Duplicate side effects after a crash | Confirm identity across `resume()` in M1 step 2 before building on it; executor deduplication as the second guard |
+| Replay safety depends on stable tool-task identity | Duplicate side effects after a crash | Confirmed in the vendored `harness/tool.ts` (B1 spec): a `replay: "safe"` call reruns with the same call ID; the executor ledger deduplicates by invocation ID as the second guard |
 | Commands run as the user without a sandbox | A granted command can touch anything the user can | Commands ask by default; policy and visible receipts; isolated targets are later work (architecture Section 1.1) |
 | TCC attribution through responsibility disclaim | Agent commands could inherit desktop grants | Dedicated helper with disclaim; launchd fallback; packaged validation in M6 and M9 |
 | Background browser throttling | Parallel Bots stall in occluded windows | Validate launch configuration with two Bots in M3 |

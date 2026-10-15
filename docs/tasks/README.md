@@ -57,7 +57,7 @@ Dated entries added during execution. Empty when ready.
 
 ## Index
 
-Phase 1 (MVP). Batches without a spec have an approach in the [backlog](../backlog.md); design writes their spec before execution starts.
+Phase 1 (MVP). Every batch is implemented on `feat/mvp` and in review until the owner's acceptance run.
 
 | ID                            | Title                                   | Status        |
 | ----------------------------- | --------------------------------------- | ------------- |
@@ -66,6 +66,6 @@ Phase 1 (MVP). Batches without a spec have an approach in the [backlog](../backl
 | [B3](b3-coding-tools.md)      | Coding-agent tools                      | in review     |
 | [B4](b4-web-research.md)      | Web research                            | in review     |
 | [B5](b5-always-allow.md)      | Always allow and folder grants          | in review     |
-| B6                            | Bot quality and memory                  | approach only |
+| [B6](b6-bot-quality.md)       | Bot quality and memory                  | in review     |
 | [B7](b7-desktop-mvp.md)       | Desktop MVP                             | in review     |
 | [B8](b8-installable-build.md) | Installable build                       | in review     |

@@ -6,9 +6,9 @@ The desktop UI, Host Runtime, Pi-based agent loop, local executor, and managed b
 
 Model inference uses a configurable API endpoint. Application state is stored locally.
 
-The project is a working demo on the way to its first usable release. Bots chat through any configured model and work on your Mac with file tools (read, list, write, edit) and shell commands, plus public web fetches. File tools run freely inside the shared workspace `~/OpenBot`; anything outside it, and every shell command, stops for your **Allow once** or **Deny**. Commands run in a separate executor process with credentials removed from their environment. API keys are stored in the macOS Keychain.
+**Status: Phase 1 (MVP) is implemented and awaiting acceptance.** A first-launch setup picks a model (API keys go to the macOS Keychain) and creates your first Bot. Bots work in the shared workspace `~/OpenBot` with file tools and shell commands, search the web, and remember your preferences. Read-only commands such as `rg` or `git status` inside folders Bots may use run without asking. Other commands stop for **Allow once**, **Always allow**, or **Deny**, and those decisions survive restarts. Long commands move to the background. Up to three Bots work at once, and you can stop or redirect a Bot while it works. Commands run in a separate executor process with credentials removed from their environment.
 
-Delivery is phased: **Phase 1 (MVP)** is a standard agent Bot you can install and use daily (coding tools, web research, Always allow, memory, restart-safe approvals, a signed build); Phase 2 adds connectors, skills, routines, and Bots working together; Phase 3 adds the managed browser and desktop computer use. See [the backlog](docs/backlog.md).
+Phase 2 adds connectors, skills, routines, and Bots working together; Phase 3 adds the managed browser and desktop computer use. See [the backlog](docs/backlog.md).
 
 ## Development
 
@@ -20,6 +20,7 @@ pnpm run build:pi    # build vendored Pi packages
 pnpm run dev         # run the app
 pnpm run check       # package boundaries, type check, unit tests
 pnpm run e2e         # drive the built app end to end against a scripted model
+pnpm run package     # build an arm64 DMG (ad-hoc signed without a Developer ID)
 ```
 
 The desktop app starts the Host Runtime, which starts the local executor. Data lives in `~/Library/Application Support/OpenBot`, the shared workspace is `~/OpenBot`, and model providers come from `~/.openbot/models.json`. The e2e suite keeps its own state under `e2e/.run/`. How agents work on this repository, including driving the app with agent-browser, is in [AGENTS.md](AGENTS.md).

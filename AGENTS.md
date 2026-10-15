@@ -4,7 +4,7 @@
 
 OpenBot is an open-source, local-first personal Bot application. The user keeps a roster of named Bots, modeled on Grok Bot's personal features, that all work on the user's own Mac: files, terminal, a managed browser, desktop applications, and connectors. The client, Host Runtime, Pi runtime, local executor, and managed browser all run on that Mac. There is no cloud control plane and no cloud computer. Tools operate a bound execution target; the first release supports only the local target. Model inference uses a configurable endpoint.
 
-Read [the architecture design](docs/architecture.md) before changing module boundaries, protocols, the Pi integration, or the development sequence. [The technical plan](docs/technical-plan.md) records what is implemented, known gaps, and open decisions; [the backlog](docs/backlog.md) lists the next work in phases and batches, and [`docs/tasks/`](docs/tasks/README.md) holds the specs ready for execution. Update the plan and backlog when a batch lands. The current phase is **Phase 1 (MVP)**: a standard agent Bot (files, terminal, web research, approvals with Always allow, memory, installable build). Do not build Phase 2 or 3 capabilities (browser, computer use, connectors, skills, routines, group chats) as a side effect of Phase 1 work. Implemented packages and apps: `protocol`, `agent-runtime`, `server-core`, `tool-router`, `local-executor`, `apps/local-server` (the Host Runtime), `apps/local-executor`, and `apps/desktop`. `browser` and `computer-use` are Phase 3. Package boundaries do not imply separate network services or remote pairing.
+Read [the architecture design](docs/architecture.md) before changing module boundaries, protocols, the Pi integration, or the development sequence. [The technical plan](docs/technical-plan.md) records what is implemented, known gaps, and open decisions; [the backlog](docs/backlog.md) lists the next work in phases and batches, and [`docs/tasks/`](docs/tasks/README.md) holds the specs ready for execution. Update the plan and backlog when a batch lands. The current phase is **Phase 1 (MVP)**: a standard agent Bot (files, terminal, web research, approvals with Always allow, memory, installable build), implemented on `feat/mvp` and awaiting the owner's acceptance run. Do not build Phase 2 or 3 capabilities (browser, computer use, connectors, skills, routines, group chats) as a side effect of Phase 1 work. Implemented packages and apps: `protocol`, `agent-runtime`, `server-core`, `tool-router`, `local-executor`, `apps/local-server` (the Host Runtime), `apps/local-executor`, and `apps/desktop`. `browser` and `computer-use` are Phase 3. Package boundaries do not imply separate network services or remote pairing.
 
 ## Repository Language
 
@@ -34,7 +34,7 @@ Execution rules:
 - `pnpm run dev`: the app with the owner's real data (`~/Library/Application Support/OpenBot`, `~/OpenBot`, `~/.openbot/models.json`).
 - `pnpm run dev:debug`: the same, with Chrome DevTools Protocol on port 9339 for agent-browser. Quit any running OpenBot first: the single-instance lock hands a second launch to the first one.
 - agent-browser (installed globally; read `agent-browser skills get electron` once): `agent-browser connect 9339`, then `snapshot -i`, `click @eN`, `fill @eN "text"`, `screenshot path.png`. Use it to see and debug; turn every behavior worth keeping into an e2e test.
-- `pnpm run e2e`: builds the desktop app and drives it with Playwright against a scripted model, with its own state under `e2e/.run/` (data, workspace, `models.json`, screenshots) and Keychain service `ai.openbot.e2e`. It never touches the owner's data.
+- `pnpm run e2e`: builds the desktop app and drives it with Playwright against a scripted model, with its own state under `e2e/.run/` (data, workspace, `models.json`, screenshots) and a Keychain service per checkout (`ai.openbot.e2e.<hash>`). It never touches the owner's data.
 
 ## Architecture Boundaries
 
@@ -78,7 +78,7 @@ Execution rules:
 
 ## Verification
 
-- Commands: `pnpm install`; `pnpm run build:pi` (vendored Pi, once per Pi change); `pnpm run check` (boundaries, type check, unit tests); `pnpm run e2e`; `pnpm run dev` and `pnpm run dev:debug`. Vendored Pi tests run from each package directory with `pnpm exec vitest --run`. CI runs `check` and `e2e` on macOS for every pull request.
+- Commands: `pnpm install`; `pnpm run build:pi` (vendored Pi, once per Pi change); `pnpm run check` (boundaries, type check, unit tests); `pnpm run e2e`; `pnpm run dev` and `pnpm run dev:debug`; `pnpm run package` (arm64 DMG, ad-hoc signed without a Developer ID). With `CI=true` set, `pnpm install` uses a frozen lockfile: after adding a dependency run `pnpm install --no-frozen-lockfile` and commit `pnpm-lock.yaml`. Vendored Pi tests run from each package directory with `pnpm exec vitest --run`. CI runs `check` and `e2e` on macOS for every pull request.
 - Unit tests protect invariants: authorization, deduplication, recovery, cancellation, ordering, precedence. The e2e suite protects user-visible flows. Do not add tests that only restate wiring.
 - Native permissions, signing, and helper identity need a packaged build on a real Mac; say so instead of claiming them verified.
 - Report what changed, what ran, and what remains, distinguishing automated checks from real-model spot checks.

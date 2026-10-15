@@ -572,7 +572,7 @@ export type ExecutorMessage =
 	  };
 
 // ---------------------------------------------------------------------------
-// Tool catalog: what the model is offered. Schemas are plain JSON Schema so that this package stays dependency-free.
+// Tool catalog: what the model is offered. Schemas are plain JSON Schema, which Pi validates tool arguments against.
 
 export type ToolCapability = "files.read" | "files.write" | "commands" | "tasks" | "web" | "memory";
 
