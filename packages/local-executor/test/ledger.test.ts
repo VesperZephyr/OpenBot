@@ -29,6 +29,7 @@ describe("ReceiptLedger", () => {
 		argsDigest: `digest-${command}`,
 		target: { kind: "local", targetId: "mac" },
 		grants: [root],
+		readGrants: [],
 		deadline: Date.now() + 60_000,
 	});
 	const lines = async (): Promise<string[]> =>

@@ -172,9 +172,54 @@ export type PendingApproval = {
 	/** Why policy asked, in the user's terms, such as "Runs a command on this Mac". */
 	readonly reason: string;
 	readonly createdAt: number;
+	/**
+	 * Scopes the user may choose for **Always allow**, narrowest first. Absent when no single rule or grant would let
+	 * this call through (for example a compound command with two unapproved parts, or input that cannot be parsed).
+	 */
+	readonly alwaysAllowOptions?: readonly AlwaysAllowOption[];
 };
 
-export type ApprovalDecision = "allow_once" | "deny";
+/** What **Always allow** creates: a command rule, or a folder grant. */
+export type AlwaysAllowScope =
+	| { readonly kind: "command"; readonly rule: CommandRuleScope }
+	| { readonly kind: "folder"; readonly path: string; readonly access: GrantAccess };
+
+/** One choice on the approval card; `label` is the exact rule or grant the user sees before saving. */
+export type AlwaysAllowOption = { readonly label: string; readonly scope: AlwaysAllowScope };
+
+/** `always_allow` answers this call and saves the scope in one step; the scope must be one of the offered options. */
+export type ApprovalDecision = "allow_once" | "deny" | { readonly kind: "always_allow"; readonly scope: AlwaysAllowScope };
+
+/** How commands are authorized when no rule or the read-only default applies (Section 5.3). */
+export type CommandSetting = "ask" | "allow" | "never";
+
+/**
+ * What a command rule matches, per part of a command line. With `exact`, the part's words rendered canonically must
+ * equal it; otherwise the program (and `subcommand`, when given, as the second word) with any further arguments.
+ */
+export type CommandRuleScope = { readonly program: string; readonly subcommand?: string; readonly exact?: string };
+
+export type CommandRule = CommandRuleScope & { readonly id: string; readonly createdAt: number };
+
+export type PolicySettings = {
+	readonly commandSetting: CommandSetting;
+	/** Read-only commands (`rg`, `ls`, `git status`, …) inside granted folders run without asking. */
+	readonly readOnlyDefault: boolean;
+	readonly rules: readonly CommandRule[];
+};
+
+export type GrantAccess = "read" | "readwrite";
+
+/** A folder Bots may use with file tools without asking. The workspace is an implicit `readwrite` grant. */
+export type FolderGrant = {
+	readonly id: string;
+	/** Canonical and absolute. */
+	readonly path: string;
+	readonly access: GrantAccess;
+	/** Revision of the grants document that created it; increases with every grant change. */
+	readonly version: number;
+	readonly createdAt: number;
+};
 
 /**
  * Lifecycle of an approval in the Host's store (Section 5.3): `pending` until the user decides, `allowed` or `denied`
@@ -274,6 +319,19 @@ export type HostMethods = {
 	};
 	/** New topic: the Bot's next request starts from an empty context; memory and stored history stay. */
 	"conversations.reset": { params: { readonly botId: BotId }; result: null };
+	"policy.get": { params: Record<string, never>; result: PolicySettings };
+	"policy.update": {
+		params: { readonly commandSetting?: CommandSetting; readonly readOnlyDefault?: boolean };
+		result: PolicySettings;
+	};
+	"policy.rules.delete": { params: { readonly id: string }; result: PolicySettings };
+	"grants.list": { params: Record<string, never>; result: readonly FolderGrant[] };
+	"grants.revoke": { params: { readonly id: string }; result: readonly FolderGrant[] };
+	/**
+	 * Desktop main sends the folder the user picked in the native dialog; the renderer calls this method with an
+	 * opaque `selection` token instead (see `apps/desktop/src/shared/api.ts`) and never supplies a path.
+	 */
+	"grants.add": { params: { readonly path: string; readonly access: GrantAccess }; result: readonly FolderGrant[] };
 };
 
 export type HostMethod = keyof HostMethods;
@@ -298,6 +356,12 @@ export const HOST_METHODS = [
 	"bots.memory.get",
 	"bots.memory.update",
 	"conversations.reset",
+	"policy.get",
+	"policy.update",
+	"policy.rules.delete",
+	"grants.list",
+	"grants.revoke",
+	"grants.add",
 ] as const satisfies readonly HostMethod[];
 
 export function isHostMethod(value: unknown): value is HostMethod {
@@ -404,8 +468,10 @@ export type ToolInvocation = {
 	readonly args: Readonly<Record<string, unknown>>;
 	readonly argsDigest: string;
 	readonly target: ExecutionTarget;
-	/** Directories the invocation may touch with file tools, canonical and absolute. */
+	/** Directories file tools may read and write, canonical and absolute. */
 	readonly grants: readonly string[];
+	/** Directories file tools may only read, canonical and absolute. */
+	readonly readGrants: readonly string[];
 	readonly deadline: number;
 };
 

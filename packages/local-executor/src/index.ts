@@ -125,7 +125,7 @@ export class LocalExecutor {
 	async #run(invocation: ToolInvocation, signal: AbortSignal, onProgress: (output: string) => void): Promise<ToolOutcome> {
 		assertLocalTarget(invocation.target, this.#options.targetId);
 		if (Date.now() > invocation.deadline) return { status: "failed", output: "Refused: the invocation's deadline passed" };
-		const context: FileContext = { workspace: this.#options.workspace, grants: invocation.grants };
+		const context: FileContext = { workspace: this.#options.workspace, grants: invocation.grants, readGrants: invocation.readGrants };
 		const spill = artifactPath(this.#options.artifactsDirectory, invocation.invocationId);
 		const limited = (output: string): ToolOutcome => {
 			const { text, truncated } = limitText(output, spill);
@@ -136,7 +136,7 @@ export class LocalExecutor {
 		switch (invocation.tool) {
 			case "local_read": {
 				// Spilled output is the executor's own; reading it back needs no grant, and only `local_read` gets it.
-				const readContext = { ...context, grants: [...context.grants, this.#options.artifactsDirectory] };
+				const readContext = { ...context, readGrants: [...context.readGrants, this.#options.artifactsDirectory] };
 				// Reads page with offset under the same limits; the file itself is the full output, so nothing is spilled.
 				const { output, truncated } = await readText(args, readContext);
 				return { status: "succeeded", output, ...(truncated ? { truncated } : {}) };

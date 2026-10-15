@@ -5,10 +5,14 @@
  */
 import type { Context } from "@earendil-works/chord/context";
 import { defineDoc, type Harness, type JsonObject } from "@earendil-works/pi-durable";
-import type { ApprovalRecord } from "@openbot/protocol";
+import type { AlwaysAllowOption, ApprovalRecord } from "@openbot/protocol";
+import { type SavedScope, saveScope } from "./policy.ts";
 
-/** The record as stored: arguments are the JSON object Pi validated for the tool call. */
-type StoredApproval = Omit<ApprovalRecord, "args"> & { readonly args: JsonObject };
+/** The record as stored: arguments are the JSON object Pi validated for the tool call; arrays are plain JSON arrays. */
+type StoredApproval = Omit<ApprovalRecord, "args" | "alwaysAllowOptions"> & {
+	readonly args: JsonObject;
+	readonly alwaysAllowOptions?: AlwaysAllowOption[];
+};
 
 const ApprovalsDoc = defineDoc<{ approvals: Record<string, StoredApproval> }>({
 	kind: "openbot.approvals",
@@ -20,7 +24,8 @@ const ApprovalsDoc = defineDoc<{ approvals: Record<string, StoredApproval> }>({
 /** Durable approval records keyed by `approvalId`. Every `put` and `prune` is one Pi commit. */
 export interface ApprovalStore {
 	get(approvalId: string): Promise<ApprovalRecord | undefined>;
-	put(record: ApprovalRecord): Promise<void>;
+	/** With `saved` (**Always allow**), the rule or grant is written in the same commit as the record. */
+	put(record: ApprovalRecord, saved?: SavedScope): Promise<void>;
 	pending(): Promise<readonly ApprovalRecord[]>;
 	/**
 	 * Delete answered records last changed before `before` (epoch ms): consumed, withdrawn, and decided ones whose
@@ -34,11 +39,12 @@ export function approvalStore(harness: Harness, context: Context): ApprovalStore
 		(await harness.snapshot(ApprovalsDoc, context))?.approvals ?? {};
 	return {
 		get: async (approvalId) => all().then((records) => records[approvalId]),
-		put: async (record) => {
+		put: async (record, saved) => {
 			// A JSON round trip: the draft must not keep references to caller objects, and drops undefined members.
 			const copy = JSON.parse(JSON.stringify(record)) as StoredApproval;
 			await harness.commit(async (tx) => {
 				(await tx.doc(ApprovalsDoc)).approvals[record.approvalId] = copy;
+				if (saved !== undefined) await saveScope(tx, saved);
 			}, context);
 		},
 		pending: async () => Object.values(await all()).filter((record) => record.state === "pending"),

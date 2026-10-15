@@ -1,8 +1,8 @@
 /**
- * File tools. Every path is canonicalized and checked against the invocation's grants before it is opened; reads
- * refuse devices and binary files before reading them; writes go to a temporary file and are renamed into place.
- * Reads and edits report the file's SHA-256, which `local_edit` takes back as `expected_sha256` to refuse an edit of a
- * file that changed since the model last saw it.
+ * File tools. Every path is canonicalized and checked against the invocation's grants before it is opened: reads
+ * against every grant, writes only against `readwrite` ones. Reads refuse devices and binary files before reading
+ * them; writes go to a temporary file and are renamed into place. Reads and edits report the file's SHA-256, which
+ * `local_edit` takes back as `expected_sha256` to refuse an edit of a file that changed since the model last saw it.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
@@ -14,13 +14,14 @@ const MAX_READ_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_LIST_ENTRIES = 500;
 const SNIFF_BYTES = 4096;
 
-export type FileContext = { readonly workspace: string; readonly grants: readonly string[] };
+/** `grants` allow reading and writing; `readGrants` allow reading only. */
+export type FileContext = { readonly workspace: string; readonly grants: readonly string[]; readonly readGrants: readonly string[] };
 
 export async function readText(
 	args: { path: string; offset?: number; limit?: number },
 	context: FileContext,
 ): Promise<{ readonly output: string; readonly truncated: boolean }> {
-	const path = await grantedPath(args.path, context.workspace, context.grants);
+	const path = await grantedPath(args.path, context.workspace, [...context.grants, ...context.readGrants]);
 	const info = await stat(path);
 	if (info.isDirectory()) throw new Error(`${path} is a directory; use local_list`);
 	// Devices, FIFOs, and sockets can block forever or never end.
@@ -46,7 +47,7 @@ export async function readText(
 }
 
 export async function listDirectory(args: { path: string }, context: FileContext): Promise<string> {
-	const path = await grantedPath(args.path, context.workspace, context.grants);
+	const path = await grantedPath(args.path, context.workspace, [...context.grants, ...context.readGrants]);
 	const entries = await readdir(path, { withFileTypes: true });
 	const names = entries
 		.map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name))

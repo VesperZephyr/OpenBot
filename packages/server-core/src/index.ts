@@ -5,6 +5,7 @@
 import { randomUUID } from "node:crypto";
 import type { BotRuntime, ConfigEnvironment, ModelConfigStatus } from "@openbot/agent-runtime";
 import type { ApprovalBook } from "./approvals.ts";
+import { PolicyService } from "./policy-service.ts";
 import { SEARCH_PROVIDER_PREFIX, TAVILY_PROVIDER_ID } from "./web-search.ts";
 import { DEFAULT_MAX_ACTIVE_RUNS, RunScheduler } from "./runs.ts";
 import {
@@ -84,6 +85,7 @@ export class HostService {
 	readonly #observers = new Map<BotId, ObserverState>();
 	readonly #runs: RunScheduler;
 	readonly #handlers: Handlers;
+	readonly #policy: PolicyService;
 	#configStatus: ModelConfigStatus = { providers: [], errors: [] };
 
 	constructor(options: HostServiceOptions) {
@@ -105,6 +107,7 @@ export class HostService {
 			now: this.#now,
 			stopping: (botId) => this.#conversationStopped(botId),
 		});
+		this.#policy = new PolicyService({ runtime: this.#runtime, approvals: this.#approvals, workspace: this.#workspace, now: this.#now });
 		this.#handlers = {
 			"host.status": async () => this.#status,
 			"bots.list": () => this.#listBots(),
@@ -149,6 +152,8 @@ export class HostService {
 				if (!(await this.#approvals.decide(approvalId, decision))) {
 					throw new ProtocolError("not_found", "This request was already answered or its task ended");
 				}
+				// The new rule or grant may cover other waiting calls too.
+				if (typeof decision !== "string") await this.#policy.reevaluate();
 				return null;
 			},
 			"settings.get": () => this.#settings(),
@@ -175,6 +180,12 @@ export class HostService {
 				await this.#runtime.reset(botId);
 				return null;
 			},
+			"policy.get": () => this.#policy.get(),
+			"policy.update": (change) => this.#policy.update(change),
+			"policy.rules.delete": ({ id }) => this.#policy.deleteRule(id),
+			"grants.list": () => this.#policy.grants(),
+			"grants.revoke": ({ id }) => this.#policy.revoke(id),
+			"grants.add": ({ path, access }) => this.#policy.add(path, access),
 		};
 	}
 
@@ -357,8 +368,10 @@ export class MemorySecretStore implements SecretStore {
 export const newRequestId = (): string => randomUUID();
 
 export type { HostMethods };
-export { ApprovalBook, decide, type Decision, type PolicyCall } from "./approvals.ts";
+export { ApprovalBook, decide, type Decision, type PolicyCall, type PolicySnapshot } from "./approvals.ts";
 export { DEFAULT_MAX_ACTIVE_RUNS, RunScheduler, type RunSchedulerOptions, type SubmitOutcome } from "./runs.ts";
+export { lexCommand, renderPart } from "./command-lexer.ts";
+export { canonicalPath, isWithin, loadPolicy } from "./policy.ts";
 export { createWebFetch, type RetrievalOutcome, type WebFetchOptions } from "./web-fetch.ts";
 export {
 	createWebSearch,

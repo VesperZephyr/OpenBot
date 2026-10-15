@@ -28,13 +28,16 @@ export type ToolCall = {
 
 export type PolicyDecision =
 	| { readonly kind: "allow" }
-	| { readonly kind: "ask"; readonly reason: string }
+	| { readonly kind: "ask"; readonly reason: string; readonly alwaysAllowOptions?: PendingApproval["alwaysAllowOptions"] }
 	| { readonly kind: "deny"; readonly reason: string };
 
 export interface PolicyPort {
 	decide(call: ToolCall, definition: ToolDefinition): Promise<PolicyDecision>;
-	/** Folders file tools may touch for this call once it is allowed: the grants plus an approved one-off path. */
-	grants(call: ToolCall, approvedOnce: boolean): Promise<readonly string[]>;
+	/**
+	 * Folders file tools may touch for this call once it is allowed, read from the current grants: `readwrite` folders
+	 * (the workspace included) and `read`-only ones, plus the path of an approved one-off call.
+	 */
+	grants(call: ToolCall, approvedOnce: boolean): Promise<{ readonly readwrite: readonly string[]; readonly read: readonly string[] }>;
 }
 
 /** Pending approvals: recorded before the call waits, settled by the user, observed by the UI. */
@@ -104,6 +107,7 @@ export class ToolRouter {
 					target: this.#options.target,
 					reason: decision.reason,
 					createdAt: now(),
+					...(decision.alwaysAllowOptions === undefined ? {} : { alwaysAllowOptions: decision.alwaysAllowOptions }),
 				},
 				call.signal,
 			);
@@ -119,6 +123,7 @@ export class ToolRouter {
 			if (handler === undefined) return { status: "failed", output: `No handler for ${definition.name}` };
 			return handler(call.args, call.signal, call);
 		}
+		const grants = await this.#options.policy.grants(call, approvedOnce);
 		const invocation: ToolInvocation = {
 			invocationId: `${call.conversationId}:${call.callId}`,
 			botId: call.botId,
@@ -127,7 +132,8 @@ export class ToolRouter {
 			args: call.args,
 			argsDigest: digest(call.args),
 			target: this.#options.target,
-			grants: await this.#options.policy.grants(call, approvedOnce),
+			grants: grants.readwrite,
+			readGrants: grants.read,
 			deadline: (this.#options.now ?? Date.now)() + (this.#options.deadlineMs ?? 60_000),
 		};
 		return this.#options.executor.invoke(invocation, call.onProgress, call.signal);

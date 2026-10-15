@@ -31,6 +31,7 @@ describe("coding tools", () => {
 		argsDigest: JSON.stringify(args),
 		target: { kind: "local", targetId: "mac" },
 		grants: [workspace],
+		readGrants: [],
 		deadline: Date.now() + 60_000,
 	});
 	const run = (on: LocalExecutor, tool: ToolInvocation["tool"], args: Record<string, unknown>): Promise<ToolOutcome> =>

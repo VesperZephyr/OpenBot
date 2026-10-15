@@ -916,3 +916,37 @@ textarea {
 		animation: none;
 	}
 }
+
+/* Always allow (approval card) and Settings → Commands */
+.always-allow {
+	margin-top: 10px;
+	padding-top: 10px;
+	border-top: 1px solid var(--surface-raised);
+}
+.always-allow > button {
+	width: 100%;
+}
+.always-allow p {
+	margin: 0 0 8px;
+}
+.always-allow-options {
+	display: grid;
+	gap: 6px;
+	margin-bottom: 10px;
+}
+.always-allow-option {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	overflow-wrap: anywhere;
+}
+.always-allow-option code {
+	font-family: var(--font-mono);
+	font-size: 12px;
+}
+.toggle {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	margin: 10px 0;
+}

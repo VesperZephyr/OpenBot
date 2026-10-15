@@ -22,6 +22,7 @@ describe("LocalExecutor", () => {
 		argsDigest: JSON.stringify(args),
 		target: { kind: "local", targetId: "mac" },
 		grants: [workspace],
+		readGrants: [],
 		deadline: Date.now() + 60_000,
 		...overrides,
 	});
@@ -51,6 +52,18 @@ describe("LocalExecutor", () => {
 			expect(outcome.output).toMatch(/^Access denied: /);
 		}
 		expect((await run(invocation("local_write", { path: "link/new.txt", content: "x" }))).status).toBe("failed");
+	});
+
+	it("reads but never writes inside a read-only grant", async () => {
+		const readOnly = { readGrants: [outside] };
+		const read = await run(invocation("local_read", { path: join(outside, "secret.txt") }, readOnly));
+		expect(read).toMatchObject({ status: "succeeded" });
+		expect((await run(invocation("local_list", { path: outside }, readOnly))).status).toBe("succeeded");
+		const write = await run(invocation("local_write", { path: join(outside, "new.txt"), content: "x" }, readOnly));
+		expect(write.output).toMatch(/^Access denied: /);
+		const edit = await run(invocation("local_edit", { path: join(outside, "secret.txt"), old_text: "secret", new_text: "gone" }, readOnly));
+		expect(edit.output).toMatch(/^Access denied: /);
+		expect(await readFile(join(outside, "secret.txt"), "utf8")).toBe("secret");
 	});
 
 	it("refuses another target", async () => {
