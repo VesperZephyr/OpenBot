@@ -104,7 +104,12 @@ export type ConversationSnapshot = {
 export type ProviderSummary = {
 	readonly providerId: string;
 	readonly name: string;
+	/** `builtin` providers ship with OpenBot; `config` providers come from the user's model configuration file. */
+	readonly source: "builtin" | "config";
+	/** A key is available: stored in the Keychain, or (config providers) resolvable from the configuration. */
 	readonly configured: boolean;
+	/** A key is stored in the Keychain for this provider. */
+	readonly keyStored: boolean;
 };
 
 /** Settings as returned to renderers: credentials are never included, only whether one is stored. */
@@ -112,6 +117,8 @@ export type RedactedSettings = {
 	readonly defaultModel?: ModelRef;
 	readonly providers: readonly ProviderSummary[];
 	readonly dataDirectory: string;
+	/** The user's model configuration file and its problems; re-read whenever settings are fetched. */
+	readonly modelConfig: { readonly path: string; readonly errors: readonly string[] };
 };
 
 export type ModelSummary = {

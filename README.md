@@ -21,6 +21,31 @@ pnpm --filter @openbot/desktop run dev   # run the desktop app with a live-reloa
 
 Electron downloads its binary on first use. The desktop app starts the Host Runtime itself; `pnpm --filter @openbot/local-server run start` runs a standalone Host for development. Both use `~/Library/Application Support/OpenBot` unless `OPENBOT_DATA_DIR` is set, and the Keychain service `ai.openbot.desktop.credentials` unless `OPENBOT_KEYCHAIN_SERVICE` is set. Point both at throwaway values when testing.
 
+## Your own model providers
+
+Add OpenAI- or Anthropic-compatible endpoints in `~/.openbot/config.json` (set `OPENBOT_HOME` to use another directory). The format follows Pi's `models.json`; models whose IDs OpenBot already knows inherit their limits and capabilities.
+
+```jsonc
+{
+  "providers": {
+    "my-gateway": {
+      "baseUrl": "https://gateway.example.com/v1",
+      "api": "openai-responses", // or "openai-completions", "anthropic-messages"
+      // "$VAR" reads the environment OpenBot was launched with; "!command" uses a command's output.
+      "apiKey": "!security find-generic-password -s my-gateway -w",
+      "models": [
+        { "id": "gpt-5.5" },
+        { "id": "claude-sonnet-5-5", "api": "anthropic-messages", "baseUrl": "https://gateway.example.com" }
+      ]
+    }
+  }
+}
+```
+
+Apps opened from the Dock do not see variables exported in your shell profile, so prefer `!command` or a key saved in Settings, which takes precedence over `apiKey`. Settings lists configuration problems with their location in the file.
+
+## Documentation
+
 - [Architecture and first-release development sequence](docs/architecture.md)
 - [Technical plan: current state, milestone breakdown, open decisions](docs/technical-plan.md)
 - [Vendored Pi provenance and local changes](third_party/pi/OPENBOT_CHANGES.md)

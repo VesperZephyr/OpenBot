@@ -582,20 +582,53 @@ function Settings() {
 					{configured.map((provider) => (
 						<li key={provider.providerId}>
 							<span>{provider.name}</span>
-							<span className="muted">Key stored</span>
-							<button
-								type="button"
-								onClick={() =>
-									void api["credentials.delete"]({ providerId: provider.providerId })
-										.then(refreshSettings)
-										.catch(report)
-								}
-							>
-								Remove
-							</button>
+							<span className="muted">
+								{provider.keyStored ? "Key stored" : "Key from config.json"}
+								{provider.source === "config" && " · config.json"}
+							</span>
+							{provider.keyStored && (
+								<button
+									type="button"
+									onClick={() =>
+										void api["credentials.delete"]({ providerId: provider.providerId })
+											.then(refreshSettings)
+											.catch(report)
+									}
+								>
+									Remove
+								</button>
+							)}
 						</li>
 					))}
 				</ul>
+			</div>
+
+			<div className="settings-group">
+				<h2>Your own providers</h2>
+				<p className="muted">
+					Add OpenAI- or Anthropic-compatible endpoints in <code>{settings.modelConfig.path}</code>. Changes apply
+					when you open Settings or choose a model.
+				</p>
+				{settings.providers.some((provider) => provider.source === "config" && !provider.configured) && (
+					<p className="muted">
+						Without a key:{" "}
+						{settings.providers
+							.filter((provider) => provider.source === "config" && !provider.configured)
+							.map((provider) => provider.name)
+							.join(", ")}
+						. Save one above or fix its <code>apiKey</code>.
+					</p>
+				)}
+				{settings.modelConfig.errors.length > 0 && (
+					<ul className="config-errors" aria-label="Configuration problems">
+						{settings.modelConfig.errors.map((error) => (
+							<li key={error}>{error}</li>
+						))}
+					</ul>
+				)}
+				<button type="button" onClick={() => void refreshSettings().catch(report)}>
+					Reload
+				</button>
 			</div>
 
 			<div className="settings-group">

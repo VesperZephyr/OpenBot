@@ -3,7 +3,7 @@
  * operations and snapshots; callers never see Pi types.
  */
 import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
-import type { CredentialStore } from "@earendil-works/pi-ai";
+import { type Api, type CredentialStore, isModelType, type Model } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import type { MutableModels } from "@earendil-works/pi-ai/models";
 import {
@@ -30,8 +30,12 @@ import {
 	type TranscriptItem,
 } from "@openbot/protocol";
 
+import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
+
 /** Credential contract the Host implements over the Keychain; re-exported so the Host never imports Pi. */
 export type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
+export type { ConfigEnvironment, ConfiguredProviderStatus, ModelConfigStatus } from "./model-config.ts";
+export { SUPPORTED_MODEL_APIS } from "./model-config.ts";
 
 type PiConversationId = ConversationRecord["id"];
 
@@ -93,11 +97,17 @@ export class BotRuntime {
 	readonly #harness: Harness;
 	readonly #models: MutableModels;
 	readonly #context: Context;
+	/** Built-in providers as registered at open; configured providers may not reuse their IDs. */
+	readonly #builtinIds: ReadonlySet<string>;
+	readonly #catalog: readonly Model<Api>[];
+	#configuredIds: readonly string[] = [];
 
 	private constructor(harness: Harness, models: MutableModels, context: Context) {
 		this.#harness = harness;
 		this.#models = models;
 		this.#context = context;
+		this.#builtinIds = new Set(models.getProviders().map((provider) => provider.id));
+		this.#catalog = models.getModels().filter((model) => isModelType(model, "chat"));
 	}
 
 	static async open(options: BotRuntimeOptions): Promise<BotRuntime> {
@@ -265,6 +275,22 @@ export class BotRuntime {
 
 	listProviders(): { readonly providerId: string; readonly name: string }[] {
 		return this.#models.getProviders().map((provider) => ({ providerId: provider.id, name: provider.name }));
+	}
+
+	/**
+	 * Replace the providers declared in the user's model configuration (`undefined` when there is no file). Takes
+	 * effect from the next model request; a Bot whose configured model disappeared fails with a missing-model error.
+	 */
+	reloadConfiguredProviders(text: string | undefined, environment: ConfigEnvironment): ModelConfigStatus {
+		const { providers, status } = buildConfiguredProviders(text, {
+			environment,
+			catalog: this.#catalog,
+			reservedIds: this.#builtinIds,
+		});
+		for (const providerId of this.#configuredIds) this.#models.deleteProvider(providerId);
+		for (const provider of providers) this.#models.setProvider(provider);
+		this.#configuredIds = providers.map((provider) => provider.id);
+		return status;
 	}
 
 	async defaultModel(): Promise<ModelRef | undefined> {

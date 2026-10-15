@@ -18,11 +18,14 @@ import {
 } from "@openbot/protocol";
 import { HostService } from "@openbot/server-core";
 import { KeychainCredentials } from "./keychain.ts";
+import { modelConfigFile, openBotHome } from "./model-config-file.ts";
 
 const HOST_VERSION = "0.0.0";
 const PROVIDER_KEY_VARIABLE = /^[A-Z0-9_]*(API_KEY|TOKEN)$/;
 
-/** Provider credentials must come from the Keychain, never from a developer shell (Section 5.9). */
+// `$NAME` references in the model configuration resolve against the environment as launched; the user named them.
+const launchEnvironment = { ...process.env };
+/** Provider credentials never come implicitly from a developer shell, and children never inherit them (Section 5.9). */
 for (const name of Object.keys(process.env)) if (PROVIDER_KEY_VARIABLE.test(name)) delete process.env[name];
 
 const dataDirectory = process.env.OPENBOT_DATA_DIR ?? join(homedir(), "Library", "Application Support", "OpenBot");
@@ -67,6 +70,7 @@ const service = new HostService({
 	secrets: credentials,
 	status,
 	dataDirectory,
+	modelConfig: modelConfigFile(join(openBotHome(), "config.json"), launchEnvironment),
 	emit: (event) =>
 		send({ ...event, protocolVersion: PROTOCOL_VERSION, kind: "event", streamId, seq: ++seq }),
 });

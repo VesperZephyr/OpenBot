@@ -471,7 +471,17 @@ A Bot profile is an OpenBot session document containing `botId`, name, avatar, r
 
 Model, search, and connector credentials are stored in the macOS Keychain and loaded by the Host as needed. Renderers receive redacted settings.
 
-- The Host implements pi-ai's `CredentialStore` over the Keychain. pi-ai consults environment variables only when no stored credential exists, so the Host removes provider key variables such as `OPENAI_API_KEY` from its own environment at startup. A developer shell variable is therefore never used silently or inherited by child processes.
+**Bring your own key.** Besides the built-in pi-ai providers, the user declares OpenAI- or Anthropic-compatible endpoints in `~/.openbot/config.json` (or `$OPENBOT_HOME/config.json`). Only this user-level file exists; no project or workspace file can add providers or commands.
+
+- The `providers` section uses Pi's `models.json` provider shape, restricted to the `openai-completions`, `openai-responses`, and `anthropic-messages` APIs: `name`, `baseUrl`, `api`, `apiKey`, `headers`, `compat`, and `models[]` with optional per-model `api` and `baseUrl`. The file is JSON with `//` comments and trailing commas. Unknown properties are errors.
+- A model whose ID is in the built-in catalog inherits its name, capabilities, limits, and cost; thinking levels and cache metadata only when the API matches. Transport `compat` flags are never inherited, because a gateway relaying a model often rejects vendor-only request features.
+- `apiKey` and header values follow Pi's grammar: `$NAME` or `${NAME}` read the environment the Host was launched with, `!command` runs through `/bin/sh` with a 10-second timeout and a 5-minute cache of successful output, anything else is literal. Values resolve only when a request needs them; errors name the field, never the value.
+- A key saved in Settings (Keychain) takes precedence over the configured `apiKey`. Configured provider IDs may not reuse a built-in ID.
+- The Host re-reads the file when settings or the model list are fetched. A file that does not parse or validate contributes no providers; a single invalid provider is skipped. Problems are shown in Settings with their path in the file.
+
+Credential handling:
+
+- The Host implements pi-ai's `CredentialStore` over the Keychain. pi-ai consults environment variables only when no stored credential exists, so the Host removes provider key variables such as `OPENAI_API_KEY` from its own environment at startup. A developer shell variable is therefore never used silently or inherited by child processes; only a `$NAME` reference the user wrote in `config.json` reads the launch environment.
 - Keychain access control follows the code signature of the process that reads an item. Because the Host runs on a general-purpose Node binary, any script started with that binary would share its Keychain identity. Keychain reads and writes therefore happen in a dedicated signed helper or in Electron main, which passes values to the Host over the private IPC channel; the final placement is decided in M2 and verified on a signed build.
 - Executor and command environments exclude credentials by default. Connector credentials are injected only into their own server.
 - **Secret requests.** When a Bot needs a value it must not see, such as a password for a site field or an API key for a connector, it raises a secret request. The user enters the value in a masked field. The value is stored in the Keychain or used once, never added to the transcript, and never sent to the model. `browser_fill_secret` uses a secret reference.

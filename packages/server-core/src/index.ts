@@ -3,7 +3,7 @@
  * live in `apps/local-server`; this package only sees ports.
  */
 import { randomUUID } from "node:crypto";
-import type { BotRuntime } from "@openbot/agent-runtime";
+import type { BotRuntime, ConfigEnvironment, ModelConfigStatus } from "@openbot/agent-runtime";
 import {
 	type BotActivity,
 	type BotId,
@@ -29,11 +29,20 @@ export interface SecretStore {
 
 export type EventSink = (event: HostEvent) => void;
 
+/** The user's model configuration file. The Host implements file access and command execution. */
+export interface ModelConfigFile {
+	readonly path: string;
+	/** Current file text, or `undefined` when the file does not exist. Rejects with a readable message otherwise. */
+	read(): Promise<string | undefined>;
+	readonly environment: ConfigEnvironment;
+}
+
 export type HostServiceOptions = {
 	readonly runtime: BotRuntime;
 	readonly secrets: SecretStore;
 	readonly status: HostStatus;
 	readonly dataDirectory: string;
+	readonly modelConfig: ModelConfigFile;
 	readonly emit: EventSink;
 	readonly now?: () => number;
 };
@@ -45,17 +54,20 @@ export class HostService {
 	readonly #secrets: SecretStore;
 	readonly #status: HostStatus;
 	readonly #dataDirectory: string;
+	readonly #modelConfig: ModelConfigFile;
 	readonly #emit: EventSink;
 	readonly #now: () => number;
 	/** Per-Bot observation of its Pi conversation; drives sidebar activity and conversation events. */
 	readonly #observers = new Map<BotId, { readonly stop: () => void; activity: BotActivity; answered: number }>();
 	readonly #handlers: Handlers;
+	#configStatus: ModelConfigStatus = { providers: [], errors: [] };
 
 	constructor(options: HostServiceOptions) {
 		this.#runtime = options.runtime;
 		this.#secrets = options.secrets;
 		this.#status = options.status;
 		this.#dataDirectory = options.dataDirectory;
+		this.#modelConfig = options.modelConfig;
 		this.#emit = options.emit;
 		this.#now = options.now ?? Date.now;
 		this.#handlers = {
@@ -107,7 +119,10 @@ export class HostService {
 				if (defaultModel !== undefined) await this.#runtime.setDefaultModel(defaultModel);
 				return this.#settings();
 			},
-			"models.list": async () => this.#runtime.listChatModels(),
+			"models.list": async () => {
+				await this.#reloadModelConfig();
+				return this.#runtime.listChatModels();
+			},
 			"credentials.set": async ({ providerId, apiKey }) => {
 				if (apiKey.trim() === "") throw new ProtocolError("invalid_request", "API key is empty");
 				await this.#secrets.setApiKey(providerId, apiKey.trim());
@@ -120,8 +135,9 @@ export class HostService {
 		};
 	}
 
-	/** Attach observers to every existing Bot. Call once after the runtime opened and recovery finished. */
+	/** Load the model configuration and attach observers to every existing Bot. Call once after the runtime opened. */
 	async start(): Promise<void> {
+		await this.#reloadModelConfig();
 		for (const bot of await this.#runtime.listBots()) await this.#observe(bot.botId);
 	}
 
@@ -143,15 +159,39 @@ export class HostService {
 	}
 
 	async #settings(): Promise<RedactedSettings> {
-		const configured = await this.#secrets.configuredProviders();
+		await this.#reloadModelConfig();
+		const stored = await this.#secrets.configuredProviders();
+		const fromConfig = new Map(this.#configStatus.providers.map((provider) => [provider.providerId, provider]));
 		const defaultModel = await this.#runtime.defaultModel();
 		return {
 			...(defaultModel === undefined ? {} : { defaultModel }),
-			providers: this.#runtime
-				.listProviders()
-				.map((provider) => ({ ...provider, configured: configured.has(provider.providerId) })),
+			providers: this.#runtime.listProviders().map(({ providerId, name }) => {
+				const configured = fromConfig.get(providerId);
+				const keyStored = stored.has(providerId);
+				return {
+					providerId,
+					name,
+					source: configured === undefined ? ("builtin" as const) : ("config" as const),
+					configured: keyStored || configured?.keyAvailable === true,
+					keyStored,
+				};
+			}),
 			dataDirectory: this.#dataDirectory,
+			modelConfig: { path: this.#modelConfig.path, errors: this.#configStatus.errors },
 		};
+	}
+
+	/** Re-read the model configuration so edits apply without restarting; cheap enough to run on every settings read. */
+	async #reloadModelConfig(): Promise<void> {
+		let text: string | undefined;
+		try {
+			text = await this.#modelConfig.read();
+		} catch (error) {
+			this.#runtime.reloadConfiguredProviders(undefined, this.#modelConfig.environment);
+			this.#configStatus = { providers: [], errors: [error instanceof Error ? error.message : String(error)] };
+			return;
+		}
+		this.#configStatus = this.#runtime.reloadConfiguredProviders(text, this.#modelConfig.environment);
 	}
 
 	async #observe(botId: BotId): Promise<void> {

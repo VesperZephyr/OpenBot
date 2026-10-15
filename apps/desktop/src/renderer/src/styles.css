@@ -613,6 +613,15 @@ textarea {
 	flex: 1;
 }
 
+.config-errors {
+	margin: 8px 0 12px;
+	padding: 8px 12px 8px 28px;
+	border-left: 2px solid var(--signal);
+	color: var(--text);
+	font-family: ui-monospace, "SF Mono", Menlo, monospace;
+	font-size: 12px;
+}
+
 .toast {
 	position: fixed;
 	bottom: 20px;
