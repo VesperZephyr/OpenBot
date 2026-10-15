@@ -76,6 +76,8 @@ function toolGuidance(tools: ReadonlySet<string>): string | undefined {
 	if (tools.has("local_exec")) {
 		lines.push(
 			"- Search files with `rg` through local_exec; when `rg` is not installed, use `grep -rn` and `find`.",
+			"- Long tool output is cut to its start and end; the note in the middle names the file with the full output. Read the part you need with local_read and the offset it gives instead of rerunning the command.",
+			"- A command still running after 60 seconds moves to the background and returns a taskId; start long jobs such as builds, test suites, or servers with background: true. Check on them with task_output (use wait_seconds rather than waiting idle) and end them with task_stop when you no longer need them.",
 			"- Every shell command waits for the user's approval, so batch related work into one command where it stays readable. A denied call means the user declined it: adjust instead of retrying it unchanged.",
 		);
 	}

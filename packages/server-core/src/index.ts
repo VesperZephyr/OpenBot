@@ -55,6 +55,8 @@ export type HostServiceOptions = {
 	 * when observation starts.
 	 */
 	readonly toolSettled?: (botId: BotId, callId: string) => void;
+	/** Runs when the user stops a Bot's work; the Host stops the background commands its conversation started. */
+	readonly conversationStopped?: (botId: BotId) => void;
 	/** The shared folder every Bot may use without asking. */
 	readonly workspace: string;
 	readonly emit: EventSink;
@@ -71,6 +73,7 @@ export class HostService {
 	readonly #modelConfig: ModelConfigFile;
 	readonly #approvals: ApprovalBook;
 	readonly #toolSettled: (botId: BotId, callId: string) => void;
+	readonly #conversationStopped: (botId: BotId) => void;
 	readonly #workspace: string;
 	readonly #emit: EventSink;
 	readonly #now: () => number;
@@ -87,6 +90,7 @@ export class HostService {
 		this.#modelConfig = options.modelConfig;
 		this.#approvals = options.approvals;
 		this.#toolSettled = options.toolSettled ?? (() => {});
+		this.#conversationStopped = options.conversationStopped ?? (() => {});
 		this.#workspace = options.workspace;
 		this.#emit = options.emit;
 		this.#now = options.now ?? Date.now;
@@ -131,6 +135,7 @@ export class HostService {
 				return { accepted: true };
 			},
 			"runs.cancel": async ({ botId }) => {
+				this.#conversationStopped(botId);
 				await this.#runtime.cancel(botId);
 				return null;
 			},

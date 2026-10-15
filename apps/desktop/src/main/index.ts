@@ -41,6 +41,7 @@ const host = new HostProcess({
 		...(process.env.OPENBOT_TAVILY_BASE_URL === undefined
 			? {}
 			: { OPENBOT_TAVILY_BASE_URL: process.env.OPENBOT_TAVILY_BASE_URL }),
+		...(process.env.OPENBOT_EXEC_YIELD_MS === undefined ? {} : { OPENBOT_EXEC_YIELD_MS: process.env.OPENBOT_EXEC_YIELD_MS }),
 	},
 	onEvent: (event) => window?.webContents.send(CHANNELS.event, event),
 	onState: (state: HostState) => window?.webContents.send(CHANNELS.hostState, state),

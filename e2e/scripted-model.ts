@@ -7,13 +7,14 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
+export type ModelRequest = { readonly messages: readonly { role: string; content?: unknown }[]; readonly tools?: readonly unknown[] };
+
 export type ScriptedTurn =
 	| { readonly text: string }
-	| { readonly tool: string; readonly args: Record<string, unknown> }
+	/** `args` may be computed from the request, for arguments only known at run time, such as a returned task ID. */
+	| { readonly tool: string; readonly args: Record<string, unknown> | ((request: ModelRequest) => Record<string, unknown>) }
 	/** The provider rejects the request with HTTP 400 and this message; not retried by Pi. */
 	| { readonly error: string };
-
-export type ModelRequest = { readonly messages: readonly { role: string; content?: unknown }[]; readonly tools?: readonly unknown[] };
 
 export class ScriptedModel {
 	readonly requests: ModelRequest[] = [];
@@ -36,7 +37,8 @@ export class ScriptedModel {
 					response.end(JSON.stringify({ data: [{ id: "scripted" }] }));
 					return;
 				}
-				this.requests.push(JSON.parse(body) as ModelRequest);
+				const sent = JSON.parse(body) as ModelRequest;
+				this.requests.push(sent);
 				const turn = this.#turns.shift() ?? { text: "(the script has no more turns)" };
 				if ("error" in turn) {
 					response.writeHead(400, { "content-type": "application/json" });
@@ -44,7 +46,7 @@ export class ScriptedModel {
 					return;
 				}
 				response.writeHead(200, { "content-type": "text/event-stream" });
-				response.end(this.#stream(turn));
+				response.end(this.#stream(turn, sent));
 			});
 		});
 		await new Promise<void>((resolve) => this.#server?.listen(0, "127.0.0.1", resolve));
@@ -55,12 +57,13 @@ export class ScriptedModel {
 		await new Promise<void>((resolve) => (this.#server ? this.#server.close(() => resolve()) : resolve()));
 	}
 
-	#stream(turn: Exclude<ScriptedTurn, { readonly error: string }>): string {
+	#stream(turn: Exclude<ScriptedTurn, { readonly error: string }>, request: ModelRequest): string {
 		const chunk = (delta: object, finish: string | null) =>
 			`data: ${JSON.stringify({ id: "s", object: "chat.completion.chunk", created: 0, model: "scripted", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
 		if ("text" in turn) return `${chunk({ role: "assistant", content: turn.text }, null)}${chunk({}, "stop")}data: [DONE]\n\n`;
 		const id = `call_${++this.#calls}`;
-		const call = { index: 0, id, type: "function", function: { name: turn.tool, arguments: JSON.stringify(turn.args) } };
+		const args = typeof turn.args === "function" ? turn.args(request) : turn.args;
+		const call = { index: 0, id, type: "function", function: { name: turn.tool, arguments: JSON.stringify(args) } };
 		return `${chunk({ role: "assistant", tool_calls: [call] }, null)}${chunk({}, "tool_calls")}data: [DONE]\n\n`;
 	}
 }

@@ -628,6 +628,13 @@ code {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
+.tool-task {
+	flex: none;
+	margin-left: auto;
+	color: var(--muted);
+	font-family: var(--font-mono);
+	font-size: 11px;
+}
 .tool-command,
 .tool-output {
 	margin: 6px 0 0 15px;

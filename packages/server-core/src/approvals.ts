@@ -177,6 +177,8 @@ export function decide(
 		}
 		case "web":
 		case "memory":
+		// Reading or stopping a background command the user already approved.
+		case "tasks":
 			return { kind: "allow" };
 	}
 }

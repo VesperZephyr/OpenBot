@@ -95,6 +95,8 @@ export type TranscriptItem =
 			readonly status: ToolCallStatus;
 			/** Bounded text the model received, or the running output while the call is live. */
 			readonly output?: string;
+			/** Set when a `local_exec` call moved its command to the background. */
+			readonly taskId?: string;
 	  }
 	/** Where earlier messages left the model's context: a compaction summary or a new topic. */
 	| { readonly kind: "divider"; readonly id: string; readonly reason: "compaction" | "reset" }
@@ -385,6 +387,8 @@ export type ToolOutcome = {
 	/** Command exit details, separate from whether the invocation itself succeeded. */
 	readonly exit?: { readonly code: number | null; readonly signal: string | null };
 	readonly truncated?: boolean;
+	/** Set when `local_exec` moved the command to the background; `task_output` and `task_stop` take it. */
+	readonly taskId?: string;
 };
 
 /** Host to executor. */
@@ -394,7 +398,9 @@ export type ExecutorRequest =
 	/** Read-only receipt lookup; the executor answers with `tool.status`. */
 	| { readonly kind: "tool.status"; readonly invocationId: string }
 	/** The Host committed the outcome; the receipt may be pruned after the retention period. */
-	| { readonly kind: "result.ack"; readonly invocationId: string };
+	| { readonly kind: "result.ack"; readonly invocationId: string }
+	/** The conversation's work was stopped: stop its background tasks too. */
+	| { readonly kind: "tasks.stop"; readonly conversationId: string };
 
 /** Executor to Host. */
 export type ExecutorMessage =
@@ -418,7 +424,7 @@ export type ExecutorMessage =
 // ---------------------------------------------------------------------------
 // Tool catalog: what the model is offered. Schemas are plain JSON Schema so that this package stays dependency-free.
 
-export type ToolCapability = "files.read" | "files.write" | "commands" | "web" | "memory";
+export type ToolCapability = "files.read" | "files.write" | "commands" | "tasks" | "web" | "memory";
 
 export type ToolDefinition = {
 	readonly name: string;
@@ -482,6 +488,9 @@ export const TOOL_CATALOG = [
 				old_text: string("Exact text to replace."),
 				new_text: string("Replacement text."),
 				replace_all: { type: "boolean", description: "Replace every occurrence instead of exactly one." },
+				expected_sha256: string(
+					"SHA-256 of the file as you last saw it, from local_read or your last edit. The edit is refused if the file changed since.",
+				),
 			},
 			["path", "old_text", "new_text"],
 		),
@@ -491,16 +500,43 @@ export const TOOL_CATALOG = [
 		capability: "commands",
 		destination: "executor",
 		description:
-			"Run a shell command on this Mac with /bin/zsh. The user approves each command. Each call starts fresh in the working directory; cd and variables do not persist. Prefer the file tools for reading and editing files.",
+			"Run a shell command on this Mac with /bin/zsh. The user approves each command. Each call starts fresh in the working directory; cd and variables do not persist. Prefer the file tools for reading and editing files. A command still running after 60 seconds moves to the background and the call returns a taskId; long output is cut and saved to a file the result names.",
 		parameters: object(
 			{
 				command: string("The command line to run."),
 				description: string("What the command does, in five to ten words; shown to the user."),
 				cwd: string("Working directory. Defaults to the workspace."),
-				timeout_seconds: { type: "integer", minimum: 1, maximum: 600, description: "Default 120." },
+				timeout_seconds: {
+					type: "integer",
+					minimum: 1,
+					maximum: 86_400,
+					description: "Stop the command after this many seconds, also in the background. Default: no limit.",
+				},
+				background: { type: "boolean", description: "Start in the background right away and return a taskId." },
 			},
 			["command", "description"],
 		),
+	},
+	{
+		name: "task_output",
+		capability: "tasks",
+		destination: "executor",
+		description:
+			"Read a background command's new output since the last read, its status, and its exit code once it ended. wait_seconds waits up to that long for it to end first.",
+		parameters: object(
+			{
+				taskId: string("The taskId local_exec returned."),
+				wait_seconds: { type: "integer", minimum: 0, maximum: 60, description: "Wait up to this long for the task to end. Default 0." },
+			},
+			["taskId"],
+		),
+	},
+	{
+		name: "task_stop",
+		capability: "tasks",
+		destination: "executor",
+		description: "Stop a background command and everything it started. Returns its last output.",
+		parameters: object({ taskId: string("The taskId local_exec returned.") }, ["taskId"]),
 	},
 	{
 		name: "web_fetch",

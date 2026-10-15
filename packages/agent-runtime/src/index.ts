@@ -85,7 +85,7 @@ export type ToolInvoker = (call: {
 	readonly args: Readonly<Record<string, unknown>>;
 	readonly signal: AbortSignal;
 	readonly onProgress: (output: string) => void;
-}) => Promise<{ readonly status: string; readonly output: string }>;
+}) => Promise<{ readonly status: string; readonly output: string; readonly taskId?: string }>;
 
 export type BotRuntimeOptions = {
 	/** SQLite file owned exclusively by this Host process. */
@@ -513,7 +513,7 @@ function thinkingOf(entry: EntryRecord): string | undefined {
 	return text === "" ? undefined : text;
 }
 
-type MutableToolItem = { kind: "tool"; id: string; tool: string; args: unknown; status: ToolCallStatus; output?: string };
+type MutableToolItem = { kind: "tool"; id: string; tool: string; args: unknown; status: ToolCallStatus; output?: string; taskId?: string };
 
 /** What the model receives for an `unknown` outcome, instead of the executor's text (Section 5.1). */
 export const UNKNOWN_OUTCOME_TEXT =
@@ -568,6 +568,10 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 					diagnostics.some((diagnostic) => diagnostic.code === "interrupted");
 				item.status = unknown ? "interrupted" : message.isError ? "failed" : "succeeded";
 				item.output = partsOf(message.content).map((part) => part.text).join("\n");
+				const details: unknown = message.details;
+				if (typeof details === "object" && details !== null && "taskId" in details && typeof details.taskId === "string") {
+					item.taskId = details.taskId;
+				}
 				break;
 			}
 			case "pi.compaction":
@@ -648,7 +652,7 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 			return {
 				output: [{ type: "text", text }],
 				isError: outcome.status !== "succeeded",
-				details: { status: outcome.status },
+				details: { status: outcome.status, ...(outcome.taskId === undefined ? {} : { taskId: outcome.taskId }) },
 			};
 		},
 	});
