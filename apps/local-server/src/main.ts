@@ -2,11 +2,13 @@
  * Host Runtime process entry point. Started by Desktop main with an IPC channel (`stdio[3] = "ipc"`), or standalone
  * for development. Owns the conversation store exclusively, then serves `@openbot/protocol` requests.
  */
-import { mkdir, open, readFile, rm } from "node:fs/promises";
+import { mkdir, open, readFile, realpath, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { BotRuntime } from "@openbot/agent-runtime";
 import {
+	type ExecutionTarget,
 	type HostParams,
 	type HostStatus,
 	type HostToDesktop,
@@ -16,9 +18,11 @@ import {
 	ProtocolError,
 	type ResponseEnvelope,
 } from "@openbot/protocol";
-import { HostService } from "@openbot/server-core";
+import { ApprovalBook, HostService } from "@openbot/server-core";
+import { ExecutorProcess } from "./executor.ts";
 import { KeychainCredentials } from "./keychain.ts";
 import { modelConfigFile, openBotHome } from "./model-config-file.ts";
+import { createToolRouter, TOOL_DEFINITIONS } from "./tools.ts";
 
 const HOST_VERSION = "0.0.0";
 const PROVIDER_KEY_VARIABLE = /^[A-Z0-9_]*(API_KEY|TOKEN)$/;
@@ -49,13 +53,37 @@ const credentials = new KeychainCredentials({
 	indexPath: join(dataDirectory, "credentials.json"),
 });
 
-const runtime = await BotRuntime.open({ databasePath: join(dataDirectory, "openbot.sqlite"), credentials });
+const target: ExecutionTarget = { kind: "local", targetId: `local:${process.env.USER ?? "user"}` };
+
+// The shared workspace every Bot may read and write without asking (Section 8.3).
+const workspaceSetting = process.env.OPENBOT_WORKSPACE ?? join(homedir(), "OpenBot");
+await mkdir(workspaceSetting, { recursive: true });
+const workspace = await realpath(workspaceSetting);
+
+const executor = new ExecutorProcess({
+	// Development layout: the executor app is a sibling of this app in the workspace.
+	entry: process.env.OPENBOT_EXECUTOR_ENTRY ?? resolve(dirname(fileURLToPath(import.meta.url)), "../../local-executor/src/main.ts"),
+	targetId: target.targetId,
+	workspace,
+	env: process.env,
+});
+
+// The approval book publishes through the service, which exists only after the runtime it needs is open.
+const approvalListeners: { changed?: (botId: string) => void } = {};
+const approvals = new ApprovalBook((botId) => approvalListeners.changed?.(botId));
+const router = createToolRouter({ target, workspace, approvals, executor });
+
+const runtime = await BotRuntime.open({
+	databasePath: join(dataDirectory, "openbot.sqlite"),
+	credentials,
+	tools: { definitions: TOOL_DEFINITIONS, invoke: (call) => router.invoke(call) },
+});
 
 const status: HostStatus = {
 	protocolVersion: PROTOCOL_VERSION,
 	hostVersion: HOST_VERSION,
 	nodeVersion: process.versions.node,
-	targetId: `local:${process.env.USER ?? "user"}`,
+	targetId: target.targetId,
 	startedAt: Date.now(),
 };
 
@@ -71,13 +99,16 @@ const service = new HostService({
 	status,
 	dataDirectory,
 	modelConfig: modelConfigFile(join(openBotHome(), "models.json"), launchEnvironment),
+	approvals,
+	workspace,
 	emit: (event) =>
 		send({ ...event, protocolVersion: PROTOCOL_VERSION, kind: "event", streamId, seq: ++seq }),
 });
+approvalListeners.changed = (botId) => service.approvalsChanged(botId);
 
 await service.start();
-// Recovery gate: nothing schedules before storage is open and observers are attached. Executor reconciliation joins
-// this gate in M1.
+// Recovery gate: nothing schedules before storage is open and observers are attached. Executor receipt
+// reconciliation joins this gate with the persistent ledger (technical plan backlog).
 runtime.resume();
 
 process.on("message", async (message: unknown) => {
@@ -114,6 +145,7 @@ async function shutdown(code: number): Promise<void> {
 	clearInterval(keepAlive);
 	await service.stop();
 	await runtime.close();
+	await executor.stop();
 	await lock.close();
 	await rm(lockPath, { force: true });
 	process.exit(code);

@@ -1,0 +1,13 @@
+{
+	"name": "@openbot/local-executor-app",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"start": "node src/main.ts"
+	},
+	"dependencies": {
+		"@openbot/local-executor": "workspace:*",
+		"@openbot/protocol": "workspace:*"
+	}
+}

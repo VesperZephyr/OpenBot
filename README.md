@@ -6,7 +6,7 @@ The desktop UI, Host Runtime, Pi-based agent loop, local executor, and managed b
 
 Model inference uses a configurable API endpoint. Application state is stored locally.
 
-The project is between milestones M0 and M1. It has a pnpm workspace with vendored [Pi](https://github.com/earendil-works/pi), a Host Runtime that keeps Bots and their conversations in local SQLite, and an Electron desktop shell where you can create Bots, chat with them through a configured model, and manage them. API keys are stored in the macOS Keychain. Bots cannot use tools yet: file and command execution arrive in M1.
+The project is a working demo on the way to milestone M1. Bots chat through any configured model and work on your Mac with file tools (read, list, write, edit) and shell commands, plus public web fetches. File tools run freely inside the shared workspace `~/OpenBot`; anything outside it, and every shell command, stops for your **Allow once** or **Deny**. Commands run in a separate executor process with credentials removed from their environment. API keys are stored in the macOS Keychain. See [the backlog](docs/backlog.md) for what comes next.
 
 ## Development
 
@@ -19,7 +19,7 @@ pnpm run check                           # package boundaries, type check, tests
 pnpm --filter @openbot/desktop run dev   # run the desktop app with a live-reloading renderer
 ```
 
-Electron downloads its binary on first use. The desktop app starts the Host Runtime itself; `pnpm --filter @openbot/local-server run start` runs a standalone Host for development. Both use `~/Library/Application Support/OpenBot` unless `OPENBOT_DATA_DIR` is set, and the Keychain service `ai.openbot.desktop.credentials` unless `OPENBOT_KEYCHAIN_SERVICE` is set. Point both at throwaway values when testing.
+Electron downloads its binary on first use. The desktop app starts the Host Runtime, which starts the local executor; `pnpm --filter @openbot/local-server run start` runs a standalone Host for development. Defaults: data in `~/Library/Application Support/OpenBot` (`OPENBOT_DATA_DIR`), workspace `~/OpenBot` (`OPENBOT_WORKSPACE`), Keychain service `ai.openbot.desktop.credentials` (`OPENBOT_KEYCHAIN_SERVICE`). Point them at throwaway values when testing.
 
 ## Your own model providers
 

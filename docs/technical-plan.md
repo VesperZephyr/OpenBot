@@ -13,14 +13,16 @@ Each section marks state explicitly: **Implemented** means code in the repositor
 | Component | State | Verified by |
 | --- | --- | --- |
 | Workspace, boundary check, Pi vendor (`third_party/pi`, baseline `b45e0ebcc`) | Implemented (M0) | `pnpm run check`; provenance in `.openbot-vendor.json`, `BASELINE.json`, `OPENBOT_CHANGES.md` |
-| `packages/protocol` | Implemented for the chat-only Host surface: 13 Host methods, 2 events, request/response/event/ready envelopes, `ExecutionTarget`, `assertLocalTarget`, `ToolInvocation` | `protocol/test/target.test.ts` |
+| `packages/protocol` | Implemented: Host methods (including `approvals.decide`), events, envelopes, `ExecutionTarget`, transcript `tool` items, `PendingApproval`, executor request/message envelopes, and the tool catalog (`TOOL_CATALOG`, plain JSON Schema) | `protocol/test/target.test.ts` |
 | `packages/agent-runtime` | Implemented: Bot index and settings as Pi documents, one ownerless Pi conversation per Bot, async and awaited submit with stable request IDs, abort, snapshot and observe projections, model and provider listing, `CredentialStore` re-export, scripted-model test seam, BYOK from `~/.openbot/models.json` with Pi semantics (new providers, built-in overlays, `modelOverrides`) in `model-config.ts` | `agent-runtime/test/bot-runtime.test.ts`, `model-config.test.ts` (value grammar, validation, catalog inheritance, overlays, Keychain-over-config precedence, requests to a local endpoint) |
-| `packages/server-core` | Implemented: `HostService` with handlers for every Host method, sidebar activity (`working`, `unread`, `idle`), `SecretStore` port, `MemorySecretStore` | `server-core/test/host-service.test.ts` |
-| `apps/local-server` | Implemented: data directory, exclusive `host.lock` with stale-PID recovery, provider-key environment scrubbing, Keychain `SecretStore` and `CredentialStore` over `/usr/bin/security` (secret on stdin), model configuration file with `$VAR` and `!command` resolution, IPC request dispatch, ordered events, recovery gate before `resume()`, shutdown on SIGTERM, SIGINT, or parent disconnect | IPC smoke script and Electron run: lock refusal, unknown-method error, no-model refusal, lock removed on quit; two-turn conversations through the Mafia gateway with GPT (Responses) and Claude (Messages) models |
-| `apps/desktop` | Implemented shell: electron-vite build, single-instance lock, Host supervisor with bounded restarts, sandboxed window, allowlisted named-method preload, frame check, deny-all web permissions, tray, close-to-tray, Grok Bot-style sidebar (Pinned, Bots, Hidden Bots), conversation view, composer, profile editor, settings with Keychain key entry and default model | Electron run over CDP on 2026-10-15: create Bot, refused send without model, key save (field cleared, key absent from DOM), real provider round trip (401 surfaced as assistant error), edit profile, pin, hide and show, quit and relaunch with Bot, pin state, and transcript preserved; test key stored under the override Keychain service only |
-| `tool-router`, `local-executor`, `apps/local-executor`, `browser`, `computer-use` | Planned (M1, M3, M6) | — |
+| `packages/server-core` | Implemented: `HostService` with handlers for every Host method, sidebar activity (`needs_attention`, `working`, `unread`, `idle`), `SecretStore` port, in-memory `ApprovalBook`, first-release policy (`decide`), `web_fetch` Host tool with private-address blocking | `server-core/test/host-service.test.ts` |
+| `packages/tool-router` | Implemented: policy and approval gate, per-conversation sequential gate, stable invocation and approval IDs from the Pi call ID, argument digest, dispatch to executor or Host tool | Real-model smoke through the Host (below) |
+| `packages/local-executor`, `apps/local-executor` | Implemented: separate process with handshake; grant re-check with symlink-safe canonical paths; `local_read` (line numbers, offset, device and binary refusal), `local_list`, atomic `local_write`, unique-match `local_edit`, `local_exec` (own process group, SIGTERM then SIGKILL, timeout, scrubbed environment, head-and-tail output); in-memory receipts dedupe repeated invocation IDs | `local-executor/test/executor.test.ts` (grant escape via `..` and symlink, foreign target, edit uniqueness, exactly-once repeat, exit status, group cancel, env scrub) |
+| `apps/local-server` | Implemented: data directory, exclusive `host.lock`, provider-key environment scrubbing, Keychain secret store, `models.json` loading, shared workspace (`~/OpenBot` or `OPENBOT_WORKSPACE`), executor process supervision, Tool Router composition, IPC dispatch, ordered events, recovery gate, clean shutdown | Real-model smoke on 2026-10-15 through the Mafia gateway (`claude-sonnet-5-5`): a Bot wrote `hello.md` in the workspace without asking, `wc -c hello.md` waited for approval, ran after **Allow once**, and the Bot reported the size |
+| `apps/desktop` | Implemented: Electron shell, sandboxed preload, Grok Bot-style sidebar and conversation, sanitized Markdown (`marked` + DOMPurify), one row per tool call with status and output, inline approval card (**Allow once** / **Deny**), Stop, settings | Electron run over CDP (chat flows); tool UI built and type-checked, not yet exercised in the window |
+| `browser`, `computer-use` | Planned (M3, M6) | — |
 
-The desktop shell was built ahead of M1 to fix the process and IPC shape early. It covers conversation only: no tools are registered, so a Bot can only answer in text.
+The demo runs the M1 path end to end with in-memory approvals and receipts. [The backlog](backlog.md) splits the remaining work into batches.
 
 ### 1.2 Known Gaps in Existing Code
 
@@ -29,9 +31,9 @@ These are deliberate shortcuts or missing pieces in implemented code. Each one i
 | Gap | Where | Milestone |
 | --- | --- | --- |
 | Request parameters are checked only for shape; there is no per-method schema validation in main or the Host | `apps/desktop/src/main/ipc.ts`, `apps/local-server/src/main.ts` | M2 |
-| `messages.submit` forwards straight to Pi `submit` and returns `{ accepted: true }`; there is no OpenBot Run, queue, `runId`, or active-Run cap. `runs.cancel` aborts by `botId` | `server-core`, `agent-runtime` | M1 |
-| The transcript projects text only; tool calls, tool results, and images appear as `other` items | `agent-runtime` `toTranscriptItem` | M1 |
-| `needs_attention` activity is never produced | `server-core` `nextActivity` | M1 |
+| `messages.submit` forwards straight to Pi `submit` and returns `{ accepted: true }`; there is no OpenBot Run, queue, `runId`, or active-Run cap. `runs.cancel` aborts by `botId` | `server-core`, `agent-runtime` | Backlog B2 |
+| Pending approvals and executor receipts live in memory; a Host restart drops a pending approval (Pi reruns the call, which asks again) | `server-core/src/approvals.ts`, `local-executor` | Backlog B1 |
+| The transcript does not project images or thinking blocks | `agent-runtime` `toTranscript` | Backlog B3, B6 |
 | Every conversation update is broadcast as a full snapshot; there is no per-conversation subscription, token-delta coalescing, or event backpressure | `server-core`, `apps/local-server`, renderer store | M2 |
 | The renderer ignores `seq` and resynchronizes only when the Host restarts | `apps/desktop/src/renderer/src/store.ts` | M2 |
 | Power and lock events are logged, not forwarded to the Host; no `powerSaveBlocker` | `apps/desktop/src/main/index.ts` | M2 (forwarding), M9 (behavior) |
@@ -39,7 +41,7 @@ These are deliberate shortcuts or missing pieces in implemented code. Each one i
 | Keychain access runs in the Host on a general-purpose Node binary (development path in architecture Section 5.9) | `apps/local-server/src/keychain.ts` | M2 decision, M9 signed verification |
 | The Host runs on Node from `PATH` (`.node-version` is 22.22.2); the architecture targets a bundled Node 24 | `apps/desktop/src/main/index.ts`, `.node-version` | M9, with a dev-Node alignment check in M1 |
 | A crash between Pi conversation creation and the Bot-index commit leaves an orphan conversation | `agent-runtime` `createBot` | M9 recovery sweep |
-| A fixed 30-second request timeout applies to every Host method | `apps/desktop/src/main/host.ts` | M1 (long-running methods must not block on it) |
+| A fixed 30-second request timeout applies to every Host method | `apps/desktop/src/main/host.ts` | Backlog B6 (no long-running method exists yet) |
 | BYOK supports three APIs (`openai-completions`, `openai-responses`, `anthropic-messages`); there is no model discovery from a gateway's `/v1/models` | `agent-runtime/src/model-config.ts` | When a user needs another API or discovery |
 
 ## 2. Rules for Every Milestone

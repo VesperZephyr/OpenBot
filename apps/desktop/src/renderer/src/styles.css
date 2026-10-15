@@ -443,6 +443,168 @@ code {
 	color: var(--attention);
 }
 
+/* Assistant Markdown */
+.markdown {
+	overflow-wrap: anywhere;
+}
+.markdown > :first-child {
+	margin-top: 0;
+}
+.markdown > :last-child {
+	margin-bottom: 0;
+}
+.markdown p,
+.markdown ul,
+.markdown ol,
+.markdown pre,
+.markdown blockquote,
+.markdown table {
+	margin: 0 0 10px;
+}
+.markdown ul,
+.markdown ol {
+	padding-left: 22px;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+	font-family: var(--font-display);
+	font-size: 15px;
+	margin: 16px 0 6px;
+}
+.markdown code {
+	font-family: var(--font-mono);
+	font-size: 12.5px;
+	padding: 1px 4px;
+	border-radius: 4px;
+	background: var(--surface-raised);
+}
+.markdown pre {
+	padding: 10px 12px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--surface);
+	overflow-x: auto;
+}
+.markdown pre code {
+	padding: 0;
+	background: none;
+}
+.markdown blockquote {
+	padding-left: 12px;
+	border-left: 2px solid var(--border);
+	color: var(--muted);
+}
+.markdown table {
+	border-collapse: collapse;
+}
+.markdown th,
+.markdown td {
+	padding: 4px 10px;
+	border: 1px solid var(--border);
+}
+.markdown a {
+	color: var(--unread);
+}
+
+/* Tool activity: one quiet row per call; failures and approvals stand out */
+.tool-card {
+	align-self: stretch;
+	font-size: 13px;
+}
+.tool-card summary {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	cursor: pointer;
+	color: var(--muted);
+	list-style: none;
+}
+.tool-card summary::-webkit-details-marker {
+	display: none;
+}
+.tool-status {
+	flex: none;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--muted);
+	transform: translateY(-1px);
+}
+.tool-running .tool-status,
+.tool-pending .tool-status {
+	background: var(--signal);
+	animation: pulse 1.2s ease-in-out infinite;
+}
+.tool-failed .tool-status {
+	background: var(--attention);
+}
+.tool-waiting .tool-status {
+	background: var(--signal);
+}
+.tool-verb {
+	flex: none;
+	color: var(--text);
+}
+.tool-subject {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.tool-command,
+.tool-output {
+	margin: 6px 0 0 15px;
+	padding: 8px 10px;
+	max-height: 260px;
+	overflow: auto;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--surface);
+	font-family: var(--font-mono);
+	font-size: 12px;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.tool-command {
+	color: var(--text);
+}
+.tool-output {
+	color: var(--muted);
+}
+@keyframes pulse {
+	50% {
+		opacity: 0.35;
+	}
+}
+
+.approval {
+	margin: 8px 0 0 15px;
+	padding: 12px 14px;
+	border: 1px solid var(--signal);
+	border-radius: var(--radius);
+	background: var(--surface);
+}
+.approval-reason {
+	font-weight: 600;
+	margin-bottom: 8px;
+}
+.approval-args {
+	margin: 0 0 12px;
+	padding: 8px 10px;
+	border-radius: 8px;
+	background: var(--surface-raised);
+	font-family: var(--font-mono);
+	font-size: 12px;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.approval-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
 .thinking {
 	color: var(--muted);
 }

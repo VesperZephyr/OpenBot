@@ -13,6 +13,7 @@ export const RENDERER_METHODS = [
 	"conversations.markRead",
 	"messages.submit",
 	"runs.cancel",
+	"approvals.decide",
 	"settings.get",
 	"settings.update",
 	"models.list",

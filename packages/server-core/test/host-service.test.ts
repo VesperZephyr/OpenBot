@@ -5,7 +5,7 @@ import { BotRuntime } from "@openbot/agent-runtime";
 import { SCRIPTED_MODEL, scriptedModels } from "@openbot/agent-runtime/testing";
 import { type ConversationSnapshot, type HostEventType, PROTOCOL_VERSION } from "@openbot/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { HostService, MemorySecretStore, type ModelConfigFile } from "../src/index.ts";
+import { ApprovalBook, HostService, MemorySecretStore, type ModelConfigFile } from "../src/index.ts";
 
 const status = { protocolVersion: PROTOCOL_VERSION, hostVersion: "test", nodeVersion: "test", targetId: "mac", startedAt: 0 };
 
@@ -55,6 +55,8 @@ describe("HostService", () => {
 			status,
 			dataDirectory: directory,
 			modelConfig: configFile,
+			approvals: new ApprovalBook(() => {}),
+			workspace: directory,
 			emit: (event) => {
 				events.push(event.type);
 				if (event.type !== "conversation.updated") return;

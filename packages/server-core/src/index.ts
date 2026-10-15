@@ -4,6 +4,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { BotRuntime, ConfigEnvironment, ModelConfigStatus } from "@openbot/agent-runtime";
+import type { ApprovalBook } from "./approvals.ts";
 import {
 	type BotActivity,
 	type BotId,
@@ -43,6 +44,10 @@ export type HostServiceOptions = {
 	readonly status: HostStatus;
 	readonly dataDirectory: string;
 	readonly modelConfig: ModelConfigFile;
+	/** Pending approvals; the Host passes the same book to Tool Router. */
+	readonly approvals: ApprovalBook;
+	/** The shared folder every Bot may use without asking. */
+	readonly workspace: string;
 	readonly emit: EventSink;
 	readonly now?: () => number;
 };
@@ -55,10 +60,12 @@ export class HostService {
 	readonly #status: HostStatus;
 	readonly #dataDirectory: string;
 	readonly #modelConfig: ModelConfigFile;
+	readonly #approvals: ApprovalBook;
+	readonly #workspace: string;
 	readonly #emit: EventSink;
 	readonly #now: () => number;
 	/** Per-Bot observation of its Pi conversation; drives sidebar activity and conversation events. */
-	readonly #observers = new Map<BotId, { readonly stop: () => void; activity: BotActivity; answered: number }>();
+	readonly #observers = new Map<BotId, ObserverState>();
 	readonly #handlers: Handlers;
 	#configStatus: ModelConfigStatus = { providers: [], errors: [] };
 
@@ -68,6 +75,8 @@ export class HostService {
 		this.#status = options.status;
 		this.#dataDirectory = options.dataDirectory;
 		this.#modelConfig = options.modelConfig;
+		this.#approvals = options.approvals;
+		this.#workspace = options.workspace;
 		this.#emit = options.emit;
 		this.#now = options.now ?? Date.now;
 		this.#handlers = {
@@ -91,7 +100,7 @@ export class HostService {
 				this.#emit({ type: "bots.changed", payload: {} });
 				return profile;
 			},
-			"conversations.snapshot": ({ botId }) => this.#runtime.snapshot(botId),
+			"conversations.snapshot": async ({ botId }) => this.#withApprovals(await this.#runtime.snapshot(botId)),
 			"conversations.markRead": async ({ botId }) => {
 				const observer = this.#observers.get(botId);
 				if (observer?.activity === "unread") {
@@ -112,6 +121,12 @@ export class HostService {
 			},
 			"runs.cancel": async ({ botId }) => {
 				await this.#runtime.cancel(botId);
+				return null;
+			},
+			"approvals.decide": async ({ approvalId, decision }) => {
+				if (!this.#approvals.decide(approvalId, decision)) {
+					throw new ProtocolError("not_found", "This request was already answered or its task ended");
+				}
 				return null;
 			},
 			"settings.get": () => this.#settings(),
@@ -180,6 +195,7 @@ export class HostService {
 			}),
 			dataDirectory: this.#dataDirectory,
 			modelConfig: { path: this.#modelConfig.path, errors: this.#configStatus.errors },
+			workspace: this.#workspace,
 		};
 	}
 
@@ -196,31 +212,51 @@ export class HostService {
 		this.#configStatus = this.#runtime.reloadConfiguredProviders(text, this.#modelConfig.environment);
 	}
 
+	/** Republish a Bot's conversation after its pending approvals changed. Wire to the `ApprovalBook` callback. */
+	approvalsChanged(botId: BotId): void {
+		const state = this.#observers.get(botId);
+		if (state?.last !== undefined) this.#publish(state, state.last);
+	}
+
+	#withApprovals(snapshot: ConversationSnapshot): ConversationSnapshot {
+		const approvals = this.#approvals.forBot(snapshot.botId);
+		if (approvals.length === 0) return snapshot;
+		const live = snapshot.live === undefined ? undefined : { ...snapshot.live, state: "waiting_approval" as const };
+		return { ...snapshot, approvals, ...(live === undefined ? {} : { live }) };
+	}
+
+	#publish(state: ObserverState, snapshot: ConversationSnapshot): void {
+		state.last = snapshot;
+		const view = this.#withApprovals(snapshot);
+		const before = state.activity;
+		state.activity = nextActivity(state, view);
+		if (state.activity !== before) this.#emit({ type: "bots.changed", payload: {} });
+		this.#emit({ type: "conversation.updated", payload: view });
+	}
+
 	async #observe(botId: BotId): Promise<void> {
 		if (this.#observers.has(botId)) return;
-		const state = { stop: () => {}, activity: "idle" as BotActivity, answered: -1 };
+		const state: ObserverState = { stop: () => {}, activity: "idle", answered: -1 };
 		this.#observers.set(botId, state);
-		state.stop = await this.#runtime.observe(botId, (snapshot) => {
-			const before = state.activity;
-			state.activity = nextActivity(state, snapshot);
-			if (state.activity !== before) this.#emit({ type: "bots.changed", payload: {} });
-			this.#emit({ type: "conversation.updated", payload: snapshot });
-		});
+		state.stop = await this.#runtime.observe(botId, (snapshot) => this.#publish(state, snapshot));
 	}
 }
 
+type ObserverState = { stop: () => void; activity: BotActivity; answered: number; last?: ConversationSnapshot };
+
 /**
- * Sidebar state from a conversation snapshot: working while a Run is live; unread once a new answer arrives after
- * observation started; otherwise unchanged until the user reads it.
+ * Sidebar state from a conversation snapshot: needs attention while an approval waits, working while a Run is live,
+ * unread once a new answer arrives after observation started; otherwise unchanged until the user reads it.
  */
 function nextActivity(state: { activity: BotActivity; answered: number }, snapshot: ConversationSnapshot): BotActivity {
 	const answered = snapshot.items.filter((item) => item.kind === "assistant").length;
 	const first = state.answered === -1;
 	const grew = !first && answered > state.answered;
 	state.answered = answered;
+	if (snapshot.approvals.length > 0) return "needs_attention";
 	if (snapshot.live !== undefined) return "working";
 	if (grew) return "unread";
-	return state.activity === "working" ? "idle" : state.activity;
+	return state.activity === "working" || state.activity === "needs_attention" ? "idle" : state.activity;
 }
 
 /** In-memory `SecretStore` for tests and development without a Keychain. */
@@ -247,3 +283,5 @@ export class MemorySecretStore implements SecretStore {
 export const newRequestId = (): string => randomUUID();
 
 export type { HostMethods };
+export { ApprovalBook, decide, type Decision, type PolicyCall } from "./approvals.ts";
+export { webFetch } from "./web-fetch.ts";
