@@ -14,12 +14,13 @@ Requires macOS, Node.js 22.19 or later, and pnpm 9.
 
 ```sh
 pnpm install
-pnpm run build:pi                        # build vendored Pi packages
-pnpm run check                           # package boundaries, type check, tests
-pnpm --filter @openbot/desktop run dev   # run the desktop app with a live-reloading renderer
+pnpm run build:pi    # build vendored Pi packages
+pnpm run dev         # run the app
+pnpm run check       # package boundaries, type check, unit tests
+pnpm run e2e         # drive the built app end to end against a scripted model
 ```
 
-Electron downloads its binary on first use. The desktop app starts the Host Runtime, which starts the local executor; `pnpm --filter @openbot/local-server run start` runs a standalone Host for development. Defaults: data in `~/Library/Application Support/OpenBot` (`OPENBOT_DATA_DIR`), workspace `~/OpenBot` (`OPENBOT_WORKSPACE`), Keychain service `ai.openbot.desktop.credentials` (`OPENBOT_KEYCHAIN_SERVICE`). Point them at throwaway values when testing.
+The desktop app starts the Host Runtime, which starts the local executor. Data lives in `~/Library/Application Support/OpenBot`, the shared workspace is `~/OpenBot`, and model providers come from `~/.openbot/models.json`. The e2e suite keeps its own state under `e2e/.run/`. How agents work on this repository, including driving the app with agent-browser, is in [AGENTS.md](AGENTS.md).
 
 ## Your own model providers
 

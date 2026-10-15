@@ -13,13 +13,28 @@ Read [the architecture design](docs/architecture.md) before changing module boun
 - Respond in the user's language in the conversation unless asked otherwise.
 - Describe the current design and behavior directly. Keep abandoned proposals and conversational history out of project documentation.
 
-## Working Scope
+## How Work Happens
 
-- Analysis and review requests are read-only. When implementation is requested, make the smallest complete change within the authorized scope.
-- Work in the current checkout and preserve unrelated changes. Create worktrees or additional tasks only when requested or necessary for the task.
-- Do not add implementation code, copy Pi sources, or create placeholder packages as a side effect of documentation work. Create a package only when the milestone that implements it starts, and add its rule to `scripts/check-boundaries.mjs`.
-- Do not commit, push, create pull requests, or publish to external systems unless explicitly requested.
-- Ask for clarification only when missing information materially changes the result or risk. Complete independent work while waiting.
+OpenBot is built by AI agents. One human owner sets direction. Work splits into two roles:
+
+- **Design** (owner with a design agent): research, trade-offs, architecture, and a written task spec per batch in [`docs/tasks/`](docs/tasks/README.md). Design work changes docs, not product code, unless a spike is needed to settle a question.
+- **Execution** (any agent or contributor): implements one task spec end to end. The spec is the contract; follow its steps, contracts, and acceptance. If the spec is wrong or incomplete, stop and note the problem in the spec's **Open questions** instead of improvising a different design.
+
+Execution rules:
+
+- **One task spec per branch and pull request.** Branch name `task/<id>-<slug>`, for example `task/b1-durable-approvals`. The pull request links the spec and lists each acceptance item with how it was checked.
+- **Close the loop yourself.** Run `pnpm run check`; run `pnpm run e2e` for anything a user can see or any Host/executor flow; look at the screenshots in `e2e/.run/`. Explore the running app with agent-browser (below) when a flow is new or a test fails. Never hand the owner manual test steps instead of an automated check.
+- **Extend the e2e suite with every user-visible behavior.** Script the model with `ScriptedModel` (`e2e/scripted-model.ts`). Real providers are for occasional spot checks only.
+- **Commit and push freely** on the task branch with clear English messages, and keep the pull request description current. Do not merge to `main`, force-push shared history, or publish releases; the owner merges.
+- **Hand off cleanly:** when the task lands, move it to **Done** in the backlog, add its components to the technical plan's current-state table, and record new gaps or follow-ups.
+- Do not add placeholder packages; create a package when its task starts and add its rule to `scripts/check-boundaries.mjs`.
+
+## Driving the App
+
+- `pnpm run dev`: the app with the owner's real data (`~/Library/Application Support/OpenBot`, `~/OpenBot`, `~/.openbot/models.json`).
+- `pnpm run dev:debug`: the same, with Chrome DevTools Protocol on port 9339 for agent-browser. Quit any running OpenBot first: the single-instance lock hands a second launch to the first one.
+- agent-browser (installed globally; read `agent-browser skills get electron` once): `agent-browser connect 9339`, then `snapshot -i`, `click @eN`, `fill @eN "text"`, `screenshot path.png`. Use it to see and debug; turn every behavior worth keeping into an e2e test.
+- `pnpm run e2e`: builds the desktop app and drives it with Playwright against a scripted model, with its own state under `e2e/.run/` (data, workspace, `models.json`, screenshots) and Keychain service `ai.openbot.e2e`. It never touches the owner's data.
 
 ## Architecture Boundaries
 
@@ -61,12 +76,9 @@ Read [the architecture design](docs/architecture.md) before changing module boun
 - Preserve provenance, dependency closure, and runtime assets when working with vendored packages.
 - Keep credentials, personal data, execution logs, and temporary review artifacts out of the repository.
 
-## Verification and Reporting
+## Verification
 
-- Use commands that actually exist in the repository. Do not invent package scripts or report planned checks as completed.
-- Existing commands: `pnpm install`, `pnpm run build:pi` (build vendored Pi in dependency order; required before type checking or tests), `pnpm run check:boundaries`, `pnpm run typecheck` (root project plus `apps/desktop`, which uses bundler resolution), `pnpm run test`, and `pnpm run check` (all three). Desktop: `pnpm --filter @openbot/desktop run dev` and `run build` (electron-vite). Standalone Host: `pnpm --filter @openbot/local-server run start`. Vendored Pi tests run from each package directory with `pnpm exec vitest --run`.
-- Process smoke runs set `OPENBOT_DATA_DIR` to a temporary directory and `OPENBOT_KEYCHAIN_SERVICE` to a test service, then delete the test Keychain item. Never write test keys to the default service `ai.openbot.desktop.credentials`.
-- Run the smallest checks appropriate to the change. For documentation, check content, links, Markdown structure, and the English-language requirement.
-- Prefer existing tests. Add tests only when requested, required by an existing gate, or necessary to protect a high-risk behavior that lacks coverage.
-- For runtime changes, verify relevant cancellation, persistence, authorization, and recovery boundaries against the actual workspace or packaged runtime. Native permission and helper behavior require packaged macOS validation. Run broader checks only when the impact or observed failures justify them.
-- Report what changed, what was checked, and any remaining limitations. Distinguish static review, simulated checks, and real model or deployment validation.
+- Commands: `pnpm install`; `pnpm run build:pi` (vendored Pi, once per Pi change); `pnpm run check` (boundaries, type check, unit tests); `pnpm run e2e`; `pnpm run dev` and `pnpm run dev:debug`. Vendored Pi tests run from each package directory with `pnpm exec vitest --run`. CI runs `check` and `e2e` on macOS for every pull request.
+- Unit tests protect invariants: authorization, deduplication, recovery, cancellation, ordering, precedence. The e2e suite protects user-visible flows. Do not add tests that only restate wiring.
+- Native permissions, signing, and helper identity need a packaged build on a real Mac; say so instead of claiming them verified.
+- Report what changed, what ran, and what remains, distinguishing automated checks from real-model spot checks.
