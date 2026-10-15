@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { type CommandRule, toolDefinition } from "@openbot/protocol";
@@ -15,6 +15,10 @@ beforeAll(async () => {
 	docs = join(root, "docs");
 	await mkdir(join(workspace, "src"), { recursive: true });
 	await mkdir(docs);
+	// A link inside the workspace to a folder outside it: `outside/../secret.txt` is the shell's `<root>/secret.txt`.
+	await mkdir(join(root, "elsewhere"));
+	await writeFile(join(root, "secret.txt"), "secret\n");
+	await symlink(join(root, "elsewhere"), join(workspace, "outside"));
 });
 
 afterAll(async () => {
@@ -79,9 +83,14 @@ describe("lexCommand", () => {
 describe("decide: commands", () => {
 	it("runs a read-only search in the workspace without asking", () => {
 		expect(exec("rg foo src", snapshot())).toEqual({ kind: "allow" });
-		expect(exec("git status", snapshot())).toEqual({ kind: "allow" });
+		expect(exec("cat src/../README.md", snapshot()).kind).toBe("ask");
 		expect(exec("ls -la | wc -l", snapshot())).toEqual({ kind: "allow" });
 		expect(exec("grep -rn TODO src < src/list.txt", snapshot())).toEqual({ kind: "allow" });
+	});
+
+	it("asks when a symbolic link followed by .. would leave the grants", () => {
+		expect(exec("cat outside/../secret.txt", snapshot()).kind).toBe("ask");
+		expect(exec("ls outside", snapshot()).kind).toBe("ask");
 	});
 
 	it.each([
@@ -93,8 +102,12 @@ describe("decide: commands", () => {
 		"cat ../../etc/passwd",
 		"cat /etc/passwd",
 		"ls ~/*",
-		"git branch -D main",
+		"git status",
+		"git log",
 		"git push",
+		"cat */../../../etc/passwd",
+		"cat src/*/../../x",
+		"ls src/..",
 		"FOO=1 ls",
 		"rg foo $(echo /)",
 	])("asks for %s", (command) => {

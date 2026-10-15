@@ -38,6 +38,8 @@ describe("HostService", () => {
 	let updated: string[];
 	let secrets: MemorySecretStore;
 	let configFile: MemoryConfigFile;
+	/** Bots whose background commands the service asked the Host to stop. */
+	let stoppedBots: string[];
 	/** Resolves with the first conversation snapshot that satisfies the predicate. */
 	let nextSnapshot: (predicate: (snapshot: ConversationSnapshot) => boolean) => Promise<ConversationSnapshot>;
 
@@ -45,6 +47,7 @@ describe("HostService", () => {
 		directory = await mkdtemp(join(tmpdir(), "openbot-host-"));
 		runtime = await BotRuntime.open({ databasePath: join(directory, "db.sqlite"), models: scriptedModels("Done.").models });
 		events = [];
+		stoppedBots = [];
 		updated = [];
 		secrets = new MemorySecretStore();
 		configFile = memoryConfigFile();
@@ -63,6 +66,7 @@ describe("HostService", () => {
 			modelConfig: configFile,
 			approvals: new ApprovalBook(() => {}),
 			workspace: directory,
+			conversationStopped: (botId) => stoppedBots.push(botId),
 			emit: (event) => {
 				events.push(event.type);
 				if (event.type !== "conversation.updated") return;
@@ -209,6 +213,8 @@ describe("HostService", () => {
 		const bot = await service.handle("bots.create", { requestId: "x", name: "Gone" });
 		await service.handle("bots.memory.update", { botId: bot.botId, content: "kept" });
 		await service.handle("bots.delete", { botId: bot.botId });
+		// No Run was active, but background commands it started earlier must still stop.
+		expect(stoppedBots).toEqual([bot.botId]);
 		expect(await service.handle("bots.list", {})).toEqual([]);
 		await expect(service.handle("messages.submit", { botId: bot.botId, requestId: "m", text: "Hi" })).rejects.toThrow("Unknown Bot");
 		await expect(service.handle("bots.update", { botId: bot.botId, status: "active" })).rejects.toThrow("Unknown Bot");

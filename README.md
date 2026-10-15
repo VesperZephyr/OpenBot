@@ -6,7 +6,7 @@ The desktop UI, Host Runtime, Pi-based agent loop, local executor, and managed b
 
 Model inference uses a configurable API endpoint. Application state is stored locally.
 
-**Status: Phase 1 (MVP) is implemented and awaiting acceptance.** A first-launch setup picks a model (API keys go to the macOS Keychain) and creates your first Bot. Bots work in the shared workspace `~/OpenBot` with file tools and shell commands, search the web, and remember your preferences. Read-only commands such as `rg` or `git status` inside folders Bots may use run without asking. Other commands stop for **Allow once**, **Always allow**, or **Deny**, and those decisions survive restarts. Long commands move to the background. Up to three Bots work at once, and you can stop or redirect a Bot while it works. Commands run in a separate executor process with credentials removed from their environment.
+**Status: Phase 1 (MVP) is implemented and awaiting acceptance.** A first-launch setup picks a model (API keys go to the macOS Keychain) and creates your first Bot. Bots work in the shared workspace `~/OpenBot` with file tools and shell commands, search the web, and remember your preferences. Read-only commands such as `rg`, `grep`, or `ls` inside folders Bots may use run without asking. Other commands stop for **Allow once**, **Always allow**, or **Deny**, and those decisions survive restarts. Long commands move to the background. Up to three Bots work at once, and you can stop or redirect a Bot while it works. Commands run in a separate executor process with credentials removed from their environment.
 
 Phase 2 adds connectors, skills, routines, and Bots working together; Phase 3 adds the managed browser and desktop computer use. See [the backlog](docs/backlog.md).
 

@@ -16,7 +16,11 @@ export type FolderAccess = {
 	isGranted(path: string, access: GrantAccess): boolean;
 };
 
-/** Read-only programs (backlog B5); `git` is read-only only with the subcommands below. */
+/**
+ * Read-only programs (backlog B5). `git` is deliberately absent: a repository's own `.git/config` can make even
+ * `git status` run programs (`core.fsmonitor`, filters, pagers), and a Bot can write that file in its workspace without
+ * asking. Git commands are allowed through rules the user saves with **Always allow**.
+ */
 const READ_ONLY_PROGRAMS: Readonly<Record<string, true>> = {
 	rg: true,
 	grep: true,
@@ -31,26 +35,11 @@ const READ_ONLY_PROGRAMS: Readonly<Record<string, true>> = {
 	pwd: true,
 	which: true,
 };
-const READ_ONLY_GIT: Readonly<Record<string, true>> = { status: true, diff: true, log: true, show: true, branch: true };
-/** `git branch` only lists with these options; anything else creates, renames, or deletes branches. */
-const GIT_BRANCH_LISTING: Readonly<Record<string, true>> = {
-	"-a": true,
-	"--all": true,
-	"-r": true,
-	"--remotes": true,
-	"-v": true,
-	"-vv": true,
-	"--verbose": true,
-	"--show-current": true,
-	"--no-color": true,
-	"--list": true,
-};
 /** Options that run programs or write files, per read-only program. */
 const FORBIDDEN_OPTIONS: Readonly<Record<string, readonly string[]>> = {
 	find: ["-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprint0", "-fprintf", "-fls"],
 	rg: ["--pre", "--pre-glob"],
 	file: ["-C", "--compile"],
-	git: ["--output", "--ext-diff", "--textconv"],
 };
 /** Programs that run other programs from their arguments: only an exact rule may cover them. */
 const RUNS_OTHERS: Readonly<Record<string, true>> = {
@@ -165,26 +154,16 @@ function redirectsGranted(part: CommandPart, cwd: string, folders: FolderAccess)
 }
 
 /**
- * Read-only: an allowlisted program (or a read-only `git` subcommand) run in a granted folder, without forbidden
- * options, assignments, or output redirection, whose path-like arguments all resolve inside grants. Every argument
- * that is not an option is checked as a path relative to the working directory, which is stricter than checking only
- * absolute, `~`, and `..` ones (a relative path without `..` stays inside the working directory anyway). Options that
- * carry a path (`--file=/x`, `-f/x`, anything with `/`, `~`, or `..`) are refused rather than parsed per program.
+ * Read-only: an allowlisted program run in a granted folder, without forbidden options, assignments, or output
+ * redirection, whose path-like arguments all resolve inside grants. Every argument that is not an option is checked as
+ * a path relative to the working directory. Options that carry a path (`--file=/x`, `-f/x`, anything with `/`, `~`, or
+ * `..`) are refused rather than parsed per program.
  */
 export function isReadOnly(part: CommandPart, cwd: string, folders: FolderAccess): boolean {
-	const [program, ...args] = part.words;
+	const [program, ...operands] = part.words;
 	if (program === undefined || program.expands || part.assignments.length > 0) return false;
-	if (READ_ONLY_PROGRAMS[program.value] !== true && program.value !== "git") return false;
+	if (READ_ONLY_PROGRAMS[program.value] !== true) return false;
 	if (!folders.isGranted(cwd, "read")) return false;
-	let operands = args;
-	if (program.value === "git") {
-		const [subcommand, ...rest] = args;
-		if (subcommand === undefined || subcommand.expands || READ_ONLY_GIT[subcommand.value] !== true) return false;
-		if (subcommand.value === "branch" && !rest.every((word) => !word.expands && GIT_BRANCH_LISTING[word.value] === true)) {
-			return false;
-		}
-		operands = rest;
-	}
 	const forbidden = FORBIDDEN_OPTIONS[program.value] ?? [];
 	for (const word of operands) {
 		if (word.value.startsWith("-") && word.value !== "-") {
@@ -200,15 +179,22 @@ export function isReadOnly(part: CommandPart, cwd: string, folders: FolderAccess
 	});
 }
 
-/** A word the shell expands is checked at the literal folder before its first pattern character. */
+/**
+ * A path argument resolves inside a grant. `..` segments are refused outright: the shell applies them after following
+ * symbolic links, so `link/../x` names a file next to the link's target, not next to the link. A word the shell
+ * expands is checked at the literal folder before its first pattern character, and nothing after that character may
+ * contain a slash: a pattern followed by `/..` would climb out of whatever folder the pattern matched.
+ */
 function pathGranted(word: Word, cwd: string, folders: FolderAccess): boolean {
 	if (word.value === "-") return true;
+	if (word.value.split("/").includes("..")) return false;
 	let path = word.value;
 	if (word.expands) {
 		const literal = /^[^*?[#^]*/.exec(word.source)![0];
 		// Quotes or escapes before the pattern change what the literal means; `~user` names another home.
 		if (/["'\\]/.test(literal)) return false;
 		if (literal.startsWith("~") && literal !== "~" && !literal.startsWith("~/")) return false;
+		if (word.source.slice(literal.length).includes("/")) return false;
 		// Without a pattern character (a word expanding only its leading `~`), the word is that one path.
 		path = literal === word.source ? literal : literal === "" ? "." : literal.endsWith("/") ? literal : dirname(literal);
 	}

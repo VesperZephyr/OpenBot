@@ -58,6 +58,8 @@ export function runCommand(args: CommandArgs, log: OutputLog, onOutput: (chunk: 
 
 	let reason: "cancelled" | "timeout" | undefined;
 	let groupGone = true;
+	/** Set once the leader exited and the group was told to end; its PID may then belong to an unrelated group. */
+	let closed = false;
 	const signalGroup = (signal: NodeJS.Signals): boolean => {
 		if (child.pid === undefined) return false;
 		try {
@@ -68,9 +70,10 @@ export function runCommand(args: CommandArgs, log: OutputLog, onOutput: (chunk: 
 		}
 	};
 	const stop = (why: "cancelled" | "timeout"): void => {
-		if (reason !== undefined) return;
+		if (reason !== undefined || closed) return;
 		reason = why;
 		signalGroup("SIGTERM");
+		// Within the grace period the group's ID stays its own while any member is alive, so escalating is safe.
 		const killer = setTimeout(() => {
 			if (signalGroup("SIGKILL")) {
 				// Still alive after the grace period; if it survives SIGKILL too, the outcome is uncertain.
@@ -86,12 +89,14 @@ export function runCommand(args: CommandArgs, log: OutputLog, onOutput: (chunk: 
 	const exited = new Promise<CommandExit>((resolve) => {
 		child.on("error", (error) => {
 			clearTimeout(timer);
+			closed = true;
 			resolve({ code: null, signal: null, reason, groupGone: true, startError: error.message });
 		});
 		child.on("close", (code, signal) => {
 			clearTimeout(timer);
 			// Background children left in the group would outlive the command; end them without changing the outcome.
 			if (reason === undefined) signalGroup("SIGTERM");
+			closed = true;
 			resolve({ code, signal, reason, groupGone });
 		});
 	});

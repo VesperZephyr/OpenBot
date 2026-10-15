@@ -45,6 +45,17 @@ let window: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let quitting = false;
 
+/** Development and test overrides; a packaged app ignores them, so the environment cannot redirect its keys or limits. */
+const DEV_OVERRIDES = [
+	"OPENBOT_KEYCHAIN_SERVICE",
+	"OPENBOT_WORKSPACE",
+	"OPENBOT_TAVILY_BASE_URL",
+	"OPENBOT_MAX_ACTIVE_RUNS",
+	"OPENBOT_EXEC_YIELD_MS",
+] as const;
+const forwarded = (names: readonly string[]): Record<string, string> =>
+	Object.fromEntries(names.flatMap((name) => (process.env[name] === undefined ? [] : [[name, process.env[name]]])));
+
 const host = new HostProcess({
 	node: runtime.node,
 	entry: runtime.hostEntry,
@@ -54,19 +65,9 @@ const host = new HostProcess({
 		USER: process.env.USER ?? "",
 		TMPDIR: process.env.TMPDIR ?? "",
 		...(runtime.executorEntry === undefined ? {} : { OPENBOT_EXECUTOR_ENTRY: runtime.executorEntry }),
-		...(process.env.OPENBOT_DATA_DIR === undefined ? {} : { OPENBOT_DATA_DIR: process.env.OPENBOT_DATA_DIR }),
-		...(process.env.OPENBOT_KEYCHAIN_SERVICE === undefined
-			? {}
-			: { OPENBOT_KEYCHAIN_SERVICE: process.env.OPENBOT_KEYCHAIN_SERVICE }),
-		...(process.env.OPENBOT_HOME === undefined ? {} : { OPENBOT_HOME: process.env.OPENBOT_HOME }),
-		...(process.env.OPENBOT_WORKSPACE === undefined ? {} : { OPENBOT_WORKSPACE: process.env.OPENBOT_WORKSPACE }),
-		...(process.env.OPENBOT_TAVILY_BASE_URL === undefined
-			? {}
-			: { OPENBOT_TAVILY_BASE_URL: process.env.OPENBOT_TAVILY_BASE_URL }),
-		...(process.env.OPENBOT_MAX_ACTIVE_RUNS === undefined
-			? {}
-			: { OPENBOT_MAX_ACTIVE_RUNS: process.env.OPENBOT_MAX_ACTIVE_RUNS }),
-		...(process.env.OPENBOT_EXEC_YIELD_MS === undefined ? {} : { OPENBOT_EXEC_YIELD_MS: process.env.OPENBOT_EXEC_YIELD_MS }),
+		// Where data and the model configuration live may be moved in any build.
+		...forwarded(["OPENBOT_DATA_DIR", "OPENBOT_HOME"]),
+		...(app.isPackaged ? {} : forwarded(DEV_OVERRIDES)),
 	},
 	onOutput: (chunk) => hostLog.write(chunk),
 	// Both callbacks first fire after `host.start()` below, when `attentionWatcher` exists.

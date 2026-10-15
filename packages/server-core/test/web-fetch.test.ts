@@ -124,6 +124,10 @@ describe("web_fetch", () => {
 		expect((await production({ url: `${origin}/article` }, signal)).output).toBe("Refused: 127.0.0.1 is a private or local address");
 		expect((await production({ url: "http://[::1]/" }, signal)).status).toBe("failed");
 		expect((await production({ url: "http://192.168.1.1/" }, signal)).output).toContain("Refused");
+		// The URL parser rewrites an IPv4-mapped address to hex (`[::ffff:7f00:1]`); it is still loopback.
+		const port = new URL(origin).port;
+		expect((await production({ url: `http://[::ffff:127.0.0.1]:${port}/article` }, signal)).output).toContain("Refused");
+		expect((await production({ url: `http://[::ffff:c0a8:101]/` }, signal)).output).toContain("Refused");
 		expect((await production({ url: "file:///etc/passwd" }, signal)).output).toBe("Only http and https URLs can be fetched");
 	});
 });

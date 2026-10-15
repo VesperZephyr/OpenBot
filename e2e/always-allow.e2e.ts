@@ -43,7 +43,7 @@ describe("always allow", () => {
 	});
 
 	it("Always allow on git status saves a rule; deleting it brings the card back", async () => {
-		// Read-only commands would run anyway; turn the default off so the rule is what lets git status through.
+		// git is not in the read-only default; turning it off as well proves the rule alone lets git status through.
 		await h.page().getByRole("button", { name: /^Settings/ }).click();
 		const commands = h.page().getByLabel("Commands", { exact: true });
 		await commands.getByRole("checkbox").uncheck();

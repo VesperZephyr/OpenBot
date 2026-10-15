@@ -16,8 +16,9 @@ if (targetId === undefined || workspace === undefined || dataDirectory === undef
 	console.error("The local executor must be started by the Host Runtime");
 	process.exit(2);
 }
-/** Tests shorten how long a foreground command runs before it moves to the background. */
-const yieldMs = Number(process.env.OPENBOT_EXEC_YIELD_MS ?? DEFAULT_YIELD_MS);
+/** Tests shorten how long a foreground command runs before it moves to the background; unset or invalid means the default. */
+const yieldSetting = Number(process.env.OPENBOT_EXEC_YIELD_MS);
+const yieldMs = process.env.OPENBOT_EXEC_YIELD_MS && Number.isInteger(yieldSetting) && yieldSetting > 0 ? yieldSetting : DEFAULT_YIELD_MS;
 
 const ledgerDirectory = join(dataDirectory, "executor");
 mkdirSync(ledgerDirectory, { recursive: true, mode: 0o700 });

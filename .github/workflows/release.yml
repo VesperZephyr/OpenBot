@@ -51,9 +51,10 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          TAG: ${{ github.ref_name }}
         run: |
           test -n "$CSC_LINK" || { echo "MAC_CERTIFICATE_P12_BASE64 is not set; refusing to publish an unsigned build"; exit 1; }
-          pnpm run package
+          OPENBOT_VERSION="${TAG#v}" pnpm run package
       - name: Verify signature and notarization
         run: |
           app=apps/desktop/dist/mac-arm64/OpenBot.app

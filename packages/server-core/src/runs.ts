@@ -11,6 +11,9 @@ import { randomUUID } from "node:crypto";
 import { type BotRuntime, isTerminal, type RunInput, type RunStore, type StoredRun } from "@openbot/agent-runtime";
 import { type BotId, ProtocolError, type RunId, type RunRecord } from "@openbot/protocol";
 
+/** Outcome reason the scheduler records for a queued steer it withdrew because its Run failed. */
+const WITHDRAWN = "withdrawn";
+
 export const DEFAULT_MAX_ACTIVE_RUNS = 3;
 
 export type RunSchedulerOptions = {
@@ -232,15 +235,20 @@ export class RunScheduler {
 		if (this.#stopped) return;
 		const run = this.#runs.get(runId);
 		if (run === undefined || run.state !== "running") return;
-		const updated = withInput(run, requestId, { outcome });
-		await this.#put(updated);
-		// Pi keeps a failed run's queued steers until the next input; this Run is over, so withdraw them.
+		// An input this scheduler withdrew already carries its outcome; Pi's `aborted` settlement for it changes nothing.
+		if (run.inputs.find((input) => input.requestId === requestId)?.outcome !== undefined) return;
+		let updated = withInput(run, requestId, { outcome });
+		// Pi keeps a failed run's queued steers until the next input; this Run is over, so withdraw them. Each is
+		// recorded as withdrawn first, so the failure stays the Run's outcome instead of reading as a user stop.
 		if (outcome.status === "unanswered" && outcome.reason !== "aborted") {
-			for (const input of updated.inputs) {
-				if (input.outcome === undefined && input.submissionId !== undefined) {
-					await this.#runtime.withdraw(updated.botId, input.submissionId);
-				}
+			const pending = updated.inputs.filter((input) => input.outcome === undefined && input.submissionId !== undefined);
+			for (const input of pending) {
+				updated = withInput(updated, input.requestId, { outcome: { status: "unanswered", reason: WITHDRAWN } });
 			}
+			await this.#put(updated);
+			for (const input of pending) await this.#runtime.withdraw(updated.botId, input.submissionId!);
+		} else {
+			await this.#put(updated);
 		}
 		await this.#finishIfSettled(runId);
 	}

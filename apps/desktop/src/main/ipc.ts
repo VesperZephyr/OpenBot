@@ -34,8 +34,13 @@ export function registerIpc({ host, isTrustedFrame }: IpcOptions): void {
 			// `grants.add` carries a picker token, never a path: main swaps in the folder the user chose. The Host
 			// parameters are checked after the swap; the renderer's `{ selection, access }` has no Host schema.
 			if (rendererMethod === "grants.add") {
-				const { selection, access, ...rest } = (params ?? {}) as { selection?: unknown; access?: unknown };
+				const { selection, access, ...rest } = (typeof params === "object" && params !== null ? params : {}) as {
+					selection?: unknown;
+					access?: unknown;
+				};
 				if (Object.keys(rest).length > 0) throw new Error("[invalid_request] Unknown parameters for grants.add");
+				// Check what the renderer controls before the one-time picker token is spent.
+				if (access !== "read" && access !== "readwrite") throw new Error("[invalid_request] access must be read or readwrite");
 				const hostParams = { path: folders.take(selection, event.sender.id), access };
 				const invalidGrant = paramsError("grants.add", hostParams);
 				if (invalidGrant !== undefined) throw new Error(`[invalid_request] ${invalidGrant}`);

@@ -240,9 +240,11 @@ export class HostService {
 				const bot = await this.#runtime.getBot(botId);
 				if (bot === undefined) throw new ProtocolError("not_found", `Unknown Bot: ${botId}`);
 				if (bot.status === "deleted") return null;
-				// Stop its work first, so no Run keeps going for a Bot the user can no longer see.
+				// Stop its work first, so no Run keeps going for a Bot the user can no longer see. Background commands
+				// outlive the Run that started them, so they are stopped whether or not a Run is active.
 				const run = this.#runs.active(botId);
 				if (run !== undefined) await this.#runs.cancel(run.runId);
+				this.#conversationStopped(botId);
 				await this.#runtime.updateBot(botId, { status: "deleted" });
 				this.#observers.get(botId)?.stop();
 				this.#observers.delete(botId);

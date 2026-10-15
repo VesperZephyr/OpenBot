@@ -209,7 +209,15 @@ async function isPrivateHost(hostname: string): Promise<boolean> {
 function isPrivateAddress(address: string): boolean {
 	if (address.includes(":")) {
 		const lower = address.toLowerCase();
-		if (lower.startsWith("::ffff:")) return isPrivateAddress(lower.slice(7));
+		if (lower.startsWith("::ffff:")) {
+			const mapped = lower.slice(7);
+			// The URL parser writes `[::ffff:127.0.0.1]` as `::ffff:7f00:1`; turn the hex form back into a dotted quad.
+			const hex = /^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(mapped);
+			if (hex === null) return isPrivateAddress(mapped);
+			const high = Number.parseInt(hex[1]!, 16);
+			const low = Number.parseInt(hex[2]!, 16);
+			return isPrivateAddress(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`);
+		}
 		return lower === "::1" || lower === "::" || lower.startsWith("fc") || lower.startsWith("fd") || lower.startsWith("fe80");
 	}
 	const [a = 0, b = 0] = address.split(".").map(Number);

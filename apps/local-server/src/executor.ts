@@ -40,6 +40,8 @@ export class ExecutorProcess implements ExecutorTransport {
 
 	async invoke(invocation: ToolInvocation, onProgress: (output: string) => void, signal: AbortSignal): Promise<ToolOutcome> {
 		await this.#start();
+		// The Run may have been stopped while the router or the start awaited: nothing was sent, so nothing runs.
+		signal.throwIfAborted();
 		const child = this.#child;
 		if (child === undefined || !child.connected) return { status: "failed", output: "The local executor is not running" };
 		const { promise, resolve } = Promise.withResolvers<ToolOutcome>();

@@ -199,6 +199,25 @@ describe("RunScheduler", () => {
 		await close();
 	});
 
+	it("keeps a failed Run failed when a steer was still queued", async () => {
+		const respond = Promise.withResolvers<void>();
+		await open({ error: "provider 500", after: respond.promise });
+		await createBots("a");
+		await scheduler.start();
+		const first = await scheduler.submit("a", "m1", "Work");
+		const steer = await scheduler.submit("a", "m2", "Also this");
+		expect(steer).toMatchObject({ runId: first.runId, steered: true });
+		respond.resolve();
+
+		await reaches("a", first.runId, "failed");
+		const run = await runtime.runsStore().get(first.runId);
+		expect(run?.error).toBe("model_error");
+		// A failure is not a stop: no "Stopped" note, and the Bot was never asked to stop its work.
+		expect((await runtime.snapshot("a")).items.some((item) => item.kind === "stopped")).toBe(false);
+		expect(stopped).toEqual([]);
+		await close();
+	});
+
 	it("joins messages to a queued Run and submits them together when it starts", async () => {
 		await open(WAIT, "A done.", "Both read.");
 		await createBots("a", "b");

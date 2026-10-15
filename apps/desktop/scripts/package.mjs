@@ -9,6 +9,13 @@
 //   auto-discovered, so the result does not depend on what certificates this Mac happens to have.
 import { build } from "electron-builder";
 
+// Release builds take their version from the tag (`OPENBOT_VERSION`, set by the release workflow); local builds keep
+// package.json's version.
+const version = process.env.OPENBOT_VERSION || undefined;
+if (version !== undefined && !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
+	throw new Error(`OPENBOT_VERSION must be a semantic version such as 1.2.3, got ${version}`);
+}
+
 const developerId = Boolean(process.env.CSC_LINK || process.env.CSC_NAME);
 const notarize = Boolean(
 	(process.env.APPLE_ID && process.env.APPLE_APP_SPECIFIC_PASSWORD && process.env.APPLE_TEAM_ID) ||
@@ -26,7 +33,10 @@ console.log(
 const adHocEntitlements = "build/entitlements.adhoc.plist";
 await build({
 	publish: "never",
-	config: developerId
-		? { mac: { forceCodeSigning: true, notarize } }
-		: { mac: { identity: "-", notarize: false, entitlements: adHocEntitlements, entitlementsInherit: adHocEntitlements } },
+	config: {
+		...(version === undefined ? {} : { extraMetadata: { version } }),
+		mac: developerId
+			? { forceCodeSigning: true, notarize }
+			: { identity: "-", notarize: false, entitlements: adHocEntitlements, entitlementsInherit: adHocEntitlements },
+	},
 });
