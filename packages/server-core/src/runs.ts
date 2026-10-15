@@ -39,6 +39,8 @@ export class RunScheduler {
 	readonly #ended = new Map<RunId, PromiseWithResolvers<RunRecord["state"]>>();
 	/** Pi submissions with an attached observer, so a resubmission or a second sweep never observes one twice. */
 	readonly #observed = new Set<string>();
+	/** Each Bot's newest Run written since start, terminal ones included. */
+	readonly #latest = new Map<BotId, StoredRun>();
 	#line: Promise<unknown> = Promise.resolve();
 	#stopped = false;
 
@@ -62,6 +64,8 @@ export class RunScheduler {
 			for (const run of await this.#store.list()) {
 				if (isTerminal(run.state)) continue;
 				this.#runs.set(run.runId, run);
+				const latest = this.#latest.get(run.botId);
+				if (latest === undefined || latest.createdAt <= run.createdAt) this.#latest.set(run.botId, run);
 				if (run.state === "running") await this.#submitInputs(run);
 			}
 			await this.#admit();
@@ -76,6 +80,14 @@ export class RunScheduler {
 	/** The Bot's latest non-terminal Run. */
 	active(botId: BotId): StoredRun | undefined {
 		return [...this.#runs.values()].findLast((run) => run.botId === botId && !isTerminal(run.state));
+	}
+
+	/** The Bot's newest Run since start, including one that already ended. */
+	latest(botId: BotId): RunRecord | undefined {
+		const run = this.#latest.get(botId);
+		if (run === undefined) return undefined;
+		const { messages: _messages, inputs: _inputs, ...record } = run;
+		return record;
 	}
 
 	submit(botId: BotId, requestId: string, text: string): Promise<SubmitOutcome> {
@@ -264,6 +276,8 @@ export class RunScheduler {
 		await this.#store.put(run);
 		if (isTerminal(run.state)) this.#runs.delete(run.runId);
 		else this.#runs.set(run.runId, run);
+		const latest = this.#latest.get(run.botId);
+		if (latest === undefined || latest.runId === run.runId || latest.createdAt <= run.createdAt) this.#latest.set(run.botId, run);
 		this.#changed(run.botId);
 	}
 

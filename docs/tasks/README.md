@@ -67,5 +67,5 @@ Phase 1 (MVP). Batches without a spec have an approach in the [backlog](../backl
 | [B4](b4-web-research.md)      | Web research                            | in review     |
 | B5                            | Always allow and folder grants          | approach only |
 | B6                            | Bot quality and memory                  | approach only |
-| B7                            | Desktop MVP                             | approach only |
+| [B7](b7-desktop-mvp.md)       | Desktop MVP                             | in review     |
 | [B8](b8-installable-build.md) | Installable build                       | in review     |

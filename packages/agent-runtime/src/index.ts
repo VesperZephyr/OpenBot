@@ -50,12 +50,13 @@ import { type RunStore, runStore } from "./runs.ts";
 const BOT_EXTENSION = "openbot.bot";
 /** Display-only transcript entry written when the user stops a Run. */
 const STOPPED_ENTRY = "openbot.stopped";
+/** How long a model test may take before it counts as failed. */
+const MODEL_TEST_TIMEOUT_MS = 30_000;
 
 /** Credential contract the Host implements over the Keychain; re-exported so the Host never imports Pi. */
 export type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
 export type { ApprovalStore } from "./approvals.ts";
 export type { ConfigEnvironment, ConfiguredProviderStatus, ModelConfigStatus } from "./model-config.ts";
-export { SUPPORTED_MODEL_APIS } from "./model-config.ts";
 export type { MemoryEdit } from "./memory.ts";
 export { isTerminal, KEPT_TERMINAL_RUNS, type RunInput, type RunMessage, type RunStore, type StoredRun } from "./runs.ts";
 
@@ -116,6 +117,9 @@ export type CreateBotInput = {
 	readonly role?: string;
 	readonly instructions?: string;
 	readonly model?: ModelRef;
+	readonly thinkingLevel?: ThinkingLevel;
+	/** Initial memory, written in the same commit that registers the Bot (Duplicate). */
+	readonly memory?: string;
 	readonly createdAt: number;
 };
 
@@ -218,6 +222,7 @@ export class BotRuntime {
 		const existing = await this.#record(input.botId);
 		if (existing !== undefined) return toProfile(existing);
 
+		if (input.memory !== undefined) checkMemorySize(input.memory);
 		const model = input.model ?? (await this.defaultModel());
 		const conversation = await this.#harness.createConversation(
 			{ ownership: { kind: "ownerless" }, agent: agentChange({ ...input, ...(model === undefined ? {} : { model }) }) },
@@ -229,6 +234,7 @@ export class BotRuntime {
 			role: input.role ?? "",
 			instructions: input.instructions ?? "",
 			...(input.model === undefined ? {} : { model: input.model }),
+			...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
 			pinned: false,
 			status: "active",
 			createdAt: input.createdAt,
@@ -237,7 +243,10 @@ export class BotRuntime {
 		// A crash between the two commits leaves an orphan conversation but no half-registered Bot.
 		const stored = await this.#harness.commit(async (tx) => {
 			const doc = await tx.doc(BotsDoc);
-			doc.bots[input.botId] ??= record;
+			if (doc.bots[input.botId] === undefined) {
+				doc.bots[input.botId] = record;
+				if (input.memory !== undefined && input.memory !== "") (await tx.doc(MemoryDoc, input.botId, null)).content = input.memory;
+			}
 			// Drafts are only valid inside the commit callback, so return a plain copy.
 			return JSON.parse(JSON.stringify(doc.bots[input.botId])) as BotRecord;
 		}, this.#context);
@@ -450,6 +459,28 @@ export class BotRuntime {
 	}
 
 	/**
+	 * Send one tiny real request to the model, with the same provider, endpoint, and credentials Bots use, and report
+	 * whether it answered. Failures (unknown model, missing key, HTTP errors, timeout) become `{ ok: false, error }`.
+	 */
+	async testModel(ref: ModelRef, timeoutMs = MODEL_TEST_TIMEOUT_MS): Promise<{ readonly ok: boolean; readonly error?: string }> {
+		const model = this.#models.getModel(ref.provider, ref.modelId);
+		if (model === undefined) return { ok: false, error: `Unknown model ${ref.provider}/${ref.modelId}` };
+		try {
+			const answer = await this.#models.completeSimple(
+				model,
+				{ messages: [{ role: "user", content: "Reply with OK.", timestamp: Date.now() }] },
+				{ maxTokens: 16, signal: AbortSignal.timeout(timeoutMs) },
+			);
+			if (answer.stopReason === "error" || answer.stopReason === "aborted") {
+				return { ok: false, error: answer.errorMessage ?? (answer.stopReason === "aborted" ? "Timed out" : "The request failed") };
+			}
+			return { ok: true };
+		} catch (error) {
+			return { ok: false, error: error instanceof Error ? error.message : String(error) };
+		}
+	}
+
+	/**
 	 * Apply the user's model configuration (`undefined` when there is no file): new providers are added, entries with
 	 * a built-in ID replace that provider with an overlaid one, and providers from the previous load that are gone are
 	 * removed or restored. Takes effect from the next model request.
@@ -531,10 +562,15 @@ export class BotRuntime {
 	}
 }
 
-function agentChange(input: { readonly model?: ModelRef; readonly instructions?: string }): AgentChange {
+function agentChange(input: {
+	readonly model?: ModelRef;
+	readonly instructions?: string;
+	readonly thinkingLevel?: ThinkingLevel;
+}): AgentChange {
 	return {
 		...(input.model === undefined ? {} : { model: input.model }),
 		...(input.instructions === undefined || input.instructions === "" ? {} : { instructions: input.instructions }),
+		...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
 	};
 }
 
@@ -581,6 +617,12 @@ type MutableToolItem = { kind: "tool"; id: string; tool: string; args: unknown; 
 export const UNKNOWN_OUTCOME_TEXT =
 	"This action was interrupted and may have partly run. Check its effect before doing anything else.";
 
+/** When the entry's first user or assistant message was created; Pi stamps every message. */
+function timestampOf(entry: EntryRecord): number | undefined {
+	const message = entry.model?.[0];
+	return message?.role === "user" || message?.role === "assistant" ? message.timestamp : undefined;
+}
+
 /**
  * Transcript items in order. A tool call becomes a `tool` item right after the assistant text that made it; its
  * `pi.tool-result` entry completes that item instead of adding one.
@@ -591,9 +633,11 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 	for (const entry of entries) {
 		const id = String(entry.id);
 		switch (entry.kind) {
-			case "pi.user":
-				items.push({ kind: "user", id, parts: textParts(entry) });
+			case "pi.user": {
+				const at = timestampOf(entry);
+				items.push({ kind: "user", id, parts: textParts(entry), ...(at === undefined ? {} : { at }) });
 				break;
+			}
 			case "pi.assistant": {
 				const message = entry.model?.[0];
 				const error =
@@ -602,6 +646,7 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 						: undefined;
 				const parts = textParts(entry);
 				const thinking = thinkingOf(entry);
+				const at = timestampOf(entry);
 				if (parts.length > 0 || error !== undefined || thinking !== undefined) {
 					items.push({
 						kind: "assistant",
@@ -609,6 +654,7 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 						parts,
 						...(thinking === undefined ? {} : { thinking }),
 						...(error === undefined ? {} : { error }),
+						...(at === undefined ? {} : { at }),
 					});
 				}
 				for (const call of toolCallsOf(entry)) {
