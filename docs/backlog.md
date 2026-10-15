@@ -65,14 +65,14 @@ The MVP is done when all of these pass on a packaged build installed on a Mac th
 
 ### B3. Coding-agent tools (after B1)
 
-Bring the tool set to what users expect from a coding agent. References: Pi `coding-agent/src/core/tools/` (`grep.ts`, `find.ts`, truncation), MCode `output-limit.ts`, `read-guards.ts`.
+Bring the tool set to what users expect from a coding agent. References: Pi `coding-agent/src/core/tools/` (truncation), MCode `output-limit.ts`, `read-guards.ts`.
 
-- **`local_grep`** runs ripgrep from `@vscode/ripgrep` (pinned; its binary ships in B8 outside `app.asar`). Arguments: pattern, path, glob, case, context lines, `max_results`. The executor checks the search root against grants; ripgrep's own ignore rules plus a fixed exclusion list (`.git`, `node_modules`, key and credential file names) apply. No ripgrep found is a clear error, not a slow JavaScript fallback.
-- **`local_glob`** uses Node's `fs.promises.glob` under a granted root, sorted by modification time, capped, with the same exclusions.
+No dedicated search tools: Bots search with `rg`, `grep`, and `find` through `local_exec`, which models already use well. B5 lets read-only search commands inside grants run without asking, and B6's prompt tells the Bot to prefer `rg` when installed. Revisit `local_grep` only if real use shows models struggling or approvals piling up.
+
 - **One output limiter** in `local-executor` for every tool: head and tail by lines and bytes, a truncation marker, and the full output spilled to `<data>/artifacts/<invocationId>.txt`. The marker names that path and the `offset` to continue; the artifacts directory is an implicit read grant.
 - **`local_edit`** gains an optional `expected_sha256` of the current file (architecture 5.2 requires an expected-content check) and lists line numbers when `old_text` matches more than once.
 - **Background commands.** `local_exec` accepts `background: true`, and a foreground command still running after 60 seconds yields to the background. Either way the call ends with a `taskId` and the output so far. `task_output(taskId, wait_seconds ≤ 60)` returns new output and status; `task_stop(taskId)` signals the group. Tasks live in the executor with a `background_tasks` table in the B1 ledger; on executor restart they are killed by the orphan guard and reported `unknown`. The approval covers the command once, including its background phase. Waking the Bot when a background task finishes is Phase 2 (B15); in the MVP the model polls with `task_output`.
-- Acceptance: unit tests for grant enforcement on grep and glob roots, truncation spill and continuation, hash mismatch refusal, background yield and stop; e2e: a scripted model runs a 70-second command, gets a `taskId`, and reads the final output with `task_output`.
+- Acceptance: unit tests for truncation spill and continuation, hash mismatch refusal, background yield and stop; e2e: a scripted model runs a 70-second command, gets a `taskId`, and reads the final output with `task_output`.
 
 ### B4. Web research
 
@@ -86,16 +86,17 @@ Bring the tool set to what users expect from a coding agent. References: Pi `cod
 The MVP subset of architecture 5.3: enough that a daily user is not asked the same thing twice. Ask-first rules, the model reviewer, and unattended expiry are Phase 2 (B12). Reference: MCode `bash-rule-match.ts`, `permission-picker.ts`; Grok Bot Auto-review settings.
 
 - **Command setting** in Settings: Ask every time (default), Always allow, Never.
+- **Read-only commands inside grants run without asking** (on by default, a toggle in Settings). The allowlist is `rg`, `grep`, `find`, `ls`, `cat`, `head`, `tail`, `wc`, `file`, `stat`, `pwd`, `which`, and `git status|diff|log|show|branch`. They are allowed only when the working directory is inside a grant and every path-like argument (absolute, `~`, or containing `..`) resolves inside a grant; output redirection, `-exec`, `--pre`, and command substitution disqualify a command. Otherwise the normal setting applies. Commands cannot be confined to a directory (architecture 1.1), so this is a heuristic for convenience, kept narrow on purpose.
 - **Command rules.** **Always allow** on a command card offers scopes narrow-first: this exact command, then the program and subcommand with any arguments (`git status *`). It shows the exact rule before saving. A command is tokenized conservatively. Pipes, `&&`, `||`, and `;` split it into parts, and every part must match a rule. Subshells, redirections to files outside grants, `eval`, and unparseable input never auto-allow.
 - **Folder grants.** **Always allow** on a file card outside the workspace grants the containing folder (read, or read and write for write tools), defaulting to the narrowest folder and editable to a parent. Settings → **Folders** lists grants with revoke and **Add folder** (native picker; main passes a selection reference, never a renderer path).
 - Rules and grants are versioned documents (`openbot.policy`, `openbot.grants`). Precedence: hard rules, Never, allow rule or grant, then the capability default. Revoking a grant invalidates pending approvals that relied on it, and the executor receives the current grant list with every invocation (already the case).
-- Acceptance: unit tests for rule matching (compound commands with one unapproved part still ask; quoting cannot smuggle a second command), precedence, and grant revocation; e2e: Always allow on `git status`, a second `git status` runs without a card, and deleting the rule brings the card back.
+- Acceptance: unit tests for rule matching (compound commands with one unapproved part still ask; quoting cannot smuggle a second command), the read-only default (`rg foo src` in the workspace runs; `cat ~/.ssh/id_rsa`, `find . -exec rm {} \;`, and `grep x > out.txt` ask), precedence, and grant revocation; e2e: Always allow on `git status`, a second `git status` runs without a card, and deleting the rule brings the card back.
 
 ### B6. Bot quality and memory
 
 What makes a Bot feel like a teammate rather than a raw model.
 
-- **System prompt sections** registered in the OpenBot Pi extension (they stay cache-friendly and change only when their inputs change): identity (Bot name, role, today's date only), working style adapted from Grok Bot (reply first with a short acknowledgment before tool work, steady progress updates, plain prose, ask only when blocked, report what was done and what was not verified), the tool surface (workspace first, web for lookups, commands need approval, how truncation and background tasks work), and memory. Write it once, review it against real models in the spec.
+- **System prompt sections** registered in the OpenBot Pi extension (they stay cache-friendly and change only when their inputs change): identity (Bot name, role, today's date only), working style adapted from Grok Bot (reply first with a short acknowledgment before tool work, steady progress updates, plain prose, ask only when blocked, report what was done and what was not verified), the tool surface (workspace first; search with `rg` when installed, else `grep` and `find`, through `local_exec`; web for lookups; which commands need approval; how truncation and background tasks work), and memory. Write it once, review it against real models in the spec.
 - **Memory.** One `openbot.memory` document per Bot holding Markdown of at most 8 KB. A `memory_update` Host tool takes `replace` or `append` with a section heading, is always allowed, and appears in the transcript as "Updated memory". A `memory` prompt section renders the content. The Edit profile dialog gets a Memory tab to view and edit it. A document (not files, as Grok Bot does) keeps it atomic with the rest of Host state and out of the shared workspace.
 - **Thinking level** per Bot (Off, Low, Medium, High) through Pi `configure({ thinkingLevel })`, shown only for reasoning models. The transcript renders thinking as a collapsed block.
 - **Long conversations.** Pi auto-compaction is on by default (`reserveTokens` 16384). Show a divider "Earlier messages summarized" at each `pi.compaction` entry. Add **New topic** in the Bot menu: `conversation.reset()` with a divider; memory carries over, context does not.
@@ -119,7 +120,7 @@ The parts of architecture M2 a daily user notices. Production IPC hardening beyo
 
 A signed DMG a user can download and run. References: architecture 3, 6.4; electron-builder docs.
 
-- electron-builder, arm64 DMG first (universal later). Host and executor JavaScript and Pi's runtime assets outside `app.asar`; a pinned, checksum-verified Node 24 binary in `Contents/Resources` with the `allow-jit` entitlement; the ripgrep binary signed alongside.
+- electron-builder, arm64 DMG first (universal later). Host and executor JavaScript and Pi's runtime assets outside `app.asar`; a pinned, checksum-verified Node 24 binary in `Contents/Resources` with the `allow-jit` entitlement.
 - The `app://` protocol replaces `file://` for the renderer. Fuses from architecture 6.4 are set.
 - Signing and notarization with a Developer ID from CI secrets. Without a certificate, a local ad-hoc build for testing, never published.
 - Keychain stays in the Host through `/usr/bin/security` for the MVP. Recorded risk: items it creates trust the `security` tool, so another process of the same user can read them through it. Moving to a signed helper or Electron `safeStorage` is B14.
