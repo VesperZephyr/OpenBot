@@ -10,6 +10,7 @@ import { AttentionWatcher } from "./attention-watcher";
 import { RotatingLog } from "./host-log";
 import { HostProcess } from "./host";
 import { registerIpc } from "./ipc";
+import { resolveLoginPath } from "./login-path";
 import { desktopTestMode } from "./test-mode";
 
 /** electron-vite's renderer dev server; every other run (built, packaged, e2e) serves the renderer over `app://`. */
@@ -63,19 +64,21 @@ const DEV_OVERRIDES = [
 const forwarded = (names: readonly string[]): Record<string, string> =>
 	Object.fromEntries(names.flatMap((name) => (process.env[name] === undefined ? [] : [[name, process.env[name]]])));
 
+const hostEnvironment: NodeJS.ProcessEnv = {
+	PATH: process.env.PATH ?? "",
+	HOME: process.env.HOME ?? "",
+	USER: process.env.USER ?? "",
+	TMPDIR: process.env.TMPDIR ?? "",
+	...(runtime.executorEntry === undefined ? {} : { OPENBOT_EXECUTOR_ENTRY: runtime.executorEntry }),
+	// Where data and the model configuration live may be moved in any build.
+	...forwarded(["OPENBOT_DATA_DIR", "OPENBOT_HOME"]),
+	...(app.isPackaged ? {} : forwarded(DEV_OVERRIDES)),
+};
+
 const host = new HostProcess({
 	node: runtime.node,
 	entry: runtime.hostEntry,
-	env: {
-		PATH: process.env.PATH ?? "",
-		HOME: process.env.HOME ?? "",
-		USER: process.env.USER ?? "",
-		TMPDIR: process.env.TMPDIR ?? "",
-		...(runtime.executorEntry === undefined ? {} : { OPENBOT_EXECUTOR_ENTRY: runtime.executorEntry }),
-		// Where data and the model configuration live may be moved in any build.
-		...forwarded(["OPENBOT_DATA_DIR", "OPENBOT_HOME"]),
-		...(app.isPackaged ? {} : forwarded(DEV_OVERRIDES)),
-	},
+	env: hostEnvironment,
 	onOutput: (chunk) => hostLog.write(chunk),
 	// Both callbacks first fire after `host.start()` below, when `attentionWatcher` exists.
 	onEvent: (event) => {
@@ -171,14 +174,13 @@ app.on("before-quit", (event) => {
 	void host.stop().finally(() => app.quit());
 });
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
 	// Deny every web permission (camera, notifications, geolocation, …) by default.
 	session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
 	session.defaultSession.setPermissionCheckHandler(() => false);
 
 	if (devServerUrl === undefined) serveAppScheme(join(__dirname, "../renderer"));
 	registerIpc({ host, isTrustedFrame: (url) => isTrustedRendererUrl(url) });
-	host.start();
 	window = createWindow();
 	if (testMode === undefined) tray = createTray();
 
@@ -187,6 +189,9 @@ void app.whenReady().then(() => {
 	powerMonitor.on("resume", () => console.log("[openbot] power event: resume"));
 	powerMonitor.on("lock-screen", () => console.log("[openbot] power event: lock-screen"));
 	powerMonitor.on("unlock-screen", () => console.log("[openbot] power event: unlock-screen"));
+
+	hostEnvironment.PATH = await resolveLoginPath(process.env);
+	if (!quitting) host.start();
 });
 
 function isTrustedRendererUrl(url: string): boolean {

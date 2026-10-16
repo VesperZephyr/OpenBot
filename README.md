@@ -52,7 +52,7 @@ Configure endpoints in `~/.openbot/models.json` (set `OPENBOT_HOME` to use anoth
 }
 ```
 
-Apps opened from the Dock do not see variables exported in your shell profile, so prefer `!command` or a key saved in Settings, which takes precedence over `apiKey`. Settings lists configuration problems with their location in the file.
+Desktop startup reads the login shell's PATH once so commands can find tools installed outside system directories. Shell failure, excessive output, or a five-second timeout falls back to the inherited PATH. Other exported variables are not imported, so prefer `!command` or a key saved in Settings, which takes precedence over `apiKey`. Settings lists configuration problems with their location in the file.
 
 ## Documentation
 
