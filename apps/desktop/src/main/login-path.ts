@@ -31,10 +31,12 @@ export async function resolveLoginPath(source: NodeJS.ProcessEnv, options: { tim
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 		let settled = false;
+		let groupStopped = false;
 		let bytes = 0;
 		const chunks: Buffer[] = [];
 		const killGroup = (): void => {
-			if (child.pid === undefined) return;
+			if (child.pid === undefined || groupStopped) return;
+			groupStopped = true;
 			try {
 				process.kill(-child.pid, "SIGKILL");
 			} catch {
@@ -61,7 +63,9 @@ export async function resolveLoginPath(source: NodeJS.ProcessEnv, options: { tim
 		child.stderr.on("data", (chunk: Buffer) => capture(chunk, false));
 		child.once("error", () => finish(fallback));
 		// A background startup command can hold the pipes open after the shell exits.
-		child.once("exit", () => { if (!settled) killGroup(); });
+		child.once("exit", () => {
+			if (!settled) killGroup();
+		});
 		child.once("close", (code) => {
 			if (settled) return;
 			const output = Buffer.concat(chunks).toString("utf8");

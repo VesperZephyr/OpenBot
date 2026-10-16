@@ -1,8 +1,8 @@
 # B8a: Login Shell Command Path
 
-Status: in progress
+Status: in review
 Branch: task/b8a-login-path
-Depends on: B8
+Depends on: B8, B7a (background verification)
 Architecture: Sections 3 (desktop owns Host startup), 5.9 (credential isolation)
 
 ## Goal
@@ -40,7 +40,7 @@ The window can open while resolving PATH. The Host starts only after resolution 
 2. Startup banners and secrets are absent from Host logs and command environments. Resolver unit tests and the e2e regression.
 3. Unavailable, failing, malformed, noisy, or hanging shells fall back within the startup bound, and ordinary probe descendants are terminated. Resolver unit tests.
 4. Existing checks and all desktop suites pass. `pnpm run check`, `pnpm run e2e`; screenshots inspected.
-5. The packaged app starts the bundled Host and executor, and runs the fixture executable through the same resolved PATH. Scripted packaged smoke; code-signature verification on the built app. Clean-Mac acceptance, Developer ID signing, and notarization remain separate B8 acceptance limits.
+5. The packaged Host and executor run the fixture executable through the resolved PATH after approval. Scripted IPC smoke on the bundled Node; code-signature verification on the built app. The owner requested background-only verification on 2026-10-16, so this check does not launch the installed Electron UI. Clean-Mac acceptance, visible packaged startup, Developer ID signing, and notarization remain separate B8 acceptance limits.
 
 ## Risks
 
@@ -48,4 +48,10 @@ Shell startup may need a terminal or exceed five seconds; fallback preserves app
 
 ## Open questions
 
-None.
+- 2026-10-16: Visible packaged startup has not been rerun because the owner requested background-only verification. The packaged app intentionally ignores development test flags. Bundled Host/executor execution and package signatures are checked independently; full clean-Mac acceptance remains with B8.
+
+## Validation
+
+2026-10-16: `pnpm run check` passed (178 tests). All 25 e2e tests across 10 suites passed in background; the final process-group cleanup adjustment also passed the targeted login-PATH and background suites (3 tests). Screenshots were inspected. Agent-browser completed model selection, Bot creation, approval, and command completion against an isolated hidden app; Electron reported `visible: false` and `focused: false` before shutdown.
+
+`pnpm run package` produced an ad-hoc arm64 DMG. `codesign --verify --deep --strict` passed for the app and the bundled Node; Node has `allow-jit`. An isolated scripted IPC smoke on the packaged Node 24.22.0 verified the bundled Host, bundled executor, login-PATH fixture command after approval, and absence of shell-only secrets in model requests and process output. No real provider, visible packaged window, Developer ID signing, notarization, or clean-Mac installation was exercised.

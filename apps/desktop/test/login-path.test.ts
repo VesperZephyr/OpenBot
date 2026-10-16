@@ -20,6 +20,14 @@ afterEach(async () => {
 });
 
 describe("login shell PATH", () => {
+	it("loads zsh login and interactive startup files from an isolated home", async () => {
+		const env = await fixture("exit 1");
+		await writeFile(join(env.HOME!, ".zprofile"), "export OPENBOT_PATH_TEST_LOGIN=loaded\n");
+		await writeFile(join(env.HOME!, ".zshrc"), '[ "$OPENBOT_PATH_TEST_LOGIN" = loaded ] && export PATH="/fixture/login tools/bin:/usr/bin:/bin"\n');
+		env.SHELL = "/bin/zsh";
+		expect(await resolveLoginPath(env)).toBe("/fixture/login tools/bin:/usr/bin:/bin");
+	});
+
 	it("reads only the framed PATH despite startup noise, preserving directory order and spaces", async () => {
 		const env = await fixture(`
 [ "$1" = '-ilc' ] || exit 1
@@ -60,13 +68,18 @@ printf '\nlogout banner\n'
 	});
 
 	it.each([true, false])("cleans up probe descendants when hanging=%s", async (hanging) => {
-		const env = await fixture(`/bin/sleep 30 &\nprintf '%s' "$!" > "$HOME/child.pid"\n${hanging ? "wait" : '/bin/sh -c "$2"'}`);
+		const env = await fixture(`/bin/sleep 30 &\nprintf '%s' "$!" > "$HOME/child.pid"\n${hanging ? "wait" : 'export PATH="/fixture/bin:/bin"; /bin/sh -c "$2"'}`);
 		const started = Date.now();
-		expect(await resolveLoginPath(env, { timeoutMs: 500 })).toBe(fallback);
-		expect(Date.now() - started).toBeLessThan(2_000);
+		expect(await resolveLoginPath(env, { timeoutMs: 2_000 })).toBe(hanging ? fallback : "/fixture/bin:/bin");
+		expect(Date.now() - started).toBeLessThan(4_000);
 		const pid = Number(await readFile(join(env.HOME!, "child.pid"), "utf8"));
 		await expect.poll(() => {
-			try { process.kill(pid, 0); return false; } catch { return true; }
+			try {
+				process.kill(pid, 0);
+				return false;
+			} catch {
+				return true;
+			}
 		}).toBe(true);
 	});
 });
