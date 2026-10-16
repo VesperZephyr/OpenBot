@@ -37,6 +37,8 @@ All eight batches are implemented on `feat/mvp`. Each spec in [`tasks/`](tasks/R
 
 ### MVP acceptance
 
+Release follow-up: [B7a — Background desktop tests](tasks/b7a-background-e2e.md) makes automated verification quiet by default, with explicitly enabled visible windows for debugging. Implemented on `task/b7a-background-e2e`, awaiting merge; 163 unit tests and 24 background e2e tests pass.
+
 The MVP is done when all of these pass on a packaged build installed on a Mac that never ran the development setup:
 
 1. First launch walks through choosing a model and creating a first Bot; the API key lands in the Keychain.

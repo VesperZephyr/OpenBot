@@ -19,11 +19,14 @@ pnpm install
 pnpm run build:pi    # build vendored Pi packages
 pnpm run dev         # run the app
 pnpm run check       # package boundaries, type check, unit tests
-pnpm run e2e         # drive the built app end to end against a scripted model
+pnpm run e2e         # test the real app in background against a scripted model
+pnpm run e2e:headed  # explicitly show test windows for debugging
 pnpm run package     # build an arm64 DMG (ad-hoc signed without a Developer ID)
 ```
 
 The desktop app starts the Host Runtime, which starts the local executor. Data lives in `~/Library/Application Support/OpenBot`, the shared workspace is `~/OpenBot`, and model providers come from `~/.openbot/models.json`. The e2e suite keeps its own state under `e2e/.run/`. How agents work on this repository, including driving the app with agent-browser, is in [AGENTS.md](AGENTS.md).
+
+End-to-end tests keep windows hidden and non-focusable by default, including during recovery restarts. They render screenshots under each suite's `e2e/.run/<suite>/` directory. Both background and headed tests suppress macOS notifications, Dock badge updates, menu-bar icons, and power assertions. Use `pnpm run e2e:headed` (or `OPENBOT_E2E_HEADED=1` with a targeted Vitest command) only when you want to see the windows. These test settings do not affect ordinary development or installed builds. Background tests do not validate visible native behavior; the existing Copy test still uses the system clipboard.
 
 ## Your own model providers
 

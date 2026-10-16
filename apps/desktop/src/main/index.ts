@@ -11,10 +11,17 @@ import { RotatingLog } from "./host-log";
 import { HostProcess } from "./host";
 import { registerIpc } from "./ipc";
 import { resolveLoginPath } from "./login-path";
+import { desktopTestMode } from "./test-mode";
 
 /** electron-vite's renderer dev server; every other run (built, packaged, e2e) serves the renderer over `app://`. */
 const devServerUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL;
 const HOST_LOG_LIMIT_BYTES = 5 * 1024 * 1024;
+const testMode = desktopTestMode(app.isPackaged, process.env);
+const backgroundTest = testMode === "background";
+if (backgroundTest && process.platform === "darwin") {
+	app.setActivationPolicy("prohibited");
+	app.dock?.hide();
+}
 
 // Packaged builds run the bundled Host and executor (outside app.asar, architecture §3) on the bundled, signed Node in
 // Contents/Resources; the environment cannot redirect them. In development the app path is apps/desktop and the
@@ -86,6 +93,7 @@ const host = new HostProcess({
 
 const attentionWatcher = new AttentionWatcher({
 	host,
+	nativeEffects: testMode === undefined,
 	focused: () => BrowserWindow.getFocusedWindow() !== null,
 	openBot: (botId) => {
 		showWindow();
@@ -104,16 +112,18 @@ function createWindow(): BrowserWindow {
 		trafficLightPosition: { x: 16, y: 16 },
 		backgroundColor: "#0e0e10",
 		show: false,
+		focusable: !backgroundTest,
 		webPreferences: {
 			preload: join(__dirname, "../preload/index.cjs"),
 			contextIsolation: true,
 			sandbox: true,
 			nodeIntegration: false,
 			webSecurity: true,
+			...(backgroundTest ? { backgroundThrottling: false } : {}),
 		},
 	});
 
-	created.once("ready-to-show", () => created.show());
+	if (!backgroundTest) created.once("ready-to-show", () => created.show());
 	// Closing the window keeps the app and its Bots running in the menu bar (architecture §8.1).
 	created.on("close", (event) => {
 		if (quitting) return;
@@ -134,6 +144,7 @@ function createWindow(): BrowserWindow {
 
 function showWindow(): void {
 	if (window === undefined || window.isDestroyed()) window = createWindow();
+	if (backgroundTest) return;
 	window.show();
 	window.focus();
 }
@@ -171,7 +182,7 @@ void app.whenReady().then(async () => {
 	if (devServerUrl === undefined) serveAppScheme(join(__dirname, "../renderer"));
 	registerIpc({ host, isTrustedFrame: (url) => isTrustedRendererUrl(url) });
 	window = createWindow();
-	tray = createTray();
+	if (testMode === undefined) tray = createTray();
 
 	// Lifecycle events reach the Host in M1 to gate execution (architecture §8.1); logged for now.
 	powerMonitor.on("suspend", () => console.log("[openbot] power event: suspend"));
