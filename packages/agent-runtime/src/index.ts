@@ -16,9 +16,11 @@ import {
 	defineTool,
 	type EntryRecord,
 	Harness,
+	InboxDoc,
+	type InboxState,
 	type LiveState,
 	LiveDoc,
-	type PromptSection,
+	type SubmissionId,
 	type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
@@ -28,22 +30,37 @@ import {
 	type ConversationSnapshot,
 	type LiveRun,
 	type MessagePart,
+	type PendingMessage,
 	type ModelRef,
 	type ModelSummary,
 	ProtocolError,
+	type ThinkingLevel,
 	type ToolCallStatus,
 	type ToolDefinition,
 	type TranscriptItem,
 } from "@openbot/protocol";
 
+import { type ApprovalStore, approvalStore } from "./approvals.ts";
+import { type PolicyStore, policyStore } from "./policy.ts";
+import { applyMemoryEdit, checkMemorySize, type MemoryEdit, MemoryDoc } from "./memory.ts";
 import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
+import { botSections } from "./prompt.ts";
+import { type RunStore, runStore } from "./runs.ts";
 
-const TOOLS_EXTENSION = "openbot.tools";
+/** The OpenBot extension every conversation selects: prompt sections, and routed tools when the Host passes them. */
+const BOT_EXTENSION = "openbot.bot";
+/** Display-only transcript entry written when the user stops a Run. */
+const STOPPED_ENTRY = "openbot.stopped";
+/** How long a model test may take before it counts as failed. */
+const MODEL_TEST_TIMEOUT_MS = 30_000;
 
 /** Credential contract the Host implements over the Keychain; re-exported so the Host never imports Pi. */
 export type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
+export type { ApprovalStore } from "./approvals.ts";
+export type { PolicyStore, SavedScope } from "./policy.ts";
 export type { ConfigEnvironment, ConfiguredProviderStatus, ModelConfigStatus } from "./model-config.ts";
-export { SUPPORTED_MODEL_APIS } from "./model-config.ts";
+export type { MemoryEdit } from "./memory.ts";
+export { isTerminal, KEPT_TERMINAL_RUNS, type RunInput, type RunMessage, type RunStore, type StoredRun } from "./runs.ts";
 
 type PiConversationId = ConversationRecord["id"];
 
@@ -79,7 +96,7 @@ export type ToolInvoker = (call: {
 	readonly args: Readonly<Record<string, unknown>>;
 	readonly signal: AbortSignal;
 	readonly onProgress: (output: string) => void;
-}) => Promise<{ readonly status: string; readonly output: string }>;
+}) => Promise<{ readonly status: string; readonly output: string; readonly taskId?: string }>;
 
 export type BotRuntimeOptions = {
 	/** SQLite file owned exclusively by this Host process. */
@@ -102,6 +119,9 @@ export type CreateBotInput = {
 	readonly role?: string;
 	readonly instructions?: string;
 	readonly model?: ModelRef;
+	readonly thinkingLevel?: ThinkingLevel;
+	/** Initial memory, written in the same commit that registers the Bot (Duplicate). */
+	readonly memory?: string;
 	readonly createdAt: number;
 };
 
@@ -110,6 +130,7 @@ export type UpdateBotInput = {
 	readonly role?: string;
 	readonly instructions?: string;
 	readonly model?: ModelRef | null;
+	readonly thinkingLevel?: ThinkingLevel;
 	readonly pinned?: boolean;
 	readonly status?: BotProfile["status"];
 };
@@ -125,6 +146,8 @@ export class BotRuntime {
 	/** Built-in providers as registered at open, so a removed overlay restores the original. */
 	readonly #builtins: ReadonlyMap<string, Provider>;
 	#configuredIds: readonly string[] = [];
+	/** Stored entries before each conversation's current head marker; entries are immutable, so one read per head. */
+	readonly #history = new Map<number, { readonly head: number; readonly entries: readonly EntryRecord[] }>();
 
 	private constructor(harness: Harness, models: MutableModels, context: Context) {
 		this.#harness = harness;
@@ -138,16 +161,19 @@ export class BotRuntime {
 		const models =
 			options.models ?? builtinModels(options.credentials === undefined ? {} : { credentials: options.credentials });
 		const registry = createRegistry();
-		if (options.tools !== undefined) {
-			const { invoke, definitions } = options.tools;
-			registry.install(
-				defineExtension({
-					name: TOOLS_EXTENSION,
-					tools: definitions.map((definition) => routedTool(definition, invoke)),
-					sections: [workspaceSection],
+		registry.install(
+			defineExtension({
+				name: BOT_EXTENSION,
+				tools:
+					options.tools === undefined
+						? []
+						: options.tools.definitions.map((definition) => routedTool(definition, options.tools!.invoke)),
+				sections: botSections(async (input, context) => {
+					const bots = (await input.read.snapshot(BotsDoc, context))?.bots ?? {};
+					return Object.values(bots).find((bot) => bot.conversationId === Number(input.conversationId));
 				}),
-			);
-		}
+			}),
+		);
 		const harness = await Harness.open(
 			await openNodeSqliteStorage(options.databasePath),
 			{
@@ -170,6 +196,24 @@ export class BotRuntime {
 		await this.#harness.close(this.#context);
 	}
 
+	/** The durable approval records; Host code (the approval book) is their only writer. */
+	approvals(): ApprovalStore {
+		return approvalStore(this.#harness, this.#context);
+	}
+
+	/** Command policy and folder grants; Host code is their only writer. */
+	policy(): PolicyStore {
+		return policyStore(this.#harness, this.#context);
+	}
+
+	/**
+	 * The conversation ID routed tool calls of this Bot carry (`ToolInvoker` `conversationId`), from which the Tool
+	 * Router derives approval and invocation IDs.
+	 */
+	async conversationKey(botId: BotId): Promise<string> {
+		return String((await this.#requireRecord(botId)).conversationId);
+	}
+
 	async listBots(): Promise<BotProfile[]> {
 		const doc = await this.#harness.snapshot(BotsDoc, this.#context);
 		return Object.values(doc?.bots ?? {}).map(toProfile);
@@ -185,6 +229,7 @@ export class BotRuntime {
 		const existing = await this.#record(input.botId);
 		if (existing !== undefined) return toProfile(existing);
 
+		if (input.memory !== undefined) checkMemorySize(input.memory);
 		const model = input.model ?? (await this.defaultModel());
 		const conversation = await this.#harness.createConversation(
 			{ ownership: { kind: "ownerless" }, agent: agentChange({ ...input, ...(model === undefined ? {} : { model }) }) },
@@ -196,6 +241,7 @@ export class BotRuntime {
 			role: input.role ?? "",
 			instructions: input.instructions ?? "",
 			...(input.model === undefined ? {} : { model: input.model }),
+			...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
 			pinned: false,
 			status: "active",
 			createdAt: input.createdAt,
@@ -204,7 +250,10 @@ export class BotRuntime {
 		// A crash between the two commits leaves an orphan conversation but no half-registered Bot.
 		const stored = await this.#harness.commit(async (tx) => {
 			const doc = await tx.doc(BotsDoc);
-			doc.bots[input.botId] ??= record;
+			if (doc.bots[input.botId] === undefined) {
+				doc.bots[input.botId] = record;
+				if (input.memory !== undefined && input.memory !== "") (await tx.doc(MemoryDoc, input.botId, null)).content = input.memory;
+			}
 			// Drafts are only valid inside the commit callback, so return a plain copy.
 			return JSON.parse(JSON.stringify(doc.bots[input.botId])) as BotRecord;
 		}, this.#context);
@@ -221,6 +270,7 @@ export class BotRuntime {
 			...(change.name === undefined ? {} : { name: change.name }),
 			...(change.role === undefined ? {} : { role: change.role }),
 			...(change.instructions === undefined ? {} : { instructions: change.instructions }),
+			...(change.thinkingLevel === undefined ? {} : { thinkingLevel: change.thinkingLevel }),
 			...(change.pinned === undefined ? {} : { pinned: change.pinned }),
 			...(change.status === undefined ? {} : { status: change.status }),
 			...(model === undefined ? {} : { model }),
@@ -231,6 +281,7 @@ export class BotRuntime {
 		const agent: AgentChange = {
 			...(change.instructions === undefined ? {} : { instructions: change.instructions || null }),
 			...(effectiveModel === undefined ? {} : { model: effectiveModel }),
+			...(change.thinkingLevel === undefined ? {} : { thinkingLevel: change.thinkingLevel }),
 		};
 		const conversation = await this.#conversation(record);
 		if (Object.keys(agent).length > 0) await conversation.configure(agent, this.#context);
@@ -241,12 +292,60 @@ export class BotRuntime {
 	}
 
 	/**
-	 * Durably admit a message and return without waiting for the answer. The same `requestId` returns the existing
-	 * submission, so a retried call never starts a second Run.
+	 * Durably admit a message and return its Pi submission without waiting for the answer. `start` begins a run on an
+	 * idle conversation; `steer` joins the running work after its current tool round (Pi `whenBusy: "steer"`), or starts
+	 * a run when the conversation went idle meanwhile. The same `requestId` returns the existing submission, so a retried
+	 * call never admits the message twice.
 	 */
-	async submit(botId: BotId, requestId: string, text: string): Promise<void> {
+	async submit(botId: BotId, requestId: string, text: string, mode: "start" | "steer"): Promise<{ submissionId: string }> {
 		const conversation = await this.#conversation(await this.#requireRecord(botId));
-		await conversation.submit({ type: "input", content: text, requestId }, this.#context);
+		const submission = await conversation.submit(
+			{ type: "input", content: text, requestId, ...(mode === "steer" ? { whenBusy: "steer" as const } : {}) },
+			this.#context,
+		);
+		return { submissionId: String(submission.id) };
+	}
+
+	/** Where a submission of this Bot stands; `absent` when Pi has no such submission for the Bot's conversation. */
+	async submissionState(
+		botId: BotId,
+		submissionId: string,
+	): Promise<"queued" | "placed" | "done" | "unanswered" | "absent"> {
+		return (await this.#ownedSubmission(botId, submissionId))?.status.status ?? "absent";
+	}
+
+	/** Resolve once Pi settled the submission; also after a reopen, from the stored record. */
+	async waitSubmission(botId: BotId, submissionId: string): Promise<{ status: "done" | "unanswered"; reason?: string }> {
+		const owned = await this.#ownedSubmission(botId, submissionId);
+		if (owned === undefined) throw new ProtocolError("not_found", `Unknown submission ${submissionId} for Bot ${botId}`);
+		const settled = await owned.submission.wait(this.#context);
+		return settled.status === "done" ? { status: "done" } : { status: "unanswered", reason: settled.reason };
+	}
+
+	/**
+	 * Withdraw a submission that still waits in Pi's queue; one already placed stays with its run. Used when a run ended
+	 * without an answer, because Pi keeps queued inputs until the next input arrives.
+	 */
+	async withdraw(botId: BotId, submissionId: string): Promise<void> {
+		const record = await this.#requireRecord(botId);
+		await this.#harness.abortSubmission(
+			Number(submissionId) as SubmissionId,
+			this.#context,
+			record.conversationId as PiConversationId,
+		);
+	}
+
+	/** Durable Run records; scheduling is the Host's job. */
+	runsStore(): RunStore {
+		return runStore(this.#harness, this.#context);
+	}
+
+	async #ownedSubmission(botId: BotId, submissionId: string) {
+		const record = await this.#requireRecord(botId);
+		const submission = await this.#harness.submission(Number(submissionId) as SubmissionId, this.#context);
+		if (submission === undefined) return undefined;
+		const status = await submission.status(this.#context);
+		return status.conversationId === record.conversationId ? { submission, status } : undefined;
 	}
 
 	/** Submit and wait for the answer; for harnesses and tests. */
@@ -266,10 +365,53 @@ export class BotRuntime {
 		return { status: "answered", answer: answer === undefined ? [] : textParts(answer) };
 	}
 
-	/** Abort the active Run; queued inputs are withdrawn and the call resolves once the conversation is idle. */
+	/** Abort the Bot's work: withdraw queued inputs and abort the active run; resolves once the conversation is idle. */
 	async cancel(botId: BotId): Promise<void> {
 		const conversation = await this.#conversation(await this.#requireRecord(botId));
 		await conversation.abort(this.#context);
+	}
+
+	/**
+	 * New topic: the next request starts from an empty context. Older entries stay in storage and in the transcript;
+	 * memory is a document, so it carries over. Pi queues the reset while the conversation is busy.
+	 */
+	async reset(botId: BotId): Promise<void> {
+		const conversation = await this.#conversation(await this.#requireRecord(botId));
+		await conversation.reset(undefined, this.#context);
+	}
+
+	async memory(botId: BotId): Promise<string> {
+		await this.#requireRecord(botId);
+		return (await this.#harness.snapshot(MemoryDoc, botId, this.#context))?.content ?? "";
+	}
+
+	/** Replace the whole memory, as the user's editor does. Rejects content above the limit. */
+	async setMemory(botId: BotId, content: string): Promise<string> {
+		await this.#requireRecord(botId);
+		checkMemorySize(content);
+		return this.#harness.commit(async (tx) => {
+			const doc = await tx.doc(MemoryDoc, botId, null);
+			doc.content = content;
+			return content;
+		}, this.#context);
+	}
+
+	/** Edit one memory section in a single commit, as `memory_update` does. Rejects a result above the limit. */
+	async editMemory(botId: BotId, edit: MemoryEdit): Promise<string> {
+		await this.#requireRecord(botId);
+		return this.#harness.commit(async (tx) => {
+			const doc = await tx.doc(MemoryDoc, botId, null);
+			const next = applyMemoryEdit(doc.content, edit);
+			checkMemorySize(next);
+			doc.content = next;
+			return next;
+		}, this.#context);
+	}
+
+	/** Leave a "stopped" note in the transcript, after the user cancelled a Run. */
+	async markStopped(botId: BotId): Promise<void> {
+		const conversation = await this.#conversation(await this.#requireRecord(botId));
+		await conversation.submit({ type: "write", entry: { kind: STOPPED_ENTRY } }, this.#context);
 	}
 
 	/** The Bot's conversation without pending approvals; the Host adds those (`approvals` is empty here). */
@@ -277,7 +419,7 @@ export class BotRuntime {
 		const record = await this.#requireRecord(botId);
 		const view = await (await this.#conversation(record)).viewState(this.#context);
 		try {
-			return projectView(botId, view.value);
+			return await this.#project(record, view.value);
 		} finally {
 			view.dispose();
 		}
@@ -285,14 +427,25 @@ export class BotRuntime {
 
 	/**
 	 * Observe a Bot's conversation. The listener receives a projected snapshot after every commit that changes the
-	 * view, starting with the current one. Returns a function that stops observation.
+	 * view, starting with the current one, in commit order. Returns a function that stops observation.
 	 */
 	async observe(botId: BotId, listener: (snapshot: ConversationSnapshot) => void): Promise<() => void> {
 		const record = await this.#requireRecord(botId);
 		const view = await (await this.#conversation(record)).viewState(this.#context);
-		listener(projectView(botId, view.value));
-		const unsubscribe = view.subscribe((value) => listener(projectView(botId, value)));
+		listener(await this.#project(record, view.value));
+		// Projection may read older entries, so updates are serialized to keep snapshots in commit order.
+		let queue = Promise.resolve();
+		let stopped = false;
+		const unsubscribe = view.subscribe((value) => {
+			queue = queue
+				.then(async () => {
+					const snapshot = await this.#project(record, value);
+					if (!stopped) listener(snapshot);
+				})
+				.catch((error: unknown) => console.error(`Projecting the conversation of ${botId} failed`, error));
+		});
 		return () => {
+			stopped = true;
 			unsubscribe();
 			view.dispose();
 		};
@@ -310,6 +463,28 @@ export class BotRuntime {
 
 	listProviders(): { readonly providerId: string; readonly name: string }[] {
 		return this.#models.getProviders().map((provider) => ({ providerId: provider.id, name: provider.name }));
+	}
+
+	/**
+	 * Send one tiny real request to the model, with the same provider, endpoint, and credentials Bots use, and report
+	 * whether it answered. Failures (unknown model, missing key, HTTP errors, timeout) become `{ ok: false, error }`.
+	 */
+	async testModel(ref: ModelRef, timeoutMs = MODEL_TEST_TIMEOUT_MS): Promise<{ readonly ok: boolean; readonly error?: string }> {
+		const model = this.#models.getModel(ref.provider, ref.modelId);
+		if (model === undefined) return { ok: false, error: `Unknown model ${ref.provider}/${ref.modelId}` };
+		try {
+			const answer = await this.#models.completeSimple(
+				model,
+				{ messages: [{ role: "user", content: "Reply with OK.", timestamp: Date.now() }] },
+				{ maxTokens: 16, signal: AbortSignal.timeout(timeoutMs) },
+			);
+			if (answer.stopReason === "error" || answer.stopReason === "aborted") {
+				return { ok: false, error: answer.errorMessage ?? (answer.stopReason === "aborted" ? "Timed out" : "The request failed") };
+			}
+			return { ok: true };
+		} catch (error) {
+			return { ok: false, error: error instanceof Error ? error.message : String(error) };
+		}
 	}
 
 	/**
@@ -365,12 +540,44 @@ export class BotRuntime {
 		if (conversation === undefined) throw new ProtocolError("not_found", `Missing conversation for Bot: ${record.botId}`);
 		return conversation;
 	}
+
+	/** Pi's view holds only the active context; prepend the stored entries before its head so history stays visible. */
+	async #project(record: BotRecord, view: ConversationView): Promise<ConversationSnapshot> {
+		const marker = view.entries[0]?.head === undefined ? undefined : view.entries[0];
+		const earlier = marker === undefined ? [] : await this.#earlierEntries(record, marker);
+		return projectView(record.botId, view, earlier);
+	}
+
+	async #earlierEntries(record: BotRecord, marker: EntryRecord): Promise<readonly EntryRecord[]> {
+		const cached = this.#history.get(record.conversationId);
+		if (cached?.head === marker.id) return cached.entries;
+		const conversation = await this.#conversation(record);
+		const entries: EntryRecord[] = [];
+		let cursor: Parameters<typeof conversation.entries>[2];
+		do {
+			const page = await conversation.entries(
+				{ maxEntryId: marker.id, order: "ascending" },
+				500,
+				cursor,
+				this.#context,
+			);
+			entries.push(...page.items);
+			cursor = page.next;
+		} while (cursor !== undefined);
+		this.#history.set(record.conversationId, { head: marker.id, entries });
+		return entries;
+	}
 }
 
-function agentChange(input: { readonly model?: ModelRef; readonly instructions?: string }): AgentChange {
+function agentChange(input: {
+	readonly model?: ModelRef;
+	readonly instructions?: string;
+	readonly thinkingLevel?: ThinkingLevel;
+}): AgentChange {
 	return {
 		...(input.model === undefined ? {} : { model: input.model }),
 		...(input.instructions === undefined || input.instructions === "" ? {} : { instructions: input.instructions }),
+		...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
 	};
 }
 
@@ -379,7 +586,7 @@ function toProfile(record: BotRecord): BotProfile {
 	return profile;
 }
 
-/** Text blocks of a user or assistant message; images and thinking are not projected yet. */
+/** Text blocks of a user or assistant message; images are not projected yet. */
 function partsOf(content: string | readonly { readonly type: string }[]): MessagePart[] {
 	if (typeof content === "string") return content === "" ? [] : [{ type: "text", text: content }];
 	return content.flatMap((block) =>
@@ -401,7 +608,27 @@ function toolCallsOf(entry: EntryRecord): ToolCall[] {
 	return message.content.filter((block): block is ToolCall => block.type === "toolCall");
 }
 
-type MutableToolItem = { kind: "tool"; id: string; tool: string; args: unknown; status: ToolCallStatus; output?: string };
+/** Visible reasoning of an assistant entry; redacted blocks carry only an opaque payload and are left out. */
+function thinkingOf(entry: EntryRecord): string | undefined {
+	const message = entry.model?.[0];
+	if (message?.role !== "assistant") return undefined;
+	const text = message.content
+		.flatMap((block) => (block.type === "thinking" && block.redacted !== true && block.thinking.trim() !== "" ? [block.thinking.trim()] : []))
+		.join("\n\n");
+	return text === "" ? undefined : text;
+}
+
+type MutableToolItem = { kind: "tool"; id: string; tool: string; args: unknown; status: ToolCallStatus; output?: string; taskId?: string };
+
+/** What the model receives for an `unknown` outcome, instead of the executor's text (Section 5.1). */
+export const UNKNOWN_OUTCOME_TEXT =
+	"This action was interrupted and may have partly run. Check its effect before doing anything else.";
+
+/** When the entry's first user or assistant message was created; Pi stamps every message. */
+function timestampOf(entry: EntryRecord): number | undefined {
+	const message = entry.model?.[0];
+	return message?.role === "user" || message?.role === "assistant" ? message.timestamp : undefined;
+}
 
 /**
  * Transcript items in order. A tool call becomes a `tool` item right after the assistant text that made it; its
@@ -413,9 +640,11 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 	for (const entry of entries) {
 		const id = String(entry.id);
 		switch (entry.kind) {
-			case "pi.user":
-				items.push({ kind: "user", id, parts: textParts(entry) });
+			case "pi.user": {
+				const at = timestampOf(entry);
+				items.push({ kind: "user", id, parts: textParts(entry), ...(at === undefined ? {} : { at }) });
 				break;
+			}
 			case "pi.assistant": {
 				const message = entry.model?.[0];
 				const error =
@@ -423,8 +652,17 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 						? (message.errorMessage ?? message.stopReason)
 						: undefined;
 				const parts = textParts(entry);
-				if (parts.length > 0 || error !== undefined) {
-					items.push({ kind: "assistant", id, parts, ...(error === undefined ? {} : { error }) });
+				const thinking = thinkingOf(entry);
+				const at = timestampOf(entry);
+				if (parts.length > 0 || error !== undefined || thinking !== undefined) {
+					items.push({
+						kind: "assistant",
+						id,
+						parts,
+						...(thinking === undefined ? {} : { thinking }),
+						...(error === undefined ? {} : { error }),
+						...(at === undefined ? {} : { at }),
+					});
 				}
 				for (const call of toolCallsOf(entry)) {
 					const item: MutableToolItem = { kind: "tool", id: call.id, tool: call.name, args: call.arguments, status: "pending" };
@@ -438,18 +676,49 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 				if (message?.role !== "toolResult") break;
 				const item = tools.get(message.toolCallId);
 				if (item === undefined) break;
-				item.status = message.isError ? "failed" : "succeeded";
+				// Interrupted: the executor reported `unknown`, or Pi itself settled the call as interrupted by a restart.
+				// Cancelled: the user stopped the Run and Pi recorded the call as aborted.
+				const diagnostics = (entry.data as { diagnostics?: readonly { code?: string }[] } | undefined)?.diagnostics ?? [];
+				const unknown =
+					(message.details as { status?: string } | undefined)?.status === "unknown" ||
+					diagnostics.some((diagnostic) => diagnostic.code === "interrupted");
+				item.status = unknown ? "interrupted" : !message.isError ? "succeeded" : wasAborted(entry) ? "cancelled" : "failed";
 				item.output = partsOf(message.content).map((part) => part.text).join("\n");
+				const details: unknown = message.details;
+				if (typeof details === "object" && details !== null && "taskId" in details && typeof details.taskId === "string") {
+					item.taskId = details.taskId;
+				}
 				break;
 			}
-			case "pi.system":
+			case "pi.compaction":
+				items.push({ kind: "divider", id, reason: "compaction" });
+				break;
+			case STOPPED_ENTRY:
+				items.push({ kind: "stopped", id });
+				break;
 			case "pi.reset":
+				items.push({ kind: "divider", id, reason: "reset" });
+				break;
+			case "pi.system":
 				break;
 			default:
 				items.push({ kind: "other", id, entryKind: entry.kind });
 		}
 	}
 	return items;
+}
+
+/** Pi marks a tool result it wrote because the run was aborted with an `aborted` diagnostic. */
+function wasAborted(entry: EntryRecord): boolean {
+	const data = entry.data as { readonly diagnostics?: readonly { readonly code?: string }[] } | undefined;
+	return data?.diagnostics?.some((diagnostic) => diagnostic.code === "aborted") === true;
+}
+
+/** Inputs Pi holds in the inbox until the next boundary: messages sent while the Bot works. */
+function pendingInputs(inbox: InboxState | undefined): PendingMessage[] {
+	return (inbox?.items ?? []).flatMap((item) =>
+		item.mode === "write" ? [] : [{ id: String(item.id), parts: partsOf(item.content as string | readonly { readonly type: string }[]) }],
+	);
 }
 
 function projectLive(live: LiveState | undefined): LiveRun | undefined {
@@ -463,21 +732,44 @@ function projectLive(live: LiveState | undefined): LiveRun | undefined {
 	};
 }
 
-function projectView(botId: BotId, view: ConversationView): ConversationSnapshot {
+/**
+ * `earlier` holds stored entries up to the view's head marker; together with the view's active entries, ordered by
+ * ID and without duplicates, they are the whole transcript, including head markers the view leaves out. A compaction
+ * marker is appended after the entries it keeps, so it is placed right before its head, where the summary ends.
+ */
+function projectView(botId: BotId, view: ConversationView, earlier: readonly EntryRecord[]): ConversationSnapshot {
 	// Pi's view exposes built-in documents as untyped JSON keyed by kind; `pi.live` always holds a LiveState.
 	const liveDoc: LiveState | undefined = view.docs[LiveDoc.definition.kind];
-	const items = toTranscript(view.entries);
+	const byId = new Map<number, EntryRecord>();
+	for (const entry of [...earlier, ...view.entries]) byId.set(entry.id, entry);
+	const position = (entry: EntryRecord): number =>
+		entry.kind === "pi.compaction" && entry.head !== undefined ? entry.head - 0.5 : entry.id;
+	const items = toTranscript([...byId.values()].sort((a, b) => position(a) - position(b)));
 	// Running tool slots carry live status and output until their result entry exists.
 	for (const slot of liveDoc?.tools ?? []) {
 		const item = items.find((entry): entry is MutableToolItem => entry.kind === "tool" && entry.id === slot.callId) as
 			| MutableToolItem
 			| undefined;
-		if (item === undefined || item.status === "succeeded" || item.status === "failed") continue;
+		if (
+			item === undefined ||
+			item.status === "succeeded" ||
+			item.status === "failed" ||
+			item.status === "interrupted" ||
+			item.status === "cancelled"
+		)
+			continue;
 		item.status = slot.status === "running" ? "running" : "pending";
 		if (slot.output !== undefined && slot.output !== "") item.output = slot.output;
 	}
 	const live = projectLive(liveDoc);
-	return { botId, items, ...(live === undefined ? {} : { live }), approvals: [] };
+	const pending = pendingInputs(view.docs[InboxDoc.definition.kind] as InboxState | undefined);
+	return {
+		botId,
+		items,
+		...(live === undefined ? {} : { live }),
+		approvals: [],
+		...(pending.length === 0 ? {} : { pending }),
+	};
 }
 
 /** A catalog tool registered with Pi. Replay-safe because the router and executor own idempotency (Section 5.1). */
@@ -501,10 +793,14 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 				signal,
 				onProgress: (output) => api.output(output),
 			});
-			const failed = outcome.status !== "succeeded";
+			// A stopped Run: let Pi record the call as aborted rather than as the transport's failure text.
+			signal.throwIfAborted();
+			// An `unknown` outcome may have had an effect: the model must check it instead of retrying (Section 5.1).
+			const text = outcome.status === "unknown" ? UNKNOWN_OUTCOME_TEXT : outcome.output === "" ? "(no output)" : outcome.output;
 			return {
-				output: [{ type: "text", text: outcome.output === "" ? "(no output)" : outcome.output }],
-				isError: failed,
+				output: [{ type: "text", text }],
+				isError: outcome.status !== "succeeded",
+				details: { status: outcome.status, ...(outcome.taskId === undefined ? {} : { taskId: outcome.taskId }) },
 			};
 		},
 	});
@@ -520,16 +816,3 @@ async function botOfConversation(
 	if (record === undefined) throw new Error(`No Bot owns conversation ${conversationId}`);
 	return record.botId;
 }
-
-/** Tells the model where it works and how the tools behave. */
-const workspaceSection: PromptSection = {
-	key: "openbot",
-	render: () =>
-		[
-			"You are a Bot in OpenBot, working on the user's own Mac through tools.",
-			"Reply briefly before you start a multi-step task, then work; keep the user informed in short sentences.",
-			"File tools work inside folders the user granted, starting with the shared workspace; relative paths are resolved against it.",
-			"Every shell command waits for the user's approval. A denied call means the user declined it: adjust instead of retrying it unchanged.",
-			"Prefer the file tools over shell commands for reading and editing files. Write answers in GitHub-flavored Markdown.",
-		].join("\n"),
-};

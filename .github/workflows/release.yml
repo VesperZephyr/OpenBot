@@ -1,0 +1,69 @@
+name: Release
+
+# A version tag builds, signs, notarizes, and publishes the macOS DMG. Signing needs these repository secrets:
+#   MAC_CERTIFICATE_P12_BASE64  Developer ID Application certificate and key, exported as .p12, base64-encoded
+#   MAC_CERTIFICATE_PASSWORD    its export password
+#   APPLE_API_KEY_P8            App Store Connect API key (.p8 contents) for notarization
+#   APPLE_API_KEY_ID, APPLE_API_ISSUER
+# Without the certificate secrets the job fails instead of publishing an ad-hoc build.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Package and publish (macOS arm64)
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build:pi
+      - run: pnpm run check
+      - name: Download Electron
+        working-directory: apps/desktop
+        run: node node_modules/electron/install.js
+      - name: Write the notarization API key
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          test -n "$APPLE_API_KEY_P8" || { echo "APPLE_API_KEY_P8 is not set"; exit 1; }
+          key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s' "$APPLE_API_KEY_P8" > "$key"
+          echo "APPLE_API_KEY=$key" >> "$GITHUB_ENV"
+      - name: Package, sign, and notarize
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERTIFICATE_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          test -n "$CSC_LINK" || { echo "MAC_CERTIFICATE_P12_BASE64 is not set; refusing to publish an unsigned build"; exit 1; }
+          OPENBOT_VERSION="${TAG#v}" pnpm run package
+      - name: Verify signature and notarization
+        run: |
+          app=apps/desktop/dist/mac-arm64/OpenBot.app
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --verify --strict --verbose=2 "$app/Contents/Resources/node"
+          spctl --assess --type execute --verbose "$app"
+          xcrun stapler validate "$app"
+      - name: Publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" apps/desktop/dist/*.dmg --repo "$GITHUB_REPOSITORY" --title "OpenBot $TAG" --generate-notes --verify-tag

@@ -5,10 +5,22 @@ import type {
 	ModelRef,
 	ModelSummary,
 	PendingApproval,
+	RunRecord,
+	ThinkingLevel,
 	TranscriptItem,
 } from "@openbot/protocol";
 import { type FormEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "./markdown";
+import { WebSearchSettings } from "./WebSearchSettings";
+import { ProfileMemory } from "./ProfileMemory";
+import { Divider, RetryButton, retryTarget, Thinking } from "./TranscriptExtras";
+import { PendingMessages, StopButton, StoppedNote } from "./runs";
+import { AlwaysAllow } from "./AlwaysAllow";
+import { CommandSettings, FolderSettings } from "./PolicySettings";
+import { ConfirmDeleteBot, DeleteBotItem, DuplicateBotItem } from "./BotLifecycle";
+import { Onboarding } from "./Onboarding";
+import { transcriptRows } from "./steps";
+import { MessageTime, RevealButton, StepsRow } from "./TranscriptDetails";
 import {
 	api,
 	connect,
@@ -25,6 +37,7 @@ export function App() {
 	const host = useStore((state) => state.host);
 	const view = useStore((state) => state.view);
 	const notice = useStore((state) => state.notice);
+	const onboarding = useStore((state) => state.onboarding);
 	const [creating, setCreating] = useState(false);
 
 	useEffect(() => connect(), []);
@@ -52,16 +65,22 @@ export function App() {
 
 	return (
 		<div className="app">
-			<Sidebar onNew={() => setCreating(true)} />
+			{onboarding !== true && <Sidebar onNew={() => setCreating(true)} />}
 			<main className="main">
 				{host.status !== "ready" && (
 					<div className={`banner banner-${host.status}`}>
 						{host.status === "starting" ? "Starting OpenBot…" : `OpenBot stopped. ${host.detail ?? ""}`}
 					</div>
 				)}
-				{view.kind === "bot" && <Conversation botId={view.botId} />}
-				{view.kind === "settings" && <Settings />}
-				{view.kind === "home" && <Home onNew={() => setCreating(true)} />}
+				{onboarding === true ? (
+					<Onboarding />
+				) : (
+					<>
+						{view.kind === "bot" && <Conversation botId={view.botId} />}
+						{view.kind === "settings" && <Settings />}
+						{view.kind === "home" && <Home onNew={() => setCreating(true)} />}
+					</>
+				)}
 			</main>
 			{creating && <NewBotDialog onClose={() => setCreating(false)} />}
 			{notice !== undefined && (
@@ -147,6 +166,7 @@ function BotSection(props: {
 const ACTIVITY_LABEL: Record<BotSummary["activity"], string | undefined> = {
 	needs_attention: "Needs attention",
 	working: "Working",
+	queued: "Queued",
 	unread: "Unread",
 	idle: undefined,
 };
@@ -256,7 +276,7 @@ function Conversation({ botId }: { readonly botId: string }) {
 	}, [snapshot]);
 
 	if (bot === undefined) return null;
-	const running = snapshot?.live !== undefined;
+	const running = snapshot?.live !== undefined || snapshot?.run !== undefined || (snapshot?.pending?.length ?? 0) > 0;
 
 	return (
 		<section className="conversation" aria-label={`Conversation with ${bot.name}`}>
@@ -277,7 +297,7 @@ function Conversation({ botId }: { readonly botId: string }) {
 				)}
 				<div ref={transcriptEnd} />
 			</div>
-			<Composer bot={bot} running={running} />
+			<Composer bot={bot} run={snapshot?.run} />
 		</section>
 	);
 }
@@ -297,15 +317,27 @@ function EmptyConversation({ bot }: { readonly bot: BotSummary }) {
 
 function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 	const approvals = new Map(snapshot.approvals.map((approval) => [approval.callId, approval]));
+	const retry = retryTarget(snapshot.items, snapshot.live !== undefined);
+	const item = (entry: TranscriptItem) =>
+		entry.kind === "tool" ? (
+			<ToolCard key={entry.id} item={entry} approval={approvals.get(entry.id)} />
+		) : entry.kind === "divider" ? (
+			<Divider key={entry.id} item={entry} />
+		) : (
+			<Message key={entry.id} item={entry} retry={retry?.id === entry.id ? { botId: snapshot.botId, text: retry.text } : undefined} />
+		);
 	return (
 		<ol className="messages">
-			{snapshot.items.map((item) =>
-				item.kind === "tool" ? (
-					<ToolCard key={item.id} item={item} approval={approvals.get(item.id)} />
+			{transcriptRows(snapshot.items, new Set(approvals.keys())).map((row) =>
+				row.kind === "item" ? (
+					item(row.item)
 				) : (
-					<Message key={item.id} item={item} />
+					<StepsRow key={row.id} count={row.items.length}>
+						{row.items.map(item)}
+					</StepsRow>
 				),
 			)}
+			<PendingMessages snapshot={snapshot} />
 			{snapshot.live !== undefined && snapshot.live.state !== "waiting_approval" && (
 				<li className="message message-assistant is-live">
 					{snapshot.live.partial === undefined ? (
@@ -322,12 +354,24 @@ function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 	);
 }
 
-function Message({ item }: { readonly item: Exclude<TranscriptItem, { kind: "tool" }> }) {
+function Message(props: {
+	readonly item: Exclude<TranscriptItem, { kind: "tool" | "divider" }>;
+	readonly retry: { readonly botId: string; readonly text: string } | undefined;
+}) {
+	const { item, retry } = props;
 	if (item.kind === "other") return null;
+	if (item.kind === "stopped") return <StoppedNote />;
 	return (
 		<li className={`message message-${item.kind}`}>
+			<MessageTime at={item.at} />
+			{item.kind === "assistant" && item.thinking !== undefined && <Thinking text={item.thinking} />}
 			<MessageText parts={item.parts} markdown={item.kind === "assistant"} />
-			{item.kind === "assistant" && item.error !== undefined && <div className="message-error">{item.error}</div>}
+			{item.kind === "assistant" && item.error !== undefined && (
+				<div className="message-error">
+					{item.error}
+					{retry !== undefined && <RetryButton botId={retry.botId} text={retry.text} />}
+				</div>
+			)}
 		</li>
 	);
 }
@@ -352,22 +396,39 @@ const TOOL_VERBS: Record<string, readonly [running: string, done: string]> = {
 	local_edit: ["Editing", "Edited"],
 	local_exec: ["Running", "Ran"],
 	web_fetch: ["Fetching", "Fetched"],
+	web_search: ["Searching", "Searched"],
+	memory_update: ["Updating memory", "Updated memory"],
+	task_output: ["Checking task", "Checked task"],
+	task_stop: ["Stopping task", "Stopped task"],
 };
 
 /** One row per tool call: a verb and subject, expandable to the arguments and output; failures open by default. */
 function ToolCard({ item, approval }: { readonly item: Extract<TranscriptItem, { kind: "tool" }>; readonly approval: PendingApproval | undefined }) {
 	const args = (item.args ?? {}) as Record<string, unknown>;
 	const [running, done] = TOOL_VERBS[item.tool] ?? [item.tool, item.tool];
-	const subject = String(args.description ?? args.path ?? args.url ?? args.command ?? "");
+	const subject = String(args.description ?? args.path ?? args.url ?? args.command ?? args.query ?? args.section ?? args.taskId ?? "");
 	const waiting = approval !== undefined;
-	const label = waiting ? "Waiting for approval" : item.status === "running" || item.status === "pending" ? running : item.status === "failed" ? `${done} · failed` : done;
+	const label = waiting
+		? "Waiting for approval"
+		: item.status === "running" || item.status === "pending"
+			? running
+			: item.status === "failed"
+				? `${done} · failed`
+				: item.status === "interrupted"
+					? "Interrupted"
+					: item.status === "cancelled"
+						? `${running} · stopped`
+						: done;
+	const open = waiting || item.status === "failed" || item.status === "interrupted";
 	return (
 		<li className={`tool-card tool-${waiting ? "waiting" : item.status}`}>
-			<details open={waiting || item.status === "failed"}>
+			<details open={open}>
 				<summary>
 					<span className="tool-status" aria-hidden />
 					<span className="tool-verb">{label}</span>
 					<span className="tool-subject">{subject}</span>
+					{item.tool === "local_exec" && item.taskId !== undefined && <span className="tool-task">background · {item.taskId}</span>}
+					<RevealButton item={item} />
 				</summary>
 				{item.tool === "local_exec" && typeof args.command === "string" && <pre className="tool-command">$ {args.command}</pre>}
 				{item.output !== undefined && item.output !== "" && <pre className="tool-output">{item.output}</pre>}
@@ -397,17 +458,27 @@ function ApprovalCard({ approval }: { readonly approval: PendingApproval }) {
 					Allow once
 				</button>
 			</div>
+			<AlwaysAllow approval={approval} />
 		</div>
 	);
 }
 
 function BotMenu({ bot, onEdit }: { readonly bot: BotSummary; readonly onEdit: () => void }) {
 	const [open, setOpen] = useState(false);
-	const update = async (change: { pinned?: boolean; status?: BotSummary["status"] }): Promise<void> => {
+	const [deleting, setDeleting] = useState(false);
+	const update = async (change: { pinned?: boolean; status?: "active" | "hidden" }): Promise<void> => {
 		setOpen(false);
 		try {
 			await api["bots.update"]({ botId: bot.botId, ...change });
 			await refreshBots();
+		} catch (error) {
+			report(error);
+		}
+	};
+	const newTopic = async (): Promise<void> => {
+		setOpen(false);
+		try {
+			await api["conversations.reset"]({ botId: bot.botId });
 		} catch (error) {
 			report(error);
 		}
@@ -432,21 +503,60 @@ function BotMenu({ bot, onEdit }: { readonly bot: BotSummary; readonly onEdit: (
 					>
 						{bot.status === "hidden" ? "Show in sidebar" : "Hide from sidebar"}
 					</button>
+					<button type="button" role="menuitem" onClick={() => void newTopic()}>
+						New topic
+					</button>
+					<DuplicateBotItem bot={bot} onDone={() => setOpen(false)} />
+					<DeleteBotItem onChoose={() => (setOpen(false), setDeleting(true))} />
 				</div>
 			)}
+			{deleting && <ConfirmDeleteBot bot={bot} onClose={() => setDeleting(false)} />}
 		</div>
 	);
 }
 
 function EditProfile({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
+	const [tab, setTab] = useState<"profile" | "memory">("profile");
+	return (
+		<div className="profile">
+			<div className="profile-tabs" role="tablist">
+				<button type="button" role="tab" aria-selected={tab === "profile"} onClick={() => setTab("profile")}>
+					Profile
+				</button>
+				<button type="button" role="tab" aria-selected={tab === "memory"} onClick={() => setTab("memory")}>
+					Memory
+				</button>
+			</div>
+			{tab === "profile" ? <ProfileForm bot={bot} onClose={onClose} /> : <ProfileMemory botId={bot.botId} onClose={onClose} />}
+		</div>
+	);
+}
+
+const THINKING_LABEL: Record<ThinkingLevel, string> = { off: "Off", low: "Low", medium: "Medium", high: "High" };
+
+function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
 	const [name, setName] = useState(bot.name);
 	const [role, setRole] = useState(bot.role);
 	const [instructions, setInstructions] = useState(bot.instructions);
 	const [model, setModel] = useState<ModelRef | undefined>(bot.model);
+	const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>(bot.thinkingLevel ?? "off");
+	const models = useStore((state) => state.models);
+	const defaultModel = useStore((state) => state.settings?.defaultModel);
+	const effective = model ?? defaultModel;
+	const reasoning = models.some(
+		(candidate) => candidate.reasoning && candidate.provider === effective?.provider && candidate.modelId === effective.modelId,
+	);
 	const save = async (event: FormEvent): Promise<void> => {
 		event.preventDefault();
 		try {
-			await api["bots.update"]({ botId: bot.botId, name: name.trim() || bot.name, role, instructions, model: model ?? null });
+			await api["bots.update"]({
+				botId: bot.botId,
+				name: name.trim() || bot.name,
+				role,
+				instructions,
+				model: model ?? null,
+				...(reasoning ? { thinkingLevel } : {}),
+			});
 			await refreshBots();
 			onClose();
 		} catch (error) {
@@ -454,7 +564,7 @@ function EditProfile({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 		}
 	};
 	return (
-		<form className="profile" onSubmit={save}>
+		<form className="profile-form" onSubmit={save}>
 			<div className="profile-grid">
 				<label className="field">
 					<span>Name</span>
@@ -474,10 +584,24 @@ function EditProfile({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 					onChange={(event) => setInstructions(event.target.value)}
 				/>
 			</label>
-			<label className="field">
-				<span>Model</span>
-				<ModelSelect value={model} onChange={setModel} emptyLabel="Use the default model" />
-			</label>
+			<div className="profile-grid">
+				<label className="field">
+					<span>Model</span>
+					<ModelSelect value={model} onChange={setModel} emptyLabel="Use the default model" />
+				</label>
+				{reasoning && (
+					<label className="field">
+						<span>Thinking</span>
+						<select value={thinkingLevel} onChange={(event) => setThinkingLevel(event.target.value as ThinkingLevel)}>
+							{(Object.keys(THINKING_LABEL) as ThinkingLevel[]).map((level) => (
+								<option key={level} value={level}>
+									{THINKING_LABEL[level]}
+								</option>
+							))}
+						</select>
+					</label>
+				)}
+			</div>
 			<div className="dialog-actions">
 				<button type="button" onClick={onClose}>
 					Cancel
@@ -490,7 +614,7 @@ function EditProfile({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 	);
 }
 
-function Composer({ bot, running }: { readonly bot: BotSummary; readonly running: boolean }) {
+function Composer({ bot, run }: { readonly bot: BotSummary; readonly run: RunRecord | undefined }) {
 	const [text, setText] = useState("");
 	const input = useRef<HTMLTextAreaElement>(null);
 
@@ -526,15 +650,7 @@ function Composer({ bot, running }: { readonly bot: BotSummary; readonly running
 			/>
 			<div className="composer-actions">
 				<span className="composer-hint">Enter to send · Shift+Enter for a new line</span>
-				{running && (
-					<button
-						type="button"
-						className="stop"
-						onClick={() => void api["runs.cancel"]({ botId: bot.botId }).catch(report)}
-					>
-						Stop
-					</button>
-				)}
+				<StopButton run={run} />
 				<button type="button" className="primary send" disabled={text.trim() === ""} onClick={() => void send()}>
 					Send
 				</button>
@@ -674,6 +790,9 @@ function Settings() {
 					))}
 				</ul>
 			</div>
+			<WebSearchSettings />
+			<CommandSettings />
+			<FolderSettings workspace={settings.workspace} />
 
 			<div className="settings-group">
 				<h2>Your own providers</h2>

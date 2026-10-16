@@ -7,7 +7,8 @@
 	"scripts": {
 		"dev": "electron-vite dev",
 		"build": "electron-vite build",
-		"start": "electron-vite preview"
+		"start": "electron-vite preview",
+		"package": "electron-vite build && node scripts/stage-runtime.mjs && node scripts/package.mjs"
 	},
 	"dependencies": {
 		"@openbot/protocol": "workspace:*"
@@ -18,7 +19,9 @@
 		"@vitejs/plugin-react": "5.2.0",
 		"dompurify": "3.4.17",
 		"electron": "44.7.2",
+		"electron-builder": "26.15.3",
 		"electron-vite": "5.0.0",
+		"esbuild": "0.28.2",
 		"marked": "18.1.1",
 		"react": "19.3.1",
 		"react-dom": "19.3.1",

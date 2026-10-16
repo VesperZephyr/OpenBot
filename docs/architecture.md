@@ -239,7 +239,7 @@ Product packages are published within the workspace as `@openbot/*`. Pi packages
 | `apps/desktop` | Bot roster, conversations, group chats, streamed output, approval and takeover cards, settings, notifications, menu bar, and application lifecycle | Depends only on `protocol` |
 | `apps/local-server` | Compose the Host: own the store, wire ports, implement the Keychain secret store, bind IPC, supervise the executor, and run startup recovery | Process entry point; little product logic |
 | `apps/local-executor` | Compose executor adapters, bind the parent IPC channel, and own child processes and the browser instance | Process entry point |
-| `packages/protocol` | Requests, responses, events, errors, and execution envelopes | No Pi, Electron, or Node-specific implementation dependencies |
+| `packages/protocol` | Requests, responses, events, errors, execution envelopes, and one TypeBox parameter schema per Host method | No Pi, Electron, or Node-specific implementation dependencies; TypeBox is its only dependency |
 | `packages/server-core` | Transport-independent application methods, scheduling, policy evaluation, approvals, grants, routines, skill library, Bot memory, and host tool handlers | Defines `SecretStore` and other infrastructure ports |
 | `packages/agent-runtime` | Wrap Pi, map Bots to Pi conversations, register product tools, project state, coordinate cancellation and recovery | Defines the `ToolInvoker` port that every tool call enters |
 | `packages/tool-router` | Validate target and capability, consult policy, gate scheduling, persist dispatch intent, dispatch to the executor or a host handler, and correlate results | Defines `PolicyPort`, `DispatchLedger`, `ExecutorTransport`, and `HostToolHandler` ports |
@@ -354,9 +354,10 @@ Tool Router dispatches every model-selected tool to one of two destinations. **E
 
 | Tool | Destination | Behavior | Authorization |
 | --- | --- | --- | --- |
-| `local_read`, `local_list` | Executor | Read files and list directories | Read grant for the canonical path; the shared workspace is granted at onboarding with consent |
-| `local_write`, `local_edit` | Executor | Create, write, or apply targeted edits; edit includes an expected-content check | Write grant |
-| `local_exec` | Executor | Run a command in a working directory, stream bounded output, record exit status | Command setting: ask every time (default), always allow, or never; plus policy rules |
+| `local_read`, `local_list` | Executor | Read files and list directories; results end with the file's SHA-256 | Read or read-write grant for the canonical path; the shared workspace is always read-write; `local_read` may also read spilled output under `<data>/artifacts` |
+| `local_write`, `local_edit` | Executor | Create, write, or apply targeted edits; edit takes an optional `expected_sha256` and refuses when the file changed | Read-write grant |
+| `local_exec` | Executor | Run a command in a working directory, stream bounded output, record exit status; a command still running after 60 seconds, or started with `background: true`, continues in the background with a `taskId` | Read-only commands inside grants are allowed by default; otherwise the command setting (ask every time by default, always allow, or never) and command rules |
+| `task_output`, `task_stop` | Executor | Read new output of a background command (optionally waiting), or stop it | Allowed: the command was already authorized |
 | `browser_open`, `browser_navigate`, `browser_tabs` | Executor | Open or reuse the Bot's managed-browser window and manage its tabs | Browser capability |
 | `browser_snapshot`, `browser_screenshot` | Executor | Return an accessibility/DOM snapshot with element references, or a page image with frame metadata | Browser capability |
 | `browser_click`, `browser_type`, `browser_key`, `browser_scroll`, `browser_select` | Executor | Apply bounded input to the Bot's window using snapshot references or frame coordinates | Browser capability and policy review |
@@ -365,8 +366,8 @@ Tool Router dispatches every model-selected tool to one of two destinations. **E
 | `computer_screenshot` | Executor | Capture the selected display and return image metadata | Desktop capability and macOS Screen Recording permission |
 | `computer_activate`, `computer_click`, `computer_type`, `computer_key`, `computer_scroll` | Executor | Activate an application or apply bounded input to the real desktop | Desktop capability, the control lease, and macOS Accessibility permission |
 | `mcp__<server>__<tool>` | Executor | Call a connector tool | Connector installation plus policy rules |
-| `web_search`, `web_fetch` | Host | Query the configured search endpoint; fetch a public URL as text | Network setting; private and loopback addresses blocked by default |
-| `memory_update` | Host | Record or revise the Bot's stable preferences and role notes | Allowed; visible in the Bot's memory panel |
+| `web_search`, `web_fetch` | Host | Query the configured search provider (Tavily, key in the Keychain); fetch a public URL as Markdown with a `retrieval_outcome` label | Allowed; private and loopback addresses blocked, including after redirects |
+| `memory_update` | Host | Replace or append one section of the Bot's memory (8 KB of Markdown, session document `openbot.memory` keyed by Bot) | Allowed; visible and editable in the Bot's memory panel |
 | `skill_load`, `skill_save` | Host | Load a saved skill; save or revise a draft skill | Loading allowed; saving requires confirmation |
 | `bot_message`, `bot_handoff` | Host | Message another Bot or a group, or transfer a task with context | Allowed; recorded in both transcripts |
 | `routine_propose` | Host | Propose a new or changed routine for the user to confirm | Confirmation in the conversation |
@@ -443,7 +444,7 @@ Prefer a connector over browser automation when one exists.
 
 A Bot profile is an OpenBot session document containing `botId`, name, avatar, role description, instructions, model selection, enabled tool families, default working directory, and status (active, hidden, deleted). Creating a Bot creates its main Pi conversation and applies the profile through `configure()`.
 
-**Memory.** Each Bot has a memory document with stable preferences, role context, and summaries of prior work. A `memory` prompt section renders it; `memory_update` changes it; the user can view and edit it. Memory is guidance, not a source of truth: for consequential decisions the Bot checks the current source.
+**Memory.** Each Bot has a memory: up to 8 KB of Markdown with stable preferences, role context, and summaries of prior work, kept in the session document `openbot.memory` keyed by `botId`, so it belongs to the Bot and survives new topics. A `memory` prompt section renders it; `memory_update` replaces or appends one section; the user can view and edit it. Memory is guidance, not a source of truth: for consequential decisions the Bot checks the current source.
 
 **Parallel work.** Bots run in parallel up to the active-Run cap (Section 7.2). Each conversation has at most one active Run. Bots share files, the browser profile, and connectors; concurrent writes to the same file are serialized by the executor and checked by the edit tool's expected-content check.
 
@@ -496,15 +497,16 @@ The transport is private IPC with versioned request, response, and event envelop
 
 | Method | Semantics |
 | --- | --- |
-| `bots.create`, `bots.update`, `bots.list`, `bots.hide`, `bots.delete`, `bots.export`, `bots.import` | Manage Bot profiles and templates |
+| `bots.create`, `bots.update`, `bots.list`, `bots.duplicate`, `bots.delete`, `bots.export`, `bots.import` | Manage Bot profiles and templates; Duplicate copies profile and memory, not history; Delete cancels the Bot's Run and keeps its conversation on disk |
 | `bots.memory.get`, `bots.memory.update` | View and edit a Bot's memory |
-| `conversations.list`, `conversations.snapshot`, `conversations.subscribe` | List Bot, group, and routine-run conversations; deliver the current view followed by ordered updates |
+| `conversations.list`, `conversations.snapshot`, `conversations.subscribe`, `conversations.reset` | List Bot, group, and routine-run conversations; deliver the current view followed by ordered updates for the subscribed conversation; start a new topic |
 | `groups.create`, `groups.update`, `groups.delete` | Manage group chats and membership |
 | `messages.submit` | Accept `requestId`, conversation, content, mentions, skill and connector attachments, and artifact references; return `runId`, state, and whether the message steered an active Run, after durable receipt |
 | `runs.cancel`, `runs.pause`, `runs.resume` | Persist an idempotent cancellation or pause request and report its outcome separately |
 | `approvals.decide` | `allow_once`, `always_allow` with a confirmed rule scope, or `deny` for the exact pending invocation |
-| `policy.rules.list`, `policy.rules.upsert`, `policy.rules.delete`, `policy.settings.update` | Manage Ask first and Allow automatically rules, capability defaults, and Auto Review |
-| `grants.create`, `grants.revoke` | Record or revoke user-selected file access or capability grants for a `targetId` |
+| `policy.get`, `policy.update`, `policy.rules.delete` | Read and change the command setting, the read-only default, and command rules; Ask first rules and Auto Review arrive in Phase 2 |
+| `grants.list`, `grants.add`, `grants.revoke` | List, add (folder picked in a native dialog by main), or revoke folder grants for a `targetId` |
+| `models.list`, `models.addProvider`, `models.test` | List models, declare an OpenAI- or Anthropic-compatible endpoint in the model configuration file (never its key), and send one small test request |
 | `skills.list`, `skills.get`, `skills.save`, `skills.delete` | Manage the skill library |
 | `routines.list`, `routines.confirm`, `routines.update`, `routines.setEnabled`, `routines.testRun`, `routines.delete`, `routines.runs` | Manage routines and inspect their run history |
 | `connectors.list`, `connectors.install`, `connectors.authorize`, `connectors.remove` | Manage MCP connectors |
@@ -515,7 +517,7 @@ The transport is private IPC with versioned request, response, and event envelop
 | `artifacts.import`, `artifacts.export` | Copy selected inputs or generated outputs through authorized local paths |
 | `settings.get`, `settings.update`, `usage.get` | Read redacted settings, update configuration, and read per-Bot usage |
 
-A request carries `protocolVersion`, `messageId`, `method`, and `params`. Mutating operations include a stable application request identity where retries could otherwise create duplicate work. `messages.submit` returns the same Run for the same request ID and content; different content under that ID is a conflict. Durable receipt does not mean model generation has started.
+A request carries `protocolVersion`, `messageId`, `method`, and `params`. Electron main and the Host both validate `params` against the method's TypeBox schema (`@openbot/protocol/schemas`) and answer `invalid_request` otherwise. Mutating operations include a stable application request identity where retries could otherwise create duplicate work. `messages.submit` returns the same Run for the same request ID and content; different content under that ID is a conflict. Durable receipt does not mean model generation has started. A Bot's queued Run collects messages sent while it waits and submits them as one input when it starts.
 
 Observation events include `streamId`, `seq`, `conversationId`, `type`, and `payload`. A subscription starts from a consistent snapshot and continues with updates after that snapshot. Reconnection, a sequence gap, or a new Host instance requires a new snapshot; Pi's watch does not replay arbitrary historical events. See [Pi observation semantics](https://github.com/earendil-works/pi/blob/b45e0ebcc5ae2fc42a6f2f23104d10e656e6bedb/packages/durable/README.md#watching-a-conversation).
 
@@ -527,13 +529,13 @@ The Host and the executor exchange a startup handshake containing protocol versi
 
 | Message | Contract |
 | --- | --- |
-| `tool.invoke` | Invocation ID, Bot, Run, and conversation IDs, tool name, arguments and digest, target, deadline, and authorization |
-| `tool.ack` | Durable acceptance or the recorded state of an existing invocation |
+| `tool.invoke` | Invocation ID, Bot, Run, and conversation IDs, tool name, arguments and digest, target, deadline, and authorization (read-write and read-only grant lists). A repeated invocation is answered with its recorded state instead of a separate acknowledgment |
 | `tool.progress` | Sequenced, bounded output or progress; never a substitute for terminal status |
 | `tool.result` | Terminal status, result content or references, exit details, and structured errors |
 | `tool.status` | Reconcile a previously accepted invocation after interruption |
 | `tool.cancel` | Request termination; report confirmed termination or an uncertain outcome |
 | `result.ack` | Confirm that the Host persisted the terminal receipt |
+| `tasks.stop` | Stop every background command a conversation started, when the user stops its Run |
 | `control.revoke` | Invalidate the current desktop control epoch and block subsequent desktop input |
 | `browser.gate` | Gate or release one Bot's browser window for takeover, pause, or cancellation |
 | `connector.ensure`, `connector.stop` | Start, verify, or stop a connector server with its injected credentials |
@@ -571,7 +573,7 @@ Rules:
 
 - **Main owns processes; the renderer owns nothing privileged.** Main starts the Host, holds the only Host connection, and is the only code that shows native dialogs, notifications, tray menus, and global shortcuts.
 - **Named methods only.** The preload exposes one function per Section 6.1 method. A generic `invoke(channel, args)` is not allowed. Main checks that every call comes from the application's own frame and validates arguments before forwarding.
-- **Typed end to end.** `shared/api.ts` is derived from `@openbot/protocol`, so a renamed or removed method fails type checking in main, preload, and renderer. Runtime validation uses a schema per method; the schema library (zod, or TypeBox, which Pi already uses) is chosen in M2.
+- **Typed end to end.** `shared/api.ts` is derived from `@openbot/protocol`, so a renamed or removed method fails type checking in main, preload, and renderer. Runtime validation uses one TypeBox schema per method from `@openbot/protocol/schemas` (TypeBox is the version Pi already uses); a method without a schema fails type checking.
 - **Snapshot then events.** The renderer store for a conversation is a `conversations.snapshot` followed by `seq`-ordered events. A sequence gap or Host restart discards the store and requests a new snapshot. Token deltas are coalesced before they cross IPC.
 - **Secrets never reach the renderer.** A secret request renders a masked field, but the value goes renderer → preload → main → Host in one call and is never kept in renderer state. Settings arrive redacted.
 - **Closing the window is not quitting.** The tray menu, the dock, and the global shortcut reopen the window. Quit runs the Section 8.1 shutdown sequence before the process exits. Main relays `powerMonitor` suspend, resume, lock, and unlock events to the Host, and holds `powerSaveBlocker` only while Runs are active.
@@ -718,7 +720,7 @@ Cancellation is a persisted request followed by an observed outcome. Enter `canc
 
 ### 8.3 Data and Backups
 
-The application data directory, normally `~/Library/Application Support/OpenBot/`, holds the conversation database, artifact directory, executor receipts, skill library, managed-browser profile, and bounded operational logs. The shared workspace defaults to `~/OpenBot` so the user can see and edit Bot files. Other user files stay in explicitly selected directories.
+The application data directory, normally `~/Library/Application Support/OpenBot/`, holds the conversation database (`openbot.sqlite`), spilled tool output (`artifacts/`, kept 7 days), executor receipts (`executor/receipts.sqlite`), the skill library, the managed-browser profile, and bounded operational logs (`logs/host.log`, rotated at 5 MB). The shared workspace defaults to `~/OpenBot` so the user can see and edit Bot files. Other user files stay in explicitly selected directories.
 
 The Pi SQLite adapter uses WAL with `synchronous = NORMAL` at the reviewed baseline. Commits survive process crashes; the newest commits may be lost on power or host failure. Validate the storage behavior before making stronger durability guarantees.
 
@@ -726,7 +728,7 @@ A backup includes consistent snapshots of application and executor state, artifa
 
 Record application, Pi, protocol, and data-format versions for diagnosis and upgrades. Use `botId`, `runId`, and `invocationId` to correlate logs. Operational logs exclude credentials and secret values and avoid collecting full file content, page content, or screenshots by default. Verify migrations against a backup before advancing the data format.
 
-Removing access follows the same steps as in a hosted product: pause or delete routines, sign out of sites in the managed browser, remove connectors and revoke their authorization at the service, delete sensitive workspace files, and hide or delete Bots. Deleting a Bot removes its profile, conversation, memory, and routines; shared files, browser sessions, and connectors remain.
+Removing access follows the same steps as in a hosted product: pause or delete routines, sign out of sites in the managed browser, remove connectors and revoke their authorization at the service, delete sensitive workspace files, and hide or delete Bots. Deleting a Bot cancels its Run, hides it everywhere, and refuses further messages; its profile, conversation, and memory stay in the database until a later purge removes them. Shared files, browser sessions, and connectors remain.
 
 ## 9. First-Release Scope
 

@@ -18,7 +18,8 @@ import {
 	ProtocolError,
 	type ResponseEnvelope,
 } from "@openbot/protocol";
-import { ApprovalBook, HostService } from "@openbot/server-core";
+import { paramsError } from "@openbot/protocol/schemas";
+import { ApprovalBook, DEFAULT_MAX_ACTIVE_RUNS, HostService } from "@openbot/server-core";
 import { ExecutorProcess } from "./executor.ts";
 import { KeychainCredentials } from "./keychain.ts";
 import { modelConfigFile, openBotHome } from "./model-config-file.ts";
@@ -65,13 +66,25 @@ const executor = new ExecutorProcess({
 	entry: process.env.OPENBOT_EXECUTOR_ENTRY ?? resolve(dirname(fileURLToPath(import.meta.url)), "../../local-executor/src/main.ts"),
 	targetId: target.targetId,
 	workspace,
+	dataDirectory,
 	env: process.env,
 });
 
 // The approval book publishes through the service, which exists only after the runtime it needs is open.
 const approvalListeners: { changed?: (botId: string) => void } = {};
 const approvals = new ApprovalBook((botId) => approvalListeners.changed?.(botId));
-const router = createToolRouter({ target, workspace, approvals, executor });
+// The router is built before the runtime; memory edits reach it once tool calls flow, after it opened.
+const router = createToolRouter({
+	target,
+	workspace,
+	approvals,
+	executor,
+	secrets: credentials,
+	tavilyBaseUrl: process.env.OPENBOT_TAVILY_BASE_URL,
+	editMemory: (botId, edit) => runtime.editMemory(botId, edit),
+	artifactsDirectory: join(dataDirectory, "artifacts"),
+	policy: () => runtime.policy(),
+});
 
 const runtime = await BotRuntime.open({
 	databasePath: join(dataDirectory, "openbot.sqlite"),
@@ -101,14 +114,31 @@ const service = new HostService({
 	modelConfig: modelConfigFile(join(openBotHome(), "models.json"), launchEnvironment),
 	approvals,
 	workspace,
+	maxActiveRuns: maxActiveRuns(process.env.OPENBOT_MAX_ACTIVE_RUNS),
 	emit: (event) =>
 		send({ ...event, protocolVersion: PROTOCOL_VERSION, kind: "event", streamId, seq: ++seq }),
+	// Pi committed the call's result: the executor may prune its receipt, and the call's approval is used up.
+	toolSettled: (botId, callId) => {
+		void (async () => {
+			executor.ack(`${await runtime.conversationKey(botId)}:${callId}`);
+			await approvals.settled(botId, callId);
+		})().catch((error: unknown) => console.error("Could not settle a tool call", error));
+	},
+	// Stop also ends the background commands the conversation started; they are no longer any Pi call's.
+	conversationStopped: (botId) => {
+		void runtime
+			.conversationKey(botId)
+			.then((conversationId) => executor.stopTasks(conversationId))
+			.catch((error: unknown) => console.error("Could not stop background commands", error));
+	},
 });
 approvalListeners.changed = (botId) => service.approvalsChanged(botId);
 
+// Recovery gate (Section 5.1): before anything schedules, storage is open, pending approvals are loaded, observers
+// are attached, and the executor has opened its ledger, turning invocations left unfinished into `unknown`. Pi then
+// reruns interrupted calls with their stable call IDs; each finds its approval and its receipt.
+await executor.start();
 await service.start();
-// Recovery gate: nothing schedules before storage is open and observers are attached. Executor receipt
-// reconciliation joins this gate with the persistent ledger (technical plan backlog).
 runtime.resume();
 
 process.on("message", async (message: unknown) => {
@@ -117,7 +147,8 @@ process.on("message", async (message: unknown) => {
 	try {
 		const { method } = message;
 		if (!isHostMethod(method)) throw new ProtocolError("unknown_method", `Unknown method: ${method}`);
-		// Params are validated per method by schema in M2; until then handlers check the fields they use.
+		const invalid = paramsError(method, message.params);
+		if (invalid !== undefined) throw new ProtocolError("invalid_request", invalid);
 		const result = await service.handle(method, message.params as HostParams<typeof method>);
 		response = { protocolVersion: PROTOCOL_VERSION, kind: "response", messageId: message.messageId, ok: true, result };
 	} catch (error) {
@@ -166,4 +197,12 @@ function isAlive(pid: number): boolean {
 	} catch {
 		return false;
 	}
+}
+
+/** The active-Run cap from `OPENBOT_MAX_ACTIVE_RUNS`; unset means the default. */
+function maxActiveRuns(value: string | undefined): number {
+	if (value === undefined || value === "") return DEFAULT_MAX_ACTIVE_RUNS;
+	const cap = Number(value);
+	if (!Number.isInteger(cap) || cap < 1) throw new Error(`OPENBOT_MAX_ACTIVE_RUNS must be a positive integer, got ${value}`);
+	return cap;
 }

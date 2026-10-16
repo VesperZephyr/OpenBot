@@ -5,39 +5,89 @@
 import { join, resolve } from "node:path";
 import { app, BrowserWindow, Menu, nativeImage, powerMonitor, session, shell, Tray } from "electron";
 import { CHANNELS, type HostState } from "../shared/api";
+import { APP_ENTRY_URL, registerAppScheme, serveAppScheme } from "./app-protocol";
+import { AttentionWatcher } from "./attention-watcher";
+import { RotatingLog } from "./host-log";
 import { HostProcess } from "./host";
 import { registerIpc } from "./ipc";
 
-const isDev = !app.isPackaged;
-// In development the app path is apps/desktop; the Host entry is a sibling app in the workspace. Packaged builds
-// ship the Host outside app.asar (architecture §3) and set OPENBOT_HOST_ENTRY.
-const hostEntry = process.env.OPENBOT_HOST_ENTRY ?? resolve(app.getAppPath(), "../local-server/src/main.ts");
+/** electron-vite's renderer dev server; every other run (built, packaged, e2e) serves the renderer over `app://`. */
+const devServerUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL;
+const HOST_LOG_LIMIT_BYTES = 5 * 1024 * 1024;
 
+// Packaged builds run the bundled Host and executor (outside app.asar, architecture §3) on the bundled, signed Node in
+// Contents/Resources; the environment cannot redirect them. In development the app path is apps/desktop and the
+// Host is a sibling workspace app run by Node from PATH, with the existing environment overrides.
+const runtime = app.isPackaged
+	? {
+			node: join(process.resourcesPath, "node"),
+			hostEntry: join(process.resourcesPath, "host", "host.mjs"),
+			executorEntry: join(process.resourcesPath, "host", "executor.mjs"),
+		}
+	: {
+			node: process.env.OPENBOT_NODE ?? "node",
+			hostEntry: process.env.OPENBOT_HOST_ENTRY ?? resolve(app.getAppPath(), "../local-server/src/main.ts"),
+			executorEntry: process.env.OPENBOT_EXECUTOR_ENTRY,
+		};
+
+// A custom data directory (tests, parallel checkouts) also gets its own Electron profile, so the single-instance lock
+// and Chromium state do not collide with the user's installed OpenBot.
+if (process.env.OPENBOT_DATA_DIR !== undefined) app.setPath("userData", join(process.env.OPENBOT_DATA_DIR, "electron"));
 if (!app.requestSingleInstanceLock()) app.quit();
+registerAppScheme();
+
+// Same default as the Host's own data directory.
+const dataDirectory = process.env.OPENBOT_DATA_DIR ?? join(app.getPath("appData"), "OpenBot");
+const hostLog = new RotatingLog(join(dataDirectory, "logs", "host.log"), HOST_LOG_LIMIT_BYTES);
 
 let window: BrowserWindow | undefined;
 /** Held for the app's lifetime: a Tray that is garbage-collected disappears from the menu bar. */
 let tray: Tray | undefined;
 let quitting = false;
 
+/** Development and test overrides; a packaged app ignores them, so the environment cannot redirect its keys or limits. */
+const DEV_OVERRIDES = [
+	"OPENBOT_KEYCHAIN_SERVICE",
+	"OPENBOT_WORKSPACE",
+	"OPENBOT_TAVILY_BASE_URL",
+	"OPENBOT_MAX_ACTIVE_RUNS",
+	"OPENBOT_EXEC_YIELD_MS",
+] as const;
+const forwarded = (names: readonly string[]): Record<string, string> =>
+	Object.fromEntries(names.flatMap((name) => (process.env[name] === undefined ? [] : [[name, process.env[name]]])));
+
 const host = new HostProcess({
-	// Development runs the Host on Node from PATH; packaged builds bundle a pinned, signed Node (architecture §3).
-	node: process.env.OPENBOT_NODE ?? "node",
-	entry: hostEntry,
+	node: runtime.node,
+	entry: runtime.hostEntry,
 	env: {
 		PATH: process.env.PATH ?? "",
 		HOME: process.env.HOME ?? "",
 		USER: process.env.USER ?? "",
 		TMPDIR: process.env.TMPDIR ?? "",
-		...(process.env.OPENBOT_DATA_DIR === undefined ? {} : { OPENBOT_DATA_DIR: process.env.OPENBOT_DATA_DIR }),
-		...(process.env.OPENBOT_KEYCHAIN_SERVICE === undefined
-			? {}
-			: { OPENBOT_KEYCHAIN_SERVICE: process.env.OPENBOT_KEYCHAIN_SERVICE }),
-		...(process.env.OPENBOT_HOME === undefined ? {} : { OPENBOT_HOME: process.env.OPENBOT_HOME }),
-		...(process.env.OPENBOT_WORKSPACE === undefined ? {} : { OPENBOT_WORKSPACE: process.env.OPENBOT_WORKSPACE }),
+		...(runtime.executorEntry === undefined ? {} : { OPENBOT_EXECUTOR_ENTRY: runtime.executorEntry }),
+		// Where data and the model configuration live may be moved in any build.
+		...forwarded(["OPENBOT_DATA_DIR", "OPENBOT_HOME"]),
+		...(app.isPackaged ? {} : forwarded(DEV_OVERRIDES)),
 	},
-	onEvent: (event) => window?.webContents.send(CHANNELS.event, event),
-	onState: (state: HostState) => window?.webContents.send(CHANNELS.hostState, state),
+	onOutput: (chunk) => hostLog.write(chunk),
+	// Both callbacks first fire after `host.start()` below, when `attentionWatcher` exists.
+	onEvent: (event) => {
+		attentionWatcher.onEvent(event);
+		window?.webContents.send(CHANNELS.event, event);
+	},
+	onState: (state: HostState) => {
+		attentionWatcher.onHostState(state);
+		window?.webContents.send(CHANNELS.hostState, state);
+	},
+});
+
+const attentionWatcher = new AttentionWatcher({
+	host,
+	focused: () => BrowserWindow.getFocusedWindow() !== null,
+	openBot: (botId) => {
+		showWindow();
+		window?.webContents.send(CHANNELS.openBot, botId);
+	},
 });
 
 function createWindow(): BrowserWindow {
@@ -75,8 +125,7 @@ function createWindow(): BrowserWindow {
 		return { action: "deny" };
 	});
 
-	if (isDev && process.env.ELECTRON_RENDERER_URL !== undefined) void created.loadURL(process.env.ELECTRON_RENDERER_URL);
-	else void created.loadFile(join(__dirname, "../renderer/index.html"));
+	void created.loadURL(devServerUrl ?? APP_ENTRY_URL);
 	return created;
 }
 
@@ -107,6 +156,7 @@ app.on("before-quit", (event) => {
 	if (quitting) return;
 	quitting = true;
 	event.preventDefault();
+	attentionWatcher.stop();
 	void host.stop().finally(() => app.quit());
 });
 
@@ -115,6 +165,7 @@ void app.whenReady().then(() => {
 	session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
 	session.defaultSession.setPermissionCheckHandler(() => false);
 
+	if (devServerUrl === undefined) serveAppScheme(join(__dirname, "../renderer"));
 	registerIpc({ host, isTrustedFrame: (url) => isTrustedRendererUrl(url) });
 	host.start();
 	window = createWindow();
@@ -128,6 +179,8 @@ void app.whenReady().then(() => {
 });
 
 function isTrustedRendererUrl(url: string): boolean {
-	if (isDev && process.env.ELECTRON_RENDERER_URL !== undefined) return url.startsWith(process.env.ELECTRON_RENDERER_URL);
-	return url.startsWith("file://") && url.includes("/renderer/index.html");
+	if (devServerUrl !== undefined) return url.startsWith(devServerUrl);
+	// `app:` is not a special URL scheme, so `URL.origin` is "null"; compare scheme, host, and path explicitly.
+	const parsed = URL.parse(url);
+	return parsed !== null && `${parsed.protocol}//${parsed.host}${parsed.pathname}` === APP_ENTRY_URL;
 }

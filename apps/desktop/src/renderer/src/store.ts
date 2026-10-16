@@ -17,6 +17,8 @@ type State = {
 	view: View;
 	showHidden: boolean;
 	notice: string | undefined;
+	/** First-launch setup: `undefined` until the first roster and settings arrive, then decided once. */
+	onboarding: boolean | undefined;
 };
 
 export const useStore = create<State>(() => ({
@@ -28,6 +30,7 @@ export const useStore = create<State>(() => ({
 	view: { kind: "home" },
 	showHidden: false,
 	notice: undefined,
+	onboarding: undefined,
 }));
 
 const api = window.openbot.methods;
@@ -47,8 +50,10 @@ export async function refreshSettings(): Promise<void> {
 	useStore.setState({ settings, models });
 }
 
+/** Select a Bot: its conversation becomes the one the Host streams to this window, then it is fetched fresh. */
 export async function openBot(botId: string): Promise<void> {
 	useStore.setState({ view: { kind: "bot", botId } });
+	await api["conversations.subscribe"]({ botId });
 	const snapshot = await api["conversations.snapshot"]({ botId });
 	useStore.setState((state) => ({ conversations: { ...state.conversations, [botId]: snapshot } }));
 	await api["conversations.markRead"]({ botId });
@@ -89,20 +94,34 @@ export function connect(): () => void {
 		useStore.setState({ host });
 		if (host.status === "ready") void loadAll();
 	});
+	// A clicked notification: main showed the window, the renderer opens the Bot.
+	const stopOpenBot = window.openbot.onOpenBot((botId) => void openBot(botId).catch(report));
 	return () => {
 		stopEvents();
 		stopHost();
+		stopOpenBot();
 	};
 }
 
 async function loadAll(): Promise<void> {
 	try {
 		await Promise.all([refreshBots(), refreshSettings()]);
-		const { view } = useStore.getState();
+		const { view, onboarding, settings, bots } = useStore.getState();
+		// Decided once per window: later Host restarts never interrupt or restart the flow.
+		if (onboarding === undefined && settings !== undefined) useStore.setState({ onboarding: needsOnboarding(settings, bots) });
+		// A restarted Host has no subscription; opening the Bot again subscribes and fetches it fresh.
 		if (view.kind === "bot") await openBot(view.botId);
 	} catch (error) {
 		report(error);
 	}
+}
+
+/**
+ * First launch: no default model, no Bot, and no provider with a key or a configuration that makes it usable. A model
+ * configuration file with a provider (for example one the development setup wrote) skips the setup screen.
+ */
+export function needsOnboarding(settings: RedactedSettings, bots: readonly BotSummary[]): boolean {
+	return settings.defaultModel === undefined && bots.length === 0 && !settings.providers.some((provider) => provider.configured);
 }
 
 export { api };

@@ -9,7 +9,7 @@ import { execFile, spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import type { Credential, CredentialInfo, CredentialStore } from "@openbot/agent-runtime";
-import type { SecretStore } from "@openbot/server-core";
+import { SEARCH_PROVIDER_PREFIX, type SecretStore } from "@openbot/server-core";
 
 const run = promisify(execFile);
 const SECURITY = "/usr/bin/security";
@@ -53,6 +53,10 @@ export class KeychainCredentials implements SecretStore, CredentialStore {
 		});
 	}
 
+	async getApiKey(providerId: string): Promise<string | undefined> {
+		return this.#find(providerId);
+	}
+
 	// --- CredentialStore (pi-ai)
 
 	async read(providerId: string): Promise<Credential | undefined> {
@@ -61,7 +65,10 @@ export class KeychainCredentials implements SecretStore, CredentialStore {
 	}
 
 	async list(): Promise<readonly CredentialInfo[]> {
-		return (await this.#index()).map((providerId) => ({ providerId, type: "api_key" as const }));
+		// Search keys share the store but are not model credentials.
+		return (await this.#index())
+			.filter((providerId) => !providerId.startsWith(SEARCH_PROVIDER_PREFIX))
+			.map((providerId) => ({ providerId, type: "api_key" as const }));
 	}
 
 	modify(

@@ -19,6 +19,9 @@ function memoryConfigFile(): MemoryConfigFile {
 		async read() {
 			return this.text;
 		},
+		async write(text) {
+			this.text = text;
+		},
 		environment: {
 			env: (name) => (name === "GATEWAY_KEY" ? "sk-from-env" : undefined),
 			run: async () => "sk-from-command",
@@ -31,8 +34,12 @@ describe("HostService", () => {
 	let runtime: BotRuntime;
 	let service: HostService;
 	let events: HostEventType[];
+	/** Bot of every `conversation.updated` event, in order. */
+	let updated: string[];
 	let secrets: MemorySecretStore;
 	let configFile: MemoryConfigFile;
+	/** Bots whose background commands the service asked the Host to stop. */
+	let stoppedBots: string[];
 	/** Resolves with the first conversation snapshot that satisfies the predicate. */
 	let nextSnapshot: (predicate: (snapshot: ConversationSnapshot) => boolean) => Promise<ConversationSnapshot>;
 
@@ -40,6 +47,8 @@ describe("HostService", () => {
 		directory = await mkdtemp(join(tmpdir(), "openbot-host-"));
 		runtime = await BotRuntime.open({ databasePath: join(directory, "db.sqlite"), models: scriptedModels("Done.").models });
 		events = [];
+		stoppedBots = [];
+		updated = [];
 		secrets = new MemorySecretStore();
 		configFile = memoryConfigFile();
 		const waiters: { predicate: (snapshot: ConversationSnapshot) => boolean; resolve: (s: ConversationSnapshot) => void }[] =
@@ -57,9 +66,11 @@ describe("HostService", () => {
 			modelConfig: configFile,
 			approvals: new ApprovalBook(() => {}),
 			workspace: directory,
+			conversationStopped: (botId) => stoppedBots.push(botId),
 			emit: (event) => {
 				events.push(event.type);
 				if (event.type !== "conversation.updated") return;
+				updated.push(event.payload.botId);
 				for (const waiter of [...waiters]) {
 					if (!waiter.predicate(event.payload)) continue;
 					waiters.splice(waiters.indexOf(waiter), 1);
@@ -83,6 +94,7 @@ describe("HostService", () => {
 		);
 
 		await service.handle("settings.update", { defaultModel: SCRIPTED_MODEL });
+		await service.handle("conversations.subscribe", { botId: bot.botId });
 		const answered = nextSnapshot((s) => s.live === undefined && s.items.some((item) => item.kind === "assistant"));
 		await service.handle("messages.submit", { botId: bot.botId, requestId: "m1", text: "Hi" });
 		expect((await answered).items.map((item) => item.kind)).toEqual(["user", "assistant"]);
@@ -104,7 +116,16 @@ describe("HostService", () => {
 	it("never returns stored API keys in settings", async () => {
 		const settings = await service.handle("credentials.set", { providerId: "openai", apiKey: " sk-secret " });
 		expect(JSON.stringify(settings)).not.toContain("sk-secret");
-		expect(secrets.read("openai")).toBe("sk-secret");
+		expect(await secrets.getApiKey("openai")).toBe("sk-secret");
+	});
+
+	it("reports the search key as web search, never as a model provider", async () => {
+		expect((await service.handle("settings.get", {})).webSearch).toEqual({ provider: "tavily", configured: false });
+		const settings = await service.handle("credentials.set", { providerId: "search:tavily", apiKey: "tvly-secret" });
+		expect(settings.webSearch).toEqual({ provider: "tavily", configured: true });
+		expect(settings.providers.some((provider) => provider.providerId.startsWith("search:"))).toBe(false);
+		expect(JSON.stringify(settings)).not.toContain("tvly-secret");
+		expect((await service.handle("credentials.delete", { providerId: "search:tavily" })).webSearch.configured).toBe(false);
 	});
 
 	it("applies edits to the model configuration without a restart and reports problems by path", async () => {
@@ -149,5 +170,100 @@ describe("HostService", () => {
 				expect.stringMatching(/^providers\.gateway\.api: must be one of /),
 			]),
 		);
+	});
+
+	it("sends conversation updates only for the subscribed Bot", async () => {
+		await service.handle("settings.update", { defaultModel: SCRIPTED_MODEL });
+		const watched = await service.handle("bots.create", { requestId: "w", name: "Watched" });
+		const other = await service.handle("bots.create", { requestId: "o", name: "Other" });
+		await service.handle("conversations.subscribe", { botId: watched.botId });
+		updated.length = 0;
+
+		const answered = nextSnapshot((s) => s.botId === watched.botId && s.live === undefined && s.items.some((i) => i.kind === "assistant"));
+		await service.handle("messages.submit", { botId: other.botId, requestId: "m-other", text: "Hi" });
+		await service.handle("messages.submit", { botId: watched.botId, requestId: "m-watched", text: "Hi" });
+		await answered;
+		expect(updated.length).toBeGreaterThan(0);
+		expect(updated.every((botId) => botId === watched.botId)).toBe(true);
+		// The other Bot still reaches the sidebar.
+		expect(events).toContain("bots.changed");
+		await expect(service.handle("conversations.subscribe", { botId: "bot_missing" })).rejects.toThrow("Unknown Bot");
+	});
+
+	it("duplicates profile and memory without history, once per request ID", async () => {
+		await service.handle("settings.update", { defaultModel: SCRIPTED_MODEL });
+		const source = await service.handle("bots.create", { requestId: "s", name: "Ada", role: "Research", instructions: "Cite sources." });
+		await service.handle("bots.update", { botId: source.botId, thinkingLevel: "high" });
+		await service.handle("bots.memory.update", { botId: source.botId, content: "## Preferences\n- Short answers\n" });
+		await service.handle("conversations.subscribe", { botId: source.botId });
+		const answered = nextSnapshot((s) => s.live === undefined && s.items.some((i) => i.kind === "assistant"));
+		await service.handle("messages.submit", { botId: source.botId, requestId: "m1", text: "Hi" });
+		await answered;
+
+		const copy = await service.handle("bots.duplicate", { botId: source.botId, requestId: "d1" });
+		expect(copy).toMatchObject({ name: "Ada (copy)", role: "Research", instructions: "Cite sources.", thinkingLevel: "high" });
+		expect(copy.botId).not.toBe(source.botId);
+		expect((await service.handle("bots.memory.get", { botId: copy.botId })).content).toBe("## Preferences\n- Short answers\n");
+		expect((await service.handle("conversations.snapshot", { botId: copy.botId })).items).toEqual([]);
+		expect((await service.handle("bots.duplicate", { botId: source.botId, requestId: "d1" })).botId).toBe(copy.botId);
+		expect(await service.handle("bots.list", {})).toHaveLength(2);
+	});
+
+	it("deletes a Bot: hidden everywhere, its conversation kept", async () => {
+		const bot = await service.handle("bots.create", { requestId: "x", name: "Gone" });
+		await service.handle("bots.memory.update", { botId: bot.botId, content: "kept" });
+		await service.handle("bots.delete", { botId: bot.botId });
+		// No Run was active, but background commands it started earlier must still stop.
+		expect(stoppedBots).toEqual([bot.botId]);
+		expect(await service.handle("bots.list", {})).toEqual([]);
+		await expect(service.handle("messages.submit", { botId: bot.botId, requestId: "m", text: "Hi" })).rejects.toThrow("Unknown Bot");
+		await expect(service.handle("bots.update", { botId: bot.botId, status: "active" })).rejects.toThrow("Unknown Bot");
+		await expect(service.handle("bots.duplicate", { botId: bot.botId, requestId: "d" })).rejects.toThrow("Unknown Bot");
+		// Stored, not removed (architecture 8.3 keeps the conversation on disk).
+		expect((await runtime.getBot(bot.botId))?.status).toBe("deleted");
+		expect(await runtime.memory(bot.botId)).toBe("kept");
+		// Idempotent.
+		await service.handle("bots.delete", { botId: bot.botId });
+	});
+
+	it("adds a custom provider to the model configuration without touching other entries or writing keys", async () => {
+		configFile.text = JSON.stringify({ $schema: "x", providers: { gateway: { baseUrl: "https://g/v1", api: "openai-completions", apiKey: "$GATEWAY_KEY", models: [{ id: "g1" }] } } });
+		const settings = await service.handle("models.addProvider", {
+			id: "local-llm",
+			name: "Local LLM",
+			baseUrl: "http://127.0.0.1:1234/v1/",
+			api: "openai-completions",
+			modelIds: ["llama", "llama", " qwen "],
+		});
+		const written = JSON.parse(configFile.text ?? "{}");
+		expect(written.$schema).toBe("x");
+		expect(written.providers.gateway.apiKey).toBe("$GATEWAY_KEY");
+		expect(written.providers["local-llm"]).toEqual({
+			name: "Local LLM",
+			baseUrl: "http://127.0.0.1:1234/v1",
+			api: "openai-completions",
+			models: [{ id: "llama" }, { id: "qwen" }],
+		});
+		// Settings report a declared provider without `apiKey` as configured; a key stored under its ID is what requests use.
+		expect(settings.providers.find((p) => p.providerId === "local-llm")).toMatchObject({ source: "config", configured: true });
+		expect((await service.handle("models.list", {})).filter((m) => m.provider === "local-llm").map((m) => m.modelId)).toEqual(["llama", "qwen"]);
+
+		await expect(
+			service.handle("models.addProvider", { id: "faux", name: "F", baseUrl: "http://x", api: "openai-completions", modelIds: ["m"] }),
+		).rejects.toThrow("built-in provider");
+		await expect(
+			service.handle("models.addProvider", { id: "y", name: "Y", baseUrl: "file:///etc", api: "openai-completions", modelIds: ["m"] }),
+		).rejects.toThrow("http");
+		configFile.text = "{ // comment\n }";
+		await expect(
+			service.handle("models.addProvider", { id: "y", name: "Y", baseUrl: "http://x", api: "openai-completions", modelIds: ["m"] }),
+		).rejects.toThrow("by hand");
+	});
+
+	it("tests a model with a real request and reports failures as results", async () => {
+		expect(await service.handle("models.test", SCRIPTED_MODEL)).toEqual({ ok: true });
+		const unknown = await service.handle("models.test", { provider: "faux", modelId: "nope" });
+		expect(unknown.ok).toBe(false);
+		expect(unknown.error).toContain("Unknown model");
 	});
 });

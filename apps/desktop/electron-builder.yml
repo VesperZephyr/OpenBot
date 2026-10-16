@@ -1,0 +1,46 @@
+# electron-builder 26 configuration: macOS arm64 DMG (architecture §3, §6.4). `pnpm run package` drives it through
+# scripts/package.mjs, which chooses Developer ID signing or a local ad-hoc build from the environment.
+appId: ai.openbot.desktop
+productName: OpenBot
+copyright: Copyright © OpenBot contributors
+directories:
+  output: dist
+  buildResources: build
+# Electron main, preload, and renderer go into app.asar. electron-vite bundles everything they import, so no
+# node_modules are needed at runtime.
+files:
+  - package.json
+  - out/main/**
+  - out/preload/**
+  - out/renderer/**
+  - "!node_modules/**"
+# The Host Runtime, the executor, and the Node that runs them live outside app.asar because a standalone Node cannot
+# read ASAR archives; they are still sealed by the app's code signature (scripts/stage-runtime.mjs builds them).
+extraResources:
+  - from: out/runtime
+    to: .
+    filter:
+      - node
+      - node-LICENSE
+      - host/**
+asar: true
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  enableCookieEncryption: true
+  grantFileProtocolExtraPrivileges: false
+mac:
+  target:
+    - target: dmg
+      arch: arm64
+  category: public.app-category.productivity
+  minimumSystemVersion: "13.0"
+  hardenedRuntime: true
+  # The same entitlements for the app, its helpers, and Contents/Resources/node.
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}

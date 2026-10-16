@@ -35,10 +35,9 @@ import {
 import { type Static, Type } from "typebox";
 import { Compile } from "typebox/compile";
 import type { TLocalizedValidationError } from "typebox/error";
+import { MODEL_APIS, type ModelApi } from "@openbot/protocol";
 
-export const SUPPORTED_MODEL_APIS = ["openai-completions", "openai-responses", "anthropic-messages"] as const;
-
-const STREAMS: Record<(typeof SUPPORTED_MODEL_APIS)[number], ProviderStreams> = {
+const STREAMS: Record<ModelApi, ProviderStreams> = {
 	"openai-completions": openAICompletionsApi(),
 	"openai-responses": openAIResponsesApi(),
 	"anthropic-messages": anthropicMessagesApi(),
@@ -47,7 +46,7 @@ const STREAMS: Record<(typeof SUPPORTED_MODEL_APIS)[number], ProviderStreams> = 
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 const DEFAULT_MAX_TOKENS = 16_384;
 
-const ApiSchema = Type.Enum(SUPPORTED_MODEL_APIS);
+const ApiSchema = Type.Enum(MODEL_APIS);
 const TokenCount = Type.Number({ exclusiveMinimum: 0 });
 const HeadersSchema = Type.Record(Type.String(), Type.String());
 

@@ -21,6 +21,8 @@ export type HostProcessOptions = {
 	/** Host entry script. */
 	readonly entry: string;
 	readonly env: NodeJS.ProcessEnv;
+	/** Receives everything the Host and its executor write to stdout and stderr, after it is echoed to main's own. */
+	readonly onOutput: (chunk: Buffer) => void;
 	readonly onEvent: (event: HostEvent) => void;
 	readonly onState: (state: HostState) => void;
 };
@@ -55,10 +57,19 @@ export class HostProcess {
 	start(): void {
 		this.#setState({ status: "starting" });
 		const child = spawn(this.#options.node, ["--disable-warning=ExperimentalWarning", this.#options.entry], {
-			stdio: ["ignore", "inherit", "inherit", "ipc"],
+			stdio: ["ignore", "pipe", "pipe", "ipc"],
 			env: this.#options.env,
 		});
 		this.#child = child;
+		this.#options.onOutput(Buffer.from(`--- ${new Date().toISOString()} Host Runtime: ${this.#options.node} ${this.#options.entry}\n`));
+		child.stdout?.on("data", (chunk: Buffer) => {
+			process.stdout.write(chunk);
+			this.#options.onOutput(chunk);
+		});
+		child.stderr?.on("data", (chunk: Buffer) => {
+			process.stderr.write(chunk);
+			this.#options.onOutput(chunk);
+		});
 		child.on("message", (message: HostToDesktop) => this.#receive(message));
 		child.on("error", (error) => this.#exited(child, `Could not start the Host Runtime: ${error.message}`));
 		child.on("exit", (code, signal) => this.#exited(child, `Host Runtime exited (${signal ?? `code ${code}`})`));

@@ -3,13 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolInvocation } from "@openbot/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { LocalExecutor } from "../src/index.ts";
+import { LocalExecutor, ReceiptLedger } from "../src/index.ts";
 
 describe("LocalExecutor", () => {
 	let root: string;
 	let workspace: string;
 	let outside: string;
 	let executor: LocalExecutor;
+	let ledger: ReceiptLedger;
 	let next = 0;
 
 	const invocation = (tool: ToolInvocation["tool"], args: Record<string, unknown>, overrides: Partial<ToolInvocation> = {}): ToolInvocation => ({
@@ -21,6 +22,7 @@ describe("LocalExecutor", () => {
 		argsDigest: JSON.stringify(args),
 		target: { kind: "local", targetId: "mac" },
 		grants: [workspace],
+		readGrants: [],
 		deadline: Date.now() + 60_000,
 		...overrides,
 	});
@@ -33,10 +35,12 @@ describe("LocalExecutor", () => {
 		await mkdir(workspace);
 		await mkdir(outside);
 		await writeFile(join(outside, "secret.txt"), "secret");
-		executor = new LocalExecutor({ targetId: "mac", workspace });
+		ledger = ReceiptLedger.open(join(root, "receipts.sqlite"));
+		executor = new LocalExecutor({ targetId: "mac", workspace, ledger, artifactsDirectory: join(root, "artifacts") });
 	});
 
 	afterEach(async () => {
+		ledger.close();
 		await rm(root, { recursive: true, force: true });
 	});
 
@@ -48,6 +52,18 @@ describe("LocalExecutor", () => {
 			expect(outcome.output).toMatch(/^Access denied: /);
 		}
 		expect((await run(invocation("local_write", { path: "link/new.txt", content: "x" }))).status).toBe("failed");
+	});
+
+	it("reads but never writes inside a read-only grant", async () => {
+		const readOnly = { readGrants: [outside] };
+		const read = await run(invocation("local_read", { path: join(outside, "secret.txt") }, readOnly));
+		expect(read).toMatchObject({ status: "succeeded" });
+		expect((await run(invocation("local_list", { path: outside }, readOnly))).status).toBe("succeeded");
+		const write = await run(invocation("local_write", { path: join(outside, "new.txt"), content: "x" }, readOnly));
+		expect(write.output).toMatch(/^Access denied: /);
+		const edit = await run(invocation("local_edit", { path: join(outside, "secret.txt"), old_text: "secret", new_text: "gone" }, readOnly));
+		expect(edit.output).toMatch(/^Access denied: /);
+		expect(await readFile(join(outside, "secret.txt"), "utf8")).toBe("secret");
 	});
 
 	it("refuses another target", async () => {

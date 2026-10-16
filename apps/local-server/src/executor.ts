@@ -7,23 +7,41 @@ import type { ExecutorMessage, ExecutorRequest, ToolInvocation, ToolOutcome } fr
 import type { ExecutorTransport } from "@openbot/tool-router";
 
 type Pending = { readonly resolve: (outcome: ToolOutcome) => void; readonly onProgress: (output: string) => void };
+type StatusReply = Extract<ExecutorMessage, { kind: "tool.status" }>;
 
 export class ExecutorProcess implements ExecutorTransport {
 	readonly #entry: string;
 	readonly #env: NodeJS.ProcessEnv;
 	readonly #targetId: string;
 	readonly #pending = new Map<string, Pending>();
+	readonly #statusWaiters = new Map<string, ((reply: StatusReply) => void)[]>();
 	#child: ChildProcess | undefined;
 	#ready: Promise<void> | undefined;
 
-	constructor(options: { entry: string; targetId: string; workspace: string; env: NodeJS.ProcessEnv }) {
+	constructor(options: { entry: string; targetId: string; workspace: string; dataDirectory: string; env: NodeJS.ProcessEnv }) {
 		this.#entry = options.entry;
 		this.#targetId = options.targetId;
-		this.#env = { ...options.env, OPENBOT_TARGET_ID: options.targetId, OPENBOT_WORKSPACE: options.workspace };
+		// The data directory is passed explicitly: the Host may have resolved a default its own environment lacks.
+		this.#env = {
+			...options.env,
+			OPENBOT_TARGET_ID: options.targetId,
+			OPENBOT_WORKSPACE: options.workspace,
+			OPENBOT_DATA_DIR: options.dataDirectory,
+		};
+	}
+
+	/**
+	 * Start the executor and wait for its handshake. Part of the recovery gate: opening its ledger turns invocations a
+	 * previous executor left unfinished into `unknown` before Pi reruns their calls.
+	 */
+	start(): Promise<void> {
+		return this.#start();
 	}
 
 	async invoke(invocation: ToolInvocation, onProgress: (output: string) => void, signal: AbortSignal): Promise<ToolOutcome> {
 		await this.#start();
+		// The Run may have been stopped while the router or the start awaited: nothing was sent, so nothing runs.
+		signal.throwIfAborted();
 		const child = this.#child;
 		if (child === undefined || !child.connected) return { status: "failed", output: "The local executor is not running" };
 		const { promise, resolve } = Promise.withResolvers<ToolOutcome>();
@@ -36,6 +54,25 @@ export class ExecutorProcess implements ExecutorTransport {
 		} finally {
 			signal.removeEventListener("abort", cancel);
 		}
+	}
+
+	/** The Host committed the invocation's outcome; the executor may prune its receipt later. */
+	ack(invocationId: string): void {
+		this.#send({ kind: "result.ack", invocationId });
+	}
+
+	/** The conversation's work was stopped: the executor stops the background commands it started. */
+	stopTasks(conversationId: string): void {
+		this.#send({ kind: "tasks.stop", conversationId });
+	}
+
+	/** Read-only receipt lookup, for diagnostics. */
+	async status(invocationId: string): Promise<StatusReply> {
+		await this.#start();
+		const { promise, resolve } = Promise.withResolvers<StatusReply>();
+		this.#statusWaiters.set(invocationId, [...(this.#statusWaiters.get(invocationId) ?? []), resolve]);
+		this.#send({ kind: "tool.status", invocationId });
+		return promise;
 	}
 
 	async stop(): Promise<void> {
@@ -69,6 +106,12 @@ export class ExecutorProcess implements ExecutorTransport {
 					const pending = this.#pending.get(message.invocationId);
 					this.#pending.delete(message.invocationId);
 					pending?.resolve(message.outcome);
+					return;
+				}
+				case "tool.status": {
+					const waiters = this.#statusWaiters.get(message.invocationId) ?? [];
+					this.#statusWaiters.delete(message.invocationId);
+					for (const waiter of waiters) waiter(message);
 				}
 			}
 		});
@@ -78,6 +121,10 @@ export class ExecutorProcess implements ExecutorTransport {
 			for (const [invocationId, pending] of this.#pending) {
 				this.#pending.delete(invocationId);
 				pending.resolve({ status: "unknown", output: "The local executor stopped before reporting a result; the action may have partly run" });
+			}
+			for (const [invocationId, waiters] of this.#statusWaiters) {
+				this.#statusWaiters.delete(invocationId);
+				for (const waiter of waiters) waiter({ kind: "tool.status", invocationId, status: "unknown" });
 			}
 		});
 		this.#ready = promise;
