@@ -74,12 +74,19 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 				OPENBOT_WORKSPACE: workspace,
 				OPENBOT_KEYCHAIN_SERVICE: keychainService,
 				...options.env,
+				OPENBOT_E2E_MODE: process.env.OPENBOT_E2E_HEADED === "1" ? "headed" : "background",
 			},
 		});
 		page = await app.firstWindow();
 		await page.locator(".sidebar").waitFor();
 	};
-	await start();
+	try {
+		await start();
+	} catch (error) {
+		await app?.close().catch(() => {});
+		await model.stop();
+		throw error;
+	}
 
 	const requirePage = (): Page => {
 		if (page === undefined) throw new Error("The app is not running");

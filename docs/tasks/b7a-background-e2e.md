@@ -1,6 +1,6 @@
 # B7a: Background Desktop Tests
 
-Status: in progress
+Status: in review
 Branch: task/b7a-background-e2e
 Depends on: B7
 Architecture: Section 6.4 (desktop lifecycle)
@@ -38,3 +38,7 @@ Hidden windows exercise renderer and IPC behavior but do not verify visible nati
 ## Open questions
 
 None.
+
+## Validation
+
+2026-10-16: `pnpm run check` passed (163 tests); `pnpm run e2e` passed (24 tests across 9 suites) in background. Inspected the hidden renderer screenshot for the completed approval flow. Headed selection and packaged-build exclusion are unit-tested; visible headed execution was not requested or run.
