@@ -1,6 +1,6 @@
 # OpenBot Technical Plan
 
-Last updated: 2026-10-15.
+Last updated: 2026-10-16.
 
 This plan turns [the architecture](architecture.md) into an ordered sequence of work. The architecture defines contracts and boundaries; this document records what exists, what each milestone builds, how each step is verified, and which decisions are still open. When the two disagree, fix the architecture first, then update this plan.
 
@@ -20,6 +20,8 @@ Each section marks state explicitly: **Implemented** means code in the repositor
 | `packages/local-executor`, `apps/local-executor` | Implemented: receipt ledger (`<data>/executor/receipts.sqlite`, accepted before effect, unknown after crash, digest check, ack and pruning); orphan process-group guard; read vs read-write grants; one output limiter with spill files under `<data>/artifacts`; `local_edit` expected SHA-256; background commands (`task_output`, `task_stop`, Stop ends them) | `local-executor/test/*.test.ts` |
 | `apps/local-server` | Implemented: data directory, `host.lock`, provider-key scrubbing, Keychain secret store, executor supervision, Tool Router composition, schema-checked IPC dispatch, recovery gate (executor ledger, approvals, Runs) before `resume()` | Host smoke scripts driving the real Host over IPC with a scripted model (memory, prompt, Runs and cap, approvals, web search, New topic, background tasks, Stop, read-only commands, Always allow, onboarding methods, subscriptions, duplicate and delete, schema rejection) |
 | `apps/desktop` | Implemented: onboarding, sidebar with Queued and Needs attention, transcript with collapsed steps, Copy, Reveal in Finder, thinking, dividers, Retry, Always allow card, Stop and pending messages, Settings (models, web search, commands, folders), Memory tab, Duplicate and Delete, notifications, dock badge, power assertion, `app://` renderer, TypeBox validation in main | Type check, unit tests, and the e2e suites (22 tests across 8 suites, green in CI on macOS for PR #3); packaged smoke of an ad-hoc DMG (Host on bundled Node, UI over `app://`) |
+| Desktop test execution | Implemented on `task/b7a-background-e2e`: background by default; hidden non-focusable windows, no native attention effects; explicit `e2e:headed` debugging | `pnpm run check` (163 tests), `pnpm run e2e` (24 tests, 9 suites); hidden-renderer screenshots inspected |
+| Desktop command path | Implemented on `task/b8a-login-path`: one bounded login-shell PATH probe before Host startup, reused on restart; inherited PATH fallback; other shell variables and output discarded | 15 resolver tests; ScriptedModel e2e from a system-only PATH; isolated agent-browser flow; ad-hoc package and bundled Host/executor smoke |
 | Packaging | Implemented: electron-builder arm64 DMG, esbuild-bundled Host and executor, pinned Node 24.22.0, fuses, ad-hoc or Developer ID signing, notarization when secrets exist, `v*` tag release workflow, `<data>/logs/host.log` | Local ad-hoc package; Developer ID signing and notarization unexercised (no certificate) |
 | `browser`, `computer-use` | Planned (Phase 3: architecture M3 browser part, M6) | — |
 
@@ -32,7 +34,7 @@ These are deliberate shortcuts or missing pieces in implemented code. Each one i
 | Gap | Where | Milestone |
 | --- | --- | --- |
 | Revoking a grant or rule re-checks pending approvals but does not cancel commands already running (architecture 5.3 asks for cancellation) | `server-core` `PolicyService` | Backlog B12 |
-| Desktop starts the Host with a minimal environment (`PATH`, `HOME`, `USER`, `TMPDIR`): `$NAME` key references in `models.json` cannot resolve, and a Finder launch gives commands launchd's short `PATH` | `apps/desktop/src/main/index.ts` | Before the first release: resolve the login shell's `PATH` once at startup |
+| Desktop forwards a minimal environment: `$NAME` key references in `models.json` cannot resolve. Login-shell PATH discovery is implemented separately by B8a and does not import credentials | `apps/desktop/src/main/index.ts` | Before the first release: settle explicit credential references versus the documented Keychain / `!command` setup |
 | Artifact spill files have no per-file size cap; files older than 7 days are deleted at executor start | `local-executor` | Backlog B15 |
 | macOS notifications, dock badge, and power assertion are unit-tested as logic only | `apps/desktop/src/main` | Owner's packaged run |
 | The renderer ignores `seq` and resynchronizes only when the Host restarts; no event backpressure | `apps/desktop/src/renderer/src/store.ts` | Backlog B14 |

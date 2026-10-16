@@ -69,3 +69,5 @@ Phase 1 (MVP). Every batch is implemented on `feat/mvp` and in review until the 
 | [B6](b6-bot-quality.md)       | Bot quality and memory                  | in review     |
 | [B7](b7-desktop-mvp.md)       | Desktop MVP                             | in review     |
 | [B8](b8-installable-build.md) | Installable build                       | in review     |
+| [B7a](b7a-background-e2e.md) | Background desktop tests                | in review     |
+| [B8a](b8a-login-path.md) | Login shell command path | in review |

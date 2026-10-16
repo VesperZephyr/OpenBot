@@ -35,7 +35,11 @@ All eight batches are implemented on `feat/mvp`. Each spec in [`tasks/`](tasks/R
 | B7 | Onboarding, one subscribed and coalesced conversation feed, collapsed steps, Copy, Reveal, notifications, Duplicate and Delete, TypeBox IPC validation | [b7](tasks/b7-desktop-mvp.md) |
 | B8 | Signed or ad-hoc arm64 DMG with bundled Node and Host, fuses, `app://`, release workflow, Host log | [b8](tasks/b8-installable-build.md) |
 
+Release follow-up: [B8a — Login shell command path](tasks/b8a-login-path.md) resolves the user's login PATH once before Host startup, with bounded fallback and no other shell environment import. Implemented on `task/b8a-login-path` (stacked on B7a), awaiting merge; 178 unit tests, 25 background e2e tests, ad-hoc packaging, and bundled Host/executor smoke pass.
+
 ### MVP acceptance
+
+Release follow-up: [B7a — Background desktop tests](tasks/b7a-background-e2e.md) makes automated verification quiet by default, with explicitly enabled visible windows for debugging. Implemented on `task/b7a-background-e2e`, awaiting merge; 163 unit tests and 24 background e2e tests pass.
 
 The MVP is done when all of these pass on a packaged build installed on a Mac that never ran the development setup:
 
