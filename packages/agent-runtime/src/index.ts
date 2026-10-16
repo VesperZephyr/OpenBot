@@ -3,7 +3,7 @@
  * operations and snapshots; callers never see Pi types.
  */
 import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
-import type { CredentialStore } from "@earendil-works/pi-ai";
+import type { CredentialStore, Provider, ToolCall } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import type { MutableModels } from "@earendil-works/pi-ai/models";
 import {
@@ -12,10 +12,14 @@ import {
 	type ConversationView,
 	createRegistry,
 	defineDoc,
+	defineExtension,
+	defineTool,
 	type EntryRecord,
 	Harness,
 	type LiveState,
 	LiveDoc,
+	type PromptSection,
+	type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import {
@@ -27,11 +31,19 @@ import {
 	type ModelRef,
 	type ModelSummary,
 	ProtocolError,
+	type ToolCallStatus,
+	type ToolDefinition,
 	type TranscriptItem,
 } from "@openbot/protocol";
 
+import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
+
+const TOOLS_EXTENSION = "openbot.tools";
+
 /** Credential contract the Host implements over the Keychain; re-exported so the Host never imports Pi. */
 export type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
+export type { ConfigEnvironment, ConfiguredProviderStatus, ModelConfigStatus } from "./model-config.ts";
+export { SUPPORTED_MODEL_APIS } from "./model-config.ts";
 
 type PiConversationId = ConversationRecord["id"];
 
@@ -54,6 +66,21 @@ const SettingsDoc = defineDoc<{ defaultModel?: ModelRef }>({
 	initial: () => ({}),
 });
 
+/**
+ * The port every routed tool call enters (Section 5.1). The Host wires it to Tool Router. `callId` is stable across
+ * reruns of the same Pi tool task, so an interrupted call that Pi reruns after a restart reaches the router again as the
+ * same call and never becomes a second invocation.
+ */
+export type ToolInvoker = (call: {
+	readonly botId: BotId;
+	readonly conversationId: string;
+	readonly callId: string;
+	readonly tool: string;
+	readonly args: Readonly<Record<string, unknown>>;
+	readonly signal: AbortSignal;
+	readonly onProgress: (output: string) => void;
+}) => Promise<{ readonly status: string; readonly output: string }>;
+
 export type BotRuntimeOptions = {
 	/** SQLite file owned exclusively by this Host process. */
 	readonly databasePath: string;
@@ -64,6 +91,8 @@ export type BotRuntimeOptions = {
 	readonly models?: MutableModels;
 	/** Credential store for the default model collection; the Host passes a Keychain-backed store. */
 	readonly credentials?: CredentialStore;
+	/** Without an invoker, Bots get no tools and can only answer in text. */
+	readonly tools?: { readonly invoke: ToolInvoker; readonly definitions: readonly ToolDefinition[] };
 	readonly context?: Context;
 };
 
@@ -93,22 +122,37 @@ export class BotRuntime {
 	readonly #harness: Harness;
 	readonly #models: MutableModels;
 	readonly #context: Context;
+	/** Built-in providers as registered at open, so a removed overlay restores the original. */
+	readonly #builtins: ReadonlyMap<string, Provider>;
+	#configuredIds: readonly string[] = [];
 
 	private constructor(harness: Harness, models: MutableModels, context: Context) {
 		this.#harness = harness;
 		this.#models = models;
 		this.#context = context;
+		this.#builtins = new Map(models.getProviders().map((provider) => [provider.id, provider]));
 	}
 
 	static async open(options: BotRuntimeOptions): Promise<BotRuntime> {
 		const context = options.context ?? BACKGROUND_CONTEXT;
 		const models =
 			options.models ?? builtinModels(options.credentials === undefined ? {} : { credentials: options.credentials });
+		const registry = createRegistry();
+		if (options.tools !== undefined) {
+			const { invoke, definitions } = options.tools;
+			registry.install(
+				defineExtension({
+					name: TOOLS_EXTENSION,
+					tools: definitions.map((definition) => routedTool(definition, invoke)),
+					sections: [workspaceSection],
+				}),
+			);
+		}
 		const harness = await Harness.open(
 			await openNodeSqliteStorage(options.databasePath),
 			{
 				models,
-				registry: createRegistry(),
+				registry,
 				// No `env` and no CodingTools: every side effect must go through Tool Router and the executor.
 				settings: { toolExecution: "sequential" },
 			},
@@ -228,6 +272,7 @@ export class BotRuntime {
 		await conversation.abort(this.#context);
 	}
 
+	/** The Bot's conversation without pending approvals; the Host adds those (`approvals` is empty here). */
 	async snapshot(botId: BotId): Promise<ConversationSnapshot> {
 		const record = await this.#requireRecord(botId);
 		const view = await (await this.#conversation(record)).viewState(this.#context);
@@ -265,6 +310,23 @@ export class BotRuntime {
 
 	listProviders(): { readonly providerId: string; readonly name: string }[] {
 		return this.#models.getProviders().map((provider) => ({ providerId: provider.id, name: provider.name }));
+	}
+
+	/**
+	 * Apply the user's model configuration (`undefined` when there is no file): new providers are added, entries with
+	 * a built-in ID replace that provider with an overlaid one, and providers from the previous load that are gone are
+	 * removed or restored. Takes effect from the next model request.
+	 */
+	reloadConfiguredProviders(text: string | undefined, environment: ConfigEnvironment): ModelConfigStatus {
+		const { providers, status } = buildConfiguredProviders(text, { environment, builtins: this.#builtins });
+		for (const providerId of this.#configuredIds) {
+			const builtin = this.#builtins.get(providerId);
+			if (builtin === undefined) this.#models.deleteProvider(providerId);
+			else this.#models.setProvider(builtin);
+		}
+		for (const provider of providers) this.#models.setProvider(provider);
+		this.#configuredIds = providers.map((provider) => provider.id);
+		return status;
 	}
 
 	async defaultModel(): Promise<ModelRef | undefined> {
@@ -317,7 +379,7 @@ function toProfile(record: BotRecord): BotProfile {
 	return profile;
 }
 
-/** Text blocks of a user or assistant message; images, thinking, and tool calls are projected separately later. */
+/** Text blocks of a user or assistant message; images and thinking are not projected yet. */
 function partsOf(content: string | readonly { readonly type: string }[]): MessagePart[] {
 	if (typeof content === "string") return content === "" ? [] : [{ type: "text", text: content }];
 	return content.flatMap((block) =>
@@ -333,25 +395,61 @@ function textParts(entry: EntryRecord): MessagePart[] {
 	);
 }
 
-function toTranscriptItem(entry: EntryRecord): TranscriptItem[] {
-	const id = String(entry.id);
-	switch (entry.kind) {
-		case "pi.user":
-			return [{ kind: "user", id, parts: textParts(entry) }];
-		case "pi.assistant": {
-			const message = entry.model?.[0];
-			const error =
-				message?.role === "assistant" && (message.stopReason === "error" || message.stopReason === "aborted")
-					? (message.errorMessage ?? message.stopReason)
-					: undefined;
-			return [{ kind: "assistant", id, parts: textParts(entry), ...(error === undefined ? {} : { error }) }];
+function toolCallsOf(entry: EntryRecord): ToolCall[] {
+	const message = entry.model?.[0];
+	if (message?.role !== "assistant") return [];
+	return message.content.filter((block): block is ToolCall => block.type === "toolCall");
+}
+
+type MutableToolItem = { kind: "tool"; id: string; tool: string; args: unknown; status: ToolCallStatus; output?: string };
+
+/**
+ * Transcript items in order. A tool call becomes a `tool` item right after the assistant text that made it; its
+ * `pi.tool-result` entry completes that item instead of adding one.
+ */
+function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
+	const items: TranscriptItem[] = [];
+	const tools = new Map<string, MutableToolItem>();
+	for (const entry of entries) {
+		const id = String(entry.id);
+		switch (entry.kind) {
+			case "pi.user":
+				items.push({ kind: "user", id, parts: textParts(entry) });
+				break;
+			case "pi.assistant": {
+				const message = entry.model?.[0];
+				const error =
+					message?.role === "assistant" && (message.stopReason === "error" || message.stopReason === "aborted")
+						? (message.errorMessage ?? message.stopReason)
+						: undefined;
+				const parts = textParts(entry);
+				if (parts.length > 0 || error !== undefined) {
+					items.push({ kind: "assistant", id, parts, ...(error === undefined ? {} : { error }) });
+				}
+				for (const call of toolCallsOf(entry)) {
+					const item: MutableToolItem = { kind: "tool", id: call.id, tool: call.name, args: call.arguments, status: "pending" };
+					tools.set(call.id, item);
+					items.push(item);
+				}
+				break;
+			}
+			case "pi.tool-result": {
+				const message = entry.model?.[0];
+				if (message?.role !== "toolResult") break;
+				const item = tools.get(message.toolCallId);
+				if (item === undefined) break;
+				item.status = message.isError ? "failed" : "succeeded";
+				item.output = partsOf(message.content).map((part) => part.text).join("\n");
+				break;
+			}
+			case "pi.system":
+			case "pi.reset":
+				break;
+			default:
+				items.push({ kind: "other", id, entryKind: entry.kind });
 		}
-		case "pi.system":
-		case "pi.reset":
-			return [];
-		default:
-			return [{ kind: "other", id, entryKind: entry.kind }];
 	}
+	return items;
 }
 
 function projectLive(live: LiveState | undefined): LiveRun | undefined {
@@ -368,10 +466,70 @@ function projectLive(live: LiveState | undefined): LiveRun | undefined {
 function projectView(botId: BotId, view: ConversationView): ConversationSnapshot {
 	// Pi's view exposes built-in documents as untyped JSON keyed by kind; `pi.live` always holds a LiveState.
 	const liveDoc: LiveState | undefined = view.docs[LiveDoc.definition.kind];
+	const items = toTranscript(view.entries);
+	// Running tool slots carry live status and output until their result entry exists.
+	for (const slot of liveDoc?.tools ?? []) {
+		const item = items.find((entry): entry is MutableToolItem => entry.kind === "tool" && entry.id === slot.callId) as
+			| MutableToolItem
+			| undefined;
+		if (item === undefined || item.status === "succeeded" || item.status === "failed") continue;
+		item.status = slot.status === "running" ? "running" : "pending";
+		if (slot.output !== undefined && slot.output !== "") item.output = slot.output;
+	}
 	const live = projectLive(liveDoc);
-	return {
-		botId,
-		items: view.entries.flatMap(toTranscriptItem),
-		...(live === undefined ? {} : { live }),
-	};
+	return { botId, items, ...(live === undefined ? {} : { live }), approvals: [] };
 }
+
+/** A catalog tool registered with Pi. Replay-safe because the router and executor own idempotency (Section 5.1). */
+function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegistration {
+	return defineTool({
+		name: definition.name,
+		description: definition.description,
+		// Plain JSON Schema from the protocol catalog; Pi validates arguments against it before `execute`.
+		parameters: definition.parameters as never,
+		replay: "safe",
+		executionMode: "sequential",
+		async execute(args, api, context) {
+			const botId = await botOfConversation(api, String(api.conversationId), context);
+			const signal = context.abortSignal ?? new AbortController().signal;
+			const outcome = await invoke({
+				botId,
+				conversationId: String(api.conversationId),
+				callId: api.callId,
+				tool: definition.name,
+				args: args as Record<string, unknown>,
+				signal,
+				onProgress: (output) => api.output(output),
+			});
+			const failed = outcome.status !== "succeeded";
+			return {
+				output: [{ type: "text", text: outcome.output === "" ? "(no output)" : outcome.output }],
+				isError: failed,
+			};
+		},
+	});
+}
+
+async function botOfConversation(
+	api: { snapshot: (token: typeof BotsDoc, context: Context) => Promise<Readonly<{ bots: Record<string, BotRecord> }> | undefined> },
+	conversationId: string,
+	context: Context,
+): Promise<BotId> {
+	const bots = (await api.snapshot(BotsDoc, context))?.bots ?? {};
+	const record = Object.values(bots).find((bot) => String(bot.conversationId) === conversationId);
+	if (record === undefined) throw new Error(`No Bot owns conversation ${conversationId}`);
+	return record.botId;
+}
+
+/** Tells the model where it works and how the tools behave. */
+const workspaceSection: PromptSection = {
+	key: "openbot",
+	render: () =>
+		[
+			"You are a Bot in OpenBot, working on the user's own Mac through tools.",
+			"Reply briefly before you start a multi-step task, then work; keep the user informed in short sentences.",
+			"File tools work inside folders the user granted, starting with the shared workspace; relative paths are resolved against it.",
+			"Every shell command waits for the user's approval. A denied call means the user declined it: adjust instead of retrying it unchanged.",
+			"Prefer the file tools over shell commands for reading and editing files. Write answers in GitHub-flavored Markdown.",
+		].join("\n"),
+};

@@ -64,6 +64,8 @@ export type BotSummary = BotProfile & { readonly activity: BotActivity };
 
 export type MessagePart = { readonly type: "text"; readonly text: string };
 
+export type ToolCallStatus = "pending" | "running" | "succeeded" | "failed";
+
 export type TranscriptItem =
 	| { readonly kind: "user"; readonly id: string; readonly parts: readonly MessagePart[] }
 	| {
@@ -72,6 +74,16 @@ export type TranscriptItem =
 			readonly parts: readonly MessagePart[];
 			/** Set when the response ended without a normal stop, such as an error or abort. */
 			readonly error?: string;
+	  }
+	| {
+			/** One tool call: placed after the assistant text that made it, updated live until its result exists. */
+			readonly kind: "tool";
+			readonly id: string;
+			readonly tool: string;
+			readonly args: unknown;
+			readonly status: ToolCallStatus;
+			/** Bounded text the model received, or the running output while the call is live. */
+			readonly output?: string;
 	  }
 	| { readonly kind: "other"; readonly id: string; readonly entryKind: string };
 
@@ -99,12 +111,35 @@ export type ConversationSnapshot = {
 	readonly botId: BotId;
 	readonly items: readonly TranscriptItem[];
 	readonly live?: LiveRun;
+	/** Tool calls of this Bot that wait for the user's decision, oldest first. */
+	readonly approvals: readonly PendingApproval[];
 };
+
+/** A tool call stopped before dispatch until the user decides (Section 5.3). */
+export type PendingApproval = {
+	readonly approvalId: string;
+	readonly botId: BotId;
+	/** The Pi tool call this approval is for; matches the transcript `tool` item's `id`. */
+	readonly callId: string;
+	readonly tool: string;
+	readonly args: unknown;
+	readonly target: ExecutionTarget;
+	/** Why policy asked, in the user's terms, such as "Runs a command on this Mac". */
+	readonly reason: string;
+	readonly createdAt: number;
+};
+
+export type ApprovalDecision = "allow_once" | "deny";
 
 export type ProviderSummary = {
 	readonly providerId: string;
 	readonly name: string;
+	/** `builtin` providers ship with OpenBot; `config` providers come from the user's model configuration file. */
+	readonly source: "builtin" | "config";
+	/** A key is available: stored in the Keychain, or (config providers) resolvable from the configuration. */
 	readonly configured: boolean;
+	/** A key is stored in the Keychain for this provider. */
+	readonly keyStored: boolean;
 };
 
 /** Settings as returned to renderers: credentials are never included, only whether one is stored. */
@@ -112,6 +147,10 @@ export type RedactedSettings = {
 	readonly defaultModel?: ModelRef;
 	readonly providers: readonly ProviderSummary[];
 	readonly dataDirectory: string;
+	/** The user's model configuration file and its problems; re-read whenever settings are fetched. */
+	readonly modelConfig: { readonly path: string; readonly errors: readonly string[] };
+	/** The shared folder every Bot may read and write without asking; commands still ask. */
+	readonly workspace: string;
 };
 
 export type ModelSummary = {
@@ -157,6 +196,7 @@ export type HostMethods = {
 		result: { readonly accepted: true };
 	};
 	"runs.cancel": { params: { readonly botId: BotId }; result: null };
+	"approvals.decide": { params: { readonly approvalId: string; readonly decision: ApprovalDecision }; result: null };
 	"settings.get": { params: Record<string, never>; result: RedactedSettings };
 	"settings.update": { params: { readonly defaultModel?: ModelRef | null }; result: RedactedSettings };
 	"models.list": { params: Record<string, never>; result: readonly ModelSummary[] };
@@ -180,6 +220,7 @@ export const HOST_METHODS = [
 	"conversations.markRead",
 	"messages.submit",
 	"runs.cancel",
+	"approvals.decide",
 	"settings.get",
 	"settings.update",
 	"models.list",
@@ -286,11 +327,143 @@ export function isRequestEnvelope(value: unknown): value is Omit<RequestEnvelope
 export type ToolInvocation = {
 	readonly invocationId: string;
 	readonly botId: BotId;
-	readonly runId: RunId;
 	readonly conversationId: string;
-	readonly tool: string;
-	readonly args: unknown;
+	readonly tool: ExecutorToolName;
+	readonly args: Readonly<Record<string, unknown>>;
 	readonly argsDigest: string;
 	readonly target: ExecutionTarget;
+	/** Directories the invocation may touch with file tools, canonical and absolute. */
+	readonly grants: readonly string[];
 	readonly deadline: number;
 };
+
+export type InvocationStatus = "succeeded" | "failed" | "cancelled" | "unknown";
+
+export type ToolOutcome = {
+	readonly status: InvocationStatus;
+	/** Bounded text for the model. */
+	readonly output: string;
+	/** Command exit details, separate from whether the invocation itself succeeded. */
+	readonly exit?: { readonly code: number | null; readonly signal: string | null };
+	readonly truncated?: boolean;
+};
+
+/** Host to executor. */
+export type ExecutorRequest =
+	| { readonly kind: "tool.invoke"; readonly invocation: ToolInvocation }
+	| { readonly kind: "tool.cancel"; readonly invocationId: string };
+
+/** Executor to Host. */
+export type ExecutorMessage =
+	| {
+			readonly kind: "executor.hello";
+			readonly protocolVersion: typeof PROTOCOL_VERSION;
+			readonly targetId: string;
+			readonly tools: readonly ExecutorToolName[];
+	  }
+	| { readonly kind: "tool.progress"; readonly invocationId: string; readonly output: string }
+	| { readonly kind: "tool.result"; readonly invocationId: string; readonly outcome: ToolOutcome };
+
+// ---------------------------------------------------------------------------
+// Tool catalog: what the model is offered. Schemas are plain JSON Schema so that this package stays dependency-free.
+
+export type ToolCapability = "files.read" | "files.write" | "commands" | "web";
+
+export type ToolDefinition = {
+	readonly name: string;
+	readonly description: string;
+	readonly parameters: Readonly<Record<string, unknown>>;
+	readonly capability: ToolCapability;
+	readonly destination: "executor" | "host";
+};
+
+const string = (description: string) => ({ type: "string", description });
+const integer = (description: string) => ({ type: "integer", minimum: 1, description });
+const object = (properties: Record<string, unknown>, required: readonly string[]) => ({
+	type: "object",
+	properties,
+	required,
+	additionalProperties: false,
+});
+
+export const TOOL_CATALOG = [
+	{
+		name: "local_read",
+		capability: "files.read",
+		destination: "executor",
+		description:
+			"Read a text file on this Mac. Returns numbered lines. Use offset and limit for large files; the result says where to continue when it is cut.",
+		parameters: object(
+			{
+				path: string("Absolute path, or relative to the workspace."),
+				offset: integer("First line to return, 1-based."),
+				limit: integer("Maximum number of lines to return."),
+			},
+			["path"],
+		),
+	},
+	{
+		name: "local_list",
+		capability: "files.read",
+		destination: "executor",
+		description: "List the entries of a directory on this Mac. Directories end with '/'.",
+		parameters: object({ path: string("Absolute path, or relative to the workspace.") }, ["path"]),
+	},
+	{
+		name: "local_write",
+		capability: "files.write",
+		destination: "executor",
+		description: "Create or overwrite a text file on this Mac. Missing parent directories are created.",
+		parameters: object(
+			{ path: string("Absolute path, or relative to the workspace."), content: string("The complete file content.") },
+			["path", "content"],
+		),
+	},
+	{
+		name: "local_edit",
+		capability: "files.write",
+		destination: "executor",
+		description:
+			"Replace exact text in a file on this Mac. old_text must appear exactly once unless replace_all is true; read the file first and copy the text exactly, without line numbers.",
+		parameters: object(
+			{
+				path: string("Absolute path, or relative to the workspace."),
+				old_text: string("Exact text to replace."),
+				new_text: string("Replacement text."),
+				replace_all: { type: "boolean", description: "Replace every occurrence instead of exactly one." },
+			},
+			["path", "old_text", "new_text"],
+		),
+	},
+	{
+		name: "local_exec",
+		capability: "commands",
+		destination: "executor",
+		description:
+			"Run a shell command on this Mac with /bin/zsh. The user approves each command. Each call starts fresh in the working directory; cd and variables do not persist. Prefer the file tools for reading and editing files.",
+		parameters: object(
+			{
+				command: string("The command line to run."),
+				description: string("What the command does, in five to ten words; shown to the user."),
+				cwd: string("Working directory. Defaults to the workspace."),
+				timeout_seconds: { type: "integer", minimum: 1, maximum: 600, description: "Default 120." },
+			},
+			["command", "description"],
+		),
+	},
+	{
+		name: "web_fetch",
+		capability: "web",
+		destination: "host",
+		description:
+			"Fetch a public web page and return its readable text. Does not run JavaScript. Private and local network addresses are refused.",
+		parameters: object({ url: string("An http or https URL.") }, ["url"]),
+	},
+] as const satisfies readonly ToolDefinition[];
+
+export type ToolName = (typeof TOOL_CATALOG)[number]["name"];
+export type ExecutorToolName = Extract<(typeof TOOL_CATALOG)[number], { destination: "executor" }>["name"];
+
+export function toolDefinition(name: string): ToolDefinition | undefined {
+	return TOOL_CATALOG.find((tool) => tool.name === name);
+}

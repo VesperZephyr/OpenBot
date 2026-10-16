@@ -6,7 +6,9 @@ The desktop UI, Host Runtime, Pi-based agent loop, local executor, and managed b
 
 Model inference uses a configurable API endpoint. Application state is stored locally.
 
-The project is between milestones M0 and M1. It has a pnpm workspace with vendored [Pi](https://github.com/earendil-works/pi), a Host Runtime that keeps Bots and their conversations in local SQLite, and an Electron desktop shell where you can create Bots, chat with them through a configured model, and manage them. API keys are stored in the macOS Keychain. Bots cannot use tools yet: file and command execution arrive in M1.
+The project is a working demo on the way to its first usable release. Bots chat through any configured model and work on your Mac with file tools (read, list, write, edit) and shell commands, plus public web fetches. File tools run freely inside the shared workspace `~/OpenBot`; anything outside it, and every shell command, stops for your **Allow once** or **Deny**. Commands run in a separate executor process with credentials removed from their environment. API keys are stored in the macOS Keychain.
+
+Delivery is phased: **Phase 1 (MVP)** is a standard agent Bot you can install and use daily (coding tools, web research, Always allow, memory, restart-safe approvals, a signed build); Phase 2 adds connectors, skills, routines, and Bots working together; Phase 3 adds the managed browser and desktop computer use. See [the backlog](docs/backlog.md).
 
 ## Development
 
@@ -14,12 +16,41 @@ Requires macOS, Node.js 22.19 or later, and pnpm 9.
 
 ```sh
 pnpm install
-pnpm run build:pi                        # build vendored Pi packages
-pnpm run check                           # package boundaries, type check, tests
-pnpm --filter @openbot/desktop run dev   # run the desktop app with a live-reloading renderer
+pnpm run build:pi    # build vendored Pi packages
+pnpm run dev         # run the app
+pnpm run check       # package boundaries, type check, unit tests
+pnpm run e2e         # drive the built app end to end against a scripted model
 ```
 
-Electron downloads its binary on first use. The desktop app starts the Host Runtime itself; `pnpm --filter @openbot/local-server run start` runs a standalone Host for development. Both use `~/Library/Application Support/OpenBot` unless `OPENBOT_DATA_DIR` is set, and the Keychain service `ai.openbot.desktop.credentials` unless `OPENBOT_KEYCHAIN_SERVICE` is set. Point both at throwaway values when testing.
+The desktop app starts the Host Runtime, which starts the local executor. Data lives in `~/Library/Application Support/OpenBot`, the shared workspace is `~/OpenBot`, and model providers come from `~/.openbot/models.json`. The e2e suite keeps its own state under `e2e/.run/`. How agents work on this repository, including driving the app with agent-browser, is in [AGENTS.md](AGENTS.md).
+
+## Your own model providers
+
+Configure endpoints in `~/.openbot/models.json` (set `OPENBOT_HOME` to use another directory). It uses [Pi's `models.json` format](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/models.md) for the `openai-completions`, `openai-responses`, and `anthropic-messages` APIs. Models whose IDs OpenBot already knows inherit their limits and capabilities, so a bare ID is enough.
+
+```jsonc
+{
+  "providers": {
+    // A new provider: one gateway can serve both protocols.
+    "my-gateway": {
+      "baseUrl": "https://gateway.example.com/v1",
+      "api": "openai-responses",
+      // "$VAR" reads the environment OpenBot was launched with; "!command" uses a command's output.
+      "apiKey": "!security find-generic-password -s my-gateway -w",
+      "models": [
+        { "id": "gpt-5.5" },
+        { "id": "claude-sonnet-5-5", "api": "anthropic-messages", "baseUrl": "https://gateway.example.com" }
+      ]
+    },
+    // A built-in ID overlays that provider, for example to route it through a proxy.
+    "anthropic": { "baseUrl": "https://proxy.example.com" }
+  }
+}
+```
+
+Apps opened from the Dock do not see variables exported in your shell profile, so prefer `!command` or a key saved in Settings, which takes precedence over `apiKey`. Settings lists configuration problems with their location in the file.
+
+## Documentation
 
 - [Architecture and first-release development sequence](docs/architecture.md)
 - [Technical plan: current state, milestone breakdown, open decisions](docs/technical-plan.md)

@@ -1,5 +1,14 @@
-import type { BotSummary, ConversationSnapshot, ModelRef, ModelSummary, TranscriptItem } from "@openbot/protocol";
+import type {
+	ApprovalDecision,
+	BotSummary,
+	ConversationSnapshot,
+	ModelRef,
+	ModelSummary,
+	PendingApproval,
+	TranscriptItem,
+} from "@openbot/protocol";
 import { type FormEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { Markdown } from "./markdown";
 import {
 	api,
 	connect,
@@ -287,17 +296,22 @@ function EmptyConversation({ bot }: { readonly bot: BotSummary }) {
 }
 
 function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
+	const approvals = new Map(snapshot.approvals.map((approval) => [approval.callId, approval]));
 	return (
 		<ol className="messages">
-			{snapshot.items.map((item) => (
-				<Message key={item.id} item={item} />
-			))}
-			{snapshot.live !== undefined && (
+			{snapshot.items.map((item) =>
+				item.kind === "tool" ? (
+					<ToolCard key={item.id} item={item} approval={approvals.get(item.id)} />
+				) : (
+					<Message key={item.id} item={item} />
+				),
+			)}
+			{snapshot.live !== undefined && snapshot.live.state !== "waiting_approval" && (
 				<li className="message message-assistant is-live">
 					{snapshot.live.partial === undefined ? (
 						<span className="thinking">Working</span>
 					) : (
-						<MessageText parts={snapshot.live.partial} />
+						<MessageText parts={snapshot.live.partial} markdown />
 					)}
 					{snapshot.live.retry !== undefined && (
 						<div className="message-error">Retrying after an error: {snapshot.live.retry.error}</div>
@@ -308,23 +322,81 @@ function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 	);
 }
 
-function Message({ item }: { readonly item: TranscriptItem }) {
+function Message({ item }: { readonly item: Exclude<TranscriptItem, { kind: "tool" }> }) {
 	if (item.kind === "other") return null;
 	return (
 		<li className={`message message-${item.kind}`}>
-			<MessageText parts={item.parts} />
+			<MessageText parts={item.parts} markdown={item.kind === "assistant"} />
 			{item.kind === "assistant" && item.error !== undefined && <div className="message-error">{item.error}</div>}
 		</li>
 	);
 }
 
-function MessageText({ parts }: { readonly parts: readonly { readonly text: string }[] }) {
+function MessageText({ parts, markdown = false }: { readonly parts: readonly { readonly text: string }[]; readonly markdown?: boolean }) {
+	const text = parts.map((part) => part.text).join("\n\n");
+	if (markdown) return <Markdown text={text} />;
 	return (
 		<div className="message-text">
 			{parts.map((part, index) => (
 				// Parts have no identity of their own; their order is stable within one message.
 				<p key={index}>{part.text}</p>
 			))}
+		</div>
+	);
+}
+
+const TOOL_VERBS: Record<string, readonly [running: string, done: string]> = {
+	local_read: ["Reading", "Read"],
+	local_list: ["Listing", "Listed"],
+	local_write: ["Writing", "Wrote"],
+	local_edit: ["Editing", "Edited"],
+	local_exec: ["Running", "Ran"],
+	web_fetch: ["Fetching", "Fetched"],
+};
+
+/** One row per tool call: a verb and subject, expandable to the arguments and output; failures open by default. */
+function ToolCard({ item, approval }: { readonly item: Extract<TranscriptItem, { kind: "tool" }>; readonly approval: PendingApproval | undefined }) {
+	const args = (item.args ?? {}) as Record<string, unknown>;
+	const [running, done] = TOOL_VERBS[item.tool] ?? [item.tool, item.tool];
+	const subject = String(args.description ?? args.path ?? args.url ?? args.command ?? "");
+	const waiting = approval !== undefined;
+	const label = waiting ? "Waiting for approval" : item.status === "running" || item.status === "pending" ? running : item.status === "failed" ? `${done} · failed` : done;
+	return (
+		<li className={`tool-card tool-${waiting ? "waiting" : item.status}`}>
+			<details open={waiting || item.status === "failed"}>
+				<summary>
+					<span className="tool-status" aria-hidden />
+					<span className="tool-verb">{label}</span>
+					<span className="tool-subject">{subject}</span>
+				</summary>
+				{item.tool === "local_exec" && typeof args.command === "string" && <pre className="tool-command">$ {args.command}</pre>}
+				{item.output !== undefined && item.output !== "" && <pre className="tool-output">{item.output}</pre>}
+			</details>
+			{approval !== undefined && <ApprovalCard approval={approval} />}
+		</li>
+	);
+}
+
+function ApprovalCard({ approval }: { readonly approval: PendingApproval }) {
+	const decide = (decision: ApprovalDecision): void =>
+		void api["approvals.decide"]({ approvalId: approval.approvalId, decision }).catch(report);
+	const args = (approval.args ?? {}) as Record<string, unknown>;
+	return (
+		<div className="approval" role="group" aria-label="Approval request">
+			<div className="approval-reason">{approval.reason}</div>
+			<pre className="approval-args">
+				{approval.tool === "local_exec"
+					? `${String(args.command ?? "")}${args.cwd === undefined ? "" : `\n# in ${String(args.cwd)}`}`
+					: JSON.stringify(approval.args, null, 2)}
+			</pre>
+			<div className="approval-actions">
+				<button type="button" onClick={() => decide("deny")}>
+					Deny
+				</button>
+				<button type="button" className="primary" onClick={() => decide("allow_once")} autoFocus>
+					Allow once
+				</button>
+			</div>
 		</div>
 	);
 }
@@ -582,20 +654,53 @@ function Settings() {
 					{configured.map((provider) => (
 						<li key={provider.providerId}>
 							<span>{provider.name}</span>
-							<span className="muted">Key stored</span>
-							<button
-								type="button"
-								onClick={() =>
-									void api["credentials.delete"]({ providerId: provider.providerId })
-										.then(refreshSettings)
-										.catch(report)
-								}
-							>
-								Remove
-							</button>
+							<span className="muted">
+								{provider.keyStored ? "Key stored" : "Key from models.json"}
+								{provider.source === "config" && " · models.json"}
+							</span>
+							{provider.keyStored && (
+								<button
+									type="button"
+									onClick={() =>
+										void api["credentials.delete"]({ providerId: provider.providerId })
+											.then(refreshSettings)
+											.catch(report)
+									}
+								>
+									Remove
+								</button>
+							)}
 						</li>
 					))}
 				</ul>
+			</div>
+
+			<div className="settings-group">
+				<h2>Your own providers</h2>
+				<p className="muted">
+					Add OpenAI- or Anthropic-compatible endpoints in <code>{settings.modelConfig.path}</code>. Changes apply
+					when you open Settings or choose a model.
+				</p>
+				{settings.providers.some((provider) => provider.source === "config" && !provider.configured) && (
+					<p className="muted">
+						Without a key:{" "}
+						{settings.providers
+							.filter((provider) => provider.source === "config" && !provider.configured)
+							.map((provider) => provider.name)
+							.join(", ")}
+						. Save one above or fix its <code>apiKey</code>.
+					</p>
+				)}
+				{settings.modelConfig.errors.length > 0 && (
+					<ul className="config-errors" aria-label="Configuration problems">
+						{settings.modelConfig.errors.map((error) => (
+							<li key={error}>{error}</li>
+						))}
+					</ul>
+				)}
+				<button type="button" onClick={() => void refreshSettings().catch(report)}>
+					Reload
+				</button>
 			</div>
 
 			<div className="settings-group">

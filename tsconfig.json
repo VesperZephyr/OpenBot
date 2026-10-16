@@ -3,7 +3,13 @@
 	"compilerOptions": {
 		"noEmit": true
 	},
-	"include": ["apps/*/src/**/*.ts", "apps/*/test/**/*.ts", "packages/*/src/**/*.ts", "packages/*/test/**/*.ts"],
+	"include": [
+		"apps/*/src/**/*.ts",
+		"apps/*/test/**/*.ts",
+		"packages/*/src/**/*.ts",
+		"packages/*/test/**/*.ts",
+		"e2e/**/*.ts"
+	],
 	// Desktop is bundled by electron-vite and type-checks with bundler resolution in apps/desktop/tsconfig.json.
 	"exclude": ["apps/desktop/**"]
 }
