@@ -76,7 +76,13 @@ export class RunScheduler {
 				this.#runs.set(run.runId, run);
 				const latest = this.#latest.get(run.botId);
 				if (latest === undefined || latest.createdAt <= run.createdAt) this.#latest.set(run.botId, run);
-				if (run.state === "running") await this.#submitInputs(run);
+				if (!(await this.#admissible(run))) {
+					if (run.state === "running") {
+						this.#stopping(run.botId, run.channelId);
+						await this.#runtime.cancel(run.botId, run.channelId, true);
+					}
+					await this.#put({ ...run, state: "cancelled", endedAt: this.#now() });
+				} else if (run.state === "running") await this.#submitInputs(run);
 			}
 			await this.#admit();
 		});

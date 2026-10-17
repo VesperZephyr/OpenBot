@@ -1,12 +1,11 @@
-import { ManagementPreview, ManagementHistory } from "./BotManagement";
+import { ManagementHistory } from "./BotManagement";
 import { t } from "./i18n";
 import type {
-	ApprovalDecision,
 	BotSummary,
+	PendingApproval,
 	ConversationSnapshot,
 	ModelRef,
 	ModelSummary,
-	PendingApproval,
 	RunRecord,
 	ThinkingLevel,
 	TranscriptItem,
@@ -17,7 +16,8 @@ import { WebSearchSettings } from "./WebSearchSettings";
 import { ProfileMemory } from "./ProfileMemory";
 import { Divider, RetryButton, retryTarget, Thinking } from "./TranscriptExtras";
 import { PendingMessages, StopButton, StoppedNote } from "./runs";
-import { AlwaysAllow } from "./AlwaysAllow";
+import { ApprovalCard } from "./ApprovalCard";
+import { GroupView, GroupSidebar } from "./Groups";
 import { CommandSettings, FolderSettings } from "./PolicySettings";
 import { ConfirmDeleteBot, DeleteBotItem, DuplicateBotItem } from "./BotLifecycle";
 import { ModelSetup } from "./ModelSetup";
@@ -84,6 +84,7 @@ export function App() {
 					<>
 						{view.kind === "bot" && <Conversation botId={view.botId} />}
 						{view.kind === "settings" && <Settings />}
+ {view.kind === "group" && <GroupView key={view.groupId} groupId={view.groupId} />}
 						{view.kind === "home" && <Home onNew={() => setCreating(true)} />}
 					</>
 				)}
@@ -138,6 +139,7 @@ function Sidebar({ onNew }: { onNew: () => void }) {
 					{showHidden && hidden.map((bot) => <BotRow key={bot.botId} bot={bot} selected={bot.botId === selected} />)}
 				</div>
 			)}
+			<GroupSidebar />
 			<div className="sidebar-footer">
 				<button
 					type="button"
@@ -389,6 +391,10 @@ function MessageText({ parts, markdown = false }: { readonly parts: readonly { r
 }
 
 const TOOL_VERBS: Record<string, readonly [running: string, done: string]> = {
+ group_inspect: ["Inspecting groups", "Inspected groups"],
+ group_create: ["Creating group", "Created group"],
+ group_update: ["Updating group", "Updated group"],
+ group_dissolve: ["Dissolving group", "Dissolved group"],
 	bot_inspect: ["Inspecting Bots", "Inspected Bots"],
 	bot_create: ["Creating Bot", "Created Bot"],
 	bot_update: ["Updating Bot", "Updated Bot"],
@@ -408,7 +414,7 @@ const TOOL_VERBS: Record<string, readonly [running: string, done: string]> = {
 /** One row per tool call: a verb and subject, expandable to the arguments and output; failures open by default. */
 function ToolCard({ item, approval }: { readonly item: Extract<TranscriptItem, { kind: "tool" }>; readonly approval: PendingApproval | undefined }) {
 	const args = (item.args ?? {}) as Record<string, unknown>;
-	const managedName = useStore(state => state.bots.find(bot => bot.botId === args.botId)?.name);
+	const managedName = useStore(state => state.bots.find(bot => bot.botId === args.botId)?.name ?? state.groups.find(group => group.groupId === args.groupId)?.name);
 	const [running, done] = TOOL_VERBS[item.tool] ?? [item.tool, item.tool];
 	const subject = String(args.name ?? managedName ?? args.botId ?? args.description ?? args.path ?? args.url ?? args.command ?? args.query ?? args.section ?? args.taskId ?? "");
 	const waiting = approval !== undefined;
@@ -442,26 +448,6 @@ function ToolCard({ item, approval }: { readonly item: Extract<TranscriptItem, {
 	);
 }
 
-function ApprovalCard({ approval }: { readonly approval: PendingApproval }) {
-	const decide = (decision: ApprovalDecision): void =>
-		void api["approvals.decide"]({ approvalId: approval.approvalId, decision }).catch(report);
-	const args = (approval.args ?? {}) as Record<string, unknown>;
-	return (
-		<div className="approval" role="group" aria-label={t("Approval request")}>
-			<div className="approval-reason">{t(approval.reason)}</div>
-			{["bot_create", "bot_update", "bot_delete"].includes(approval.tool) ? <ManagementPreview args={{ ...args, action: approval.tool.slice(4) }} /> : <pre className="approval-args">
-				{approval.tool === "local_exec"
-					? `${String(args.command ?? "")}${args.cwd === undefined ? "" : `\n# in ${String(args.cwd)}`}`
-					: JSON.stringify(approval.args, null, 2)}
-			</pre>}
-			<div className="approval-actions">
-				<button type="button" onClick={() => decide("deny")}>{t("Deny")}</button>
-				<button type="button" className="primary" onClick={() => decide("allow_once")} autoFocus>{t("Allow once")}</button>
-			</div>
-			<AlwaysAllow approval={approval} />
-		</div>
-	);
-}
 
 function BotMenu({ bot, onEdit }: { readonly bot: BotSummary; readonly onEdit: () => void }) {
 	const [open, setOpen] = useState(false);
