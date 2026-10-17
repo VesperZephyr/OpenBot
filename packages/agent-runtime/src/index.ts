@@ -12,6 +12,9 @@ import {
 	type ConversationRecord,
 	type ConversationView,
 	createRegistry,
+	configure,
+	type Tx,
+	type Extension,
 	defineDoc,
 	defineExtension,
 	defineTool,
@@ -26,6 +29,8 @@ import {
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import {
+	type BotManagementProposal,
+	type ManagementAuthority,
 	type BotId,
 	type BotProfile,
 	type ConversationSnapshot,
@@ -46,10 +51,12 @@ import { type PolicyStore, policyStore } from "./policy.ts";
 import { applyMemoryEdit, checkMemorySize, type MemoryEdit, MemoryDoc } from "./memory.ts";
 import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
 import { botSections } from "./prompt.ts";
-import { type RunStore, runStore } from "./runs.ts";
+import { ManagementDoc, managementStore } from "./management.ts";
+import { type RunStore, runStore, RunsDoc } from "./runs.ts";
 
 /** The OpenBot extension every conversation selects: prompt sections, and routed tools when the Host passes them. */
 const BOT_EXTENSION = "openbot.bot";
+const CORE_EXTENSION = "openbot.core-management";
 /** Display-only transcript entry written when the user stops a Run. */
 const STOPPED_ENTRY = "openbot.stopped";
 /** How long a model test may take before it counts as failed. */
@@ -66,7 +73,11 @@ export { isTerminal, KEPT_TERMINAL_RUNS, type RunInput, type RunMessage, type Ru
 type PiConversationId = ConversationRecord["id"];
 
 /** Pi IDs are branded numbers; the record keeps the Pi conversation ID in that form. */
-type BotRecord = Omit<BotProfile, "kind"> & { readonly kind?: BotProfile["kind"]; readonly conversationId: number };
+type BotRecord = Omit<BotProfile, "kind" | "revision"> & {
+	readonly revision?: number;
+	readonly kind?: BotProfile["kind"];
+	readonly conversationId: number;
+};
 
 /** Session-scoped Bot index stored next to Pi's own documents. */
 const BotsDoc = defineDoc<{ bots: Record<string, BotRecord> }>({
@@ -86,7 +97,10 @@ const SettingsDoc = defineDoc<{ defaultModel?: ModelRef; setupComplete?: boolean
 
 /** Allocate identity before its conversation: restart reconciles the same Core rather than allocating another. */
 const CoreDoc = defineDoc<{ coreBotId?: string }>({
-	kind: "openbot.core", version: 1, scope: "session", initial: () => ({}),
+	kind: "openbot.core",
+	version: 1,
+	scope: "session",
+	initial: () => ({}),
 });
 
 /**
@@ -95,6 +109,7 @@ const CoreDoc = defineDoc<{ coreBotId?: string }>({
  * same call and never becomes a second invocation.
  */
 export type ToolInvoker = (call: {
+	readonly authority?: ManagementAuthority;
 	readonly botId: BotId;
 	readonly conversationId: string;
 	readonly callId: string;
@@ -147,16 +162,18 @@ export type SubmitResult =
 
 export class BotRuntime {
 	readonly #harness: Harness;
+	readonly #extensions: { bot: Extension; core: Extension };
 	readonly #models: MutableModels;
 	readonly #context: Context;
 	/** Built-in providers as registered at open, so a removed overlay restores the original. */
 	readonly #builtins: ReadonlyMap<string, Provider>;
 	#configuredIds: readonly string[] = [];
 	/** Stored entries before each conversation's current head marker; entries are immutable, so one read per head. */
-	 #coreBootstrap: Promise<BotProfile> | undefined;
+	#coreBootstrap: Promise<BotProfile> | undefined;
 	readonly #history = new Map<number, { readonly head: number; readonly entries: readonly EntryRecord[] }>();
 
-	private constructor(harness: Harness, models: MutableModels, context: Context) {
+	private constructor(harness: Harness, models: MutableModels, context: Context, extensions: { bot: Extension; core: Extension }) {
+		this.#extensions = extensions;
 		this.#harness = harness;
 		this.#models = models;
 		this.#context = context;
@@ -165,33 +182,40 @@ export class BotRuntime {
 
 	static async open(options: BotRuntimeOptions): Promise<BotRuntime> {
 		const context = options.context ?? BACKGROUND_CONTEXT;
-		const models =
-			options.models ?? builtinModels(options.credentials === undefined ? {} : { credentials: options.credentials });
+		const models = options.models ?? builtinModels(options.credentials === undefined ? {} : { credentials: options.credentials });
 		const registry = createRegistry();
-		registry.install(
-			defineExtension({
-				name: BOT_EXTENSION,
-				tools:
-					options.tools === undefined
-						? []
-						: options.tools.definitions.map((definition) => routedTool(definition, options.tools!.invoke)),
-				sections: botSections(async (input, context) => {
-					const bots = (await input.read.snapshot(BotsDoc, context))?.bots ?? {};
-					return Object.values(bots).find((bot) => bot.conversationId === Number(input.conversationId));
-				}),
+		const bot = defineExtension({
+			name: BOT_EXTENSION,
+			tools:
+				options.tools === undefined
+					? []
+					: options.tools.definitions
+							.filter((d) => d.capability !== "bot.management")
+							.map((definition) => routedTool(definition, options.tools!.invoke)),
+			sections: botSections(async (input, context) => {
+				const bots = (await input.read.snapshot(BotsDoc, context))?.bots ?? {};
+				return Object.values(bots).find((bot) => bot.conversationId === Number(input.conversationId));
 			}),
-		);
+		});
+		const core = defineExtension({
+			name: CORE_EXTENSION,
+			tools: (options.tools?.definitions ?? [])
+				.filter((d) => d.capability === "bot.management")
+				.map((d) => routedTool(d, options.tools!.invoke)),
+		});
+		registry.install(bot);
+		registry.install(core);
 		const harness = await Harness.open(
 			await openNodeSqliteStorage(options.databasePath),
 			{
 				models,
 				registry,
 				// No `env` and no CodingTools: every side effect must go through Tool Router and the executor.
-				settings: { toolExecution: "sequential" },
+				settings: { toolExecution: "sequential", extensions: [bot] },
 			},
 			context,
 		);
-		return new BotRuntime(harness, models, context);
+		return new BotRuntime(harness, models, context, { bot, core });
 	}
 
 	/** Start the scheduler so work interrupted by the last shutdown continues. Call after recovery checks pass. */
@@ -206,6 +230,10 @@ export class BotRuntime {
 	/** The durable approval records; Host code (the approval book) is their only writer. */
 	approvals(): ApprovalStore {
 		return approvalStore(this.#harness, this.#context);
+	}
+
+	management() {
+		return managementStore(this.#harness, this.#context);
 	}
 
 	/** Command policy and folder grants; Host code is their only writer. */
@@ -232,8 +260,12 @@ export class BotRuntime {
 	}
 
 	async ensureCoreBot(now: number): Promise<BotProfile> {
-		const pending = this.#coreBootstrap ??= this.#bootstrapCore(now);
-		try { return await pending; } finally { if (this.#coreBootstrap === pending) this.#coreBootstrap = undefined; }
+		const pending = (this.#coreBootstrap ??= this.#bootstrapCore(now));
+		try {
+			return await pending;
+		} finally {
+			if (this.#coreBootstrap === pending) this.#coreBootstrap = undefined;
+		}
 	}
 
 	async #bootstrapCore(now: number): Promise<BotProfile> {
@@ -242,94 +274,111 @@ export class BotRuntime {
 			doc.coreBotId ??= `core_${randomUUID()}`;
 			return doc.coreBotId;
 		}, this.#context);
-		await this.createBot({ botId, name: "OpenBot", role: "Personal assistant", instructions: "You are the user's personal assistant. Help with everyday tasks, keep useful preferences in your own memory, and use only the tools actually available to you. Reply in the user's language.", createdAt: now });
+		await this.createBot({
+			botId,
+			name: "OpenBot",
+			role: "Personal assistant",
+			instructions:
+				"You are the user's personal assistant. Help with everyday tasks, keep useful preferences in your own memory, and use only the tools actually available to you. Reply in the user's language.",
+			createdAt: now,
+		});
 		return this.#harness.commit(async (tx) => {
 			const doc = await tx.doc(BotsDoc);
 			const existing = doc.bots[botId]!;
 			doc.bots[botId] = { ...existing, kind: "core", status: "active", pinned: true };
+			await configure(tx, existing.conversationId as PiConversationId, { extensions: [this.#extensions.bot, this.#extensions.core] });
 			return toProfile(JSON.parse(JSON.stringify(doc.bots[botId])) as BotRecord);
 		}, this.#context);
 	}
 
-	async language(): Promise<"en" | "zh-CN"> { return (await this.#harness.snapshot(SettingsDoc, this.#context))?.language ?? "en"; }
+	async language(): Promise<"en" | "zh-CN"> {
+		return (await this.#harness.snapshot(SettingsDoc, this.#context))?.language ?? "en";
+	}
 	async setLanguage(language: "en" | "zh-CN"): Promise<void> {
-		await this.#harness.commit(async (tx) => { (await tx.doc(SettingsDoc)).language = language; }, this.#context);
+		await this.#harness.commit(async (tx) => {
+			(await tx.doc(SettingsDoc)).language = language;
+		}, this.#context);
 	}
 
-	async setupComplete(): Promise<boolean> { return (await this.#harness.snapshot(SettingsDoc, this.#context))?.setupComplete === true; }
+	async setupComplete(): Promise<boolean> {
+		return (await this.#harness.snapshot(SettingsDoc, this.#context))?.setupComplete === true;
+	}
 	async setSetupComplete(value: boolean): Promise<void> {
-		await this.#harness.commit(async (tx) => { (await tx.doc(SettingsDoc)).setupComplete = value; }, this.#context);
+		await this.#harness.commit(async (tx) => {
+			(await tx.doc(SettingsDoc)).setupComplete = value;
+		}, this.#context);
 	}
 
 	/** Idempotent for the same `botId`: returns the existing Bot instead of creating a second conversation. */
-	async createBot(input: CreateBotInput): Promise<BotProfile> {
-		const existing = await this.#record(input.botId);
-		if (existing !== undefined) return toProfile(existing);
-
+	async createBot(input: CreateBotInput, proposal?: BotManagementProposal): Promise<BotProfile> {
 		if (input.memory !== undefined) checkMemorySize(input.memory);
 		const model = input.model ?? (await this.defaultModel());
-		const conversation = await this.#harness.createConversation(
-			{ ownership: { kind: "ownerless" }, agent: agentChange({ ...input, ...(model === undefined ? {} : { model }) }) },
-			this.#context,
-		);
-		const record: BotRecord = {
-			botId: input.botId,
-			name: input.name,
-			role: input.role ?? "",
-			instructions: input.instructions ?? "",
-			...(input.model === undefined ? {} : { model: input.model }),
-			...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
-			pinned: false,
-			status: "active",
-			createdAt: input.createdAt,
-			conversationId: conversation.id,
-		};
-		// A crash between the two commits leaves an orphan conversation but no half-registered Bot.
-		const stored = await this.#harness.commit(async (tx) => {
+		return this.#harness.commit(async (tx) => {
+			const receipt = await committedManagement(tx, proposal);
+			if (receipt) return receipt;
 			const doc = await tx.doc(BotsDoc);
-			if (doc.bots[input.botId] === undefined) {
-				doc.bots[input.botId] = record;
-				if (input.memory !== undefined && input.memory !== "") (await tx.doc(MemoryDoc, input.botId, null)).content = input.memory;
-			}
-			// Drafts are only valid inside the commit callback, so return a plain copy.
-			return JSON.parse(JSON.stringify(doc.bots[input.botId])) as BotRecord;
+			if (doc.bots[input.botId] && proposal) throw new ProtocolError("request_conflict", "Bot identity already exists");
+			if (doc.bots[input.botId]) return toProfile(JSON.parse(JSON.stringify(doc.bots[input.botId])) as BotRecord);
+			const conversation = await tx.createConversation({ ownership: { kind: "ownerless" } });
+			await configure(tx, conversation.id, {
+				...agentChange({ ...input, ...(model === undefined ? {} : { model }) }),
+				extensions: [this.#extensions.bot],
+			});
+			const record: BotRecord = {
+				botId: input.botId,
+				revision: 1,
+				kind: "specialist",
+				name: input.name,
+				role: input.role ?? "",
+				instructions: input.instructions ?? "",
+				...(input.model === undefined ? {} : { model: input.model }),
+				...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
+				pinned: false,
+				status: "active",
+				createdAt: input.createdAt,
+				conversationId: conversation.id,
+			};
+			doc.bots[input.botId] = record;
+			if (input.memory) (await tx.doc(MemoryDoc, input.botId, null)).content = input.memory;
+			const result = toProfile(record);
+			await completeManagement(tx, proposal, result);
+			return result;
 		}, this.#context);
-		return toProfile(stored);
 	}
 
-	async updateBot(botId: BotId, change: UpdateBotInput): Promise<BotProfile> {
-		const record = await this.#record(botId);
-		if (record === undefined) throw new ProtocolError("not_found", `Unknown Bot: ${botId}`);
-		const coreId = (await this.#harness.snapshot(CoreDoc, this.#context))?.coreBotId;
-		if ((record.kind === "core" || botId === coreId) && (change.pinned === false || (change.status !== undefined && change.status !== "active"))) {
-			throw new ProtocolError("invalid_request", "The Core Bot cannot be deleted, hidden or unpinned");
-		}
-		const { model: currentModel, ...rest } = record;
-		const model = change.model === undefined ? currentModel : (change.model ?? undefined);
-		const updated: BotRecord = {
-			...rest,
-			...(change.name === undefined ? {} : { name: change.name }),
-			...(change.role === undefined ? {} : { role: change.role }),
-			...(change.instructions === undefined ? {} : { instructions: change.instructions }),
-			...(change.thinkingLevel === undefined ? {} : { thinkingLevel: change.thinkingLevel }),
-			...(change.pinned === undefined ? {} : { pinned: change.pinned }),
-			...(change.status === undefined ? {} : { status: change.status }),
-			...(model === undefined ? {} : { model }),
-		};
-
-		// A Bot without a model of its own runs on the application default.
-		const effectiveModel = change.model === null ? ((await this.defaultModel()) ?? null) : change.model;
-		const agent: AgentChange = {
-			...(change.instructions === undefined ? {} : { instructions: change.instructions || null }),
-			...(effectiveModel === undefined ? {} : { model: effectiveModel }),
-			...(change.thinkingLevel === undefined ? {} : { thinkingLevel: change.thinkingLevel }),
-		};
-		const conversation = await this.#conversation(record);
-		if (Object.keys(agent).length > 0) await conversation.configure(agent, this.#context);
-		await this.#harness.commit(async (tx) => {
-			(await tx.doc(BotsDoc)).bots[botId] = updated;
+	async updateBot(botId: BotId, change: UpdateBotInput, proposal?: BotManagementProposal): Promise<BotProfile> {
+		const defaultModel = await this.defaultModel();
+		return this.#harness.commit(async (tx) => {
+			const receipt = await committedManagement(tx, proposal);
+			if (receipt) return receipt;
+			const doc = await tx.doc(BotsDoc);
+			const record = doc.bots[botId];
+			if (!record) throw new ProtocolError("not_found", "Unknown Bot");
+			const coreId = (await tx.doc(CoreDoc)).coreBotId;
+			if (
+				(record.kind === "core" || botId === coreId) &&
+				(proposal || change.pinned === false || (change.status !== undefined && change.status !== "active"))
+			) {
+				throw new ProtocolError("invalid_request", "The Core Bot cannot be deleted, hidden or unpinned");
+			}
+			if (proposal && (record.status === "deleted" || (record.revision ?? 1) !== proposal.expectedRevision))
+				throw new ProtocolError("request_conflict", "Bot changed. Inspect it again before proposing another change.");
+			const { model: currentModel, ...rest } = JSON.parse(JSON.stringify(record)) as BotRecord;
+			const model = change.model === undefined ? currentModel : (change.model ?? undefined);
+			const { model: _model, ...fields } = change;
+			const updated: BotRecord = { ...rest, ...fields, revision: (record.revision ?? 1) + 1, ...(model === undefined ? {} : { model }) };
+			const effectiveModel = change.model === null ? (defaultModel ?? null) : change.model;
+			const agent: AgentChange = {
+				...(change.instructions === undefined ? {} : { instructions: change.instructions || null }),
+				...(effectiveModel === undefined ? {} : { model: effectiveModel }),
+				...(change.thinkingLevel === undefined ? {} : { thinkingLevel: change.thinkingLevel }),
+			};
+			if (Object.keys(agent).length) await configure(tx, record.conversationId as PiConversationId, agent);
+			doc.bots[botId] = updated;
+			const result = toProfile(updated);
+			await completeManagement(tx, proposal, result);
+			return result;
 		}, this.#context);
-		return toProfile(updated);
 	}
 
 	/**
@@ -348,10 +397,7 @@ export class BotRuntime {
 	}
 
 	/** Where a submission of this Bot stands; `absent` when Pi has no such submission for the Bot's conversation. */
-	async submissionState(
-		botId: BotId,
-		submissionId: string,
-	): Promise<"queued" | "placed" | "done" | "unanswered" | "absent"> {
+	async submissionState(botId: BotId, submissionId: string): Promise<"queued" | "placed" | "done" | "unanswered" | "absent"> {
 		return (await this.#ownedSubmission(botId, submissionId))?.status.status ?? "absent";
 	}
 
@@ -369,11 +415,7 @@ export class BotRuntime {
 	 */
 	async withdraw(botId: BotId, submissionId: string): Promise<void> {
 		const record = await this.#requireRecord(botId);
-		await this.#harness.abortSubmission(
-			Number(submissionId) as SubmissionId,
-			this.#context,
-			record.conversationId as PiConversationId,
-		);
+		await this.#harness.abortSubmission(Number(submissionId) as SubmissionId, this.#context, record.conversationId as PiConversationId);
 	}
 
 	/** Durable Run records; scheduling is the Host's job. */
@@ -396,12 +438,7 @@ export class BotRuntime {
 		const settled = await submission.wait(this.#context);
 		if (settled.type !== "input") throw new ProtocolError("invalid_request", "Expected an input submission");
 		if (settled.status !== "done") return { status: "unanswered", reason: settled.reason ?? "unknown" };
-		const page = await conversation.entries(
-			{ minEntryId: settled.answer, maxEntryId: settled.answer },
-			1,
-			undefined,
-			this.#context,
-		);
+		const page = await conversation.entries({ minEntryId: settled.answer, maxEntryId: settled.answer }, 1, undefined, this.#context);
 		const answer = page.items[0];
 		return { status: "answered", answer: answer === undefined ? [] : textParts(answer) };
 	}
@@ -599,12 +636,7 @@ export class BotRuntime {
 		const entries: EntryRecord[] = [];
 		let cursor: Parameters<typeof conversation.entries>[2];
 		do {
-			const page = await conversation.entries(
-				{ maxEntryId: marker.id, order: "ascending" },
-				500,
-				cursor,
-				this.#context,
-			);
+			const page = await conversation.entries({ maxEntryId: marker.id, order: "ascending" }, 500, cursor, this.#context);
 			entries.push(...page.items);
 			cursor = page.next;
 		} while (cursor !== undefined);
@@ -627,16 +659,14 @@ function agentChange(input: {
 
 function toProfile(record: BotRecord): BotProfile {
 	const { conversationId: _conversationId, ...profile } = record;
-	return { ...profile, kind: profile.kind ?? "specialist" };
+	return { ...profile, revision: profile.revision ?? 1, kind: profile.kind ?? "specialist" };
 }
 
 /** Text blocks of a user or assistant message; images are not projected yet. */
 function partsOf(content: string | readonly { readonly type: string }[]): MessagePart[] {
 	if (typeof content === "string") return content === "" ? [] : [{ type: "text", text: content }];
 	return content.flatMap((block) =>
-		block.type === "text" && "text" in block && typeof block.text === "string"
-			? [{ type: "text" as const, text: block.text }]
-			: [],
+		block.type === "text" && "text" in block && typeof block.text === "string" ? [{ type: "text" as const, text: block.text }] : [],
 	);
 }
 
@@ -657,7 +687,9 @@ function thinkingOf(entry: EntryRecord): string | undefined {
 	const message = entry.model?.[0];
 	if (message?.role !== "assistant") return undefined;
 	const text = message.content
-		.flatMap((block) => (block.type === "thinking" && block.redacted !== true && block.thinking.trim() !== "" ? [block.thinking.trim()] : []))
+		.flatMap((block) =>
+			block.type === "thinking" && block.redacted !== true && block.thinking.trim() !== "" ? [block.thinking.trim()] : [],
+		)
 		.join("\n\n");
 	return text === "" ? undefined : text;
 }
@@ -665,8 +697,7 @@ function thinkingOf(entry: EntryRecord): string | undefined {
 type MutableToolItem = { kind: "tool"; id: string; tool: string; args: unknown; status: ToolCallStatus; output?: string; taskId?: string };
 
 /** What the model receives for an `unknown` outcome, instead of the executor's text (Section 5.1). */
-export const UNKNOWN_OUTCOME_TEXT =
-	"This action was interrupted and may have partly run. Check its effect before doing anything else.";
+export const UNKNOWN_OUTCOME_TEXT = "This action was interrupted and may have partly run. Check its effect before doing anything else.";
 
 /** When the entry's first user or assistant message was created; Pi stamps every message. */
 function timestampOf(entry: EntryRecord): number | undefined {
@@ -727,7 +758,9 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 					(message.details as { status?: string } | undefined)?.status === "unknown" ||
 					diagnostics.some((diagnostic) => diagnostic.code === "interrupted");
 				item.status = unknown ? "interrupted" : !message.isError ? "succeeded" : wasAborted(entry) ? "cancelled" : "failed";
-				item.output = partsOf(message.content).map((part) => part.text).join("\n");
+				item.output = partsOf(message.content)
+					.map((part) => part.text)
+					.join("\n");
 				const details: unknown = message.details;
 				if (typeof details === "object" && details !== null && "taskId" in details && typeof details.taskId === "string") {
 					item.taskId = details.taskId;
@@ -828,7 +861,20 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 		async execute(args, api, context) {
 			const botId = await botOfConversation(api, String(api.conversationId), context);
 			const signal = context.abortSignal ?? new AbortController().signal;
+			let authority: ManagementAuthority | undefined;
+			if (definition.capability === "bot.management") {
+				const saved = await api.memo<{ origin: "user"; runId: string } | null>("openbot.management-authority", context);
+				if (saved !== undefined) authority = saved ?? undefined;
+				else {
+					const runs = Object.values((await api.snapshot(RunsDoc, context))?.runs ?? {});
+					const run = runs.find((r) => r.botId === botId && r.state === "running" && r.origin === "user");
+					authority =
+						(await api.memo("openbot.management-authority", run ? { origin: "user" as const, runId: run.runId } : null, context)) ??
+						undefined;
+				}
+			}
 			const outcome = await invoke({
+				...(authority === undefined ? {} : { authority }),
 				botId,
 				conversationId: String(api.conversationId),
 				callId: api.callId,
@@ -873,4 +919,15 @@ export function modelTestError(message: string): string {
 	if (/404|not found|unknown model/i.test(message)) return "Model or endpoint not found. Check the model ID and base URL.";
 	if (/429|rate.limit/i.test(message)) return "The provider is rate limiting requests. Try again later.";
 	return "The model request failed. Check the endpoint, protocol and model ID.";
+}
+
+async function committedManagement(tx: Tx, proposal?: BotManagementProposal): Promise<BotProfile | undefined> {
+	if (!proposal) return undefined;
+	const record = (await tx.doc(ManagementDoc)).operations[proposal.invocationId];
+	if (!record || record.fingerprint !== proposal.fingerprint) throw new ProtocolError("request_conflict", "Management proposal mismatch");
+	if (record.outcome) throw new ProtocolError("request_conflict", "Management request already ended");
+	return record.result ? (JSON.parse(JSON.stringify(record.result)) as BotProfile) : undefined;
+}
+async function completeManagement(tx: Tx, proposal: BotManagementProposal | undefined, result: BotProfile): Promise<void> {
+	if (proposal) (await tx.doc(ManagementDoc)).operations[proposal.invocationId] = { ...proposal, result, completedAt: Date.now() };
 }

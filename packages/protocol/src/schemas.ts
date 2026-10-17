@@ -33,6 +33,7 @@ export const PROVIDER_ID_PATTERN = "^[a-z0-9][a-z0-9._-]{0,63}$";
 export const HOST_PARAM_SCHEMAS = {
 	"host.status": NoParams,
 	"bots.list": NoParams,
+	"bots.management.history": NoParams,
 	"bots.create": strict({
 		requestId: Id,
 		name: Type.String({ minLength: 1, maxLength: 200 }),

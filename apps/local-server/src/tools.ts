@@ -6,6 +6,7 @@ import { type ExecutionTarget, TOOL_CATALOG } from "@openbot/protocol";
 import type { MemoryEdit, PolicyStore } from "@openbot/agent-runtime";
 import {
 	type ApprovalBook,
+	type HostService,
 	canonicalPath,
 	createWebFetch,
 	createWebSearch,
@@ -20,6 +21,7 @@ import type { ExecutorProcess } from "./executor.ts";
 
 export function createToolRouter(options: {
 	readonly target: ExecutionTarget;
+	readonly service: () => HostService;
 	readonly workspace: string;
 	readonly approvals: ApprovalBook;
 	readonly executor: ExecutorProcess;
@@ -52,6 +54,10 @@ export function createToolRouter(options: {
 		approvals: options.approvals,
 		executor: options.executor,
 		hostTools: {
+			bot_inspect: (_args, _signal, call) => options.service().manageBots(call),
+			bot_create: (_args, _signal, call) => options.service().manageBots(call),
+			bot_update: (_args, _signal, call) => options.service().manageBots(call),
+			bot_delete: (_args, _signal, call) => options.service().manageBots(call),
 			web_fetch: createWebFetch(),
 			web_search: createWebSearch({
 				secrets: options.secrets,
@@ -61,7 +67,7 @@ export function createToolRouter(options: {
 		},
 		policy: {
 			// Policy is read fresh for every call, so a rule or grant change applies to the next call (Section 5.3).
-			decide: async (call, definition) => decide(call, definition, await policyFor(call.tool)),
+			decide: async (call, definition) => definition.capability === "bot.management" ? options.service().management.prepare(call) : decide(call, definition, await policyFor(call.tool)),
 			// The current grants; an approved call outside them may touch exactly the path the user saw on the card.
 			grants: async (call, approvedOnce) => {
 				const { grants } = await policyFor(call.tool);

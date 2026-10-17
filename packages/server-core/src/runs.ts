@@ -126,6 +126,7 @@ export class RunScheduler {
 				return { runId: steered.runId, state: "running", steered: true };
 			}
 			const run: StoredRun = {
+				origin: "user",
 				runId: `run_${randomUUID()}`,
 				botId,
 				state: "queued",

@@ -7,6 +7,7 @@ import type { GrantAccess, HostEvent, HostMethod, HostParams, HostResult } from 
 export const RENDERER_METHODS = [
 	"host.status",
 	"bots.list",
+	"bots.management.history",
 	"bots.create",
 	"bots.update",
 	"conversations.snapshot",
