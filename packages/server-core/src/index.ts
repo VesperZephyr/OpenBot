@@ -210,8 +210,9 @@ export class HostService {
 				await this.#secrets.deleteApiKey(providerId);
 				return this.#settings();
 			},
-			"bots.memory.get": async ({ botId }) => ({ content: await this.#runtime.memory(botId) }),
-			"bots.memory.update": async ({ botId, content }) => ({ content: await this.#runtime.setMemory(botId, content) }),
+			"bots.memory.get": ({ botId }) => this.#runtime.memoryState(botId),
+			"bots.memory.update": ({ botId, content, expectedRevision }) => this.#runtime.setMemory(botId, content, expectedRevision),
+			"bots.memory.restore": ({ botId, revision, expectedRevision }) => this.#runtime.restoreMemory(botId, revision, expectedRevision),
 			"conversations.reset": async ({ botId }) => {
 				await this.#runtime.reset(botId);
 				return null;
@@ -255,7 +256,6 @@ export class HostService {
 					instructions: source.instructions,
 					...(source.model === undefined ? {} : { model: source.model }),
 					...(source.thinkingLevel === undefined ? {} : { thinkingLevel: source.thinkingLevel }),
-					memory: source.kind === "core" ? "" : await this.#runtime.memory(botId),
 					createdAt: this.#now(),
 				});
 				await this.#observe(profile.botId);

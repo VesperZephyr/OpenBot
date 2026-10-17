@@ -193,11 +193,24 @@ describe("HostService", () => {
 		await expect(service.handle("conversations.subscribe", { botId: "bot_missing" })).rejects.toThrow("Unknown Bot");
 	});
 
-	it("duplicates profile and memory without history, once per request ID", async () => {
+ it("keeps Prompt and memory content out of diagnostics while recording edit and restore outcomes", async () => {
+  const bot = await service.handle("bots.create", {requestId: "privacy", name: "Privacy", instructions: "PRIVATE_PROMPT_SENTINEL"});
+  await service.handle("bots.memory.update", {botId: bot.botId, content: "PRIVATE_MEMORY_SENTINEL", expectedRevision: 0});
+  await service.handle("bots.memory.restore", {botId: bot.botId, revision: 0, expectedRevision: 1});
+  await expect(service.handle("bots.memory.update", {botId: bot.botId, content: "PRIVATE_DRAFT_SENTINEL", expectedRevision: 0})).rejects.toThrow("Memory changed");
+  expect(JSON.stringify(audit)).not.toContain("SENTINEL");
+  expect(audit).toEqual(expect.arrayContaining([
+   expect.objectContaining({operation: "bots.memory.update", outcome: "succeeded"}),
+   expect.objectContaining({operation: "bots.memory.restore", outcome: "succeeded"}),
+   expect.objectContaining({operation: "bots.memory.update", outcome: "failed"}),
+  ]));
+ });
+
+	it("duplicates profile with empty memory and history, once per request ID", async () => {
 		await service.handle("settings.update", { defaultModel: SCRIPTED_MODEL });
 		const source = await service.handle("bots.create", { requestId: "s", name: "Ada", role: "Research", instructions: "Cite sources." });
 		await service.handle("bots.update", { botId: source.botId, thinkingLevel: "high" });
-		await service.handle("bots.memory.update", { botId: source.botId, content: "## Preferences\n- Short answers\n" });
+		await service.handle("bots.memory.update", { expectedRevision: 0, botId: source.botId, content: "## Preferences\n- Short answers\n" });
 		await service.handle("conversations.subscribe", { botId: source.botId });
 		const answered = nextSnapshot((s) => s.live === undefined && s.items.some((i) => i.kind === "assistant"));
 		await service.handle("messages.submit", { botId: source.botId, requestId: "m1", text: "Hi" });
@@ -206,7 +219,7 @@ describe("HostService", () => {
 		const copy = await service.handle("bots.duplicate", { botId: source.botId, requestId: "d1" });
 		expect(copy).toMatchObject({ name: "Ada (copy)", role: "Research", instructions: "Cite sources.", thinkingLevel: "high" });
 		expect(copy.botId).not.toBe(source.botId);
-		expect((await service.handle("bots.memory.get", { botId: copy.botId })).content).toBe("## Preferences\n- Short answers\n");
+		expect((await service.handle("bots.memory.get", { botId: copy.botId })).content).toBe("");
 		expect((await service.handle("conversations.snapshot", { botId: copy.botId })).items).toEqual([]);
 		expect((await service.handle("bots.duplicate", { botId: source.botId, requestId: "d1" })).botId).toBe(copy.botId);
 		expect(await service.handle("bots.list", {})).toHaveLength(3);
@@ -214,7 +227,7 @@ describe("HostService", () => {
 
 	it("deletes a Bot: hidden everywhere, its conversation kept", async () => {
 		const bot = await service.handle("bots.create", { requestId: "x", name: "Gone" });
-		await service.handle("bots.memory.update", { botId: bot.botId, content: "kept" });
+		await service.handle("bots.memory.update", { expectedRevision: 0, botId: bot.botId, content: "kept" });
 		await service.handle("bots.delete", { botId: bot.botId });
 		// No Run was active, but background commands it started earlier must still stop.
 		expect(stoppedBots).toEqual([bot.botId]);
@@ -284,7 +297,7 @@ describe("HostService", () => {
 	it("protects the Core before cancellation and copies it only as a Specialist", async () => {
 		const [core] = await service.handle("bots.list", {});
 		expect(core).toMatchObject({ kind: "core", name: "OpenBot", status: "active", pinned: true });
-		await service.handle("bots.memory.update", { botId: core!.botId, content: "private core memory" });
+		await service.handle("bots.memory.update", { expectedRevision: 0, botId: core!.botId, content: "private core memory" });
 		for (const change of [{ pinned: false }, { status: "hidden" as const }]) {
 			await expect(service.handle("bots.update", { botId: core!.botId, ...change })).rejects.toThrow("Core Bot");
 		}

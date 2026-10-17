@@ -1,6 +1,6 @@
 import { t } from "./i18n";
 /**
- * Bot menu actions from B7: Duplicate (same profile and memory, no history) and Delete (after confirmation; the
+ * Bot menu actions from B7: Duplicate (same profile, empty memory and history) and Delete (after confirmation; the
  * conversation stays on disk, the Bot disappears everywhere).
  */
 import type { BotSummary } from "@openbot/protocol";

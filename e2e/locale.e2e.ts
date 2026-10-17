@@ -45,7 +45,7 @@ it("preserves user names, instructions and memory while switching languages", as
  await page.getByRole("textbox", { name: "Message Cedar 研究" }).fill("Unsent draft 草稿");
  await page.getByRole("button", { name: "•••" }).click();
  await page.getByRole("menuitem", { name: "Edit profile" }).click();
- await page.getByLabel("Description", { exact: true }).fill("Prompt 保持原样");
+ await page.getByLabel("Prompt", { exact: true }).fill("Prompt 保持原样");
  // A preference update triggers a refresh while the profile draft is still open.
  await page.evaluate(async () => {
   await (window as any).openbot.methods["settings.update"]({ language: "zh-CN" });
@@ -58,7 +58,7 @@ it("preserves user names, instructions and memory while switching languages", as
  await page.getByRole("button", { name: "•••" }).click();
  await page.getByRole("menuitem", { name: "编辑资料" }).click();
  expect(await page.getByLabel("名称", { exact: true }).inputValue()).toBe("Cedar 研究");
- expect(await page.getByRole("textbox", { name: "指令", exact: true }).inputValue()).toBe("Prompt 保持原样");
+ expect(await page.getByRole("textbox", { name: "提示词", exact: true }).inputValue()).toBe("Prompt 保持原样");
  await page.getByRole("tab", { name: "记忆" }).click();
  await page.getByRole("textbox", { name: "记忆", exact: true }).fill("Cedar memory 记忆");
  await page.getByRole("button", { name: "保存记忆" }).click();

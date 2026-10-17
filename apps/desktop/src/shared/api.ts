@@ -22,6 +22,7 @@ export const RENDERER_METHODS = [
 	"credentials.delete",
 	"bots.memory.get",
 	"bots.memory.update",
+	"bots.memory.restore",
 	"conversations.reset",
 	"policy.get",
 	"policy.update",

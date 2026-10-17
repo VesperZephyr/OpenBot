@@ -39,7 +39,7 @@ it("persists an explicit UI language without changing Bot instructions or memory
  expect(await runtime.language()).toBe("en");
  const core = await runtime.ensureCoreBot(1);
  await runtime.updateBot(core.botId, { instructions: "Do not translate this prompt." });
- await runtime.setMemory(core.botId, "Keep Cedar unchanged.");
+ await runtime.setMemory(core.botId, "Keep Cedar unchanged.", 0);
  await runtime.setLanguage("zh-CN");
  await runtime.close(); runtime = await open();
  expect(await runtime.language()).toBe("zh-CN");
