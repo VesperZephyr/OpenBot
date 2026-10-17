@@ -91,7 +91,9 @@ describe("BotRuntime on SQLite", () => {
 		await runtime.updateBot("scout", { instructions: "Speak German." });
 		await runtime.submitAndWait("scout", "req-2", "Hello again");
 		expect(seen[0]).toContain("Speak French.");
+		expect(seen[0]).toContain("OpenBot profile revision: 1");
 		expect(seen[1]).toContain("Speak German.");
+		expect(seen[1]).toContain("OpenBot profile revision: 2");
 		await runtime.close();
 	});
 

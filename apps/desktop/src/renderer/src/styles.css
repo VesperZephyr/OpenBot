@@ -1017,3 +1017,10 @@ button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--text) 28%, 
 .management-history dd { margin: 2px 0 8px; overflow-wrap: anywhere; }
 
 .management-preview code { overflow-wrap: anywhere; }
+
+.memory-meta, .field-hint { color: var(--muted); font-size: 12px; line-height: 1.5; margin: 0; }
+.memory-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.memory-controls .memory-size { margin-right: auto; }
+.memory-history { border-top: 1px solid var(--border); padding-top: 12px; }
+.memory-history summary { cursor: pointer; margin-bottom: 8px; }
+.memory-preview { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 180px; overflow: auto; padding: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }

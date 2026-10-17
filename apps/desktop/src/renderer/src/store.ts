@@ -35,10 +35,14 @@ export const useStore = create<State>(() => ({
 
 const api = window.openbot.methods;
 
-/** Show a Host error as a notice, without the protocol code prefix. */
-export function report(error: unknown): void {
+/** Strip IPC and protocol envelopes so application errors can be translated at the display boundary. */
+export function errorMessage(error: unknown): string {
 	const message = error instanceof Error ? error.message : String(error);
-	useStore.setState({ notice: message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "").replace(ERROR_PREFIX, "") });
+	return message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "").replace(ERROR_PREFIX, "");
+}
+
+export function report(error: unknown): void {
+	useStore.setState({ notice: errorMessage(error) });
 }
 
 export async function refreshBots(): Promise<void> {

@@ -7,7 +7,7 @@ import type { Context } from "@earendil-works/chord/context";
 import { type PromptInput, type PromptSection, section } from "@earendil-works/pi-durable";
 import { MEMORY_LIMIT_BYTES } from "@openbot/protocol";
 
-import { MemoryDoc } from "./memory.ts";
+import { MemoryDoc, memoryState } from "./memory.ts";
 
 export type PromptBot = { readonly botId: string; readonly name: string; readonly role: string };
 
@@ -22,9 +22,9 @@ export function botSections(lookup: BotLookup, today: () => string = localDate):
 		section("memory", async (input, context) => {
 			const bot = await lookup(input, context);
 			if (bot === undefined) return undefined;
-			const memory = (await input.read.snapshot(MemoryDoc, bot.botId, context))?.content ?? "";
+			const memory = memoryState(await input.read.snapshot(MemoryDoc, bot.botId, context));
 			const canUpdate = input.agent.tools.some((tool) => tool.name === "memory_update");
-			return memoryGuidance(memory, canUpdate);
+			return `Memory revision: ${memory.revision}. Use this expectedRevision for memory_update.\n${memoryGuidance(memory.content, canUpdate)}`;
 		}),
 	];
 }

@@ -1,6 +1,28 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
+ "Prompt": "提示词",
+ "Original memory": "原始记忆",
+ "Edited by you": "由你编辑",
+ "Learned by this Bot": "此 Bot 学到的记忆",
+ "Restored by you": "由你恢复",
+ "Reload memory": "重新加载记忆",
+ "Clear draft": "清空草稿",
+ "Previous versions": "历史版本",
+ "Version to preview": "预览版本",
+ "Choose a version": "选择版本",
+ "Empty memory": "空白记忆",
+ "Restore this version": "恢复此版本",
+ "Reload profile": "重新加载资料",
+ "Unknown or deleted Bot": "Bot 不存在或已删除",
+ "Memory version is no longer available": "此记忆版本已不再保留",
+ "Profile changed. Reload before saving your draft.": "资料已变更。请重新加载后再保存草稿。",
+ "Memory changed. Reload before saving your draft.": "记忆已变更。请重新加载后再保存草稿。",
+ "Up to 20 previous versions are kept locally. Restoring creates a new version.": "本地最多保留 20 个历史版本。恢复操作会生成新版本。",
+ "Clearing memory does not erase chat history, retained versions, backups or prior model requests. Start a new topic to leave old chat context behind.": "清空记忆不会删除聊天记录、历史版本、备份或已发送的模型请求。开启新话题可不再使用旧聊天上下文。",
+ "Memory holds learned preferences. Prompt defines how this Bot works. Both are stored on this Mac and sent to your configured model when needed.": "记忆保存学到的偏好，提示词定义此 Bot 的工作方式。两者均保存在此 Mac，并在需要时发送给你配置的模型。",
+ "Prompt defines this Bot's role and behavior. Saved changes apply to the next model request; a reply already in progress uses its existing context.": "提示词定义此 Bot 的角色和行为。保存后从下一次模型请求开始生效；正在生成的回复仍使用原有上下文。",
+
  "Creating Bot": "正在创建 Bot",
  "Created Bot": "已创建 Bot",
  "Updating Bot": "正在修改 Bot",

@@ -28,7 +28,7 @@ describe("Bot quality", () => {
 	it("memory_update shows in the Memory tab and the next system prompt", async () => {
 		const page = h.page();
 		h.model.script(
-			{ tool: "memory_update", args: { action: "append", section: "Preferences", content: "- Always answer in Chinese." } },
+			{ tool: "memory_update", args: { expectedRevision: 0, action: "append", section: "Preferences", content: "- Always answer in Chinese." } },
 			{ text: "好的,我记住了。" },
 		);
 		await h.send("Always answer in Chinese.");

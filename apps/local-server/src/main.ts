@@ -82,7 +82,7 @@ const router = createToolRouter({
 	executor,
 	secrets: credentials,
 	tavilyBaseUrl: process.env.OPENBOT_TAVILY_BASE_URL,
-	editMemory: (botId, edit) => runtime.editMemory(botId, edit),
+	editMemory: (botId, edit, invocationId) => runtime.editMemory(botId, edit, invocationId),
 	artifactsDirectory: join(dataDirectory, "artifacts"),
 	policy: () => runtime.policy(),
 });

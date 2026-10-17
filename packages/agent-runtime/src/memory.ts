@@ -3,13 +3,23 @@
  * `memory_update` edits one at a time.
  */
 import { defineDocFamily } from "@earendil-works/pi-durable";
-import { MEMORY_LIMIT_BYTES, ProtocolError } from "@openbot/protocol";
+import { MEMORY_LIMIT_BYTES, type MemorySnapshot, type MemoryState, ProtocolError } from "@openbot/protocol";
 
 /**
  * Session-scoped and keyed by `botId`: memory belongs to the Bot, not to one conversation, so any conversation the
  * Bot works in reads the same value, and a reset or fork of its conversation leaves it alone.
  */
-export const MemoryDoc = defineDocFamily<{ content: string }, null>({
+export const MemoryDoc = defineDocFamily<
+	{
+		content: string;
+		revision?: number;
+		source?: MemorySnapshot["source"];
+		updatedAt?: number | null;
+		restoredFrom?: number;
+		history?: MemorySnapshot[];
+	},
+	null
+>({
 	kind: "openbot.memory",
 	version: 1,
 	family: true,
@@ -17,7 +27,36 @@ export const MemoryDoc = defineDocFamily<{ content: string }, null>({
 	initial: () => ({ content: "" }),
 });
 
+/** Additive migration: content-only records remain readable without rewriting user data. */
+export function memoryState(doc?: {
+	content: string;
+	revision?: number;
+	source?: MemorySnapshot["source"];
+	updatedAt?: number | null;
+	restoredFrom?: number;
+	history?: readonly MemorySnapshot[];
+}): MemoryState {
+	return {
+		content: doc?.content ?? "",
+		revision: doc?.revision ?? 0,
+		source: doc?.source ?? "legacy",
+		updatedAt: doc?.updatedAt ?? null,
+		...(doc?.restoredFrom === undefined ? {} : { restoredFrom: doc.restoredFrom }),
+		history: doc?.history ?? [],
+	};
+}
+
+/** Hash-bound receipts survive history eviction; no memory contents are duplicated here. */
+export const MemoryReceiptDoc = defineDocFamily<{ fingerprint?: string; revision?: number }, null>({
+	kind: "openbot.memory-receipt",
+	version: 1,
+	family: true,
+	scope: "session",
+	initial: () => ({}),
+});
+
 export type MemoryEdit = {
+	readonly expectedRevision: number;
 	readonly action: "replace" | "append";
 	/** Heading text without the `## ` prefix. */
 	readonly section: string;
@@ -31,7 +70,7 @@ type Section = { readonly heading: string; body: string };
  * same call changes nothing; `replace` sets the body, and empty content removes the section. A missing section is
  * added at the end. Text before the first heading is kept.
  */
-export function applyMemoryEdit(memory: string, edit: MemoryEdit): string {
+export function applyMemoryEdit(memory: string, edit: Omit<MemoryEdit, "expectedRevision">): string {
 	const heading = edit.section.trim().replace(/^#+\s*/, "");
 	if (heading === "") throw new ProtocolError("invalid_request", "Name the memory section to change");
 	const content = edit.content.trim();

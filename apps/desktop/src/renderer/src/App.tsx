@@ -32,6 +32,7 @@ import {
 	refreshBots,
 	refreshSettings,
 	report,
+	errorMessage,
 	sendMessage,
 	useStore,
 } from "./store";
@@ -528,6 +529,9 @@ function EditProfile({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 const THINKING_LABEL: Record<ThinkingLevel, string> = { off: "Off", low: "Low", medium: "Medium", high: "High" };
 
 function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
+	const [revision, setRevision] = useState(bot.revision);
+	const [saveError, setSaveError] = useState("");
+	const [saving, setSaving] = useState(false);
 	const [name, setName] = useState(bot.name);
 	const [role, setRole] = useState(bot.role);
 	const [instructions, setInstructions] = useState(bot.instructions);
@@ -541,9 +545,12 @@ function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 	);
 	const save = async (event: FormEvent): Promise<void> => {
 		event.preventDefault();
+		if (saving) return;
+		setSaving(true);
 		try {
 			await api["bots.update"]({
 				botId: bot.botId,
+				expectedRevision: revision,
 				name: name.trim() || bot.name,
 				role,
 				instructions,
@@ -553,11 +560,47 @@ function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 			await refreshBots();
 			onClose();
 		} catch (error) {
-			report(error);
+			setSaveError(errorMessage(error));
+		} finally {
+			setSaving(false);
 		}
 	};
 	return (
 		<form className="profile-form" onSubmit={save}>
+			<p className="field-hint">
+				{t(
+					"Prompt defines this Bot's role and behavior. Saved changes apply to the next model request; a reply already in progress uses its existing context.",
+				)}
+			</p>
+			<div className="memory-meta">
+				{t("Revision")} {revision}
+			</div>
+			{saveError && (
+				<div role="alert">
+					{t(saveError)}{" "}
+					<button
+						type="button"
+						disabled={saving}
+						onClick={() =>
+							void api["bots.list"]({})
+								.then((bots) => {
+									const fresh = bots.find((item) => item.botId === bot.botId);
+									if (!fresh) return;
+									setRevision(fresh.revision);
+									setName(fresh.name);
+									setRole(fresh.role);
+									setInstructions(fresh.instructions);
+									setModel(fresh.model);
+									setThinkingLevel(fresh.thinkingLevel ?? "off");
+									setSaveError("");
+								})
+								.catch(report)
+						}
+					>
+						{t("Reload profile")}
+					</button>
+				</div>
+			)}
 			<div className="profile-grid">
 				<label className="field">
 					<span>{t("Name")}</span>
@@ -569,9 +612,10 @@ function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 				</label>
 			</div>
 			<label className="field">
-				<span>{t("Description")}</span>
+				<span>{t("Prompt")}</span>
 				<textarea
 					rows={4}
+					aria-label={t("Prompt")}
 					value={instructions}
 					placeholder={t("Own the weekly account review. Never send external messages without approval.")}
 					onChange={(event) => setInstructions(event.target.value)}
@@ -596,8 +640,12 @@ function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 				)}
 			</div>
 			<div className="dialog-actions">
-				<button type="button" onClick={onClose}>{t("Cancel")}</button>
-				<button type="submit" className="primary">{t("Save profile")}</button>
+				<button type="button" onClick={onClose}>
+					{t("Cancel")}
+				</button>
+				<button type="submit" className="primary" disabled={saving}>
+					{t("Save profile")}
+				</button>
 			</div>
 		</form>
 	);

@@ -43,6 +43,7 @@ export const HOST_PARAM_SCHEMAS = {
 	}),
 	"bots.update": strict({
 		botId: Id,
+		expectedRevision: Type.Optional(Type.Integer({minimum: 1})),
 		name: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
 		role: Type.Optional(Type.String({ maxLength: 200 })),
 		instructions: Type.Optional(Type.String()),
@@ -65,7 +66,8 @@ export const HOST_PARAM_SCHEMAS = {
 	"credentials.set": strict({ providerId: Id, apiKey: Type.String({ maxLength: 16_384 }) }),
 	"credentials.delete": strict({ providerId: Id }),
 	"bots.memory.get": BotOnly,
-	"bots.memory.update": strict({ botId: Id, content: Type.String() }),
+	"bots.memory.update": strict({ botId: Id, content: Type.String(), expectedRevision: Type.Integer({minimum: 0}) }),
+	"bots.memory.restore": strict({ botId: Id, revision: Type.Integer({minimum: 0}), expectedRevision: Type.Integer({minimum: 0}) }),
 	"conversations.reset": BotOnly,
 	"policy.get": NoParams,
 	"policy.update": strict({

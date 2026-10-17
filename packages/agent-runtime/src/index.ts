@@ -2,7 +2,7 @@
  * The only OpenBot package that imports Pi. It maps Bots to Pi Durable conversations and exposes OpenBot-shaped
  * operations and snapshots; callers never see Pi types.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import type { CredentialStore, Provider, ToolCall } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
@@ -29,6 +29,9 @@ import {
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import {
+	type MemoryState,
+	type MemorySnapshot,
+	MEMORY_HISTORY_LIMIT,
 	type BotManagementProposal,
 	type ManagementAuthority,
 	type BotId,
@@ -48,7 +51,7 @@ import {
 
 import { type ApprovalStore, approvalStore } from "./approvals.ts";
 import { type PolicyStore, policyStore } from "./policy.ts";
-import { applyMemoryEdit, checkMemorySize, type MemoryEdit, MemoryDoc } from "./memory.ts";
+import { applyMemoryEdit, checkMemorySize, type MemoryEdit, MemoryDoc, MemoryReceiptDoc, memoryState } from "./memory.ts";
 import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
 import { botSections } from "./prompt.ts";
 import { ManagementDoc, managementStore } from "./management.ts";
@@ -141,12 +144,13 @@ export type CreateBotInput = {
 	readonly instructions?: string;
 	readonly model?: ModelRef;
 	readonly thinkingLevel?: ThinkingLevel;
-	/** Initial memory, written in the same commit that registers the Bot (Duplicate). */
+	/** Optional initial memory, written in the same commit that registers the Bot. */
 	readonly memory?: string;
 	readonly createdAt: number;
 };
 
 export type UpdateBotInput = {
+	readonly expectedRevision?: number;
 	readonly name?: string;
 	readonly role?: string;
 	readonly instructions?: string;
@@ -215,6 +219,14 @@ export class BotRuntime {
 			},
 			context,
 		);
+		await harness.commit(async (tx) => {
+			const profiles = await tx.doc(BotsDoc);
+			for (const record of Object.values(profiles.bots)) {
+				await configure(tx, record.conversationId as PiConversationId, {
+					instructions: revisionedInstructions(record.instructions, record.revision ?? 1),
+				});
+			}
+		}, context);
 		return new BotRuntime(harness, models, context, { bot, core });
 	}
 
@@ -322,6 +334,7 @@ export class BotRuntime {
 			const conversation = await tx.createConversation({ ownership: { kind: "ownerless" } });
 			await configure(tx, conversation.id, {
 				...agentChange({ ...input, ...(model === undefined ? {} : { model }) }),
+				instructions: revisionedInstructions(input.instructions ?? "", 1),
 				extensions: [this.#extensions.bot],
 			});
 			const record: BotRecord = {
@@ -365,11 +378,13 @@ export class BotRuntime {
 				throw new ProtocolError("request_conflict", "Bot changed. Inspect it again before proposing another change.");
 			const { model: currentModel, ...rest } = JSON.parse(JSON.stringify(record)) as BotRecord;
 			const model = change.model === undefined ? currentModel : (change.model ?? undefined);
-			const { model: _model, ...fields } = change;
+			if (change.expectedRevision !== undefined && change.expectedRevision !== (record.revision ?? 1))
+				throw new ProtocolError("request_conflict", "Profile changed. Reload before saving your draft.");
+			const { model: _model, expectedRevision: _expectedRevision, ...fields } = change;
 			const updated: BotRecord = { ...rest, ...fields, revision: (record.revision ?? 1) + 1, ...(model === undefined ? {} : { model }) };
 			const effectiveModel = change.model === null ? (defaultModel ?? null) : change.model;
 			const agent: AgentChange = {
-				...(change.instructions === undefined ? {} : { instructions: change.instructions || null }),
+				instructions: revisionedInstructions(updated.instructions, updated.revision ?? 1),
 				...(effectiveModel === undefined ? {} : { model: effectiveModel }),
 				...(change.thinkingLevel === undefined ? {} : { thinkingLevel: change.thinkingLevel }),
 			};
@@ -463,26 +478,86 @@ export class BotRuntime {
 		return (await this.#harness.snapshot(MemoryDoc, botId, this.#context))?.content ?? "";
 	}
 
-	/** Replace the whole memory, as the user's editor does. Rejects content above the limit. */
-	async setMemory(botId: BotId, content: string): Promise<string> {
+	async memoryState(botId: BotId): Promise<MemoryState> {
 		await this.#requireRecord(botId);
-		checkMemorySize(content);
+		return memoryState(await this.#harness.snapshot(MemoryDoc, botId, this.#context));
+	}
+
+	async setMemory(botId: BotId, content: string, expectedRevision: number): Promise<MemoryState> {
+		return this.#changeMemory(botId, expectedRevision, () => content, "user");
+	}
+
+	async restoreMemory(botId: BotId, revision: number, expectedRevision: number): Promise<MemoryState> {
+		return this.#changeMemory(
+			botId,
+			expectedRevision,
+			(state) => {
+				const previous = state.history.find((item) => item.revision === revision);
+				if (!previous) throw new ProtocolError("not_found", "Memory version is no longer available");
+				return previous.content;
+			},
+			"restore",
+			revision,
+		);
+	}
+
+	async #changeMemory(
+		botId: BotId,
+		expectedRevision: number,
+		next: (state: MemoryState) => string,
+		source: MemorySnapshot["source"],
+		restoredFrom?: number,
+	): Promise<MemoryState> {
 		return this.#harness.commit(async (tx) => {
+			const record = (await tx.doc(BotsDoc)).bots[botId];
+			if (!record || record.status === "deleted") throw new ProtocolError("not_found", "Unknown or deleted Bot");
 			const doc = await tx.doc(MemoryDoc, botId, null);
+			const state = memoryState(doc);
+			if (state.revision !== expectedRevision)
+				throw new ProtocolError("request_conflict", "Memory changed. Reload before saving your draft.");
+			const content = next(state);
+			checkMemorySize(content);
+			const { history, ...previous } = state;
+			doc.history = [...history, previous].slice(-MEMORY_HISTORY_LIMIT);
 			doc.content = content;
-			return content;
+			doc.revision = state.revision + 1;
+			doc.source = source;
+			doc.updatedAt = Date.now();
+			delete doc.restoredFrom;
+			if (restoredFrom !== undefined) doc.restoredFrom = restoredFrom;
+			return JSON.parse(JSON.stringify(memoryState(doc))) as MemoryState;
 		}, this.#context);
 	}
 
-	/** Edit one memory section in a single commit, as `memory_update` does. Rejects a result above the limit. */
-	async editMemory(botId: BotId, edit: MemoryEdit): Promise<string> {
-		await this.#requireRecord(botId);
+	/** Receipt and edit commit together; replay cannot overwrite a later user correction. */
+	async editMemory(botId: BotId, edit: MemoryEdit, invocationId: string): Promise<number> {
+		const fingerprint = createHash("sha256")
+			.update(JSON.stringify([botId, edit.action, edit.section, edit.content, edit.expectedRevision]))
+			.digest("hex");
 		return this.#harness.commit(async (tx) => {
+			const receipt = await tx.doc(MemoryReceiptDoc, invocationId, null);
+			if (receipt.fingerprint) {
+				if (receipt.fingerprint !== fingerprint) throw new ProtocolError("request_conflict", "Memory invocation arguments changed");
+				return receipt.revision!;
+			}
+			const record = (await tx.doc(BotsDoc)).bots[botId];
+			if (!record || record.status === "deleted") throw new ProtocolError("not_found", "Unknown or deleted Bot");
 			const doc = await tx.doc(MemoryDoc, botId, null);
-			const next = applyMemoryEdit(doc.content, edit);
-			checkMemorySize(next);
-			doc.content = next;
-			return next;
+			const state = memoryState(doc);
+			if (state.revision !== edit.expectedRevision)
+				throw new ProtocolError("request_conflict", "Memory changed. Review the refreshed memory system section before trying again.");
+			const content = applyMemoryEdit(state.content, edit);
+			checkMemorySize(content);
+			const { history, ...previous } = state;
+			doc.history = [...history, previous].slice(-MEMORY_HISTORY_LIMIT);
+			doc.content = content;
+			doc.revision = state.revision + 1;
+			doc.source = "model";
+			doc.updatedAt = Date.now();
+			delete doc.restoredFrom;
+			receipt.fingerprint = fingerprint;
+			receipt.revision = doc.revision;
+			return doc.revision;
 		}, this.#context);
 	}
 
@@ -930,4 +1005,8 @@ async function committedManagement(tx: Tx, proposal?: BotManagementProposal): Pr
 }
 async function completeManagement(tx: Tx, proposal: BotManagementProposal | undefined, result: BotProfile): Promise<void> {
 	if (proposal) (await tx.doc(ManagementDoc)).operations[proposal.invocationId] = { ...proposal, result, completedAt: Date.now() };
+}
+
+function revisionedInstructions(instructions: string, revision: number): string {
+	return `OpenBot profile revision: ${revision}.\n${instructions}`;
 }

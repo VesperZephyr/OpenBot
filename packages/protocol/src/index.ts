@@ -4,6 +4,16 @@
  * dependency is TypeBox, for the runtime schemas in `schemas.ts`.
  */
 
+export type MemorySnapshot = {
+	readonly content: string;
+	readonly revision: number;
+	readonly source: "legacy" | "user" | "model" | "restore";
+	readonly updatedAt: number | null;
+	readonly restoredFrom?: number;
+};
+export type MemoryState = MemorySnapshot & { readonly history: readonly MemorySnapshot[] };
+export const MEMORY_HISTORY_LIMIT = 20;
+
 export const PROTOCOL_VERSION = 1 as const;
 
 /** The execution destination every invocation, grant, and approval is bound to. */
@@ -347,6 +357,7 @@ export type HostMethods = {
 	"bots.update": {
 		params: {
 			readonly botId: BotId;
+			readonly expectedRevision?: number;
 			readonly name?: string;
 			readonly role?: string;
 			readonly instructions?: string;
@@ -378,10 +389,14 @@ export type HostMethods = {
 		result: RedactedSettings;
 	};
 	"credentials.delete": { params: { readonly providerId: string }; result: RedactedSettings };
-	"bots.memory.get": { params: { readonly botId: BotId }; result: { readonly content: string } };
+	"bots.memory.get": { params: { readonly botId: BotId }; result: MemoryState };
 	"bots.memory.update": {
-		params: { readonly botId: BotId; readonly content: string };
-		result: { readonly content: string };
+		params: { readonly botId: BotId; readonly content: string; readonly expectedRevision: number };
+		result: MemoryState;
+	};
+	"bots.memory.restore": {
+		params: { readonly botId: BotId; readonly revision: number; readonly expectedRevision: number };
+		result: MemoryState;
 	};
 	/** New topic: the Bot's next request starts from an empty context; memory and stored history stay. */
 	"conversations.reset": { params: { readonly botId: BotId }; result: null };
@@ -453,6 +468,7 @@ export const HOST_METHODS = [
 	"credentials.delete",
 	"bots.memory.get",
 	"bots.memory.update",
+	"bots.memory.restore",
 	"conversations.reset",
 	"policy.get",
 	"policy.update",
@@ -836,8 +852,13 @@ export const TOOL_CATALOG = [
 				},
 				section: string("Section heading without the ## prefix, such as Preferences."),
 				content: string("Markdown to add, or the complete new section text."),
+				expectedRevision: {
+					type: "integer",
+					minimum: 0,
+					description: "Current revision from your latest memory system section. On conflict, review that refreshed section before retrying.",
+				},
 			},
-			["action", "section", "content"],
+			["action", "section", "content", "expectedRevision"],
 		),
 	},
 ] as const satisfies readonly ToolDefinition[];
