@@ -2,15 +2,20 @@
  * Renderer state. Every Host-owned value is a snapshot fetched through the preload API and replaced by events; the
  * renderer never keeps its own copy of the transcript or settings.
  */
-import type { BotSummary, ConversationSnapshot, ModelSummary, RedactedSettings } from "@openbot/protocol";
+import type { Group, BotSummary, ConversationSnapshot, ModelSummary, RedactedSettings } from "@openbot/protocol";
 import { create } from "zustand";
 import { ERROR_PREFIX, type HostState } from "../../shared/api";
 
-export type View = { readonly kind: "bot"; readonly botId: string } | { readonly kind: "settings" } | { readonly kind: "home" };
+export type View =
+	| { readonly kind: "group"; readonly groupId: string }
+	| { readonly kind: "bot"; readonly botId: string }
+	| { readonly kind: "settings" }
+	| { readonly kind: "home" };
 
 type State = {
 	host: HostState;
 	bots: readonly BotSummary[];
+	groups: readonly Group[];
 	conversations: Readonly<Record<string, ConversationSnapshot>>;
 	settings: RedactedSettings | undefined;
 	models: readonly ModelSummary[];
@@ -24,6 +29,7 @@ type State = {
 export const useStore = create<State>(() => ({
 	host: { status: "starting" },
 	bots: [],
+	groups: [],
 	conversations: {},
 	settings: undefined,
 	models: [],
@@ -43,6 +49,10 @@ export function errorMessage(error: unknown): string {
 
 export function report(error: unknown): void {
 	useStore.setState({ notice: errorMessage(error) });
+}
+
+export async function refreshGroups(): Promise<void> {
+	useStore.setState({ groups: await api["groups.list"]({}) });
 }
 
 export async function refreshBots(): Promise<void> {
@@ -76,7 +86,11 @@ export async function sendMessage(botId: string, text: string): Promise<void> {
 export function connect(): () => void {
 	const stopEvents = window.openbot.onEvent((event) => {
 		switch (event.type) {
+			case "groups.changed":
+				void refreshGroups().catch(report);
+				return;
 			case "bots.changed":
+				void refreshGroups().catch(report);
 				void refreshBots().catch(report);
 				return;
 			case "conversation.updated": {
@@ -109,7 +123,7 @@ export function connect(): () => void {
 
 async function loadAll(): Promise<void> {
 	try {
-		await Promise.all([refreshBots(), refreshSettings()]);
+		await Promise.all([refreshBots(), refreshGroups(), refreshSettings()]);
 		const { view, onboarding, settings, bots } = useStore.getState();
 		// Decided once per window: later Host restarts never interrupt or restart the flow.
 		if (onboarding === undefined && settings !== undefined) useStore.setState({ onboarding: needsOnboarding(settings, bots) });
@@ -129,7 +143,12 @@ async function loadAll(): Promise<void> {
  * configuration file with a provider (for example one the development setup wrote) skips the setup screen.
  */
 export function needsOnboarding(settings: RedactedSettings, bots: readonly BotSummary[]): boolean {
-	return settings.setupComplete !== true && settings.defaultModel === undefined && bots.every((bot) => bot.kind === "core") && !settings.providers.some((provider) => provider.configured);
+	return (
+		settings.setupComplete !== true &&
+		settings.defaultModel === undefined &&
+		bots.every((bot) => bot.kind === "core") &&
+		!settings.providers.some((provider) => provider.configured)
+	);
 }
 
 export { api };

@@ -54,6 +54,10 @@ export function createToolRouter(options: {
 		approvals: options.approvals,
 		executor: options.executor,
 		hostTools: {
+			group_inspect: (_args, _signal, call) => options.service().manageGroups(call),
+			group_create: (_args, _signal, call) => options.service().manageGroups(call),
+			group_update: (_args, _signal, call) => options.service().manageGroups(call),
+			group_dissolve: (_args, _signal, call) => options.service().manageGroups(call),
 			bot_inspect: (_args, _signal, call) => options.service().manageBots(call),
 			bot_create: (_args, _signal, call) => options.service().manageBots(call),
 			bot_update: (_args, _signal, call) => options.service().manageBots(call),
@@ -67,7 +71,12 @@ export function createToolRouter(options: {
 		},
 		policy: {
 			// Policy is read fresh for every call, so a rule or grant change applies to the next call (Section 5.3).
-			decide: async (call, definition) => definition.capability === "bot.management" ? options.service().management.prepare(call) : decide(call, definition, await policyFor(call.tool)),
+			decide: async (call, definition) =>
+				definition.capability === "group.management"
+					? options.service().groups.prepare(call)
+					: definition.capability === "bot.management"
+						? options.service().management.prepare(call)
+						: decide(call, definition, await policyFor(call.tool)),
 			// The current grants; an approved call outside them may touch exactly the path the user saw on the card.
 			grants: async (call, approvedOnce) => {
 				const { grants } = await policyFor(call.tool);
