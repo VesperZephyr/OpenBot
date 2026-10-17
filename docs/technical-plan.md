@@ -1,6 +1,6 @@
 # OpenBot Technical Plan
 
-Last updated: 2026-10-16.
+Last updated: 2026-10-17.
 
 This plan turns [the architecture](architecture.md) into an ordered sequence of work. The architecture defines contracts and boundaries; this document records what exists, what each milestone builds, how each step is verified, and which decisions are still open. When the two disagree, fix the architecture first, then update this plan.
 
@@ -28,6 +28,8 @@ Each section marks state explicitly: **Implemented** means code in the repositor
 Phase 1 (MVP, backlog B1–B8) is implemented on `feat/mvp`; each batch's design and as-built notes are in [`docs/tasks/`](tasks/README.md). The MVP acceptance list in [the backlog](backlog.md) still needs the owner's run of the real app and the e2e suites. Phase 2 enhancements (B9–B15) and Phase 3 computer control follow.
 
 ### 1.2 Known Gaps in Existing Code
+
+[D1: Core Bot, Specialist Bots, and Model Sources](tasks/d1-bot-product-design.md) is a design proposal for the next product increment. Current code has per-Bot instructions and memory, but no protected Core identity or model-facing Bot/group management. Duplication currently copies learned memory; D1 proposes a fresh-memory default. Group channel contexts, management authority, and the proposed B16–B19 sequence require separate execution specs and architecture updates before implementation.
 
 These are deliberate shortcuts or missing pieces in implemented code. Each one is assigned to a milestone below.
 

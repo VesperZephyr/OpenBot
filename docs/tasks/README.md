@@ -57,6 +57,8 @@ Dated entries added during execution. Empty when ready.
 
 ## Index
 
+Product design (not an implementation task): [D1: Core Bot, Specialist Bots, and Model Sources](d1-bot-product-design.md), **draft**. Research, recommended contracts, and proposed B16–B19/B13 sequencing; no product code changes.
+
 Phase 1 (MVP). Every batch is implemented on `feat/mvp` and in review until the owner's acceptance run.
 
 | ID                            | Title                                   | Status        |

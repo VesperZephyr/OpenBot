@@ -442,6 +442,8 @@ Prefer a connector over browser automation when one exists.
 
 ### 5.7 Bots, Memory, Group Chats, and Handoff
 
+Product design under review: [D1: Core Bot, Specialist Bots, and Model Sources](tasks/d1-bot-product-design.md) proposes a protected default Bot, Core-only roster/group management, revisioned memory controls, and separate per-Bot conversation contexts for each group. These changes are not implemented and do not replace the contracts below until their execution specs are ready.
+
 A Bot profile is an OpenBot session document containing `botId`, name, avatar, role description, instructions, model selection, enabled tool families, default working directory, and status (active, hidden, deleted). Creating a Bot creates its main Pi conversation and applies the profile through `configure()`.
 
 **Memory.** Each Bot has a memory: up to 8 KB of Markdown with stable preferences, role context, and summaries of prior work, kept in the session document `openbot.memory` keyed by `botId`, so it belongs to the Bot and survives new topics. A `memory` prompt section renders it; `memory_update` replaces or appends one section; the user can view and edit it. Memory is guidance, not a source of truth: for consequential decisions the Bot checks the current source.
@@ -469,6 +471,8 @@ A Bot profile is an OpenBot session document containing `botId`, name, avatar, r
 - Triggers are time-based in the first release. Event triggers require a local event source, such as a connector that supports polling or a file-system watch; there is no inbound webhook endpoint.
 
 ### 5.9 Credentials and Secrets
+
+[D1](tasks/d1-bot-product-design.md#model-sources) proposes separate built-in and custom setup surfaces over the existing resolved model registry, including explicit source and override metadata. It does not change credential precedence or add authentication flows.
 
 Model, search, and connector credentials are stored in the macOS Keychain and loaded by the Host as needed. Renderers receive redacted settings.
 

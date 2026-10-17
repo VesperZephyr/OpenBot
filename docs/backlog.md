@@ -56,6 +56,8 @@ The MVP is done when all of these pass on a packaged build installed on a Mac th
 
 Approach only; each becomes a spec when Phase 1 lands.
 
+Product design under review: [D1](tasks/d1-bot-product-design.md) proposes prioritizing B16 (built-in/custom model setup), B17 (permanent Core identity), B18 (Core Bot management), and B19 (instructions and memory controls), followed by splitting B13 into channel contexts, group lifecycle, and bounded collaboration. These are proposed batches, not implemented features or ready execution specs. B13's conversation mapping and management authority must be reconciled with D1 before implementation; connectors, routines, and computer control are not prerequisites for Core identity.
+
 - **B9. MCP connectors** (architecture M7). Executor-supervised stdio servers and HTTP sessions, credentials from the Keychain injected only into their own server, tools named `mcp__<server>__<tool>` through Tool Router with receipts, a Connect apps page. OAuth through the default browser comes after the first token-based connectors work.
 - **B10. Skills.** Library at `<data>/skills/<name>/SKILL.md`, a `skills` prompt section listing names and descriptions, `skill_load`, `skill_save` with user confirmation, `/` in the composer to attach one.
 - **B11. Routines** (after B2). Scheduler in `server-core` with occurrence request IDs `routine:<id>:<scheduledAt>`, a fresh conversation per occurrence admitted through B2's queue, test run, coalesced catch-up after sleep, Grok Bot limits (50 per Bot, 5-minute spacing, 20 runs of history), `routine_propose` with a confirmation card.
