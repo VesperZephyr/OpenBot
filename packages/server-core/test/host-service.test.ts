@@ -40,6 +40,7 @@ describe("HostService", () => {
 	let configFile: MemoryConfigFile;
 	/** Bots whose background commands the service asked the Host to stop. */
 	let stoppedBots: string[];
+	let audit: unknown[];
 	/** Resolves with the first conversation snapshot that satisfies the predicate. */
 	let nextSnapshot: (predicate: (snapshot: ConversationSnapshot) => boolean) => Promise<ConversationSnapshot>;
 
@@ -47,6 +48,7 @@ describe("HostService", () => {
 		directory = await mkdtemp(join(tmpdir(), "openbot-host-"));
 		runtime = await BotRuntime.open({ databasePath: join(directory, "db.sqlite"), models: scriptedModels("Done.").models });
 		events = [];
+		audit = [];
 		stoppedBots = [];
 		updated = [];
 		secrets = new MemorySecretStore();
@@ -60,6 +62,7 @@ describe("HostService", () => {
 		};
 		service = new HostService({
 			runtime,
+			audit: (event) => audit.push(event),
 			secrets,
 			status,
 			dataDirectory: directory,
@@ -255,9 +258,8 @@ describe("HostService", () => {
 			service.handle("models.addProvider", { id: "y", name: "Y", baseUrl: "file:///etc", api: "openai-completions", modelIds: ["m"] }),
 		).rejects.toThrow("http");
 		configFile.text = "{ // comment\n }";
-		await expect(
-			service.handle("models.addProvider", { id: "y", name: "Y", baseUrl: "http://x", api: "openai-completions", modelIds: ["m"] }),
-		).rejects.toThrow("by hand");
+		await service.handle("models.addProvider", { id: "y", name: "Y", baseUrl: "http://x", api: "openai-completions", modelIds: ["m"] });
+		expect(configFile.text).toContain("// comment");
 	});
 
 	it("tests a model with a real request and reports failures as results", async () => {
@@ -266,4 +268,17 @@ describe("HostService", () => {
 		expect(unknown.ok).toBe(false);
 		expect(unknown.error).toContain("Unknown model");
 	});
+	it("serializes provider additions and records content-free outcomes", async () => {
+		await Promise.all(["one", "two"].map((id) => service.handle("models.addProvider", { id, name: "private-name", baseUrl: "https://example.com/private", api: "openai-completions", modelIds: ["private-model"] })));
+		expect(Object.keys(JSON.parse(configFile.text!).providers)).toEqual(["one", "two"]);
+		await expect(service.handle("models.addProvider", { id: "one", name: "secret", baseUrl: "https://example.com", api: "openai-completions", modelIds: ["m"] })).rejects.toThrow("already exists");
+		await service.handle("credentials.set", { providerId: "one", apiKey: "private-key" });
+		expect(JSON.stringify(audit)).not.toMatch(/private|secret|example/);
+		expect(audit).toEqual(expect.arrayContaining([expect.objectContaining({ operation: "models.addProvider", outcome: "failed" }), expect.objectContaining({ operation: "credentials.set", outcome: "succeeded" })]));
+		const models = await service.handle("models.list", {});
+		expect(models.find((m) => m.provider === "one")).toMatchObject({ source: "custom", overridden: false, endpoint: "https://example.com" });
+		configFile.text = '{"providers":{"faux":{"baseUrl":"https://example.com/secret"}}}';
+		expect((await service.handle("models.list", {})).find((m) => m.provider === "faux")).toMatchObject({ source: "builtin", overridden: true });
+	});
+
 });

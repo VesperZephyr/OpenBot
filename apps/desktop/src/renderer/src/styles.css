@@ -950,3 +950,16 @@ textarea {
 	gap: 8px;
 	margin: 10px 0;
 }
+
+/* Model source choices share the same compact form in setup and Settings. */
+.model-setup { max-width: 680px; }
+.model-setup fieldset { border: 0; padding: 0; margin: 16px 0; min-width: 0; }
+.model-source-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+.model-source-switch button { padding: 16px; text-align: left; display: grid; gap: 4px; }
+.model-source-switch button[aria-checked="true"] { border-color: var(--text); background: var(--surface-raised); }
+.model-source-switch span, .model-caption { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.model-caption { overflow-wrap: anywhere; margin: 10px 0; }
+.model-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.model-setup .field { margin-bottom: 12px; }
+.model-result { color: var(--text); border-left: 2px solid var(--text); padding-left: 12px; }
+@media (max-width: 650px) { .model-source-switch, .model-form-grid { grid-template-columns: 1fr; } }

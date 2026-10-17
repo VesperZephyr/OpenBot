@@ -25,7 +25,7 @@ describe("Desktop MVP", () => {
 		await page.getByRole("heading", { name: "Welcome to OpenBot" }).waitFor();
 		await h.shot("01-onboarding");
 
-		await page.getByRole("radio", { name: /^Other/ }).click();
+		await page.getByRole("radio", { name: /^Custom provider/ }).click();
 		await page.getByLabel("Name").fill("Scripted");
 		await page.getByLabel("Base URL").fill(h.modelBaseUrl);
 		await page.getByLabel("Model ID").fill("scripted");

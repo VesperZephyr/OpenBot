@@ -456,6 +456,9 @@ export class BotRuntime {
 			provider: model.provider,
 			modelId: model.id,
 			name: model.name,
+			source: this.#builtins.has(model.provider) ? "builtin" : "custom",
+			overridden: this.#builtins.has(model.provider) && this.#configuredIds.includes(model.provider),
+			endpoint: safeEndpoint(model.baseUrl),
 			reasoning: model.reasoning,
 			images: model.input.includes("image"),
 		}));
@@ -471,7 +474,7 @@ export class BotRuntime {
 	 */
 	async testModel(ref: ModelRef, timeoutMs = MODEL_TEST_TIMEOUT_MS): Promise<{ readonly ok: boolean; readonly error?: string }> {
 		const model = this.#models.getModel(ref.provider, ref.modelId);
-		if (model === undefined) return { ok: false, error: `Unknown model ${ref.provider}/${ref.modelId}` };
+		if (model === undefined) return { ok: false, error: "Unknown model. Reload configuration or choose an available model." };
 		try {
 			const answer = await this.#models.completeSimple(
 				model,
@@ -479,11 +482,11 @@ export class BotRuntime {
 				{ maxTokens: 16, signal: AbortSignal.timeout(timeoutMs) },
 			);
 			if (answer.stopReason === "error" || answer.stopReason === "aborted") {
-				return { ok: false, error: answer.errorMessage ?? (answer.stopReason === "aborted" ? "Timed out" : "The request failed") };
+				return { ok: false, error: modelTestError(answer.errorMessage ?? answer.stopReason) };
 			}
 			return { ok: true };
 		} catch (error) {
-			return { ok: false, error: error instanceof Error ? error.message : String(error) };
+			return { ok: false, error: modelTestError(error instanceof Error ? error.message : String(error)) };
 		}
 	}
 
@@ -815,4 +818,18 @@ async function botOfConversation(
 	const record = Object.values(bots).find((bot) => String(bot.conversationId) === conversationId);
 	if (record === undefined) throw new Error(`No Bot owns conversation ${conversationId}`);
 	return record.botId;
+}
+
+/** Metadata and test failures can contain provider-controlled secrets; return only safe, fixed diagnostics. */
+export function safeEndpoint(value: string): string {
+	const url = URL.parse(value);
+	return url !== null && (url.protocol === "http:" || url.protocol === "https:") ? url.origin : "Custom endpoint";
+}
+
+export function modelTestError(message: string): string {
+	if (/401|403|api.key|auth|credential/i.test(message)) return "Authentication failed. Check the provider key and access.";
+	if (/timeout|timed out|abort/i.test(message)) return "The request timed out. Check the endpoint and try again.";
+	if (/404|not found|unknown model/i.test(message)) return "Model or endpoint not found. Check the model ID and base URL.";
+	if (/429|rate.limit/i.test(message)) return "The provider is rate limiting requests. Try again later.";
+	return "The model request failed. Check the endpoint, protocol and model ID.";
 }

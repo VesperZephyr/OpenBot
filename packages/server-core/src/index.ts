@@ -50,7 +50,11 @@ export interface ModelConfigFile {
 	readonly environment: ConfigEnvironment;
 }
 
+export type OperationAudit = { readonly operationId: string; readonly operation: HostMethod | "core.ensure"; readonly at: number; readonly durationMs: number; readonly outcome: "succeeded" | "failed" };
+
 export type HostServiceOptions = {
+	/** Content-free diagnostics; authoritative action state stays in its own durable store. */
+	readonly audit?: (event: OperationAudit) => void;
 	readonly runtime: BotRuntime;
 	readonly secrets: SecretStore;
 	readonly status: HostStatus;
@@ -79,6 +83,8 @@ export type HostServiceOptions = {
 type Handlers = { [M in HostMethod]: (params: HostParams<M>) => Promise<HostResult<M>> };
 
 export class HostService {
+	readonly #audit: (event: OperationAudit) => void;
+	#configWrites: Promise<unknown> = Promise.resolve();
 	readonly #runtime: BotRuntime;
 	readonly #secrets: SecretStore;
 	readonly #status: HostStatus;
@@ -100,6 +106,7 @@ export class HostService {
 	#configStatus: ModelConfigStatus = { providers: [], errors: [] };
 
 	constructor(options: HostServiceOptions) {
+		this.#audit = options.audit ?? (() => {});
 		this.#runtime = options.runtime;
 		this.#secrets = options.secrets;
 		this.#status = options.status;
@@ -202,14 +209,18 @@ export class HostService {
 			"grants.list": () => this.#policy.grants(),
 			"grants.revoke": ({ id }) => this.#policy.revoke(id),
 			"grants.add": ({ path, access }) => this.#policy.add(path, access),
-			"models.addProvider": async (provider) => {
-				await this.#reloadModelConfig();
-				const declared = new Set(this.#configStatus.providers.filter((entry) => !entry.overlay).map((entry) => entry.providerId));
-				if (this.#runtime.listProviders().some(({ providerId }) => providerId === provider.id && !declared.has(providerId))) {
-					throw new ProtocolError("invalid_request", `"${provider.id}" is a built-in provider; choose another ID`);
-				}
-				await this.#modelConfig.write(mergeProvider(await this.#modelConfig.read(), provider));
-				return this.#settings();
+			"models.addProvider": (provider) => {
+				const next = this.#configWrites.catch(() => {}).then(async () => {
+					await this.#reloadModelConfig();
+					const declared = new Set(this.#configStatus.providers.filter((entry) => !entry.overlay).map((entry) => entry.providerId));
+					if (this.#runtime.listProviders().some(({ providerId }) => providerId === provider.id && !declared.has(providerId))) {
+						throw new ProtocolError("invalid_request", "This is a built-in provider; choose another ID");
+					}
+					await this.#modelConfig.write(mergeProvider(await this.#modelConfig.read(), provider));
+					return this.#settings();
+				});
+				this.#configWrites = next;
+				return next;
 			},
 			"models.test": async (model) => {
 				await this.#reloadModelConfig();
@@ -285,7 +296,17 @@ export class HostService {
 	async handle<M extends HostMethod>(method: M, params: HostParams<M>): Promise<HostResult<M>> {
 		const handler: Handlers[M] | undefined = this.#handlers[method];
 		if (handler === undefined) throw new ProtocolError("unknown_method", `Unknown method: ${method}`);
-		return handler(params);
+		const at = this.#now();
+		let outcome: "succeeded" | "failed" = "failed";
+		try {
+			const result = await handler(params);
+			outcome = method === "models.test" && (result as { ok?: boolean }).ok === false ? "failed" : "succeeded";
+			return result;
+		} finally {
+			if (!method.endsWith(".get") && !method.endsWith(".list") && !["host.status", "conversations.snapshot", "conversations.subscribe", "conversations.markRead", "files.resolveReveal"].includes(method)) {
+				try { this.#audit({ operationId: randomUUID(), operation: method, at, durationMs: this.#now() - at, outcome }); } catch { /* Diagnostics must not undo a committed action. */ }
+			}
+		}
 	}
 
 	async #listBots(): Promise<BotSummary[]> {
@@ -328,6 +349,7 @@ export class HostService {
 					providerId,
 					name,
 					source: configured === undefined ? ("builtin" as const) : ("config" as const),
+					overlay: configured?.overlay ?? false,
 					configured: keyStored || keyFromConfig,
 					keyStored,
 				};

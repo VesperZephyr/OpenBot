@@ -69,3 +69,9 @@ Product design under review: [D1](tasks/d1-bot-product-design.md) proposes prior
 ## Phase 3: Computer control
 
 Architecture M3 (managed browser, takeover, secret requests), M6 (desktop computer use with the signed Swift helper and control lease), and M8 (dictation, teach-a-task). These need packaging and signing from B8 for TCC attribution; start with spikes before specs: two Bots' browser windows not throttled in the background, and the disclaimed helper receiving Screen Recording and Accessibility grants.
+
+## Product foundation implementation
+
+- [B16: Model sources](tasks/b16-model-sources.md): implemented on `task/b16-model-sources`, awaiting review; 183 unit tests and 27 background e2e tests pass.
+- [B17: Core Bot](tasks/b17-core-bot.md): ready, next. Only the Core is seeded; Specialists require user creation.
+- Remaining specs: [B18](tasks/b18-core-management.md), [B19](tasks/b19-memory-controls.md), [B13a](tasks/b13a-channel-contexts.md), [B13b](tasks/b13b-group-lifecycle.md), [B13c](tasks/b13c-collaboration.md). Agent runtime behavior continues to reuse Pi; later custom orchestration/memory work is not part of this increment.

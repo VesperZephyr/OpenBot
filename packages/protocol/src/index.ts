@@ -253,6 +253,8 @@ export type ProviderSummary = {
 	readonly name: string;
 	/** `builtin` providers ship with OpenBot; `config` providers come from the user's model configuration file. */
 	readonly source: "builtin" | "config";
+	/** The local file overrides a bundled provider. */
+	readonly overlay?: boolean;
 	/** A key is available: stored in the Keychain, or (config providers) resolvable from the configuration. */
 	readonly configured: boolean;
 	/** A key is stored in the Keychain for this provider. */
@@ -273,6 +275,10 @@ export type RedactedSettings = {
 };
 
 export type ModelSummary = {
+	readonly source?: "builtin" | "custom";
+	readonly overridden?: boolean;
+	/** Origin only: never credentials, URL paths, query strings or headers. */
+	readonly endpoint?: string;
 	readonly provider: string;
 	readonly modelId: string;
 	readonly name: string;

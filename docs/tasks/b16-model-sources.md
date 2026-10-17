@@ -1,6 +1,6 @@
 # B16: Built-in and Custom Model Setup
 
-Status: ready
+Status: in review
 Branch: task/b16-model-sources
 Depends on: B7, B8, D1
 Architecture: Sections 5.9, 6.1, 6.5, 8.3
@@ -46,3 +46,7 @@ A successful tiny test proves text connectivity, not every tool/vision capabilit
 
 ## Open questions
 None. Advanced provider editing/removal and OAuth are explicitly separate follow-ups.
+
+## Verification record
+
+2026-10-17: `pnpm run check` passed (183 tests); `pnpm run e2e` passed (27 tests, 11 suites, background mode). Settings/onboarding screenshots inspected and an isolated background desktop explored with agent-browser. JSONC edits preserve comments and field values; formatting of the edited object may change. Real-provider and bilingual visual acceptance follows the integrated product pass.

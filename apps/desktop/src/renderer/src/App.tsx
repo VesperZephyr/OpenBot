@@ -18,6 +18,7 @@ import { PendingMessages, StopButton, StoppedNote } from "./runs";
 import { AlwaysAllow } from "./AlwaysAllow";
 import { CommandSettings, FolderSettings } from "./PolicySettings";
 import { ConfirmDeleteBot, DeleteBotItem, DuplicateBotItem } from "./BotLifecycle";
+import { ModelSetup } from "./ModelSetup";
 import { Onboarding } from "./Onboarding";
 import { transcriptRows } from "./steps";
 import { MessageTime, RevealButton, StepsRow } from "./TranscriptDetails";
@@ -691,9 +692,9 @@ function ModelSelect(props: {
 		>
 			<option value="">{props.emptyLabel}</option>
 			{/* Keep a stored model selectable even when its provider key was removed. */}
-			{props.value !== undefined && !configured.has(props.value.provider) && <option value={selected}>{selected}</option>}
+			{props.value !== undefined && !groups.some(([, list]) => list.some((m) => `${m.provider}/${m.modelId}` === selected)) && <option value={selected}>{selected} · Unavailable</option>}
 			{groups.map(([provider, list]) => (
-				<optgroup key={provider} label={provider}>
+				<optgroup key={provider} label={`${provider} · ${list[0]?.source === "custom" ? "Custom" : "Built-in"}${list[0]?.overridden ? " · Local override" : ""}`}>
 					{list.map((model) => (
 						<option key={model.modelId} value={`${model.provider}/${model.modelId}`}>
 							{model.name}
@@ -742,8 +743,10 @@ function Settings() {
 				/>
 			</div>
 
+			<div className="settings-group"><h2>Connect a model</h2><ModelSetup /></div>
+
 			<div className="settings-group">
-				<h2>Model providers</h2>
+				<h2>Provider credentials</h2>
 				<p className="muted">Keys are stored in the macOS Keychain and never shown again.</p>
 				<form className="key-form" onSubmit={saveKey}>
 					<select value={providerId} onChange={(event) => setProviderId(event.target.value)} aria-label="Provider">
@@ -825,7 +828,7 @@ function Settings() {
 			<div className="settings-group">
 				<h2>Data</h2>
 				<p className="muted">
-					Conversations are stored on this Mac in <code>{settings.dataDirectory}</code>.
+					Conversations, Bot memory and operation logs are stored on this Mac in <code>{settings.dataDirectory}</code>. No automatic analytics or log uploads. Your selected model and search providers receive task-relevant input when you use them.
 				</p>
 			</div>
 		</section>

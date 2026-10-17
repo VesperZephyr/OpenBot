@@ -1,9 +1,9 @@
 /**
  * Adding a provider to the user's model configuration file from the app (onboarding's "Other" endpoint). The entry is
- * merged into the existing document: other providers and top-level fields stay as they are, an entry with the same ID
- * is replaced. Keys never enter the file; the Keychain holds them under the provider ID, and a stored key takes
+ * merged into the existing document: other providers and top-level fields stay as they are, existing IDs are refused. Keys never enter the file; the Keychain holds them under the provider ID, and a stored key takes
  * precedence over any configured one.
  */
+import { applyEdits, modify, parse, type ParseError } from "jsonc-parser";
 import { type HostParams, ProtocolError } from "@openbot/protocol";
 
 export type CustomProvider = HostParams<"models.addProvider">;
@@ -20,24 +20,18 @@ export function mergeProvider(text: string | undefined, provider: CustomProvider
 	if (typeof providers !== "object" || providers === null || Array.isArray(providers)) {
 		throw new ProtocolError("invalid_request", 'The model configuration\'s "providers" is not an object');
 	}
+	if (Object.hasOwn(providers, provider.id)) throw new ProtocolError("invalid_request", "Provider ID already exists; choose a new ID or edit the local configuration file");
 	const entry = { name, baseUrl, api: provider.api, models: modelIds.map((id) => ({ id })) };
-	return `${JSON.stringify({ ...document, providers: { ...providers, [provider.id]: entry } }, null, 2)}\n`;
+	const source = text?.trim() ? text : "{}\n";
+	return applyEdits(source, modify(source, ["providers", provider.id], entry, { formattingOptions: { insertSpaces: true, tabSize: 2 } }));
 }
 
 function parseDocument(text: string | undefined): { readonly [key: string]: unknown } {
 	if (text === undefined || text.trim() === "") return {};
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(text.replace(/^\uFEFF/, ""));
-	} catch {
-		// Rewriting would drop the user's comments; leave such a file to them.
-		throw new ProtocolError(
-			"invalid_request",
-			"The model configuration file has comments or is not plain JSON; add the provider there by hand",
-		);
-	}
-	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-		throw new ProtocolError("invalid_request", "The model configuration file is not a JSON object");
+	const errors: ParseError[] = [];
+	const parsed: unknown = parse(text, errors, { allowTrailingComma: true });
+	if (errors.length > 0 || typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+		throw new ProtocolError("invalid_request", "The model configuration is not a valid JSONC object; fix it before adding a provider");
 	}
 	return Object.fromEntries(Object.entries(parsed));
 }
