@@ -90,6 +90,14 @@ const BotsDoc = defineDoc<{ bots: Record<string, BotRecord> }>({
 	initial: () => ({ bots: {} }),
 });
 
+const ChannelsDoc = defineDoc<{ channels: Record<string, { botId: string; channelId: string; conversationId: number }> }>({
+	kind: "openbot.channels",
+	version: 1,
+	scope: "session",
+	initial: () => ({ channels: {} }),
+});
+const channelKey = (botId: string, channelId: string): string => JSON.stringify([botId, channelId]);
+
 /** Application settings that live with the conversation store. */
 const SettingsDoc = defineDoc<{ defaultModel?: ModelRef; setupComplete?: boolean; language?: "en" | "zh-CN" }>({
 	kind: "openbot.settings",
@@ -198,7 +206,11 @@ export class BotRuntime {
 							.map((definition) => routedTool(definition, options.tools!.invoke)),
 			sections: botSections(async (input, context) => {
 				const bots = (await input.read.snapshot(BotsDoc, context))?.bots ?? {};
-				return Object.values(bots).find((bot) => bot.conversationId === Number(input.conversationId));
+				const direct = Object.values(bots).find((bot) => bot.conversationId === Number(input.conversationId));
+				const channel = Object.values((await input.read.snapshot(ChannelsDoc, context))?.channels ?? {}).find(
+					(item) => item.conversationId === Number(input.conversationId),
+				);
+				return direct ?? (channel ? bots[channel.botId] : undefined);
 			}),
 		});
 		const core = defineExtension({
@@ -257,8 +269,41 @@ export class BotRuntime {
 	 * The conversation ID routed tool calls of this Bot carry (`ToolInvoker` `conversationId`), from which the Tool
 	 * Router derives approval and invocation IDs.
 	 */
-	async conversationKey(botId: BotId): Promise<string> {
-		return String((await this.#requireRecord(botId)).conversationId);
+	async conversationKey(botId: BotId, channelId = "direct"): Promise<string> {
+		return String((await this.#contextRecord(botId, channelId)).conversationId);
+	}
+
+	async channels(): Promise<readonly { botId: string; channelId: string; conversationId: number }[]> {
+		return Object.values((await this.#harness.snapshot(ChannelsDoc, this.#context))?.channels ?? {});
+	}
+
+	async ensureChannel(botId: BotId, channelId: string): Promise<string> {
+		if (channelId === "direct") return this.conversationKey(botId);
+		if (!channelId.trim()) throw new ProtocolError("invalid_request", "Channel ID is empty");
+		const defaultModel = await this.defaultModel();
+		return this.#harness.commit(async (tx) => {
+			const bot = (await tx.doc(BotsDoc)).bots[botId];
+			if (!bot || bot.status === "deleted") throw new ProtocolError("not_found", "Unknown or deleted Bot");
+			const channels = await tx.doc(ChannelsDoc);
+			const key = channelKey(botId, channelId);
+			if (channels.channels[key]) return String(channels.channels[key].conversationId);
+			const conversation = await tx.createConversation({ ownership: { kind: "ownerless" } });
+			await configure(tx, conversation.id, {
+				...agentChange({ ...bot, ...((bot.model ?? defaultModel) ? { model: (bot.model ?? defaultModel)! } : {}) }),
+				instructions: revisionedInstructions(bot.instructions, bot.revision ?? 1),
+				extensions: [this.#extensions.bot],
+			});
+			channels.channels[key] = { botId, channelId, conversationId: conversation.id };
+			return String(conversation.id);
+		}, this.#context);
+	}
+
+	async #contextRecord(botId: BotId, channelId = "direct"): Promise<BotRecord> {
+		const bot = await this.#requireRecord(botId);
+		if (channelId === "direct") return bot;
+		const channel = (await this.#harness.snapshot(ChannelsDoc, this.#context))?.channels[channelKey(botId, channelId)];
+		if (!channel) throw new ProtocolError("not_found", "Unknown Bot channel");
+		return { ...bot, conversationId: channel.conversationId };
 	}
 
 	async listBots(): Promise<BotProfile[]> {
@@ -388,7 +433,12 @@ export class BotRuntime {
 				...(effectiveModel === undefined ? {} : { model: effectiveModel }),
 				...(change.thinkingLevel === undefined ? {} : { thinkingLevel: change.thinkingLevel }),
 			};
-			if (Object.keys(agent).length) await configure(tx, record.conversationId as PiConversationId, agent);
+			if (Object.keys(agent).length) {
+				await configure(tx, record.conversationId as PiConversationId, agent);
+				for (const channel of Object.values((await tx.doc(ChannelsDoc)).channels)) {
+					if (channel.botId === botId) await configure(tx, channel.conversationId as PiConversationId, agent);
+				}
+			}
 			doc.bots[botId] = updated;
 			const result = toProfile(updated);
 			await completeManagement(tx, proposal, result);
@@ -402,8 +452,14 @@ export class BotRuntime {
 	 * a run when the conversation went idle meanwhile. The same `requestId` returns the existing submission, so a retried
 	 * call never admits the message twice.
 	 */
-	async submit(botId: BotId, requestId: string, text: string, mode: "start" | "steer"): Promise<{ submissionId: string }> {
-		const conversation = await this.#conversation(await this.#requireRecord(botId));
+	async submit(
+		botId: BotId,
+		requestId: string,
+		text: string,
+		mode: "start" | "steer",
+		channelId = "direct",
+	): Promise<{ submissionId: string }> {
+		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		const submission = await conversation.submit(
 			{ type: "input", content: text, requestId, ...(mode === "steer" ? { whenBusy: "steer" as const } : {}) },
 			this.#context,
@@ -412,13 +468,21 @@ export class BotRuntime {
 	}
 
 	/** Where a submission of this Bot stands; `absent` when Pi has no such submission for the Bot's conversation. */
-	async submissionState(botId: BotId, submissionId: string): Promise<"queued" | "placed" | "done" | "unanswered" | "absent"> {
-		return (await this.#ownedSubmission(botId, submissionId))?.status.status ?? "absent";
+	async submissionState(
+		botId: BotId,
+		submissionId: string,
+		channelId = "direct",
+	): Promise<"queued" | "placed" | "done" | "unanswered" | "absent"> {
+		return (await this.#ownedSubmission(botId, submissionId, channelId))?.status.status ?? "absent";
 	}
 
 	/** Resolve once Pi settled the submission; also after a reopen, from the stored record. */
-	async waitSubmission(botId: BotId, submissionId: string): Promise<{ status: "done" | "unanswered"; reason?: string }> {
-		const owned = await this.#ownedSubmission(botId, submissionId);
+	async waitSubmission(
+		botId: BotId,
+		submissionId: string,
+		channelId = "direct",
+	): Promise<{ status: "done" | "unanswered"; reason?: string }> {
+		const owned = await this.#ownedSubmission(botId, submissionId, channelId);
 		if (owned === undefined) throw new ProtocolError("not_found", `Unknown submission ${submissionId} for Bot ${botId}`);
 		const settled = await owned.submission.wait(this.#context);
 		return settled.status === "done" ? { status: "done" } : { status: "unanswered", reason: settled.reason };
@@ -428,8 +492,8 @@ export class BotRuntime {
 	 * Withdraw a submission that still waits in Pi's queue; one already placed stays with its run. Used when a run ended
 	 * without an answer, because Pi keeps queued inputs until the next input arrives.
 	 */
-	async withdraw(botId: BotId, submissionId: string): Promise<void> {
-		const record = await this.#requireRecord(botId);
+	async withdraw(botId: BotId, submissionId: string, channelId = "direct"): Promise<void> {
+		const record = await this.#contextRecord(botId, channelId);
 		await this.#harness.abortSubmission(Number(submissionId) as SubmissionId, this.#context, record.conversationId as PiConversationId);
 	}
 
@@ -438,8 +502,8 @@ export class BotRuntime {
 		return runStore(this.#harness, this.#context);
 	}
 
-	async #ownedSubmission(botId: BotId, submissionId: string) {
-		const record = await this.#requireRecord(botId);
+	async #ownedSubmission(botId: BotId, submissionId: string, channelId = "direct") {
+		const record = await this.#contextRecord(botId, channelId);
 		const submission = await this.#harness.submission(Number(submissionId) as SubmissionId, this.#context);
 		if (submission === undefined) return undefined;
 		const status = await submission.status(this.#context);
@@ -447,8 +511,8 @@ export class BotRuntime {
 	}
 
 	/** Submit and wait for the answer; for harnesses and tests. */
-	async submitAndWait(botId: BotId, requestId: string, text: string): Promise<SubmitResult> {
-		const conversation = await this.#conversation(await this.#requireRecord(botId));
+	async submitAndWait(botId: BotId, requestId: string, text: string, channelId = "direct"): Promise<SubmitResult> {
+		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		const submission = await conversation.submit({ type: "input", content: text, requestId }, this.#context);
 		const settled = await submission.wait(this.#context);
 		if (settled.type !== "input") throw new ProtocolError("invalid_request", "Expected an input submission");
@@ -459,8 +523,8 @@ export class BotRuntime {
 	}
 
 	/** Abort the Bot's work: withdraw queued inputs and abort the active run; resolves once the conversation is idle. */
-	async cancel(botId: BotId): Promise<void> {
-		const conversation = await this.#conversation(await this.#requireRecord(botId));
+	async cancel(botId: BotId, channelId = "direct"): Promise<void> {
+		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		await conversation.abort(this.#context);
 	}
 
@@ -468,8 +532,8 @@ export class BotRuntime {
 	 * New topic: the next request starts from an empty context. Older entries stay in storage and in the transcript;
 	 * memory is a document, so it carries over. Pi queues the reset while the conversation is busy.
 	 */
-	async reset(botId: BotId): Promise<void> {
-		const conversation = await this.#conversation(await this.#requireRecord(botId));
+	async reset(botId: BotId, channelId = "direct"): Promise<void> {
+		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		await conversation.reset(undefined, this.#context);
 	}
 
@@ -562,17 +626,17 @@ export class BotRuntime {
 	}
 
 	/** Leave a "stopped" note in the transcript, after the user cancelled a Run. */
-	async markStopped(botId: BotId): Promise<void> {
-		const conversation = await this.#conversation(await this.#requireRecord(botId));
+	async markStopped(botId: BotId, channelId = "direct"): Promise<void> {
+		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		await conversation.submit({ type: "write", entry: { kind: STOPPED_ENTRY } }, this.#context);
 	}
 
 	/** The Bot's conversation without pending approvals; the Host adds those (`approvals` is empty here). */
-	async snapshot(botId: BotId): Promise<ConversationSnapshot> {
-		const record = await this.#requireRecord(botId);
+	async snapshot(botId: BotId, channelId = "direct"): Promise<ConversationSnapshot> {
+		const record = await this.#contextRecord(botId, channelId);
 		const view = await (await this.#conversation(record)).viewState(this.#context);
 		try {
-			return await this.#project(record, view.value);
+			return await this.#project(record, view.value, channelId);
 		} finally {
 			view.dispose();
 		}
@@ -582,17 +646,17 @@ export class BotRuntime {
 	 * Observe a Bot's conversation. The listener receives a projected snapshot after every commit that changes the
 	 * view, starting with the current one, in commit order. Returns a function that stops observation.
 	 */
-	async observe(botId: BotId, listener: (snapshot: ConversationSnapshot) => void): Promise<() => void> {
-		const record = await this.#requireRecord(botId);
+	async observe(botId: BotId, listener: (snapshot: ConversationSnapshot) => void, channelId = "direct"): Promise<() => void> {
+		const record = await this.#contextRecord(botId, channelId);
 		const view = await (await this.#conversation(record)).viewState(this.#context);
-		listener(await this.#project(record, view.value));
+		listener(await this.#project(record, view.value, channelId));
 		// Projection may read older entries, so updates are serialized to keep snapshots in commit order.
 		let queue = Promise.resolve();
 		let stopped = false;
 		const unsubscribe = view.subscribe((value) => {
 			queue = queue
 				.then(async () => {
-					const snapshot = await this.#project(record, value);
+					const snapshot = await this.#project(record, value, channelId);
 					if (!stopped) listener(snapshot);
 				})
 				.catch((error: unknown) => console.error(`Projecting the conversation of ${botId} failed`, error));
@@ -677,6 +741,9 @@ export class BotRuntime {
 		for (const record of Object.values((await this.#harness.snapshot(BotsDoc, this.#context))?.bots ?? {})) {
 			if (record.model !== undefined) continue;
 			await (await this.#conversation(record)).configure({ model }, this.#context);
+			for (const channel of await this.channels())
+				if (channel.botId === record.botId)
+					await (await this.#conversation({ ...record, conversationId: channel.conversationId })).configure({ model }, this.#context);
 		}
 	}
 
@@ -698,10 +765,14 @@ export class BotRuntime {
 	}
 
 	/** Pi's view holds only the active context; prepend the stored entries before its head so history stays visible. */
-	async #project(record: BotRecord, view: ConversationView): Promise<ConversationSnapshot> {
+	async #project(record: BotRecord, view: ConversationView, channelId = "direct"): Promise<ConversationSnapshot> {
 		const marker = view.entries[0]?.head === undefined ? undefined : view.entries[0];
 		const earlier = marker === undefined ? [] : await this.#earlierEntries(record, marker);
-		return projectView(record.botId, view, earlier);
+		return {
+			...projectView(record.botId, view, earlier),
+			conversationId: String(record.conversationId),
+			...(channelId === "direct" ? {} : { channelId }),
+		};
 	}
 
 	async #earlierEntries(record: BotRecord, marker: EntryRecord): Promise<readonly EntryRecord[]> {
@@ -934,7 +1005,13 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 		replay: "safe",
 		executionMode: "sequential",
 		async execute(args, api, context) {
-			const botId = await botOfConversation(api, String(api.conversationId), context);
+			const bots = (await api.snapshot(BotsDoc, context))?.bots ?? {};
+			const direct = Object.values(bots).find((bot) => bot.conversationId === Number(api.conversationId));
+			const channel = Object.values((await api.snapshot(ChannelsDoc, context))?.channels ?? {}).find(
+				(item) => item.conversationId === Number(api.conversationId),
+			);
+			const botId = direct?.botId ?? channel?.botId;
+			if (!botId) throw new Error("No Bot owns this conversation");
 			const signal = context.abortSignal ?? new AbortController().signal;
 			let authority: ManagementAuthority | undefined;
 			if (definition.capability === "bot.management") {
@@ -942,7 +1019,9 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 				if (saved !== undefined) authority = saved ?? undefined;
 				else {
 					const runs = Object.values((await api.snapshot(RunsDoc, context))?.runs ?? {});
-					const run = runs.find((r) => r.botId === botId && r.state === "running" && r.origin === "user");
+					const run = runs.find(
+						(r) => r.botId === botId && (r.channelId ?? "direct") === "direct" && !!direct && r.state === "running" && r.origin === "user",
+					);
 					authority =
 						(await api.memo("openbot.management-authority", run ? { origin: "user" as const, runId: run.runId } : null, context)) ??
 						undefined;
@@ -969,17 +1048,6 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 			};
 		},
 	});
-}
-
-async function botOfConversation(
-	api: { snapshot: (token: typeof BotsDoc, context: Context) => Promise<Readonly<{ bots: Record<string, BotRecord> }> | undefined> },
-	conversationId: string,
-	context: Context,
-): Promise<BotId> {
-	const bots = (await api.snapshot(BotsDoc, context))?.bots ?? {};
-	const record = Object.values(bots).find((bot) => String(bot.conversationId) === conversationId);
-	if (record === undefined) throw new Error(`No Bot owns conversation ${conversationId}`);
-	return record.botId;
 }
 
 /** Metadata and test failures can contain provider-controlled secrets; return only safe, fixed diagnostics. */

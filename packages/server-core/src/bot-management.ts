@@ -49,7 +49,7 @@ export class BotManagement {
 		if (call.authority?.origin !== "user") fail("Bot management requires a user request");
 		if (!requireActive) return;
 		const run = await this.runtime.runsStore().get(call.authority!.runId);
-		if (!run || run.botId !== call.botId || run.origin !== "user" || (requireActive && run.state !== "running"))
+		if (!run || run.botId !== call.botId || run.origin !== "user" || (run.channelId ?? "direct") !== "direct" || (requireActive && run.state !== "running"))
 			fail("The originating user Run is no longer active");
 	}
 	key(call: ManagementCall): string {

@@ -42,7 +42,7 @@ export class ConversationFeed {
 	}
 
 	publish(snapshot: ConversationSnapshot): void {
-		if (snapshot.botId === this.#subscribed) this.#updates.push(snapshot.botId, snapshot);
+		if (snapshot.channelId === undefined && snapshot.botId === this.#subscribed) this.#updates.push(snapshot.botId, snapshot);
 	}
 
 	stop(): void {

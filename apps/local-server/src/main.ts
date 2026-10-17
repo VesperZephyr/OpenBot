@@ -120,16 +120,16 @@ const service = new HostService({
 	emit: (event) =>
 		send({ ...event, protocolVersion: PROTOCOL_VERSION, kind: "event", streamId, seq: ++seq }),
 	// Pi committed the call's result: the executor may prune its receipt, and the call's approval is used up.
-	toolSettled: (botId, callId) => {
+	toolSettled: (botId, callId, conversationId) => {
 		void (async () => {
-			executor.ack(`${await runtime.conversationKey(botId)}:${callId}`);
-			await approvals.settled(botId, callId);
+			executor.ack(`${conversationId ?? await runtime.conversationKey(botId)}:${callId}`);
+			await approvals.settled(botId, callId, conversationId);
 		})().catch((error: unknown) => console.error("Could not settle a tool call", error));
 	},
 	// Stop also ends the background commands the conversation started; they are no longer any Pi call's.
-	conversationStopped: (botId) => {
+	conversationStopped: (botId, channelId) => {
 		void runtime
-			.conversationKey(botId)
+			.conversationKey(botId, channelId)
 			.then((conversationId) => executor.stopTasks(conversationId))
 			.catch((error: unknown) => console.error("Could not stop background commands", error));
 	},

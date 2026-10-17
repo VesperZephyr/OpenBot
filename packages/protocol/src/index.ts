@@ -191,6 +191,8 @@ export type LiveRun = {
 };
 
 export type ConversationSnapshot = {
+	readonly conversationId?: string;
+	readonly channelId?: string;
 	readonly botId: BotId;
 	readonly items: readonly TranscriptItem[];
 	readonly live?: LiveRun;
@@ -212,6 +214,7 @@ export type PendingMessage = { readonly id: string; readonly parts: readonly Mes
  * against the active-Run cap from `running` until it is terminal; waiting for approval counts as running.
  */
 export type RunRecord = {
+	readonly channelId?: string;
 	readonly runId: RunId;
 	readonly botId: BotId;
 	readonly state: "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -225,6 +228,7 @@ export type RunRecord = {
 
 /** A tool call stopped before dispatch until the user decides (Section 5.3). */
 export type PendingApproval = {
+	readonly conversationId?: string;
 	readonly approvalId: string;
 	readonly botId: BotId;
 	/** The Pi tool call this approval is for; matches the transcript `tool` item's `id`. */

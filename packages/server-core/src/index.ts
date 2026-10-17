@@ -74,9 +74,9 @@ export type HostServiceOptions = {
 	 * acknowledges the executor receipt and consumes the call's approval here. Also runs for results already present
 	 * when observation starts.
 	 */
-	readonly toolSettled?: (botId: BotId, callId: string) => void;
+	readonly toolSettled?: (botId: BotId, callId: string, conversationId?: string) => void;
 	/** Runs when the user stops a Bot's work; the Host stops the background commands its conversation started. */
-	readonly conversationStopped?: (botId: BotId) => void;
+	readonly conversationStopped?: (botId: BotId, channelId?: string) => void;
 	/** The shared folder every Bot may use without asking. */
 	readonly workspace: string;
 	readonly emit: EventSink;
@@ -100,8 +100,8 @@ export class HostService {
 	readonly #dataDirectory: string;
 	readonly #modelConfig: ModelConfigFile;
 	readonly #approvals: ApprovalBook;
-	readonly #toolSettled: (botId: BotId, callId: string) => void;
-	readonly #conversationStopped: (botId: BotId) => void;
+	readonly #toolSettled: (botId: BotId, callId: string, conversationId?: string) => void;
+	readonly #conversationStopped: (botId: BotId, channelId?: string) => void;
 	readonly #workspace: string;
 	readonly #emit: EventSink;
 	readonly #now: () => number;
@@ -133,7 +133,7 @@ export class HostService {
 			maxActiveRuns: options.maxActiveRuns ?? DEFAULT_MAX_ACTIVE_RUNS,
 			changed: (botId) => this.#republish(botId),
 			now: this.#now,
-			stopping: (botId) => this.#conversationStopped(botId),
+			stopping: (botId, channelId) => this.#conversationStopped(botId, channelId),
 		});
 		this.#policy = new PolicyService({ runtime: this.#runtime, approvals: this.#approvals, workspace: this.#workspace, now: this.#now });
 		this.#feed = new ConversationFeed({
@@ -269,9 +269,7 @@ export class HostService {
 				if (bot.status === "deleted") return null;
 				// Stop its work first, so no Run keeps going for a Bot the user can no longer see. Background commands
 				// outlive the Run that started them, so they are stopped whether or not a Run is active.
-				const run = this.#runs.active(botId);
-				if (run !== undefined) await this.#runs.cancel(run.runId);
-				this.#conversationStopped(botId);
+				await this.#stopBot(botId);
 				await this.#runtime.updateBot(botId, { status: "deleted" });
 				this.#observers.get(botId)?.stop();
 				this.#observers.delete(botId);
@@ -368,9 +366,7 @@ export class HostService {
 				let result = saved?.result;
 				if (!result) {
 					if (proposal.action === "delete") {
-						const run = this.#runs.active(proposal.botId);
-						if (run) await this.#runs.cancel(run.runId);
-						this.#conversationStopped(proposal.botId);
+						await this.#stopBot(proposal.botId);
 					}
 					call.signal.throwIfAborted();
 					if (proposal.action === "create") {
@@ -421,6 +417,12 @@ export class HostService {
 				};
 			});
 	}
+
+ async #stopBot(botId: BotId): Promise<void> {
+ await this.#runs.cancelMatching(run => run.botId === botId);
+ this.#conversationStopped(botId);
+ for (const channel of await this.#runtime.channels()) if (channel.botId === botId) this.#conversationStopped(botId, channel.channelId);
+ }
 
 	/** A Bot the user can still see; a deleted one is unknown to every method that acts on it. */
 	async #liveBot(botId: BotId): Promise<BotProfile> {
@@ -491,7 +493,7 @@ export class HostService {
 	}
 
 	#withApprovals(snapshot: ConversationSnapshot): ConversationSnapshot {
-		const approvals = this.#approvals.forBot(snapshot.botId);
+		const approvals = this.#approvals.forBot(snapshot.botId, snapshot.conversationId);
 		if (approvals.length === 0) return snapshot;
 		const live = snapshot.live === undefined ? undefined : { ...snapshot.live, state: "waiting_approval" as const };
 		return { ...snapshot, approvals, ...(live === undefined ? {} : { live }) };
@@ -499,7 +501,7 @@ export class HostService {
 
 	/** A queued Run's messages are not in Pi yet; they show as pending until the Run starts. */
 	#withRun(snapshot: ConversationSnapshot): ConversationSnapshot {
-		const stored = this.#runs.active(snapshot.botId);
+		const stored = this.#runs.active(snapshot.botId, snapshot.channelId);
 		if (stored === undefined) return snapshot;
 		const { messages, inputs: _inputs, ...run } = stored;
 		if (run.state !== "queued") return { ...snapshot, run };
@@ -524,7 +526,7 @@ export class HostService {
 			state.settled.add(item.id);
 			if (["bot_create", "bot_update", "bot_delete"].includes(item.tool))
 				void this.management.settled(botId, item.id, item.status).catch(() => {});
-			this.#toolSettled(botId, item.id);
+			this.#toolSettled(botId, item.id, snapshot.conversationId);
 		}
 	}
 
