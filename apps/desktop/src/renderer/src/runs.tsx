@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 /**
  * Run states in the conversation: messages the Bot has not read yet, the queued-Run notice, the Stop button, and the
  * note a stopped Run leaves in the transcript.
@@ -21,7 +22,7 @@ export function PendingMessages({ snapshot }: { readonly snapshot: ConversationS
 			))}
 			{snapshot.run?.state === "queued" && (
 				<li className="message message-assistant is-live">
-					<span className="thinking">Waiting for a free slot</span>
+					<span className="thinking">{t("Waiting for a free slot")}</span>
 				</li>
 			)}
 		</>
@@ -30,9 +31,7 @@ export function PendingMessages({ snapshot }: { readonly snapshot: ConversationS
 
 export function StoppedNote() {
 	return (
-		<li className="run-note" role="note">
-			Stopped
-		</li>
+		<li className="run-note" role="note">{t("Stopped")}</li>
 	);
 }
 
@@ -40,8 +39,6 @@ export function StoppedNote() {
 export function StopButton({ run }: { readonly run: RunRecord | undefined }) {
 	if (run?.state !== "running" && run?.state !== "queued") return null;
 	return (
-		<button type="button" className="stop" onClick={() => void api["runs.cancel"]({ runId: run.runId }).catch(report)}>
-			Stop
-		</button>
+		<button type="button" className="stop" onClick={() => void api["runs.cancel"]({ runId: run.runId }).catch(report)}>{t("Stop")}</button>
 	);
 }

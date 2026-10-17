@@ -59,7 +59,7 @@ export const HOST_PARAM_SCHEMAS = {
 		decision: Type.Union([Type.Enum(["allow_once", "deny"]), strict({ kind: Type.Literal("always_allow"), scope: AlwaysAllowScope })]),
 	}),
 	"settings.get": NoParams,
-	"settings.update": strict({ defaultModel: Type.Optional(Type.Union([ModelRef, Type.Null()])) }),
+	"settings.update": strict({ language: Type.Optional(Type.Union([Type.Literal("en"), Type.Literal("zh-CN")])), setupComplete: Type.Optional(Type.Boolean()), defaultModel: Type.Optional(Type.Union([ModelRef, Type.Null()])) }),
 	"models.list": NoParams,
 	"credentials.set": strict({ providerId: Id, apiKey: Type.String({ maxLength: 16_384 }) }),
 	"credentials.delete": strict({ providerId: Id }),

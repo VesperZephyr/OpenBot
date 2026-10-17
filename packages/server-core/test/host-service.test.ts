@@ -40,6 +40,7 @@ describe("HostService", () => {
 	let configFile: MemoryConfigFile;
 	/** Bots whose background commands the service asked the Host to stop. */
 	let stoppedBots: string[];
+	let audit: unknown[];
 	/** Resolves with the first conversation snapshot that satisfies the predicate. */
 	let nextSnapshot: (predicate: (snapshot: ConversationSnapshot) => boolean) => Promise<ConversationSnapshot>;
 
@@ -47,6 +48,7 @@ describe("HostService", () => {
 		directory = await mkdtemp(join(tmpdir(), "openbot-host-"));
 		runtime = await BotRuntime.open({ databasePath: join(directory, "db.sqlite"), models: scriptedModels("Done.").models });
 		events = [];
+		audit = [];
 		stoppedBots = [];
 		updated = [];
 		secrets = new MemorySecretStore();
@@ -60,6 +62,7 @@ describe("HostService", () => {
 		};
 		service = new HostService({
 			runtime,
+			audit: (event) => audit.push(event),
 			secrets,
 			status,
 			dataDirectory: directory,
@@ -110,7 +113,7 @@ describe("HostService", () => {
 		const first = await service.handle("bots.create", { requestId: "same", name: "Scout" });
 		const second = await service.handle("bots.create", { requestId: "same", name: "Other" });
 		expect(second.botId).toBe(first.botId);
-		expect(await service.handle("bots.list", {})).toHaveLength(1);
+		expect(await service.handle("bots.list", {})).toHaveLength(2);
 	});
 
 	it("never returns stored API keys in settings", async () => {
@@ -206,7 +209,7 @@ describe("HostService", () => {
 		expect((await service.handle("bots.memory.get", { botId: copy.botId })).content).toBe("## Preferences\n- Short answers\n");
 		expect((await service.handle("conversations.snapshot", { botId: copy.botId })).items).toEqual([]);
 		expect((await service.handle("bots.duplicate", { botId: source.botId, requestId: "d1" })).botId).toBe(copy.botId);
-		expect(await service.handle("bots.list", {})).toHaveLength(2);
+		expect(await service.handle("bots.list", {})).toHaveLength(3);
 	});
 
 	it("deletes a Bot: hidden everywhere, its conversation kept", async () => {
@@ -215,7 +218,7 @@ describe("HostService", () => {
 		await service.handle("bots.delete", { botId: bot.botId });
 		// No Run was active, but background commands it started earlier must still stop.
 		expect(stoppedBots).toEqual([bot.botId]);
-		expect(await service.handle("bots.list", {})).toEqual([]);
+		expect((await service.handle("bots.list", {})).filter((b) => b.kind !== "core")).toEqual([]);
 		await expect(service.handle("messages.submit", { botId: bot.botId, requestId: "m", text: "Hi" })).rejects.toThrow("Unknown Bot");
 		await expect(service.handle("bots.update", { botId: bot.botId, status: "active" })).rejects.toThrow("Unknown Bot");
 		await expect(service.handle("bots.duplicate", { botId: bot.botId, requestId: "d" })).rejects.toThrow("Unknown Bot");
@@ -255,9 +258,8 @@ describe("HostService", () => {
 			service.handle("models.addProvider", { id: "y", name: "Y", baseUrl: "file:///etc", api: "openai-completions", modelIds: ["m"] }),
 		).rejects.toThrow("http");
 		configFile.text = "{ // comment\n }";
-		await expect(
-			service.handle("models.addProvider", { id: "y", name: "Y", baseUrl: "http://x", api: "openai-completions", modelIds: ["m"] }),
-		).rejects.toThrow("by hand");
+		await service.handle("models.addProvider", { id: "y", name: "Y", baseUrl: "http://x", api: "openai-completions", modelIds: ["m"] });
+		expect(configFile.text).toContain("// comment");
 	});
 
 	it("tests a model with a real request and reports failures as results", async () => {
@@ -266,4 +268,33 @@ describe("HostService", () => {
 		expect(unknown.ok).toBe(false);
 		expect(unknown.error).toContain("Unknown model");
 	});
+	it("serializes provider additions and records content-free outcomes", async () => {
+		await Promise.all(["one", "two"].map((id) => service.handle("models.addProvider", { id, name: "private-name", baseUrl: "https://example.com/private", api: "openai-completions", modelIds: ["private-model"] })));
+		expect(Object.keys(JSON.parse(configFile.text!).providers)).toEqual(["one", "two"]);
+		await expect(service.handle("models.addProvider", { id: "one", name: "secret", baseUrl: "https://example.com", api: "openai-completions", modelIds: ["m"] })).rejects.toThrow("already exists");
+		await service.handle("credentials.set", { providerId: "one", apiKey: "private-key" });
+		expect(JSON.stringify(audit)).not.toMatch(/private|secret|example/);
+		expect(audit).toEqual(expect.arrayContaining([expect.objectContaining({ operation: "models.addProvider", outcome: "failed" }), expect.objectContaining({ operation: "credentials.set", outcome: "succeeded" })]));
+		const models = await service.handle("models.list", {});
+		expect(models.find((m) => m.provider === "one")).toMatchObject({ source: "custom", overridden: false, endpoint: "https://example.com" });
+		configFile.text = '{"providers":{"faux":{"baseUrl":"https://example.com/secret"}}}';
+		expect((await service.handle("models.list", {})).find((m) => m.provider === "faux")).toMatchObject({ source: "builtin", overridden: true });
+	});
+
+	it("protects the Core before cancellation and copies it only as a Specialist", async () => {
+		const [core] = await service.handle("bots.list", {});
+		expect(core).toMatchObject({ kind: "core", name: "OpenBot", status: "active", pinned: true });
+		await service.handle("bots.memory.update", { botId: core!.botId, content: "private core memory" });
+		for (const change of [{ pinned: false }, { status: "hidden" as const }]) {
+			await expect(service.handle("bots.update", { botId: core!.botId, ...change })).rejects.toThrow("Core Bot");
+		}
+		await expect(service.handle("bots.delete", { botId: core!.botId })).rejects.toThrow("Core Bot");
+		expect(stoppedBots).toEqual([]);
+		const copy = await service.handle("bots.duplicate", { botId: core!.botId, requestId: "copy-core" });
+		expect(copy.kind).toBe("specialist");
+		expect(await runtime.memory(copy.botId)).toBe("");
+		await service.handle("bots.update", { botId: core!.botId, name: "My assistant", instructions: "Use short answers" });
+		expect((await runtime.getBot(core!.botId))?.kind).toBe("core");
+	});
+
 });

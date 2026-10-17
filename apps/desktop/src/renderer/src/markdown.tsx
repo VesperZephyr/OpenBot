@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 /**
  * GitHub-flavored Markdown for assistant messages. Model output is untrusted: the HTML is sanitized, raw HTML in the
  * source is dropped, and links open in the user's browser through main's window-open handler. Code blocks carry a Copy
@@ -6,7 +7,7 @@
 import DOMPurify from "dompurify";
 import { Marked } from "marked";
 import { type MouseEvent, useMemo } from "react";
-import { report } from "./store";
+import { report, useStore } from "./store";
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 const escapeHtml = (text: string): string => text.replace(/[&<>"']/g, (char) => ESCAPES[char] ?? char);
@@ -18,7 +19,7 @@ marked.use({
 		code: ({ text, lang }) => {
 			const language = lang?.match(/^\S+/)?.[0];
 			const code = `<code${language === undefined ? "" : ` class="language-${escapeHtml(language)}"`}>${escapeHtml(text)}</code>`;
-			return `<div class="code-block"><button type="button" class="code-copy">Copy</button><pre>${code}</pre></div>\n`;
+			return `<div class="code-block"><button type="button" class="code-copy">${escapeHtml(t("Copy"))}</button><pre>${code}</pre></div>\n`;
 		},
 	},
 });
@@ -31,9 +32,10 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
 });
 
 export function Markdown({ text }: { readonly text: string }) {
+	const language = useStore((state) => state.settings?.language ?? "en");
 	const html = useMemo(
 		() => DOMPurify.sanitize(marked.parse(text) as string, { FORBID_TAGS: ["style", "img"], FORBID_ATTR: ["style"] }),
-		[text],
+		[text, language],
 	);
 	return <div className="markdown" onClick={copyCode} dangerouslySetInnerHTML={{ __html: html }} />;
 }
@@ -46,8 +48,8 @@ function copyCode(event: MouseEvent<HTMLDivElement>): void {
 	window.openbot
 		.copyText(code)
 		.then(() => {
-			button.textContent = "Copied";
-			setTimeout(() => (button.textContent = "Copy"), 1500);
+			button.textContent = t("Copied");
+			setTimeout(() => (button.textContent = t("Copy")), 1500);
 		})
 		.catch(report);
 }

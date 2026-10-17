@@ -53,6 +53,7 @@ export type ModelApi = (typeof MODEL_APIS)[number];
 export type ThinkingLevel = "off" | "low" | "medium" | "high";
 
 export type BotProfile = {
+	readonly kind: "core" | "specialist";
 	readonly botId: BotId;
 	readonly name: string;
 	/** Short job label shown under the name, such as "Research". */
@@ -253,6 +254,8 @@ export type ProviderSummary = {
 	readonly name: string;
 	/** `builtin` providers ship with OpenBot; `config` providers come from the user's model configuration file. */
 	readonly source: "builtin" | "config";
+	/** The local file overrides a bundled provider. */
+	readonly overlay?: boolean;
 	/** A key is available: stored in the Keychain, or (config providers) resolvable from the configuration. */
 	readonly configured: boolean;
 	/** A key is stored in the Keychain for this provider. */
@@ -261,6 +264,7 @@ export type ProviderSummary = {
 
 /** Settings as returned to renderers: credentials are never included, only whether one is stored. */
 export type RedactedSettings = {
+	readonly setupComplete?: boolean; readonly language?: "en" | "zh-CN";
 	readonly defaultModel?: ModelRef;
 	readonly providers: readonly ProviderSummary[];
 	readonly dataDirectory: string;
@@ -273,6 +277,10 @@ export type RedactedSettings = {
 };
 
 export type ModelSummary = {
+	readonly source?: "builtin" | "custom";
+	readonly overridden?: boolean;
+	/** Origin only: never credentials, URL paths, query strings or headers. */
+	readonly endpoint?: string;
 	readonly provider: string;
 	readonly modelId: string;
 	readonly name: string;
@@ -320,7 +328,7 @@ export type HostMethods = {
 	"runs.cancel": { params: { readonly runId: RunId }; result: { readonly state: RunRecord["state"] } };
 	"approvals.decide": { params: { readonly approvalId: string; readonly decision: ApprovalDecision }; result: null };
 	"settings.get": { params: Record<string, never>; result: RedactedSettings };
-	"settings.update": { params: { readonly defaultModel?: ModelRef | null }; result: RedactedSettings };
+	"settings.update": { params: { readonly defaultModel?: ModelRef | null; readonly setupComplete?: boolean; readonly language?: "en" | "zh-CN" }; result: RedactedSettings };
 	"models.list": { params: Record<string, never>; result: readonly ModelSummary[] };
 	"credentials.set": {
 		params: { readonly providerId: string; readonly apiKey: string };

@@ -56,6 +56,8 @@ The MVP is done when all of these pass on a packaged build installed on a Mac th
 
 Approach only; each becomes a spec when Phase 1 lands.
 
+Accepted product direction: [D1](tasks/d1-bot-product-design.md). B16/B17 establish model entry and permanent Core identity; B20 refines the desktop and adds English/Chinese. Core management (B18), new memory controls (B19) and groups (B13) remain draft. Existing agent mechanisms continue to reuse Pi. Connectors, routines and computer control are not prerequisites for this foundation.
+
 - **B9. MCP connectors** (architecture M7). Executor-supervised stdio servers and HTTP sessions, credentials from the Keychain injected only into their own server, tools named `mcp__<server>__<tool>` through Tool Router with receipts, a Connect apps page. OAuth through the default browser comes after the first token-based connectors work.
 - **B10. Skills.** Library at `<data>/skills/<name>/SKILL.md`, a `skills` prompt section listing names and descriptions, `skill_load`, `skill_save` with user confirmation, `/` in the composer to attach one.
 - **B11. Routines** (after B2). Scheduler in `server-core` with occurrence request IDs `routine:<id>:<scheduledAt>`, a fresh conversation per occurrence admitted through B2's queue, test run, coalesced catch-up after sleep, Grok Bot limits (50 per Bot, 5-minute spacing, 20 runs of history), `routine_propose` with a confirmation card.
@@ -67,3 +69,10 @@ Approach only; each becomes a spec when Phase 1 lands.
 ## Phase 3: Computer control
 
 Architecture M3 (managed browser, takeover, secret requests), M6 (desktop computer use with the signed Swift helper and control lease), and M8 (dictation, teach-a-task). These need packaging and signing from B8 for TCC attribution; start with spikes before specs: two Bots' browser windows not throttled in the background, and the disclaimed helper receiving Screen Recording and Accessibility grants.
+
+## Product foundation implementation
+
+- [B16: Model sources](tasks/b16-model-sources.md): implemented on `task/b16-model-sources`, awaiting review; 183 unit tests and 27 background e2e tests pass.
+- [B17: Core Bot](tasks/b17-core-bot.md): implemented on `task/b17-core-bot`, awaiting review; 186 unit tests and 29 background e2e tests pass. Only the Core is seeded; Specialists require user creation.
+- [B20: Desktop experience and English / Chinese](tasks/b20-desktop-experience.md): implemented on `task/b20-desktop-experience`; local language preference, refined UI and isolated real-model desktop verification.
+- Remaining specs: [B18](tasks/b18-core-management.md), [B19](tasks/b19-memory-controls.md), [B13a](tasks/b13a-channel-contexts.md), [B13b](tasks/b13b-group-lifecycle.md), [B13c](tasks/b13c-collaboration.md). Agent runtime behavior continues to reuse Pi; later custom orchestration/memory work is not part of this increment.

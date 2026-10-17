@@ -11,6 +11,7 @@ import { RotatingLog } from "./host-log";
 import { HostProcess } from "./host";
 import { registerIpc } from "./ipc";
 import { resolveLoginPath } from "./login-path";
+import { translate, type Language } from "../shared/i18n";
 import { desktopTestMode } from "./test-mode";
 
 /** electron-vite's renderer dev server; every other run (built, packaged, e2e) serves the renderer over `app://`. */
@@ -51,6 +52,7 @@ const hostLog = new RotatingLog(join(dataDirectory, "logs", "host.log"), HOST_LO
 let window: BrowserWindow | undefined;
 /** Held for the app's lifetime: a Tray that is garbage-collected disappears from the menu bar. */
 let tray: Tray | undefined;
+let language: Language = "en";
 let quitting = false;
 
 /** Development and test overrides; a packaged app ignores them, so the environment cannot redirect its keys or limits. */
@@ -94,6 +96,7 @@ const host = new HostProcess({
 const attentionWatcher = new AttentionWatcher({
 	host,
 	nativeEffects: testMode === undefined,
+	language: () => language,
 	focused: () => BrowserWindow.getFocusedWindow() !== null,
 	openBot: (botId) => {
 		showWindow();
@@ -110,7 +113,7 @@ function createWindow(): BrowserWindow {
 		title: "OpenBot",
 		titleBarStyle: "hiddenInset",
 		trafficLightPosition: { x: 16, y: 16 },
-		backgroundColor: "#0e0e10",
+		backgroundColor: "#ffffff",
 		show: false,
 		focusable: !backgroundTest,
 		webPreferences: {
@@ -156,9 +159,9 @@ function createTray(): Tray {
 	created.setToolTip("OpenBot");
 	created.setContextMenu(
 		Menu.buildFromTemplate([
-			{ label: "Open OpenBot", click: showWindow },
+			{ label: translate(language, "Open OpenBot"), click: showWindow },
 			{ type: "separator" },
-			{ label: "Quit OpenBot", role: "quit" },
+			{ label: translate(language, "Quit OpenBot"), role: "quit" },
 		]),
 	);
 	return created;
@@ -180,7 +183,12 @@ void app.whenReady().then(async () => {
 	session.defaultSession.setPermissionCheckHandler(() => false);
 
 	if (devServerUrl === undefined) serveAppScheme(join(__dirname, "../renderer"));
-	registerIpc({ host, isTrustedFrame: (url) => isTrustedRendererUrl(url) });
+	registerIpc({ host, isTrustedFrame: (url) => isTrustedRendererUrl(url), language: () => language, onSettings: (settings) => {
+		const next = settings.language ?? "en";
+		if (next === language) return;
+		language = next;
+		if (tray) { tray.destroy(); tray = createTray(); }
+	} });
 	window = createWindow();
 	if (testMode === undefined) tray = createTray();
 

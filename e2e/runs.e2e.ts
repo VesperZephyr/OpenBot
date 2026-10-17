@@ -16,7 +16,7 @@ let h: AppHarness;
 
 beforeAll(async () => {
 	h = await launchApp("runs", { env: { OPENBOT_MAX_ACTIVE_RUNS: "1" } });
-	await h.page().getByRole("heading", { name: "Meet your teammates" }).waitFor();
+	await h.page().getByRole("textbox", { name: "Message OpenBot" }).waitFor();
 }, 60_000);
 
 afterAll(async () => {

@@ -111,6 +111,10 @@ async function loadAll(): Promise<void> {
 		if (onboarding === undefined && settings !== undefined) useStore.setState({ onboarding: needsOnboarding(settings, bots) });
 		// A restarted Host has no subscription; opening the Bot again subscribes and fetches it fresh.
 		if (view.kind === "bot") await openBot(view.botId);
+		else if (view.kind === "home") {
+			const core = bots.find((bot) => bot.kind === "core");
+			if (core !== undefined) await openBot(core.botId);
+		}
 	} catch (error) {
 		report(error);
 	}
@@ -121,7 +125,7 @@ async function loadAll(): Promise<void> {
  * configuration file with a provider (for example one the development setup wrote) skips the setup screen.
  */
 export function needsOnboarding(settings: RedactedSettings, bots: readonly BotSummary[]): boolean {
-	return settings.defaultModel === undefined && bots.length === 0 && !settings.providers.some((provider) => provider.configured);
+	return settings.setupComplete !== true && settings.defaultModel === undefined && bots.every((bot) => bot.kind === "core") && !settings.providers.some((provider) => provider.configured);
 }
 
 export { api };

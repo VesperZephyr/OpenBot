@@ -6,6 +6,7 @@
 import { app, Notification, powerSaveBlocker } from "electron";
 import type { BotSummary, HostEvent } from "@openbot/protocol";
 import type { HostState } from "../shared/api";
+import { translate, type Language } from "../shared/i18n";
 import { attention } from "./attention";
 import type { HostProcess } from "./host";
 
@@ -13,6 +14,7 @@ export type AttentionWatcherOptions = {
 	readonly host: HostProcess;
 	/** Tests still calculate roster transitions but do not affect the user's desktop. */
 	readonly nativeEffects?: boolean;
+	readonly language?: () => Language;
 	/** Whether the user is looking at OpenBot right now. */
 	readonly focused: () => boolean;
 	/** Show the window and open the Bot. */
@@ -90,7 +92,7 @@ export class AttentionWatcher {
 	#notify(botId: string, title: string, body: string): void {
 		if (this.#options.nativeEffects === false) return;
 		if (!Notification.isSupported()) return;
-		const notification = new Notification({ title, body });
+		const notification = new Notification({ title, body: translate(this.#options.language?.() ?? "en", body) });
 		this.#shown.add(notification);
 		notification.on("click", () => {
 			this.#shown.delete(notification);

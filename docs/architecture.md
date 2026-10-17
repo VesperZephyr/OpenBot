@@ -442,6 +442,8 @@ Prefer a connector over browser automation when one exists.
 
 ### 5.7 Bots, Memory, Group Chats, and Handoff
 
+The accepted [D1 product design](tasks/d1-bot-product-design.md) is delivered through separate specs. [B17](tasks/b17-core-bot.md) establishes exactly one protected Core per local store, created before inference. Specialists are created only at the user's request, never seeded. Core identity is Host-owned and independent of name, Prompt and model; hide/delete/unpin are rejected before side effects. Existing Bots are preserved during migration. Model-facing management and group context changes remain later batches.
+
 A Bot profile is an OpenBot session document containing `botId`, name, avatar, role description, instructions, model selection, enabled tool families, default working directory, and status (active, hidden, deleted). Creating a Bot creates its main Pi conversation and applies the profile through `configure()`.
 
 **Memory.** Each Bot has a memory: up to 8 KB of Markdown with stable preferences, role context, and summaries of prior work, kept in the session document `openbot.memory` keyed by `botId`, so it belongs to the Bot and survives new topics. A `memory` prompt section renders it; `memory_update` replaces or appends one section; the user can view and edit it. Memory is guidance, not a source of truth: for consequential decisions the Bot checks the current source.
@@ -469,6 +471,8 @@ A Bot profile is an OpenBot session document containing `botId`, name, avatar, r
 - Triggers are time-based in the first release. Event triggers require a local event source, such as a connector that supports polling or a file-system watch; there is no inbound webhook endpoint.
 
 ### 5.9 Credentials and Secrets
+
+[B16](tasks/b16-model-sources.md) presents built-in and custom setup over one registry, with override metadata and explicit connection tests. UI authentication is API-key-only; OAuth is not implied by catalog support. Custom creation preserves JSONC and refuses existing IDs. Display endpoints expose origins only; provider test failures use safe fixed messages. Credential precedence is unchanged.
 
 Model, search, and connector credentials are stored in the macOS Keychain and loaded by the Host as needed. Renderers receive redacted settings.
 
@@ -515,7 +519,7 @@ The transport is private IPC with versioned request, response, and event envelop
 | `secrets.provide`, `secrets.cancel` | Answer a secret request; the value travels only from main to Host |
 | `inputs.provide` | Answer a structured question or form step |
 | `artifacts.import`, `artifacts.export` | Copy selected inputs or generated outputs through authorized local paths |
-| `settings.get`, `settings.update`, `usage.get` | Read redacted settings, update configuration, and read per-Bot usage |
+| `settings.get`, `settings.update`, `usage.get` | Read redacted settings, update configuration (including local `language: en \| zh-CN`, default English), and read per-Bot usage |
 
 A request carries `protocolVersion`, `messageId`, `method`, and `params`. Electron main and the Host both validate `params` against the method's TypeBox schema (`@openbot/protocol/schemas`) and answer `invalid_request` otherwise. Mutating operations include a stable application request identity where retries could otherwise create duplicate work. `messages.submit` returns the same Run for the same request ID and content; different content under that ID is a conflict. Durable receipt does not mean model generation has started. A Bot's queued Run collects messages sent while it waits and submits them as one input when it starts.
 
@@ -789,3 +793,7 @@ Permissions, policy, and execution records are part of M1 from the start. Use Pi
 13. **State restores from backup:** Conversation state, Bot profiles and memory, routines, artifact references, skills, and execution records recover consistently, with application, Pi, and data-format versions recorded.
 
 The Pi source baseline and interfaces above were checked against upstream revision `b45e0ebcc` in a local checkout on 2026-10-14. Tool permissions, browser and macOS integration, crash recovery, real-model behavior, and packaged distribution remain implementation and acceptance work.
+
+### Local privacy and operation diagnostics
+
+Product stores, transcripts, memory, configuration and diagnostics stay on the Mac. There is no automatic analytics or log upload. Configured model and search services receive task-relevant inputs; local storage does not imply offline inference. Credentials stay in Keychain or explicitly configured local credential sources. B16 adds allowlisted operation diagnostics (generated ID, method, time, duration, outcome) to the bounded local Host log, excluding inputs, outputs, Prompt, memory and credential material. Authoritative Runs, approvals and execution receipts remain separate durable records.

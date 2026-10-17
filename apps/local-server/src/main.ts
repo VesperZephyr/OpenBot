@@ -107,6 +107,7 @@ const send = (message: HostToDesktop): void => {
 };
 
 const service = new HostService({
+	audit: (event) => console.info(JSON.stringify({ type: "operation", ...event })),
 	runtime,
 	secrets: credentials,
 	status,

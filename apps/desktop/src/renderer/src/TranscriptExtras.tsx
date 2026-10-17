@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import type { TranscriptItem } from "@openbot/protocol";
 import { report, sendMessage } from "./store";
 
@@ -9,8 +10,8 @@ const DIVIDER_LABEL: Record<Extract<TranscriptItem, { kind: "divider" }>["reason
 /** Where the model's context starts over: older messages above stay visible but are no longer sent in full. */
 export function Divider({ item }: { readonly item: Extract<TranscriptItem, { kind: "divider" }> }) {
 	return (
-		<li className="divider" role="separator" aria-label={DIVIDER_LABEL[item.reason]}>
-			<span>{DIVIDER_LABEL[item.reason]}</span>
+		<li className="divider" role="separator" aria-label={t(DIVIDER_LABEL[item.reason])}>
+			<span>{t(DIVIDER_LABEL[item.reason])}</span>
 		</li>
 	);
 }
@@ -19,7 +20,7 @@ export function Divider({ item }: { readonly item: Extract<TranscriptItem, { kin
 export function Thinking({ text }: { readonly text: string }) {
 	return (
 		<details className="thinking-block">
-			<summary>Thought</summary>
+			<summary>{t("Thought")}</summary>
 			<div className="thinking-text">{text}</div>
 		</details>
 	);
@@ -28,9 +29,7 @@ export function Thinking({ text }: { readonly text: string }) {
 /** Resubmits `text` as a new message, under a new request ID, after a model error. */
 export function RetryButton({ botId, text }: { readonly botId: string; readonly text: string }) {
 	return (
-		<button type="button" className="retry" onClick={() => void sendMessage(botId, text).catch(report)}>
-			Retry
-		</button>
+		<button type="button" className="retry" onClick={() => void sendMessage(botId, text).catch(report)}>{t("Retry")}</button>
 	);
 }
 

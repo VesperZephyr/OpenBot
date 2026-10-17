@@ -50,7 +50,11 @@ export interface ModelConfigFile {
 	readonly environment: ConfigEnvironment;
 }
 
+export type OperationAudit = { readonly operationId: string; readonly operation: HostMethod | "core.ensure"; readonly at: number; readonly durationMs: number; readonly outcome: "succeeded" | "failed" };
+
 export type HostServiceOptions = {
+	/** Content-free diagnostics; authoritative action state stays in its own durable store. */
+	readonly audit?: (event: OperationAudit) => void;
 	readonly runtime: BotRuntime;
 	readonly secrets: SecretStore;
 	readonly status: HostStatus;
@@ -79,6 +83,8 @@ export type HostServiceOptions = {
 type Handlers = { [M in HostMethod]: (params: HostParams<M>) => Promise<HostResult<M>> };
 
 export class HostService {
+	readonly #audit: (event: OperationAudit) => void;
+	#configWrites: Promise<unknown> = Promise.resolve();
 	readonly #runtime: BotRuntime;
 	readonly #secrets: SecretStore;
 	readonly #status: HostStatus;
@@ -100,6 +106,7 @@ export class HostService {
 	#configStatus: ModelConfigStatus = { providers: [], errors: [] };
 
 	constructor(options: HostServiceOptions) {
+		this.#audit = options.audit ?? (() => {});
 		this.#runtime = options.runtime;
 		this.#secrets = options.secrets;
 		this.#status = options.status;
@@ -173,7 +180,9 @@ export class HostService {
 				return null;
 			},
 			"settings.get": () => this.#settings(),
-			"settings.update": async ({ defaultModel }) => {
+			"settings.update": async ({ defaultModel, setupComplete, language }) => {
+				if (language !== undefined) await this.#runtime.setLanguage(language);
+				if (setupComplete !== undefined) await this.#runtime.setSetupComplete(setupComplete);
 				if (defaultModel !== undefined) await this.#runtime.setDefaultModel(defaultModel);
 				return this.#settings();
 			},
@@ -202,14 +211,18 @@ export class HostService {
 			"grants.list": () => this.#policy.grants(),
 			"grants.revoke": ({ id }) => this.#policy.revoke(id),
 			"grants.add": ({ path, access }) => this.#policy.add(path, access),
-			"models.addProvider": async (provider) => {
-				await this.#reloadModelConfig();
-				const declared = new Set(this.#configStatus.providers.filter((entry) => !entry.overlay).map((entry) => entry.providerId));
-				if (this.#runtime.listProviders().some(({ providerId }) => providerId === provider.id && !declared.has(providerId))) {
-					throw new ProtocolError("invalid_request", `"${provider.id}" is a built-in provider; choose another ID`);
-				}
-				await this.#modelConfig.write(mergeProvider(await this.#modelConfig.read(), provider));
-				return this.#settings();
+			"models.addProvider": (provider) => {
+				const next = this.#configWrites.catch(() => {}).then(async () => {
+					await this.#reloadModelConfig();
+					const declared = new Set(this.#configStatus.providers.filter((entry) => !entry.overlay).map((entry) => entry.providerId));
+					if (this.#runtime.listProviders().some(({ providerId }) => providerId === provider.id && !declared.has(providerId))) {
+						throw new ProtocolError("invalid_request", "This is a built-in provider; choose another ID");
+					}
+					await this.#modelConfig.write(mergeProvider(await this.#modelConfig.read(), provider));
+					return this.#settings();
+				});
+				this.#configWrites = next;
+				return next;
 			},
 			"models.test": async (model) => {
 				await this.#reloadModelConfig();
@@ -229,7 +242,7 @@ export class HostService {
 					instructions: source.instructions,
 					...(source.model === undefined ? {} : { model: source.model }),
 					...(source.thinkingLevel === undefined ? {} : { thinkingLevel: source.thinkingLevel }),
-					memory: await this.#runtime.memory(botId),
+					memory: source.kind === "core" ? "" : await this.#runtime.memory(botId),
 					createdAt: this.#now(),
 				});
 				await this.#observe(profile.botId);
@@ -239,6 +252,7 @@ export class HostService {
 			"bots.delete": async ({ botId }) => {
 				const bot = await this.#runtime.getBot(botId);
 				if (bot === undefined) throw new ProtocolError("not_found", `Unknown Bot: ${botId}`);
+				if (bot.kind === "core") throw new ProtocolError("invalid_request", "The Core Bot cannot be deleted");
 				if (bot.status === "deleted") return null;
 				// Stop its work first, so no Run keeps going for a Bot the user can no longer see. Background commands
 				// outlive the Run that started them, so they are stopped whether or not a Run is active.
@@ -267,6 +281,9 @@ export class HostService {
 	 */
 	async start(): Promise<void> {
 		await this.#reloadModelConfig();
+		const at = this.#now();
+		await this.#runtime.ensureCoreBot(at);
+		try { this.#audit({ operationId: randomUUID(), operation: "core.ensure", at, durationMs: this.#now() - at, outcome: "succeeded" }); } catch { /* Keep diagnostics independent of startup. */ }
 		await this.#approvals.start(this.#runtime.approvals());
 		for (const bot of await this.#runtime.listBots()) if (bot.status !== "deleted") await this.#observe(bot.botId);
 		await this.#runs.start();
@@ -285,7 +302,17 @@ export class HostService {
 	async handle<M extends HostMethod>(method: M, params: HostParams<M>): Promise<HostResult<M>> {
 		const handler: Handlers[M] | undefined = this.#handlers[method];
 		if (handler === undefined) throw new ProtocolError("unknown_method", `Unknown method: ${method}`);
-		return handler(params);
+		const at = this.#now();
+		let outcome: "succeeded" | "failed" = "failed";
+		try {
+			const result = await handler(params);
+			outcome = method === "models.test" && (result as { ok?: boolean }).ok === false ? "failed" : "succeeded";
+			return result;
+		} finally {
+			if (!method.endsWith(".get") && !method.endsWith(".list") && !["host.status", "conversations.snapshot", "conversations.subscribe", "conversations.markRead", "files.resolveReveal"].includes(method)) {
+				try { this.#audit({ operationId: randomUUID(), operation: method, at, durationMs: this.#now() - at, outcome }); } catch { /* Diagnostics must not undo a committed action. */ }
+			}
+		}
 	}
 
 	async #listBots(): Promise<BotSummary[]> {
@@ -318,6 +345,8 @@ export class HostService {
 		const fromConfig = new Map(this.#configStatus.providers.map((provider) => [provider.providerId, provider]));
 		const defaultModel = await this.#runtime.defaultModel();
 		return {
+			setupComplete: await this.#runtime.setupComplete(),
+			language: await this.#runtime.language(),
 			...(defaultModel === undefined ? {} : { defaultModel }),
 			providers: this.#runtime.listProviders().filter(({ providerId }) => !providerId.startsWith(SEARCH_PROVIDER_PREFIX)).map(({ providerId, name }) => {
 				const configured = fromConfig.get(providerId);
@@ -328,6 +357,7 @@ export class HostService {
 					providerId,
 					name,
 					source: configured === undefined ? ("builtin" as const) : ("config" as const),
+					overlay: configured?.overlay ?? false,
 					configured: keyStored || keyFromConfig,
 					keyStored,
 				};

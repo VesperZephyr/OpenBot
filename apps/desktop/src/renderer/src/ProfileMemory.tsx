@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { MEMORY_LIMIT_BYTES } from "@openbot/protocol";
 import { type FormEvent, useEffect, useState } from "react";
 import { api, report } from "./store";
@@ -30,26 +31,21 @@ export function ProfileMemory({ botId, onClose }: { readonly botId: string; read
 	return (
 		<form className="profile-memory" onSubmit={save}>
 			<label className="field">
-				<span>What this Bot remembers across conversations and new topics</span>
+				<span>{t("What this Bot remembers across conversations and new topics")}</span>
 				<textarea
 					rows={10}
 					value={content ?? ""}
 					disabled={content === undefined}
-					placeholder="Nothing yet. The Bot saves lasting preferences here, and you can edit them."
+					placeholder={t("Nothing yet. The Bot saves lasting preferences here, and you can edit them.")}
 					onChange={(event) => setContent(event.target.value)}
-					aria-label="Memory"
+					aria-label={t("Memory")}
 				/>
 			</label>
 			<div className="dialog-actions">
 				<span className={tooLarge ? "memory-size is-over" : "memory-size"}>
-					{bytes.toLocaleString()} of {MEMORY_LIMIT_BYTES.toLocaleString()} bytes
-				</span>
-				<button type="button" onClick={onClose}>
-					Cancel
-				</button>
-				<button type="submit" className="primary" disabled={content === undefined || tooLarge}>
-					Save memory
-				</button>
+					{t("{used} of {limit} bytes", {used: bytes.toLocaleString(), limit: MEMORY_LIMIT_BYTES.toLocaleString()})}</span>
+				<button type="button" onClick={onClose}>{t("Cancel")}</button>
+				<button type="submit" className="primary" disabled={content === undefined || tooLarge}>{t("Save memory")}</button>
 			</div>
 		</form>
 	);

@@ -57,6 +57,8 @@ Dated entries added during execution. Empty when ready.
 
 ## Index
 
+Product design (not an implementation task): [D1: Core Bot, Specialist Bots, and Model Sources](d1-bot-product-design.md), **accepted direction**. Research and task contracts for the product foundation. Agent mechanisms continue to reuse Pi.
+
 Phase 1 (MVP). Every batch is implemented on `feat/mvp` and in review until the owner's acceptance run.
 
 | ID                            | Title                                   | Status        |
@@ -71,3 +73,18 @@ Phase 1 (MVP). Every batch is implemented on `feat/mvp` and in review until the 
 | [B8](b8-installable-build.md) | Installable build                       | in review     |
 | [B7a](b7a-background-e2e.md) | Background desktop tests                | in review     |
 | [B8a](b8a-login-path.md) | Login shell command path | in review |
+
+## Product foundation
+
+Current increment: B16, B17, then B20 desktop experience and English/Chinese. B18, B19 and B13 remain draft; agent mechanisms continue to reuse Pi. Only ready specs may start.
+
+| Task | Status |
+| --- | --- |
+| [B16](b16-model-sources.md) | in review |
+| [B17](b17-core-bot.md) | in review |
+| [B20](b20-desktop-experience.md) | in review |
+| [B18](b18-core-management.md) | draft |
+| [B19](b19-memory-controls.md) | draft |
+| [B13A](b13a-channel-contexts.md) | draft |
+| [B13B](b13b-group-lifecycle.md) | draft |
+| [B13C](b13c-collaboration.md) | draft |
