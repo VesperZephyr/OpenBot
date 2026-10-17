@@ -5,6 +5,10 @@
 import type { GrantAccess, HostEvent, HostMethod, HostParams, HostResult } from "@openbot/protocol";
 
 export const RENDERER_METHODS = [
+	"groups.list",
+	"groups.snapshot",
+	"groups.change",
+	"groups.send",
 	"host.status",
 	"bots.list",
 	"bots.management.history",

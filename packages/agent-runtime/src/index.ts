@@ -54,6 +54,7 @@ import { type PolicyStore, policyStore } from "./policy.ts";
 import { applyMemoryEdit, checkMemorySize, type MemoryEdit, MemoryDoc, MemoryReceiptDoc, memoryState } from "./memory.ts";
 import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
 import { botSections } from "./prompt.ts";
+import { groupStore, detachGroupBot } from "./groups.ts";
 import { ManagementDoc, managementStore } from "./management.ts";
 import { type RunStore, runStore, RunsDoc } from "./runs.ts";
 
@@ -202,7 +203,7 @@ export class BotRuntime {
 				options.tools === undefined
 					? []
 					: options.tools.definitions
-							.filter((d) => d.capability !== "bot.management")
+							.filter((d) => !d.capability.endsWith(".management"))
 							.map((definition) => routedTool(definition, options.tools!.invoke)),
 			sections: botSections(async (input, context) => {
 				const bots = (await input.read.snapshot(BotsDoc, context))?.bots ?? {};
@@ -216,7 +217,7 @@ export class BotRuntime {
 		const core = defineExtension({
 			name: CORE_EXTENSION,
 			tools: (options.tools?.definitions ?? [])
-				.filter((d) => d.capability === "bot.management")
+				.filter((d) => d.capability.endsWith(".management"))
 				.map((d) => routedTool(d, options.tools!.invoke)),
 		});
 		registry.install(bot);
@@ -254,6 +255,10 @@ export class BotRuntime {
 	/** The durable approval records; Host code (the approval book) is their only writer. */
 	approvals(): ApprovalStore {
 		return approvalStore(this.#harness, this.#context);
+	}
+
+	groups() {
+		return groupStore(this.#harness, this.#context, async (tx) => Object.values((await tx.doc(BotsDoc)).bots).map(toProfile));
 	}
 
 	management() {
@@ -440,6 +445,7 @@ export class BotRuntime {
 				}
 			}
 			doc.bots[botId] = updated;
+			if (updated.status === "deleted") await detachGroupBot(tx, botId);
 			const result = toProfile(updated);
 			await completeManagement(tx, proposal, result);
 			return result;
@@ -522,10 +528,25 @@ export class BotRuntime {
 		return { status: "answered", answer: answer === undefined ? [] : textParts(answer) };
 	}
 
-	/** Abort the Bot's work: withdraw queued inputs and abort the active run; resolves once the conversation is idle. */
-	async cancel(botId: BotId, channelId = "direct"): Promise<void> {
+	/** Read the exact answer of a settled delivery, even after later channel tasks have run. */
+	async submissionAnswer(botId: string, submissionId: string, channelId: string): Promise<string> {
+		const owned = await this.#ownedSubmission(botId, submissionId, channelId);
+		if (!owned) return "";
+		const settled = await owned.submission.wait(this.#context);
+		if (settled.type !== "input" || settled.status !== "done") return "";
 		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
-		await conversation.abort(this.#context);
+		const page = await conversation.entries({ minEntryId: settled.answer, maxEntryId: settled.answer }, 1, undefined, this.#context);
+		return page.items[0]
+			? textParts(page.items[0])
+					.map((p) => p.text)
+					.join("\n")
+			: "";
+	}
+
+	/** Abort channel work. Startup uses background mode to mark cancellation before the scheduler resumes. */
+	async cancel(botId: BotId, channelId = "direct", background = false): Promise<void> {
+		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
+		await conversation.abort(this.#context, { background });
 	}
 
 	/**
@@ -1014,7 +1035,7 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 			if (!botId) throw new Error("No Bot owns this conversation");
 			const signal = context.abortSignal ?? new AbortController().signal;
 			let authority: ManagementAuthority | undefined;
-			if (definition.capability === "bot.management") {
+			if (definition.capability.endsWith(".management")) {
 				const saved = await api.memo<{ origin: "user"; runId: string } | null>("openbot.management-authority", context);
 				if (saved !== undefined) authority = saved ?? undefined;
 				else {

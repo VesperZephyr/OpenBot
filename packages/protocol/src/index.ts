@@ -50,6 +50,49 @@ export class ProtocolError extends Error {
 // ---------------------------------------------------------------------------
 // Domain data
 
+export type GroupFields = {
+	readonly name: string;
+	readonly objective: string;
+	readonly memberIds: readonly string[];
+	readonly leadBotId: string;
+};
+export type Group = Omit<GroupFields, "leadBotId"> & {
+	readonly leadBotId: string | null;
+	readonly groupId: string;
+	readonly revision: number;
+	readonly status: "active" | "dissolved";
+	readonly createdAt: number;
+};
+export type GroupChange = {
+	readonly requestId: string;
+	readonly action: "create" | "update" | "dissolve";
+	readonly groupId: string;
+	readonly expectedRevision: number;
+	readonly fields?: GroupFields;
+};
+export type GroupPost = {
+	readonly postId: string;
+	readonly senderId: string;
+	readonly text: string;
+	readonly at: number;
+	readonly recipientIds: readonly string[];
+	readonly replyTo?: string;
+};
+export type GroupDelivery = {
+	readonly deliveryId: string;
+	readonly groupId: string;
+	readonly postId: string;
+	readonly botId: string;
+	readonly input: string;
+	readonly state: "pending" | "completed" | "failed" | "cancelled";
+	readonly runId?: string;
+};
+export type GroupSnapshot = {
+	readonly group: Group;
+	readonly posts: readonly GroupPost[];
+	readonly tasks: readonly (GroupDelivery & { readonly conversation?: ConversationSnapshot })[];
+};
+
 export type BotId = string;
 export type RunId = string;
 
@@ -345,6 +388,11 @@ export type ModelSummary = {
 // Desktop-to-Host methods (Section 6.1). Each entry maps a method name to its params and result.
 
 export type HostMethods = {
+	"groups.list": { params: Record<string, never>; result: readonly Group[] };
+	"groups.snapshot": { params: { groupId: string }; result: GroupSnapshot };
+	"groups.change": { params: GroupChange; result: Group };
+	"groups.send": { params: { groupId: string; requestId: string; text: string; recipientIds?: readonly string[] }; result: GroupPost };
+
 	"host.status": { params: Record<string, never>; result: HostStatus };
 	"bots.management.history": { params: Record<string, never>; result: readonly BotManagementActivity[] };
 	"bots.list": { params: Record<string, never>; result: readonly BotSummary[] };
@@ -455,6 +503,10 @@ export type HostParams<M extends HostMethod> = HostMethods[M]["params"];
 export type HostResult<M extends HostMethod> = HostMethods[M]["result"];
 
 export const HOST_METHODS = [
+	"groups.list",
+	"groups.snapshot",
+	"groups.change",
+	"groups.send",
 	"host.status",
 	"bots.list",
 	"bots.management.history",
@@ -504,6 +556,7 @@ export type HostStatus = {
 // Host-to-Desktop events
 
 export type HostEvents = {
+	"groups.changed": Record<string, never>;
 	/** The roster or a Bot's sidebar state changed; fetch `bots.list` again. */
 	"bots.changed": Record<string, never>;
 	/** A conversation's view changed; the payload is the new snapshot. */
@@ -646,7 +699,7 @@ export type ExecutorMessage =
 // ---------------------------------------------------------------------------
 // Tool catalog: what the model is offered. Schemas are plain JSON Schema, which Pi validates tool arguments against.
 
-export type ToolCapability = "files.read" | "files.write" | "commands" | "tasks" | "web" | "memory" | "bot.management";
+export type ToolCapability = "files.read" | "files.write" | "commands" | "tasks" | "web" | "memory" | "bot.management" | "group.management";
 
 export type ToolDefinition = {
 	readonly name: string;
@@ -675,7 +728,50 @@ const botFields = {
 	),
 	thinkingLevel: nullable({ type: "string", enum: ["off", "low", "medium", "high"] }),
 };
+const groupFields = {
+	name: { type: "string", minLength: 1, maxLength: 100 },
+	objective: { type: "string", maxLength: 4000 },
+	memberIds: { type: "array", items: string("Existing Bot ID"), minItems: 2, maxItems: 6, uniqueItems: true },
+	leadBotId: string("Member responsible for messages without explicit recipients"),
+};
 export const TOOL_CATALOG = [
+	{
+		name: "group_inspect",
+		capability: "group.management",
+		destination: "host",
+		description:
+			"Core direct chat only. List local groups and revisions, or inspect one group. Does not read private Bot conversations. Use bot_inspect to find existing members.",
+		parameters: object({ groupId: nullable(string("Group ID, or null to list")) }, []),
+	},
+	{
+		name: "group_create",
+		capability: "group.management",
+		destination: "host",
+		description:
+			"Core direct chat only. Create a group of 2–6 existing Bots at the user's explicit request. Requires exact user approval. Never create Bots automatically. Do not retry a denied change.",
+		parameters: object(groupFields, Object.keys(groupFields)),
+	},
+	{
+		name: "group_update",
+		capability: "group.management",
+		destination: "host",
+		description:
+			"Core direct chat only. Replace group details, members and lead at the user's request. Inspect first, supply current revision and complete fields. Removing a member stops its group tasks. Requires exact approval.",
+		parameters: object({ ...groupFields, groupId: string("Group ID"), expectedRevision: integer("Current revision") }, [
+			...Object.keys(groupFields),
+			"groupId",
+			"expectedRevision",
+		]),
+	},
+	{
+		name: "group_dissolve",
+		capability: "group.management",
+		destination: "host",
+		description:
+			"Core direct chat only. Dissolve a group at the user's request after inspecting its revision. Requires approval, stops group work and retains read-only local history. Does not delete Bots.",
+		parameters: object({ groupId: string("Group ID"), expectedRevision: integer("Current revision") }, ["groupId", "expectedRevision"]),
+	},
+
 	{
 		name: "bot_inspect",
 		capability: "bot.management",
@@ -859,7 +955,8 @@ export const TOOL_CATALOG = [
 				expectedRevision: {
 					type: "integer",
 					minimum: 0,
-					description: "Current revision from your latest memory system section. On conflict, review that refreshed section before retrying.",
+					description:
+						"Current revision from your latest memory system section. On conflict, review that refreshed section before retrying.",
 				},
 			},
 			["action", "section", "content", "expectedRevision"],
