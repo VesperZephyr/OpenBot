@@ -9,6 +9,8 @@ describe("Host method parameter schemas", () => {
 
 	it("accept well-formed params", () => {
 		expect(paramsError("bots.list", {})).toBeUndefined();
+		// A root key includes JSON-escaped group and request IDs.
+		expect(paramsError("collaboration.stop", { rootId: `root:${JSON.stringify(["group_" + "g".repeat(128), "\u0000".repeat(256)])}` })).toBeUndefined();
 		expect(paramsError("bots.update", { botId: "b", model: null, status: "hidden" })).toBeUndefined();
 		expect(paramsError("conversations.subscribe", { botId: null })).toBeUndefined();
 		expect(

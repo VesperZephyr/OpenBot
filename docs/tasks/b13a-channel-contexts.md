@@ -1,6 +1,6 @@
 # B13a: Conversation Contexts per Channel
 
-Status: implemented, in review
+Status: done (PR #13)
 Branch: task/b13a-channel-contexts
 Depends on: B19 (merged in PR #12)
 Architecture: Sections 5.1, 5.7, 7.2

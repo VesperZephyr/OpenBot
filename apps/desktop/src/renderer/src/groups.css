@@ -191,3 +191,37 @@
 		padding: 8px 16px 16px;
 	}
 }
+
+.collaboration-root {
+	display: flex;
+	align-items: flex-start;
+	gap: 16px;
+	justify-content: space-between;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	padding: 16px;
+	margin-bottom: 16px;
+	background: var(--surface-raised);
+}
+.collaboration-root p {
+	margin: 6px 0;
+	font-size: 13px;
+	overflow-wrap: anywhere;
+}
+.collaboration-root small,
+.handoff-label {
+	color: var(--muted);
+	font-size: 12px;
+}
+.collaboration-root button {
+	flex-shrink: 0;
+}
+.mention-options {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+	padding: 10px;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	margin-bottom: 8px;
+}

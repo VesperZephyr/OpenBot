@@ -21,6 +21,7 @@ const MAX_WAIT_SECONDS = 60;
 export type TaskLedger = Pick<ReceiptLedger, "recordGroup" | "recordTask" | "finishTask" | "task">;
 
 type Task = {
+	readonly runId?: string;
 	readonly taskId: string;
 	readonly conversationId: string;
 	readonly command: RunningCommand;
@@ -49,7 +50,7 @@ export class CommandTasks {
 	 * the output so far and a `taskId`. `signal` cancels it only while it is in the foreground.
 	 */
 	async exec(
-		invocation: { readonly invocationId: string; readonly conversationId: string },
+		invocation: { readonly invocationId: string; readonly conversationId: string; readonly runId?: string },
 		args: CommandArgs & { readonly background?: boolean },
 		logPath: string,
 		onProgress: (output: string) => void,
@@ -84,6 +85,7 @@ export class CommandTasks {
 		log.spill();
 		const taskId = `task_${randomUUID().slice(0, 8)}`;
 		const task: Task = {
+			...(invocation.runId ? { runId: invocation.runId } : {}),
 			taskId,
 			conversationId: invocation.conversationId,
 			command,
@@ -101,7 +103,8 @@ export class CommandTasks {
 		this.#ledger.recordTask(taskId, invocation.invocationId, invocation.conversationId);
 		this.#tasks.set(taskId, task);
 		const { text, truncated } = log.render(LOG_START);
-		const how = args.background === true ? "Started in the background" : `Still running after ${this.#yieldMs / 1000}s; moved to the background`;
+		const how =
+			args.background === true ? "Started in the background" : `Still running after ${this.#yieldMs / 1000}s; moved to the background`;
 		return {
 			status: "succeeded",
 			output: `${text === "" ? "(no output yet)" : text}\n[${how} as task ${taskId}. Check it with task_output; stop it with task_stop.]`,
@@ -134,9 +137,10 @@ export class CommandTasks {
 		return this.#report(task);
 	}
 
-	/** The conversation's work was stopped: stop every task it still runs. */
-	stopConversation(conversationId: string): void {
-		for (const task of this.#tasks.values()) if (task.conversationId === conversationId) task.command.cancel();
+	/** A Run stop preserves other Runs' commands; lifecycle changes can stop the whole conversation. */
+	stopConversation(conversationId: string, runId?: string): void {
+		for (const task of this.#tasks.values())
+			if (task.conversationId === conversationId && (runId === undefined || task.runId === runId)) task.command.cancel();
 	}
 
 	/** Stop every task, for shutdown: no command outlives the executor that started it. */
@@ -152,7 +156,12 @@ export class CommandTasks {
 		const exit = task.exit;
 		if (exit === undefined) {
 			const seconds = Math.round((Date.now() - task.startedAt) / 1000);
-			return { status: "succeeded", output: `${body}\n[task ${task.taskId}: running, ${seconds}s in the background]`, truncated, taskId: task.taskId };
+			return {
+				status: "succeeded",
+				output: `${body}\n[task ${task.taskId}: running, ${seconds}s in the background]`,
+				truncated,
+				taskId: task.taskId,
+			};
 		}
 		const state =
 			exit.startError !== undefined

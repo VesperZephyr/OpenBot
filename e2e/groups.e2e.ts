@@ -37,10 +37,11 @@ afterEach(async ({ task }) => {
 afterAll(async () => {
 	await h?.close();
 });
-it("creates from desktop, routes to lead or selected member, and isolates private history", async () => {
+it("creates from desktop, routes to Core or selected member, and isolates private history", async () => {
 	h.model.script({ text: "Private answer" });
 	await api("messages.submit", { botId: alpha, requestId: "private", text: "PRIVATE_CANARY" });
 	await until(async () => (await api("bots.list")).find((b: any) => b.botId === alpha).lastRun?.state).toBe("completed");
+	expect(JSON.stringify(h.model.requests[0]?.tools)).not.toContain('"name":"bot_delegate"');
 	await h.page().getByRole("button", { name: "Create group", exact: true }).click();
 	const dialog = h.page().getByRole("dialog", { name: "Create group" });
 	await dialog.getByLabel("Group name").fill("Studio");
@@ -72,10 +73,10 @@ it("creates from desktop, routes to lead or selected member, and isolates privat
 	await send("Plan the first step.");
 	await waitReply("Lead response");
 	const req = JSON.stringify(h.model.requests[first]);
-	expect(req).toContain("ALPHA_PROMPT");
+	expect(req).not.toContain("ALPHA_PROMPT");
 	expect(req).not.toContain("PRIVATE_CANARY");
 	expect(req).not.toContain('"name":"group_create"');
-	expect((await snapshot()).posts[1].senderId).toBe(alpha);
+	expect((await snapshot()).posts[1].senderId).toBe(core);
 	h.model.script({ text: "Beta response" });
 	await h.page().locator(".group-recipients").getByRole("button", { name: "Beta", exact: true }).click();
 	await send("Review the lead's plan.");

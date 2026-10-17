@@ -123,7 +123,9 @@ function GroupEditor({ group: liveGroup, onClose }: { group?: Group; onClose: ()
 							))}
 					</select>
 				</label>
-				<p className="muted">{t("Messages go to the lead unless you choose recipients. Bot replies do not start other Bots.")}</p>
+				<p className="muted">
+					{t("Ordinary messages go to Core. Choose @ recipients to assign work directly. Private chats stay separate.")}
+				</p>
 				{group && liveGroup && liveGroup.revision !== group.revision && (
 					<div className="group-conflict">
 						<p>{t("Group changed. Reload before trying again.")}</p>
@@ -187,11 +189,14 @@ export function GroupView({ groupId }: { groupId: string }) {
 		end.current?.scrollIntoView({ block: "end" });
 	}, [snapshot?.posts.length]);
 	if (!snapshot) return <div className="empty-state">{t("Loading…")}</div>;
-	const { group, posts, tasks } = snapshot;
+	const { group, posts, tasks, roots } = snapshot;
+	const core = bots.find((b) => b.kind === "core");
+	const availableIds = [...new Set([...(core ? [core.botId] : []), ...group.memberIds])];
+	const mention = text.match(/(?:^|\s)@([^@\s]*)$/);
 	const name = (id: string) => bots.find((b) => b.botId === id)?.name ?? t("Deleted Bot");
 	const active = group.status === "active";
-	const canSend = active && group.memberIds.length >= 2 && !!group.leadBotId;
-	const selected = recipients.filter((id) => group.memberIds.includes(id));
+	const canSend = active && group.memberIds.length >= 2 && !!core;
+	const selected = recipients.filter((id) => availableIds.includes(id));
 	const send = async () => {
 		if (!text.trim() || busy || !canSend) return;
 		setBusy(true);
@@ -229,22 +234,57 @@ export function GroupView({ groupId }: { groupId: string }) {
 						◈
 					</span>
 					<h2>{t("A shared place to work")}</h2>
-					<p>{group.objective || t("Choose a member or send a task to the lead")}</p>
+					<p>{group.objective || t("Send a task to Core, or @ a Bot to assign it directly")}</p>
 					<div className="group-members">
 						{group.memberIds.map((id) => (
 							<span key={id}>{name(id)}</span>
 						))}
 					</div>
 				</div>
-				{posts.map((post) => (
-					<article className={`group-post ${post.senderId === "user" ? "from-user" : ""}`} key={post.postId}>
-						<div className="group-post-meta">
-							<strong>{post.senderId === "user" ? t("You") : name(post.senderId)}</strong>
-							{post.recipientIds.length > 0 && <span> → {post.recipientIds.map(name).join(", ")}</span>}
+				{posts
+					.filter((post) => post.text.trim())
+					.map((post) => (
+						<article className={`group-post ${post.senderId === "user" ? "from-user" : ""}`} key={post.postId}>
+							<div className="group-post-meta">
+								<strong>{post.senderId === "user" ? t("You") : name(post.senderId)}</strong>
+								{post.recipientIds.length > 0 && <span> → {post.recipientIds.map(name).join(", ")}</span>}
+							</div>
+							{post.kind && (
+								<small className="handoff-label">
+									{t(
+										post.kind === "handoff"
+											? "Ownership transferred"
+											: post.kind === "delegation"
+												? "Subtask assigned"
+												: "Results returned",
+									)}
+								</small>
+							)}
+							<Markdown text={post.text} />
+						</article>
+					))}
+				{roots
+					.filter((r) => r.state !== "completed")
+					.map((root) => (
+						<div className="collaboration-root" key={root.rootId} role="group" aria-label={t("Collaboration task")}>
+							<div>
+								<strong>
+									{t(root.state === "paused" ? "Needs your direction" : root.state === "cancelled" ? "Task chain stopped" : "Team working")}
+								</strong>
+								<p>{posts.find((p) => p.postId === root.postId)?.text.slice(0, 180)}</p>
+								<small>{t("{count} of 12 automatic deliveries", { count: root.automaticDeliveries })}</small>
+								{root.reason && <p>{t(root.reason)}</p>}
+								{root.state === "paused" && (
+									<p>{t("Send a new instruction to start a new task. This chain will not restart automatically.")}</p>
+								)}
+							</div>
+							{root.state === "running" && (
+								<button onClick={() => void api["collaboration.stop"]({ rootId: root.rootId }).catch(report)}>
+									{t("Stop task chain")}
+								</button>
+							)}
 						</div>
-						<Markdown text={post.text} />
-					</article>
-				))}
+					))}
 				{tasks.map((task) =>
 					task.state === "pending" ? (
 						<div key={task.deliveryId} className="group-task">
@@ -271,18 +311,40 @@ export function GroupView({ groupId }: { groupId: string }) {
 					<div className="group-recipients">
 						<span>{t("Send to")}</span>
 						<button aria-pressed={!selected.length} onClick={() => setRecipients([])}>
-							{t("Lead")}
+							{t("Core · automatic")}
 						</button>
-						{group.memberIds.map((id) => (
+						{availableIds.map((id) => (
 							<button
 								key={id}
+								aria-label={name(id)}
 								aria-pressed={selected.includes(id)}
 								onClick={() => setRecipients(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id])}
 							>
-								{name(id)}
+								@{name(id)}
 							</button>
 						))}
 					</div>
+					{mention && (
+						<div className="mention-options" role="listbox" aria-label={t("Mention a Bot")}>
+							{availableIds
+								.filter((id) => name(id).toLowerCase().includes(mention[1]!.toLowerCase()))
+								.map((id) => (
+									<button
+										key={id}
+										role="option"
+										aria-selected={selected.includes(id)}
+										onClick={() => {
+											setRecipients([...new Set([...selected, id])]);
+											setText(text.slice(0, text.lastIndexOf("@")));
+											sendId.current = crypto.randomUUID();
+										}}
+									>
+										{" "}
+										@{name(id)}
+									</button>
+								))}
+						</div>
+					)}
 					<div className="composer">
 						<textarea
 							aria-label={t("Message group")}
@@ -301,7 +363,7 @@ export function GroupView({ groupId }: { groupId: string }) {
 							}}
 						/>
 						<div className="composer-actions">
-							<span className="composer-hint">{t("Only selected members receive this task")}</span>
+							<span className="composer-hint">{t("Core coordinates by default · @ selects recipients")}</span>
 							<button className="primary" disabled={!text.trim() || busy} onClick={() => void send()}>
 								{t("Send")}
 							</button>

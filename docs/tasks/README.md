@@ -76,7 +76,7 @@ Phase 1 (MVP). Every batch is implemented on `feat/mvp` and in review until the 
 
 ## Product foundation
 
-Current increment: B13a channel contexts and B13b group lifecycle follow merged B18/B19. B13c automatic peer collaboration remains draft; agent mechanisms continue to reuse Pi. Only ready specs may start.
+Current increment: B13a channel contexts and B13b group lifecycle follow merged B18/B19. B13c bounded group collaboration is implemented and in review; agent mechanisms continue to reuse Pi. Only ready specs may start.
 
 | Task | Status |
 | --- | --- |
@@ -85,6 +85,6 @@ Current increment: B13a channel contexts and B13b group lifecycle follow merged 
 | [B20](b20-desktop-experience.md) | in review |
 | [B18](b18-core-management.md) | done (PR #11) |
 | [B19](b19-memory-controls.md) | in review |
-| [B13A](b13a-channel-contexts.md) | in review |
+| [B13A](b13a-channel-contexts.md) | done (PR #13) |
 | [B13B](b13b-group-lifecycle.md) | in review |
-| [B13C](b13c-collaboration.md) | draft |
+| [B13C](b13c-collaboration.md) | in review |

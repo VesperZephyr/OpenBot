@@ -56,6 +56,7 @@ async function close() {
 beforeEach(async () => {
 	root = await mkdtemp(join(tmpdir(), "openbot-delivery-"));
 	await open("Answer");
+	await runtime.ensureCoreBot(1);
 	for (const id of ["a", "b"]) await runtime.createBot({ botId: id, name: id, createdAt: 1, model: SCRIPTED_MODEL });
 	await runtime.groups().change(
 		{
@@ -73,7 +74,7 @@ afterEach(async () => {
 	await rm(root, { recursive: true, force: true });
 });
 it("recovers a completed Run without its delivery receipt and publishes its exact answer once", async () => {
-	await runtime.groups().post("group_g", "p", "Task", undefined, 2);
+	await runtime.groups().post("group_g", "p", "Task", ["a"], 2);
 	const d = (await runtime.groups().deliveries())[0]!;
 	await runtime.ensureChannel("a", "group_g");
 	runtime.resume();
@@ -96,7 +97,7 @@ it("recovery cancels a dissolved running delivery before resuming the model", as
 	await close();
 	await open({ tool: "wait", args: {} });
 	runtime.resume();
-	await groups.send("group_g", "p", "Wait");
+	await groups.send("group_g", "p", "Wait", ["a"]);
 	await expect.poll(() => entered).toBe(true);
 	await runtime.groups().change({ requestId: "end", action: "dissolve", groupId: "group_g", expectedRevision: 1 }, 3);
 	const d = (await runtime.groups().deliveries())[0]!;

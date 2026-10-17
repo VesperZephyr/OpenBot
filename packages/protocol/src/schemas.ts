@@ -38,6 +38,7 @@ const GroupFields = strict({
 	leadBotId: Id,
 });
 export const HOST_PARAM_SCHEMAS = {
+ "collaboration.stop": strict({ rootId: Type.String({ minLength: 1, maxLength: 2048 }) }),
 	"groups.list": NoParams,
 	"groups.snapshot": strict({ groupId: GroupId }),
 	"groups.change": strict({

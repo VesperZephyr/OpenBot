@@ -70,7 +70,26 @@ export type GroupChange = {
 	readonly expectedRevision: number;
 	readonly fields?: GroupFields;
 };
+export type CollaborationRoot = {
+	readonly rootId: string;
+	readonly groupId: string;
+	readonly coreBotId: string;
+	readonly postId: string;
+	readonly allowedBotIds: readonly string[];
+	readonly initialIds: readonly string[];
+	readonly automaticDeliveries: number;
+	readonly state: "running" | "completed" | "paused" | "cancelled";
+	readonly reason?: string;
+};
+export type CollaborationSnapshot = {
+	readonly roots: readonly CollaborationRoot[];
+	readonly posts: readonly GroupPost[];
+	readonly tasks: readonly (GroupDelivery & { readonly conversation?: ConversationSnapshot })[];
+};
 export type GroupPost = {
+	readonly rootId?: string;
+	readonly kind?: "delegation" | "handoff" | "result";
+
 	readonly postId: string;
 	readonly senderId: string;
 	readonly text: string;
@@ -79,6 +98,16 @@ export type GroupPost = {
 	readonly replyTo?: string;
 };
 export type GroupDelivery = {
+	readonly rootId?: string;
+	readonly parentId?: string;
+	readonly origin?: "user" | "peer" | "result";
+	readonly depth?: number;
+	readonly ancestry?: readonly string[];
+	readonly expectedResult?: string;
+	readonly transferId?: string;
+	readonly continuationId?: string;
+	readonly closed?: boolean;
+
 	readonly deliveryId: string;
 	readonly groupId: string;
 	readonly postId: string;
@@ -87,11 +116,7 @@ export type GroupDelivery = {
 	readonly state: "pending" | "completed" | "failed" | "cancelled";
 	readonly runId?: string;
 };
-export type GroupSnapshot = {
-	readonly group: Group;
-	readonly posts: readonly GroupPost[];
-	readonly tasks: readonly (GroupDelivery & { readonly conversation?: ConversationSnapshot })[];
-};
+export type GroupSnapshot = CollaborationSnapshot & { readonly group: Group };
 
 export type BotId = string;
 export type RunId = string;
@@ -388,6 +413,7 @@ export type ModelSummary = {
 // Desktop-to-Host methods (Section 6.1). Each entry maps a method name to its params and result.
 
 export type HostMethods = {
+	"collaboration.stop": { params: { rootId: string }; result: null };
 	"groups.list": { params: Record<string, never>; result: readonly Group[] };
 	"groups.snapshot": { params: { groupId: string }; result: GroupSnapshot };
 	"groups.change": { params: GroupChange; result: Group };
@@ -503,6 +529,7 @@ export type HostParams<M extends HostMethod> = HostMethods[M]["params"];
 export type HostResult<M extends HostMethod> = HostMethods[M]["result"];
 
 export const HOST_METHODS = [
+	"collaboration.stop",
 	"groups.list",
 	"groups.snapshot",
 	"groups.change",
@@ -639,6 +666,7 @@ export function isRequestEnvelope(
 
 /** Executor-protocol invocation, identical for the local executor and any future target. */
 export type ToolInvocation = {
+	readonly runId?: string;
 	readonly invocationId: string;
 	readonly botId: BotId;
 	readonly conversationId: string;
@@ -675,7 +703,7 @@ export type ExecutorRequest =
 	/** The Host committed the outcome; the receipt may be pruned after the retention period. */
 	| { readonly kind: "result.ack"; readonly invocationId: string }
 	/** The conversation's work was stopped: stop its background tasks too. */
-	| { readonly kind: "tasks.stop"; readonly conversationId: string };
+	| { readonly kind: "tasks.stop"; readonly conversationId: string; readonly runId?: string };
 
 /** Executor to Host. */
 export type ExecutorMessage =
@@ -699,7 +727,8 @@ export type ExecutorMessage =
 // ---------------------------------------------------------------------------
 // Tool catalog: what the model is offered. Schemas are plain JSON Schema, which Pi validates tool arguments against.
 
-export type ToolCapability = "files.read" | "files.write" | "commands" | "tasks" | "web" | "memory" | "bot.management" | "group.management";
+export type ToolCapability =
+	"files.read" | "files.write" | "commands" | "tasks" | "web" | "memory" | "bot.management" | "group.management" | "collaboration";
 
 export type ToolDefinition = {
 	readonly name: string;
@@ -732,9 +761,26 @@ const groupFields = {
 	name: { type: "string", minLength: 1, maxLength: 100 },
 	objective: { type: "string", maxLength: 4000 },
 	memberIds: { type: "array", items: string("Existing Bot ID"), minItems: 2, maxItems: 6, uniqueItems: true },
-	leadBotId: string("Member responsible for messages without explicit recipients"),
+	leadBotId: string("Member with the lead role; ordinary messages always go to Core"),
 };
 export const TOOL_CATALOG = [
+	...(["bot_delegate", "bot_handoff"] as const).map((name) => ({
+		name,
+		capability: "collaboration" as const,
+		destination: "host" as const,
+		description:
+			name === "bot_delegate"
+				? "Assign a bounded subtask to an existing Bot. Only an assigned group task Run can dispatch. Retain ownership: finish this turn after assignments; results return in a separate task continuation. Do not poll or send acknowledgements. Use IDs from the task roster. Two forward hops and twelve automatic deliveries maximum; no self or ancestor dispatch."
+				: "Transfer this task to an existing Bot in the assigned scope. Ownership moves to the recipient: finish your turn and do not perform or dispatch more work. The recipient's result completes this stage. No self/ancestor dispatch or management authority transfer.",
+		parameters: object(
+			{
+				botId: string("Recipient Bot ID from the task roster"),
+				task: { type: "string", minLength: 1, maxLength: 8000 },
+				expectedResult: { type: "string", minLength: 1, maxLength: 2000 },
+			},
+			["botId", "task", "expectedResult"],
+		),
+	})),
 	{
 		name: "group_inspect",
 		capability: "group.management",
