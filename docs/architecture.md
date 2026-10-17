@@ -442,7 +442,7 @@ Prefer a connector over browser automation when one exists.
 
 ### 5.7 Bots, Memory, Group Chats, and Handoff
 
-Product design under review: [D1: Core Bot, Specialist Bots, and Model Sources](tasks/d1-bot-product-design.md) proposes a protected default Bot, Core-only roster/group management, revisioned memory controls, and separate per-Bot conversation contexts for each group. These changes are not implemented and do not replace the contracts below until their execution specs are ready.
+The accepted [D1 product design](tasks/d1-bot-product-design.md) is delivered through separate specs. [B17](tasks/b17-core-bot.md) establishes exactly one protected Core per local store, created before inference. Specialists are created only at the user's request, never seeded. Core identity is Host-owned and independent of name, Prompt and model; hide/delete/unpin are rejected before side effects. Existing Bots are preserved during migration. Model-facing management and group context changes remain later batches.
 
 A Bot profile is an OpenBot session document containing `botId`, name, avatar, role description, instructions, model selection, enabled tool families, default working directory, and status (active, hidden, deleted). Creating a Bot creates its main Pi conversation and applies the profile through `configure()`.
 
@@ -472,7 +472,7 @@ A Bot profile is an OpenBot session document containing `botId`, name, avatar, r
 
 ### 5.9 Credentials and Secrets
 
-[D1](tasks/d1-bot-product-design.md#model-sources) proposes separate built-in and custom setup surfaces over the existing resolved model registry, including explicit source and override metadata. It does not change credential precedence or add authentication flows.
+[B16](tasks/b16-model-sources.md) presents built-in and custom setup over one registry, with override metadata and explicit connection tests. UI authentication is API-key-only; OAuth is not implied by catalog support. Custom creation preserves JSONC and refuses existing IDs. Display endpoints expose origins only; provider test failures use safe fixed messages. Credential precedence is unchanged.
 
 Model, search, and connector credentials are stored in the macOS Keychain and loaded by the Host as needed. Renderers receive redacted settings.
 
@@ -793,3 +793,7 @@ Permissions, policy, and execution records are part of M1 from the start. Use Pi
 13. **State restores from backup:** Conversation state, Bot profiles and memory, routines, artifact references, skills, and execution records recover consistently, with application, Pi, and data-format versions recorded.
 
 The Pi source baseline and interfaces above were checked against upstream revision `b45e0ebcc` in a local checkout on 2026-10-14. Tool permissions, browser and macOS integration, crash recovery, real-model behavior, and packaged distribution remain implementation and acceptance work.
+
+### Local privacy and operation diagnostics
+
+Product stores, transcripts, memory, configuration and diagnostics stay on the Mac. There is no automatic analytics or log upload. Configured model and search services receive task-relevant inputs; local storage does not imply offline inference. Credentials stay in Keychain or explicitly configured local credential sources. B16 adds allowlisted operation diagnostics (generated ID, method, time, duration, outcome) to the bounded local Host log, excluding inputs, outputs, Prompt, memory and credential material. Authoritative Runs, approvals and execution receipts remain separate durable records.

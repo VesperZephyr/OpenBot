@@ -73,3 +73,17 @@ Phase 1 (MVP). Every batch is implemented on `feat/mvp` and in review until the 
 | [B8](b8-installable-build.md) | Installable build                       | in review     |
 | [B7a](b7a-background-e2e.md) | Background desktop tests                | in review     |
 | [B8a](b8a-login-path.md) | Login shell command path | in review |
+
+## Product foundation
+
+Execute in order: B16, B17, B18, B19, B13a, B13b, B13c. Only ready specs may start.
+
+| Task | Status |
+| --- | --- |
+| [B16](b16-model-sources.md) | ready |
+| [B17](b17-core-bot.md) | ready |
+| [B18](b18-core-management.md) | draft |
+| [B19](b19-memory-controls.md) | draft |
+| [B13A](b13a-channel-contexts.md) | draft |
+| [B13B](b13b-group-lifecycle.md) | draft |
+| [B13C](b13c-collaboration.md) | draft |

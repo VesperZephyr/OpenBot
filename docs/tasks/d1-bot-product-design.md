@@ -1,6 +1,6 @@
 # D1: Core Bot, Specialist Bots, and Model Sources
 
-Status: draft (product design; not an implementation contract)
+Status: accepted (product design; execution follows the individual batch specs)
 Branch: task/d1-bot-product-design
 Date: 2026-10-17
 Depends on: B6, B7, B8
@@ -14,7 +14,8 @@ This document records research, owner requirements, recommended behavior, archit
 
 ### Owner requirements
 
-- A default Core Bot exists from first use and cannot be deleted.
+- A default Core Bot exists from first use and cannot be deleted. No Specialists are seeded; additional Bots are created only at the user's request.
+- Product data and diagnostics remain on the user's Mac. Remote inference/search disclosures must be explicit; diagnostics exclude personal content and secrets.
 - The Core Bot can create, edit, and delete other Bots and create, edit, and dissolve groups.
 - Specialist Bots perform agent work; they cannot manage other Bots or groups.
 - Each Bot has its own Prompt and memory.
