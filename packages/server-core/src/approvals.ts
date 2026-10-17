@@ -268,6 +268,8 @@ export function decide(call: PolicyCall, definition: ToolDefinition, policy: Pol
 				alwaysAllowOptions: folderOptions(canonical, call.tool === "local_list", access),
 			};
 		}
+		case "collaboration":
+   return {kind:"deny",reason:"Collaboration requires assigned task authority"};
 		case "group.management":
 			return { kind: "deny", reason: "Group management requires Core authorization" };
 		case "bot.management":

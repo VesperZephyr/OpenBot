@@ -70,7 +70,7 @@ process.on("message", (message: ExecutorRequest) => {
 			executor.ack(message.invocationId);
 			return;
 		case "tasks.stop":
-			executor.stopTasks(message.conversationId);
+			executor.stopTasks(message.conversationId, message.runId);
 	}
 });
 

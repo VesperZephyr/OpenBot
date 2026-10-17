@@ -1,14 +1,14 @@
 /** Group lifecycle and durable delivery reconciliation; model replies never choose a destination. */
 import { createHash } from "node:crypto";
 import { isTerminal, type BotRuntime, type StoredRun } from "@openbot/agent-runtime";
-import { type GroupChange, type GroupFields, type GroupSnapshot, ProtocolError } from "@openbot/protocol";
+import { type GroupDelivery, type GroupChange, type GroupFields, type GroupSnapshot, ProtocolError } from "@openbot/protocol";
 import type { ApprovalBook, Decision } from "./approvals.ts";
 import { BotManagement, type ManagementCall } from "./bot-management.ts";
 import type { RunScheduler } from "./runs.ts";
 
-const fail = (message: string): never => {
+function fail(message: string): never {
 	throw new ProtocolError("invalid_request", message);
-};
+}
 const canonical = (value: unknown): string => {
 	if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
 	if (value && typeof value === "object")
@@ -25,7 +25,8 @@ export class Groups {
 	readonly #approvals: ApprovalBook;
 	readonly #changed: () => void;
 	readonly #settled: (botId: string, callId: string, conversationId?: string) => void;
-	readonly #stopping: (botId: string, channelId: string) => void;
+	readonly #stopping: (botId: string, channelId: string, runId?: string) => void;
+	readonly #stoppedTrees = new Set<string>();
 	readonly #observers = new Map<string, () => void>();
 	#timer?: ReturnType<typeof setInterval>;
 	#line: Promise<unknown> = Promise.resolve();
@@ -37,7 +38,7 @@ export class Groups {
 		approvals: ApprovalBook;
 		changed: () => void;
 		settled: (botId: string, callId: string, conversationId?: string) => void;
-		stopping: (botId: string, channelId: string) => void;
+		stopping: (botId: string, channelId: string, runId?: string) => void;
 	}) {
 		this.runtime = options.runtime;
 		this.authority = options.authority;
@@ -53,13 +54,24 @@ export class Groups {
 		const d = (await this.runtime.groups().deliveries()).find(
 			(d) => d.groupId === run.channelId && d.botId === run.botId && run.requestIds.includes(`delivery:${d.deliveryId}`),
 		);
-		return !!group && group.status === "active" && group.memberIds.includes(run.botId) && d?.state === "pending";
+		const root = d?.rootId ? (await this.runtime.groups().roots(run.channelId)).find((r) => r.rootId === d.rootId) : undefined;
+		return (
+			!!group &&
+			group.status === "active" &&
+			(group.memberIds.includes(run.botId) || root?.coreBotId === run.botId) &&
+			d?.state === "pending" &&
+			(!root || root.state === "running")
+		);
 	}
 	async start(): Promise<void> {
 		for (const channel of await this.runtime.channels()) {
 			await this.#observe(channel.botId, channel.channelId);
 			const group = await this.runtime.groups().get(channel.channelId);
-			if (group && (group.status === "dissolved" || !group.memberIds.includes(channel.botId)))
+			if (
+				group &&
+				(group.status === "dissolved" ||
+					(!group.memberIds.includes(channel.botId) && (await this.runtime.getBot(channel.botId))?.kind !== "core"))
+			)
 				this.#stopping(channel.botId, channel.channelId);
 		}
 		await this.sweep();
@@ -94,15 +106,20 @@ export class Groups {
 	async change(change: GroupChange, intentId?: string) {
 		const before = await this.runtime.groups().get(change.groupId);
 		const result = await this.runtime.groups().change(change, Date.now(), intentId);
-		for (const id of before?.memberIds ?? [])
-			if (result.status === "dissolved" || !result.memberIds.includes(id)) this.#stopping(id, result.groupId);
+		const affected = new Set([
+			...(before?.memberIds ?? []),
+			...(await this.runtime.channels()).filter((c) => c.channelId === result.groupId).map((c) => c.botId),
+		]);
+		for (const id of affected)
+			if (result.status === "dissolved" || (!result.memberIds.includes(id) && (await this.runtime.getBot(id))?.kind !== "core"))
+				this.#stopping(id, result.groupId);
 		this.#changed();
 		await this.sweep();
 		return result;
 	}
 	async send(groupId: string, requestId: string, text: string, recipientIds?: readonly string[]) {
-		const group = await this.runtime.groups().get(groupId);
-		for (const id of recipientIds ?? (group?.leadBotId ? [group.leadBotId] : [])) {
+		const core = (await this.runtime.listBots()).find((b) => b.kind === "core");
+		for (const id of recipientIds ?? (core ? [core.botId] : [])) {
 			const bot = await this.runtime.getBot(id);
 			if (bot && !bot.model && !(await this.runtime.defaultModel())) fail("Choose a model in Settings before messaging a Bot");
 		}
@@ -115,17 +132,28 @@ export class Groups {
 		const work = this.#line.then(async () => {
 			if (this.#stopped) return;
 			const store = this.runtime.groups();
+			await store.reconcile(Date.now());
 			const deliveries = await store.deliveries();
+			for (const root of await store.roots())
+				if (["paused", "cancelled"].includes(root.state) && !this.#stoppedTrees.has(root.rootId)) {
+					for (const d of deliveries) if (d.rootId === root.rootId && d.runId) this.#stopping(d.botId, d.groupId, d.runId);
+					this.#stoppedTrees.add(root.rootId);
+				}
 			const cancelled = new Set(deliveries.filter((d) => d.state === "cancelled").map((d) => `delivery:${d.deliveryId}`));
 			await this.#runs.cancelMatching((run) => run.requestIds.some((id) => cancelled.has(id)));
 			for (const d of deliveries) {
 				if (d.state !== "pending") continue;
+				if (d.parentId && deliveries.find((p) => p.deliveryId === d.parentId)?.state !== "completed") continue;
 				await this.runtime.ensureChannel(d.botId, d.groupId);
 				await this.#observe(d.botId, d.groupId);
 				let runId = d.runId;
 				if (!runId) {
 					// The stable request ID reconciles a crash after submit but before admitted.
-					const admitted = await this.#runs.submit(d.botId, `delivery:${d.deliveryId}`, d.input, { channelId: d.groupId, separate: true });
+					const admitted = await this.#runs.submit(d.botId, `delivery:${d.deliveryId}`, d.input, {
+						channelId: d.groupId,
+						separate: true,
+						origin: d.origin === "peer" || d.origin === "result" ? "peer" : "user",
+					});
 					runId = admitted.runId;
 					await store.admitted(d.deliveryId, runId);
 				}
@@ -167,7 +195,119 @@ export class Groups {
 				};
 			}),
 		);
-		return { group, posts: await this.runtime.groups().posts(groupId), tasks };
+		return { group, roots: await this.runtime.groups().roots(groupId), posts: await this.runtime.groups().posts(groupId), tasks };
+	}
+	async stopTree(rootId: string): Promise<null> {
+		await this.runtime.groups().stop(rootId);
+		this.#changed();
+		await this.sweep();
+		return null;
+	}
+	async #collaborationParent(call: ManagementCall): Promise<GroupDelivery> {
+		call.signal.throwIfAborted();
+		if (!call.collaboration) fail("Collaboration requires an assigned group task");
+		const run = await this.runtime.runsStore().get(call.collaboration!.runId);
+		if (
+			!run ||
+			run.botId !== call.botId ||
+			run.state !== "running" ||
+			!run.channelId ||
+			run.channelId === "direct" ||
+			(await this.runtime.conversationKey(call.botId, run.channelId)) !== call.conversationId
+		)
+			fail("Collaboration requires an active assigned group task");
+		const d = (await this.runtime.groups().deliveries()).find(
+			(d) => d.groupId === run!.channelId && d.botId === call.botId && run!.requestIds.includes(`delivery:${d.deliveryId}`),
+		);
+		if (!d?.rootId) fail("This task does not support collaboration");
+		return d!;
+	}
+	#dispatchFingerprint(call: ManagementCall): string {
+		return createHash("sha256")
+			.update(
+				canonical({
+					botId: call.botId,
+					conversationId: call.conversationId,
+					runId: call.collaboration?.runId,
+					tool: call.tool,
+					args: call.args,
+				}),
+			)
+			.digest("hex");
+	}
+	async executionGate(call: ManagementCall): Promise<Decision | undefined> {
+		const channel = (await this.runtime.channels()).find((c) => String(c.conversationId) === call.conversationId && c.botId === call.botId);
+		if (!channel) return;
+		const runs = await this.runtime.runsStore().list();
+		const run = runs.find((r) => r.botId === call.botId && r.channelId === channel.channelId && r.state === "running");
+		const d = run && (await this.runtime.groups().deliveries()).find((d) => run.requestIds.includes(`delivery:${d.deliveryId}`));
+		if (!d?.rootId) return;
+		const root = (await this.runtime.groups().roots(d.groupId)).find((r) => r.rootId === d.rootId);
+		if (!root || root.state !== "running" || d.state !== "pending" || d.transferId) {
+			// A successful immutable receipt may replay after ownership moved, but no new side effect may run.
+			if (["bot_delegate", "bot_handoff"].includes(call.tool) && (await this.runtime.groups().dispatchReceipt(this.authority.key(call))))
+				return;
+			return { kind: "deny", reason: "This task no longer owns execution authority" };
+		}
+		return;
+	}
+	async prepareCollaboration(call: ManagementCall): Promise<Decision> {
+		try {
+			if (
+				!["bot_delegate", "bot_handoff"].includes(call.tool) ||
+				Object.keys(call.args).some((k) => !["botId", "task", "expectedResult"].includes(k)) ||
+				typeof call.args.botId !== "string" ||
+				typeof call.args.task !== "string" ||
+				typeof call.args.expectedResult !== "string"
+			)
+				fail("Invalid collaboration task");
+			const prior = await this.runtime.groups().dispatchReceipt(this.authority.key(call));
+			if (prior) {
+				if (prior.fingerprint !== this.#dispatchFingerprint(call)) fail("Collaboration invocation arguments changed");
+				return { kind: "allow" };
+			}
+			await this.#collaborationParent(call);
+			return { kind: "allow" };
+		} catch (error) {
+			if (call.signal.aborted) throw error;
+			return { kind: "deny", reason: error instanceof ProtocolError ? error.message : "Collaboration is unavailable" };
+		}
+	}
+	async collaborate(call: ManagementCall): Promise<{ status: "succeeded" | "failed"; output: string }> {
+		try {
+			const decision = await this.prepareCollaboration(call);
+			if (decision.kind === "deny") fail(decision.reason);
+			const key = this.authority.key(call);
+			const prior = await this.runtime.groups().dispatchReceipt(key);
+			const result =
+				prior ??
+				(await this.runtime
+					.groups()
+					.dispatch(
+						key,
+						this.#dispatchFingerprint(call),
+						(await this.#collaborationParent(call)).deliveryId,
+						call.args.botId as string,
+						call.args.task as string,
+						call.args.expectedResult as string,
+						call.tool === "bot_handoff",
+						Date.now(),
+					));
+			this.#changed();
+			return {
+				status: result.error ? "failed" : "succeeded",
+				output: JSON.stringify({
+					...result,
+					fingerprint: undefined,
+					note: result.error
+						? "Task paused. Wait for new user instructions."
+						: "Assignment recorded. Finish this turn; do not poll or acknowledge. Work starts after your turn ends.",
+				}),
+			};
+		} catch (error) {
+			if (call.signal.aborted) throw error;
+			return { status: "failed", output: error instanceof ProtocolError ? error.message : "Collaboration is unavailable" };
+		}
 	}
 	async settled(botId: string, callId: string, status: string): Promise<void> {
 		const id = `${await this.runtime.conversationKey(botId)}:${callId}`;

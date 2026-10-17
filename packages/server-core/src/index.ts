@@ -76,8 +76,8 @@ export type HostServiceOptions = {
 	 * when observation starts.
 	 */
 	readonly toolSettled?: (botId: BotId, callId: string, conversationId?: string) => void;
-	/** Runs when the user stops a Bot's work; the Host stops the background commands its conversation started. */
-	readonly conversationStopped?: (botId: BotId, channelId?: string) => void;
+	/** Stops background commands for a Run, or the full conversation for lifecycle changes. */
+	readonly conversationStopped?: (botId: BotId, channelId?: string, runId?: string) => void;
 	/** The shared folder every Bot may use without asking. */
 	readonly workspace: string;
 	readonly emit: EventSink;
@@ -103,7 +103,7 @@ export class HostService {
 	readonly #modelConfig: ModelConfigFile;
 	readonly #approvals: ApprovalBook;
 	readonly #toolSettled: (botId: BotId, callId: string, conversationId?: string) => void;
-	readonly #conversationStopped: (botId: BotId, channelId?: string) => void;
+	readonly #conversationStopped: (botId: BotId, channelId?: string, runId?: string) => void;
 	readonly #workspace: string;
 	readonly #emit: EventSink;
 	readonly #now: () => number;
@@ -135,7 +135,7 @@ export class HostService {
 			maxActiveRuns: options.maxActiveRuns ?? DEFAULT_MAX_ACTIVE_RUNS,
 			changed: (botId) => this.#republish(botId),
 			now: this.#now,
-			stopping: (botId, channelId) => this.#conversationStopped(botId, channelId),
+			stopping: (botId, channelId, runId) => this.#conversationStopped(botId, channelId, runId),
 			admissible: (run) => this.groups.admissible(run),
 		});
 		this.groups = new Groups({
@@ -145,7 +145,7 @@ export class HostService {
 			approvals: this.#approvals,
 			changed: () => this.#emit({ type: "groups.changed", payload: {} }),
 			settled: this.#toolSettled,
-			stopping: (botId, channelId) => this.#conversationStopped(botId, channelId),
+			stopping: (botId, channelId, runId) => this.#conversationStopped(botId, channelId, runId),
 		});
 		this.#policy = new PolicyService({ runtime: this.#runtime, approvals: this.#approvals, workspace: this.#workspace, now: this.#now });
 		this.#feed = new ConversationFeed({
@@ -154,6 +154,7 @@ export class HostService {
 			...(options.coalesce?.timers === undefined ? {} : { timers: options.coalesce.timers }),
 		});
 		this.#handlers = {
+			"collaboration.stop": ({ rootId }) => this.groups.stopTree(rootId),
 			"groups.list": () => this.#runtime.groups().list(),
 			"groups.snapshot": ({ groupId }) => this.groups.snapshot(groupId),
 			"groups.change": (change) => this.groups.change(change),
