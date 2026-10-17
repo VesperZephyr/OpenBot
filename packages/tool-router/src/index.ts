@@ -101,6 +101,7 @@ export class ToolRouter {
 				{
 					// The call ID makes the approval stable across reruns: a rerun waits on the same approval.
 					approvalId: `approval:${call.conversationId}:${call.callId}`,
+					conversationId: call.conversationId,
 					botId: call.botId,
 					callId: call.callId,
 					tool: call.tool,

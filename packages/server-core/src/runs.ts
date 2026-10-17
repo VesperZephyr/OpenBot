@@ -24,7 +24,8 @@ export type RunSchedulerOptions = {
 	readonly changed: (botId: BotId) => void;
 	readonly now: () => number;
 	/** Runs right before a running Run's conversation is aborted, so work it left in the background stops too. */
-	readonly stopping?: (botId: BotId) => void;
+	readonly stopping?: (botId: BotId, channelId?: string) => void;
+	readonly admissible?: (run: StoredRun) => Promise<boolean>;
 };
 
 export type SubmitOutcome = { readonly runId: RunId; readonly state: RunRecord["state"]; readonly steered: boolean };
@@ -37,7 +38,8 @@ export class RunScheduler {
 	readonly #cap: number;
 	readonly #changed: (botId: BotId) => void;
 	readonly #now: () => number;
-	readonly #stopping: (botId: BotId) => void;
+	readonly #stopping: (botId: BotId, channelId?: string) => void;
+	readonly #admissible: (run: StoredRun) => Promise<boolean>;
 	/** Current Runs by ID: every non-terminal Run, and terminal ones looked up since start. */
 	readonly #runs = new Map<RunId, StoredRun>();
 	/** Running Runs the user asked to stop; new messages to their Bot start a new Run instead of steering. */
@@ -60,6 +62,7 @@ export class RunScheduler {
 		this.#changed = options.changed;
 		this.#now = options.now;
 		this.#stopping = options.stopping ?? (() => {});
+		this.#admissible = options.admissible ?? (async () => true);
 	}
 
 	/**
@@ -85,8 +88,10 @@ export class RunScheduler {
 	}
 
 	/** The Bot's latest non-terminal Run. */
-	active(botId: BotId): StoredRun | undefined {
-		return [...this.#runs.values()].findLast((run) => run.botId === botId && !isTerminal(run.state));
+	active(botId: BotId, channelId = "direct"): StoredRun | undefined {
+		return [...this.#runs.values()].findLast(
+			(run) => run.botId === botId && (run.channelId ?? "direct") === channelId && !isTerminal(run.state),
+		);
 	}
 
 	/** The Bot's newest Run since start, including one that already ended. */
@@ -97,17 +102,27 @@ export class RunScheduler {
 		return record;
 	}
 
-	submit(botId: BotId, requestId: string, text: string): Promise<SubmitOutcome> {
+	submit(
+		botId: BotId,
+		requestId: string,
+		text: string,
+		options: { channelId?: string; origin?: "user" | "peer"; separate?: boolean } = {},
+	): Promise<SubmitOutcome> {
+		const channelId = options.channelId ?? "direct";
 		return this.#serial(async () => {
 			const existing = await this.#byRequest(botId, requestId);
 			if (existing !== undefined) {
 				const message = existing.messages.find((candidate) => candidate.requestId === requestId);
-				if (message?.text !== text) {
+				if (
+					message?.text !== text ||
+					(existing.channelId ?? "direct") !== channelId ||
+					(existing.origin ?? "user") !== (options.origin ?? "user")
+				) {
 					throw new ProtocolError("request_conflict", "This request ID was already used for another message");
 				}
 				return { runId: existing.runId, state: existing.state, steered: existing.messages[0]?.requestId !== requestId };
 			}
-			const current = this.active(botId);
+			const current = options.separate ? undefined : this.active(botId, channelId);
 			if (current?.state === "queued") {
 				const joined = { ...current, requestIds: [...current.requestIds, requestId], messages: [...current.messages, { requestId, text }] };
 				await this.#put(joined);
@@ -126,7 +141,8 @@ export class RunScheduler {
 				return { runId: steered.runId, state: "running", steered: true };
 			}
 			const run: StoredRun = {
-				origin: "user",
+				origin: options.origin ?? "user",
+				...(channelId === "direct" ? {} : { channelId }),
 				runId: `run_${randomUUID()}`,
 				botId,
 				state: "queued",
@@ -155,13 +171,22 @@ export class RunScheduler {
 			}
 			if (run.state !== "running") return { state: run.state };
 			this.#cancelling.add(runId);
-			return { abort: run.botId, ended: this.#endedOf(runId).promise };
+			return { abort: run.botId, channelId: run.channelId, ended: this.#endedOf(runId).promise };
 		});
 		if ("state" in target) return target.state;
 		// Outside the line: the abort waits for Pi to settle the inputs, whose handling needs the line.
-		this.#stopping(target.abort);
-		await this.#runtime.cancel(target.abort);
+		this.#stopping(target.abort, target.channelId);
+		await this.#runtime.cancel(target.abort, target.channelId);
 		return target.ended;
+	}
+
+	async cancelMatching(matches: (run: StoredRun) => boolean): Promise<void> {
+		const running = await this.#serial(async () => {
+			const runs = [...this.#runs.values()].filter(matches);
+			for (const run of runs) if (run.state === "queued") await this.#put({ ...run, state: "cancelled", endedAt: this.#now() });
+			return runs.filter((run) => run.state === "running").map((run) => run.runId);
+		});
+		await Promise.all(running.map((id) => this.cancel(id)));
 	}
 
 	/** Find a Run of this Bot that already holds the request. */
@@ -186,8 +211,15 @@ export class RunScheduler {
 			const busy = new Set(running.map((run) => run.botId));
 			const next = runs
 				.filter((run) => run.state === "queued" && !busy.has(run.botId))
-				.sort((a, b) => a.createdAt - b.createdAt)[0];
+				.sort((a, b) => {
+					const tier = (r: StoredRun) => (!r.channelId || r.channelId === "direct" || this.#now() - r.createdAt >= 30_000 ? 0 : 1);
+					return tier(a) - tier(b) || a.createdAt - b.createdAt;
+				})[0];
 			if (next === undefined) return;
+			if (!(await this.#admissible(next))) {
+				await this.#put({ ...next, state: "cancelled", endedAt: this.#now() });
+				continue;
+			}
 			// Messages that joined while queued start the Pi run together, so the model reads them in one turn. The first
 			// request ID is the Pi request ID.
 			const started: StoredRun = {
@@ -211,21 +243,21 @@ export class RunScheduler {
 		for (const [index, input] of run.inputs.entries()) {
 			if (input.submissionId !== undefined) continue;
 			const mode: Mode = index === 0 ? "start" : "steer";
-			const { submissionId } = await this.#runtime.submit(run.botId, input.requestId, input.text, mode);
+			const { submissionId } = await this.#runtime.submit(run.botId, input.requestId, input.text, mode, run.channelId);
 			current = withInput(current, input.requestId, { submissionId });
 			await this.#put(current);
 		}
 		for (const input of current.inputs) {
 			if (input.outcome !== undefined || input.submissionId === undefined) continue;
-			this.#observe(current.runId, input.requestId, input.submissionId, current.botId);
+			this.#observe(current.runId, input.requestId, input.submissionId, current.botId, current.channelId);
 		}
 		await this.#finishIfSettled(current.runId);
 	}
 
-	#observe(runId: RunId, requestId: string, submissionId: string, botId: BotId): void {
+	#observe(runId: RunId, requestId: string, submissionId: string, botId: BotId, channelId?: string): void {
 		if (this.#observed.has(submissionId)) return;
 		this.#observed.add(submissionId);
-		this.#runtime.waitSubmission(botId, submissionId).then(
+		this.#runtime.waitSubmission(botId, submissionId, channelId).then(
 			(outcome) => void this.#serial(() => this.#settled(runId, requestId, outcome)).catch(() => {}),
 			// The runtime closed with the Host; the next start observes the submission again.
 			() => {},
@@ -247,7 +279,7 @@ export class RunScheduler {
 				updated = withInput(updated, input.requestId, { outcome: { status: "unanswered", reason: WITHDRAWN } });
 			}
 			await this.#put(updated);
-			for (const input of pending) await this.#runtime.withdraw(updated.botId, input.submissionId!);
+			for (const input of pending) await this.#runtime.withdraw(updated.botId, input.submissionId!, updated.channelId);
 		} else {
 			await this.#put(updated);
 		}
@@ -262,15 +294,14 @@ export class RunScheduler {
 		if (outcomes.some((outcome) => outcome === undefined)) return;
 		// A stop wins over the error the abort surfaced; a Run whose answer landed before the stop stays completed.
 		const failure = outcomes.find((outcome) => outcome?.status === "unanswered");
-		const cancelled =
-			outcomes.some((outcome) => outcome?.reason === "aborted") || (this.#cancelling.has(runId) && failure !== undefined);
+		const cancelled = outcomes.some((outcome) => outcome?.reason === "aborted") || (this.#cancelling.has(runId) && failure !== undefined);
 		const ended: StoredRun = cancelled
 			? { ...run, state: "cancelled", endedAt: this.#now() }
 			: failure !== undefined
 				? { ...run, state: "failed", endedAt: this.#now(), error: failure.reason ?? "unanswered" }
 				: { ...run, state: "completed", endedAt: this.#now() };
 		await this.#put(ended);
-		if (ended.state === "cancelled") await this.#runtime.markStopped(run.botId);
+		if (ended.state === "cancelled") await this.#runtime.markStopped(run.botId, run.channelId);
 		this.#cancelling.delete(runId);
 		this.#endedOf(runId).resolve(ended.state);
 		this.#ended.delete(runId);

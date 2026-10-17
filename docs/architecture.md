@@ -317,7 +317,7 @@ Pi runs inside the Host. One Pi `Harness` opens the store and runs every Bot's c
 
 | OpenBot concept | Pi integration point | Contract |
 | --- | --- | --- |
-| Bot thread | `harness.createConversation({ ownership: { kind: "ownerless" } })` | One main conversation per Bot; record `botId`, workspace, and local-target binding in OpenBot documents |
+| Bot thread | `harness.createConversation({ ownership: { kind: "ownerless" } })` | One direct conversation per Bot; additional conversations are mapped by `(botId, channelId)`; record workspace and local-target binding in OpenBot documents |
 | Bot profile | `conversation.configure({ model, thinkingLevel, instructions, extensions, tools, modelTools, cwd })` | Applied when the profile changes; takes effect from the next model request |
 | Start work | `conversation.submit({ type: "input", content, requestId, entry })` | Stable Pi request ID derived from the OpenBot request ID; OpenBot entry kinds use the `openbot.` prefix |
 | Steer a running Bot | `submit({ ..., whenBusy: "steer" })` | A user message to a Bot with an active Run joins that Run at the next tool boundary; routine and handoff input waits in the OpenBot queue instead |
@@ -453,6 +453,8 @@ A Bot profile is an OpenBot session document containing `botId`, name, avatar, r
 **Memory.** Each Bot has a memory: up to 8 KB of Markdown with stable preferences, role context, and summaries of prior work, kept in the session document `openbot.memory` keyed by `botId`, so it belongs to the Bot and survives new topics. A `memory` prompt section renders it; `memory_update` replaces or appends one section; the user can view and edit it. [B19](tasks/b19-memory-controls.md) adds monotonic revisions, source/time metadata, atomic expected-revision checks, and the latest 20 previous snapshots for preview/restore. Content-only documents read as revision 0 without losing text. Restore creates a new revision; clear changes the current document only. Model calls use Host-bound receipt identities, preventing replay from overwriting later corrections. Memory history belongs to its Bot; the Core has no cross-Bot memory tool. The UI supports English and Chinese. Memory is guidance, not a source of truth: for consequential decisions the Bot checks the current source.
 
 **Parallel work.** Bots run in parallel up to the active-Run cap (Section 7.2). Each conversation has at most one active Run. Bots share files, the browser profile, and connectors; concurrent writes to the same file are serialized by the executor and checked by the edit tool's expected-content check.
+
+B13a retains existing direct conversation IDs and stores additional channel mappings locally. Profile/model changes reach all channels, while memory remains per Bot. Core management tools are available only in its direct conversation. Submissions, reset, abort, approvals and executor receipt acknowledgement bind the actual conversation; group task traffic cannot enter the direct subscription feed.
 
 **Group chats.** A group is an OpenBot document listing member Bots and backed by an ownerless Pi conversation used as a write-only transcript. A user message in a group is written to the group transcript. Each mentioned Bot, or a designated lead Bot when none is mentioned, receives it as an input to its own conversation with an `openbot.group-message` entry. A Bot's reply is written back to the group transcript as a write entry. Bots in a group can mention each other through `bot_message`.
 
@@ -643,7 +645,7 @@ The desktop interface follows Grok Bot's layout and vocabulary so that users and
 
 ### 7.2 Scheduling
 
-OpenBot keeps a durable Run queue. A Run starts when its conversation is idle and the number of active Runs is below the configurable cap (default 3); queued Runs are admitted oldest first across Bots. Routine occurrences wait for a slot like user work but run in their own conversations. A user message to a Bot with an active Run steers that Run (`whenBusy: "steer"`) instead of starting a new one; a message to a Bot whose Run is still queued joins that queued Run. Pi's submission ID is associated with the OpenBot Run; the stable request ID reconciles a crash between Pi admission and recording that association.
+OpenBot keeps a durable Run queue. A Run starts when its conversation is idle and the number of active Runs is below the configurable cap (default 3); queued Runs are admitted oldest first across Bots. Routine occurrences wait for a slot like user work but run in their own conversations. One Run may execute per Bot. Direct queued work has priority; non-direct work aged 30 seconds joins the oldest-first tier. A user message to a Bot with an active Run in the same channel steers that Run (`whenBusy: "steer"`) instead of starting a new one; a message to a Bot whose Run is still queued joins that queued Run. Pi's submission ID is associated with the OpenBot Run; the stable request ID reconciles a crash between Pi admission and recording that association.
 
 Within a Run, tools are sequential. Across Runs, the executor accepts concurrent invocations; it serializes writes to the same file, and desktop input waits for the single control lease.
 
