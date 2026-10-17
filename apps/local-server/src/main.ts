@@ -75,6 +75,7 @@ const approvalListeners: { changed?: (botId: string) => void } = {};
 const approvals = new ApprovalBook((botId) => approvalListeners.changed?.(botId));
 // The router is built before the runtime; memory edits reach it once tool calls flow, after it opened.
 const router = createToolRouter({
+	service: () => service,
 	target,
 	workspace,
 	approvals,

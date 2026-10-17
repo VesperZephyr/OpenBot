@@ -1,3 +1,4 @@
+import { ManagementPreview, ManagementHistory } from "./BotManagement";
 import { t } from "./i18n";
 import type {
 	ApprovalDecision,
@@ -387,6 +388,10 @@ function MessageText({ parts, markdown = false }: { readonly parts: readonly { r
 }
 
 const TOOL_VERBS: Record<string, readonly [running: string, done: string]> = {
+	bot_inspect: ["Inspecting Bots", "Inspected Bots"],
+	bot_create: ["Creating Bot", "Created Bot"],
+	bot_update: ["Updating Bot", "Updated Bot"],
+	bot_delete: ["Deleting Bot", "Deleted Bot"],
 	local_read: ["Reading", "Read"],
 	local_list: ["Listing", "Listed"],
 	local_write: ["Writing", "Wrote"],
@@ -402,8 +407,9 @@ const TOOL_VERBS: Record<string, readonly [running: string, done: string]> = {
 /** One row per tool call: a verb and subject, expandable to the arguments and output; failures open by default. */
 function ToolCard({ item, approval }: { readonly item: Extract<TranscriptItem, { kind: "tool" }>; readonly approval: PendingApproval | undefined }) {
 	const args = (item.args ?? {}) as Record<string, unknown>;
+	const managedName = useStore(state => state.bots.find(bot => bot.botId === args.botId)?.name);
 	const [running, done] = TOOL_VERBS[item.tool] ?? [item.tool, item.tool];
-	const subject = String(args.description ?? args.path ?? args.url ?? args.command ?? args.query ?? args.section ?? args.taskId ?? "");
+	const subject = String(args.name ?? managedName ?? args.botId ?? args.description ?? args.path ?? args.url ?? args.command ?? args.query ?? args.section ?? args.taskId ?? "");
 	const waiting = approval !== undefined;
 	const label = waiting
 		? t("Waiting for approval")
@@ -442,11 +448,11 @@ function ApprovalCard({ approval }: { readonly approval: PendingApproval }) {
 	return (
 		<div className="approval" role="group" aria-label={t("Approval request")}>
 			<div className="approval-reason">{t(approval.reason)}</div>
-			<pre className="approval-args">
+			{["bot_create", "bot_update", "bot_delete"].includes(approval.tool) ? <ManagementPreview args={{ ...args, action: approval.tool.slice(4) }} /> : <pre className="approval-args">
 				{approval.tool === "local_exec"
 					? `${String(args.command ?? "")}${args.cwd === undefined ? "" : `\n# in ${String(args.cwd)}`}`
 					: JSON.stringify(approval.args, null, 2)}
-			</pre>
+			</pre>}
 			<div className="approval-actions">
 				<button type="button" onClick={() => decide("deny")}>{t("Deny")}</button>
 				<button type="button" className="primary" onClick={() => decide("allow_once")} autoFocus>{t("Allow once")}</button>
@@ -799,6 +805,7 @@ function Settings() {
 				<button type="button" onClick={() => void refreshSettings().catch(report)}>{t("Reload")}</button>
 			</div>
 
+			<ManagementHistory />
 			<div className="settings-group" id="settings-data">
 				<h2>{t("Data")}</h2>
 				<p className="muted">{t("Conversations, Bot memory and operation logs are stored on this Mac in ")}<code>{settings.dataDirectory}</code>{t(". No automatic analytics or log uploads. Your selected model and search providers receive task-relevant input when you use them.")}</p>

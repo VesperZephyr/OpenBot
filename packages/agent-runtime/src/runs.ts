@@ -25,6 +25,7 @@ export type RunInput = {
 };
 
 export type StoredRun = RunRecord & {
+	readonly origin?: "user" | "peer";
 	readonly messages: readonly RunMessage[];
 	readonly inputs: readonly RunInput[];
 };
@@ -32,7 +33,7 @@ export type StoredRun = RunRecord & {
 /** The stored form: Pi documents take mutable JSON, so read-only arrays become plain ones. */
 type Stored<T> = T extends readonly (infer U)[] ? Stored<U>[] : T extends object ? { -readonly [K in keyof T]: Stored<T[K]> } : T;
 
-const RunsDoc = defineDoc<{ runs: Record<string, Stored<StoredRun>> }>({
+export const RunsDoc = defineDoc<{ runs: Record<string, Stored<StoredRun>> }>({
 	kind: "openbot.runs",
 	version: 1,
 	scope: "session",

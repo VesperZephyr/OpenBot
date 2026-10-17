@@ -53,6 +53,8 @@ export type ModelApi = (typeof MODEL_APIS)[number];
 export type ThinkingLevel = "off" | "low" | "medium" | "high";
 
 export type BotProfile = {
+	/** Increments on every profile mutation; legacy profiles start at 1. */
+	readonly revision: number;
 	readonly kind: "core" | "specialist";
 	readonly botId: BotId;
 	readonly name: string;
@@ -67,6 +69,42 @@ export type BotProfile = {
 	/** `deleted` Bots are hidden everywhere; their conversation stays on disk (Section 8.3). */
 	readonly status: "active" | "hidden" | "deleted";
 	readonly createdAt: number;
+};
+
+/** Immutable authority supplied by the Host adapter, never model arguments. */
+export type ManagementAuthority = { readonly origin: "user"; readonly runId: string };
+export type BotManagementAction = "create" | "update" | "delete";
+export type BotManagementChange = {
+	readonly name?: string;
+	readonly role?: string;
+	readonly instructions?: string;
+	readonly model?: ModelRef | null;
+	readonly thinkingLevel?: ThinkingLevel;
+};
+export type BotManagementProposal = {
+	readonly invocationId: string;
+	readonly approvalId: string;
+	readonly actorId: string;
+	readonly conversationId: string;
+	readonly runId: string;
+	readonly origin: "user";
+	readonly targetId: string;
+	readonly botId: string;
+	readonly action: BotManagementAction;
+	readonly expectedRevision: number;
+	readonly change: BotManagementChange;
+	readonly createdAt: number;
+	readonly fingerprint: string;
+};
+export type BotManagementReceipt = BotManagementProposal & {
+	readonly result?: BotProfile;
+	readonly completedAt?: number;
+	readonly outcome?: "denied" | "cancelled" | "failed";
+};
+export type BotManagementActivity = Omit<BotManagementProposal, "change" | "fingerprint" | "approvalId"> & {
+	readonly outcome: "pending" | "succeeded" | "denied" | "cancelled" | "failed";
+	readonly resultRevision?: number;
+	readonly completedAt?: number;
 };
 
 /** Largest Bot memory, in UTF-8 bytes of Markdown. */
@@ -264,7 +302,8 @@ export type ProviderSummary = {
 
 /** Settings as returned to renderers: credentials are never included, only whether one is stored. */
 export type RedactedSettings = {
-	readonly setupComplete?: boolean; readonly language?: "en" | "zh-CN";
+	readonly setupComplete?: boolean;
+	readonly language?: "en" | "zh-CN";
 	readonly defaultModel?: ModelRef;
 	readonly providers: readonly ProviderSummary[];
 	readonly dataDirectory: string;
@@ -293,6 +332,7 @@ export type ModelSummary = {
 
 export type HostMethods = {
 	"host.status": { params: Record<string, never>; result: HostStatus };
+	"bots.management.history": { params: Record<string, never>; result: readonly BotManagementActivity[] };
 	"bots.list": { params: Record<string, never>; result: readonly BotSummary[] };
 	"bots.create": {
 		params: {
@@ -328,7 +368,10 @@ export type HostMethods = {
 	"runs.cancel": { params: { readonly runId: RunId }; result: { readonly state: RunRecord["state"] } };
 	"approvals.decide": { params: { readonly approvalId: string; readonly decision: ApprovalDecision }; result: null };
 	"settings.get": { params: Record<string, never>; result: RedactedSettings };
-	"settings.update": { params: { readonly defaultModel?: ModelRef | null; readonly setupComplete?: boolean; readonly language?: "en" | "zh-CN" }; result: RedactedSettings };
+	"settings.update": {
+		params: { readonly defaultModel?: ModelRef | null; readonly setupComplete?: boolean; readonly language?: "en" | "zh-CN" };
+		result: RedactedSettings;
+	};
 	"models.list": { params: Record<string, never>; result: readonly ModelSummary[] };
 	"credentials.set": {
 		params: { readonly providerId: string; readonly apiKey: string };
@@ -395,6 +438,7 @@ export type HostResult<M extends HostMethod> = HostMethods[M]["result"];
 export const HOST_METHODS = [
 	"host.status",
 	"bots.list",
+	"bots.management.history",
 	"bots.create",
 	"bots.update",
 	"conversations.snapshot",
@@ -582,7 +626,7 @@ export type ExecutorMessage =
 // ---------------------------------------------------------------------------
 // Tool catalog: what the model is offered. Schemas are plain JSON Schema, which Pi validates tool arguments against.
 
-export type ToolCapability = "files.read" | "files.write" | "commands" | "tasks" | "web" | "memory";
+export type ToolCapability = "files.read" | "files.write" | "commands" | "tasks" | "web" | "memory" | "bot.management";
 
 export type ToolDefinition = {
 	readonly name: string;
@@ -601,7 +645,60 @@ const object = (properties: Record<string, unknown>, required: readonly string[]
 	additionalProperties: false,
 });
 
+const nullable = (schema: Record<string, unknown>) => ({ anyOf: [schema, { type: "null" }] });
+const botFields = {
+	name: nullable({ type: "string", minLength: 1, maxLength: 100 }),
+	role: nullable({ type: "string", maxLength: 500 }),
+	instructions: nullable({ type: "string", maxLength: 32000 }),
+	model: nullable(
+		object({ provider: string("Configured provider ID."), modelId: string("Configured model ID.") }, ["provider", "modelId"]),
+	),
+	thinkingLevel: nullable({ type: "string", enum: ["off", "low", "medium", "high"] }),
+};
 export const TOOL_CATALOG = [
+	{
+		name: "bot_inspect",
+		capability: "bot.management",
+		destination: "host",
+		description:
+			"Core only. Inspect the user's Bots and current revisions. Listing omits instructions; select a Bot ID to read its full profile. Omit botId or pass null to list live Bots. Inspect before updating or deleting a Specialist.",
+		parameters: object({ botId: nullable(string("Bot ID to inspect, or null to list.")) }, []),
+	},
+	{
+		name: "bot_create",
+		capability: "bot.management",
+		destination: "host",
+		description:
+			"Core only. Create one Specialist when the user explicitly requests it. Waits for user approval. Never create Bots proactively. Name is required; null or omitted fields use defaults: empty role/instructions, default model/thinking. Starts with empty memory. Do not retry a denied request.",
+		parameters: object({ ...botFields, name: { type: "string", minLength: 1, maxLength: 100 } }, ["name"]),
+	},
+	{
+		name: "bot_update",
+		capability: "bot.management",
+		destination: "host",
+		description:
+			"Core only. Update a Specialist at the user's request, with approval. Inspect first and supply the current revision. Null or omitted fields are UNCHANGED; empty role/instructions clears that text. model selects an override; useDefaultModel=true removes the override. Cannot edit Core, memory, identity or permissions. Do not retry a denied request.",
+		parameters: object(
+			{
+				...botFields,
+				botId: string("Specialist ID from bot_inspect."),
+				expectedRevision: integer("Current revision from bot_inspect."),
+				useDefaultModel: nullable({ type: "boolean", description: "True removes the model override; false/null leaves it unchanged." }),
+			},
+			["botId", "expectedRevision"],
+		),
+	},
+	{
+		name: "bot_delete",
+		capability: "bot.management",
+		destination: "host",
+		description:
+			"Core only. Delete a Specialist at the user's request, with approval. Inspect first. Stops its work and background commands, removes it from the roster and retains local history. Cannot delete Core. Do not retry a denied request.",
+		parameters: object(
+			{ botId: string("Specialist ID from bot_inspect."), expectedRevision: integer("Current revision from bot_inspect.") },
+			["botId", "expectedRevision"],
+		),
+	},
 	{
 		name: "local_read",
 		capability: "files.read",
@@ -629,10 +726,10 @@ export const TOOL_CATALOG = [
 		capability: "files.write",
 		destination: "executor",
 		description: "Create or overwrite a text file on this Mac. Missing parent directories are created.",
-		parameters: object(
-			{ path: string("Absolute path, or relative to the workspace."), content: string("The complete file content.") },
-			["path", "content"],
-		),
+		parameters: object({ path: string("Absolute path, or relative to the workspace."), content: string("The complete file content.") }, [
+			"path",
+			"content",
+		]),
 	},
 	{
 		name: "local_edit",

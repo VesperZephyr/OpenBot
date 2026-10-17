@@ -24,6 +24,7 @@ Each section marks state explicitly: **Implemented** means code in the repositor
 | Desktop command path | Implemented on `task/b8a-login-path`: one bounded login-shell PATH probe before Host startup, reused on restart; inherited PATH fallback; other shell variables and output discarded | 15 resolver tests; ScriptedModel e2e from a system-only PATH; isolated agent-browser flow; ad-hoc package and bundled Host/executor smoke |
 | Model sources (B16) | Implemented on `task/b16-model-sources`: shared built-in/custom setup, protocol selection, origin-only metadata, JSONC-safe additions, safe test errors and content-free local operation diagnostics | 183 unit tests; 27 background e2e; isolated agent-browser inspection |
 | Default Core (B17) | Permanent durable Core identity, lifecycle protections, no preset Specialists, skippable model onboarding and default navigation | 186 unit tests; 29 background e2e; isolated agent-browser inspection |
+| Core management (B18) | Core-only inspect/create/update/delete tools, user-Run provenance, exact approval cards, revision checks, atomic mutation receipts and local bilingual activity | 194 unit tests; 36 background e2e; isolated real-model create/update/delete and restart verification |
 | Desktop experience (B20) | English / Simplified Chinese UI with local preference, refreshed roster/conversation/settings, native status translations; Pi mechanisms unchanged | 189 unit tests; 31 background e2e; screenshots at default/minimum sizes; isolated real-model desktop spot checks |
 | Packaging | Implemented: electron-builder arm64 DMG, esbuild-bundled Host and executor, pinned Node 24.22.0, fuses, ad-hoc or Developer ID signing, notarization when secrets exist, `v*` tag release workflow, `<data>/logs/host.log` | Local ad-hoc package; Developer ID signing and notarization unexercised (no certificate) |
 | `browser`, `computer-use` | Planned (Phase 3: architecture M3 browser part, M6) | — |
@@ -32,7 +33,7 @@ Phase 1 (MVP, backlog B1–B8) is implemented on `feat/mvp`; each batch's design
 
 ### 1.2 Known Gaps in Existing Code
 
-[D1: Core Bot, Specialist Bots, and Model Sources](tasks/d1-bot-product-design.md) is a design proposal for the next product increment. Current code has per-Bot instructions and memory, and a protected Core identity, but no model-facing Bot/group management. Specialist duplication currently copies learned memory; Core duplication starts empty; D1 proposes a fresh-memory default. Group channel contexts, management authority, and the proposed B16–B19 sequence require separate execution specs and architecture updates before implementation.
+[D1: Core Bot, Specialist Bots, and Model Sources](tasks/d1-bot-product-design.md) is a design proposal for the next product increment. Current code has per-Bot instructions and memory, and a protected Core identity, with Core-only model-facing Specialist management. Group management is not implemented. Specialist duplication currently copies learned memory; Core duplication starts empty; D1 proposes a fresh-memory default. Group channel contexts and new memory controls require their separate execution specs before implementation.
 
 These are deliberate shortcuts or missing pieces in implemented code. Each one is assigned to a milestone below.
 

@@ -19,7 +19,7 @@ beforeEach(() => vi.clearAllMocks());
 
 describe("native attention effects", () => {
 	it.each([false, true])("suppresses native effects only when disabled=%s", async (disabled) => {
-		const bot: BotSummary = { kind: "specialist", botId: "a", name: "Scout", role: "", instructions: "", pinned: false, status: "active", createdAt: 0, activity: "idle", pendingApprovals: 0 };
+		const bot: BotSummary = { kind: "specialist", revision: 1, botId: "a", name: "Scout", role: "", instructions: "", pinned: false, status: "active", createdAt: 0, activity: "idle", pendingApprovals: 0 };
 		const call = vi.fn().mockResolvedValue([bot]);
 		const watcher = new AttentionWatcher({ host: { call } as unknown as HostProcess, focused: () => false, openBot: vi.fn(), ...(disabled ? { nativeEffects: false } : {}) });
 		watcher.onHostState({ status: "ready" });

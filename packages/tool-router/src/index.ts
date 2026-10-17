@@ -16,6 +16,7 @@ import {
 } from "@openbot/protocol";
 
 export type ToolCall = {
+	readonly authority?: import("@openbot/protocol").ManagementAuthority;
 	readonly botId: string;
 	readonly conversationId: string;
 	/** Stable across reruns of the same Pi tool task, so a rerun never becomes a second invocation. */

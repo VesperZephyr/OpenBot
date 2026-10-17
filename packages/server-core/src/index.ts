@@ -5,6 +5,7 @@
 import { randomUUID } from "node:crypto";
 import type { BotRuntime, ConfigEnvironment, ModelConfigStatus } from "@openbot/agent-runtime";
 import type { ApprovalBook } from "./approvals.ts";
+import { BotManagement, type ManagementCall } from "./bot-management.ts";
 import { PolicyService } from "./policy-service.ts";
 import type { Timers } from "./coalescer.ts";
 import { ConversationFeed } from "./conversation-feed.ts";
@@ -50,7 +51,13 @@ export interface ModelConfigFile {
 	readonly environment: ConfigEnvironment;
 }
 
-export type OperationAudit = { readonly operationId: string; readonly operation: HostMethod | "core.ensure"; readonly at: number; readonly durationMs: number; readonly outcome: "succeeded" | "failed" };
+export type OperationAudit = {
+	readonly operationId: string;
+	readonly operation: HostMethod | "core.ensure";
+	readonly at: number;
+	readonly durationMs: number;
+	readonly outcome: "succeeded" | "failed";
+};
 
 export type HostServiceOptions = {
 	/** Content-free diagnostics; authoritative action state stays in its own durable store. */
@@ -83,6 +90,8 @@ export type HostServiceOptions = {
 type Handlers = { [M in HostMethod]: (params: HostParams<M>) => Promise<HostResult<M>> };
 
 export class HostService {
+	readonly management: BotManagement;
+	#botChanges: Promise<unknown> = Promise.resolve();
 	readonly #audit: (event: OperationAudit) => void;
 	#configWrites: Promise<unknown> = Promise.resolve();
 	readonly #runtime: BotRuntime;
@@ -118,6 +127,7 @@ export class HostService {
 		this.#workspace = options.workspace;
 		this.#emit = options.emit;
 		this.#now = options.now ?? Date.now;
+		this.management = new BotManagement(this.#runtime, this.#status.targetId, this.#now);
 		this.#runs = new RunScheduler({
 			runtime: this.#runtime,
 			maxActiveRuns: options.maxActiveRuns ?? DEFAULT_MAX_ACTIVE_RUNS,
@@ -134,6 +144,7 @@ export class HostService {
 		this.#handlers = {
 			"host.status": async () => this.#status,
 			"bots.list": () => this.#listBots(),
+			"bots.management.history": () => this.management.history(),
 			"bots.create": async (params) => {
 				const profile = await this.#runtime.createBot({
 					botId: `bot_${params.requestId}`,
@@ -212,15 +223,17 @@ export class HostService {
 			"grants.revoke": ({ id }) => this.#policy.revoke(id),
 			"grants.add": ({ path, access }) => this.#policy.add(path, access),
 			"models.addProvider": (provider) => {
-				const next = this.#configWrites.catch(() => {}).then(async () => {
-					await this.#reloadModelConfig();
-					const declared = new Set(this.#configStatus.providers.filter((entry) => !entry.overlay).map((entry) => entry.providerId));
-					if (this.#runtime.listProviders().some(({ providerId }) => providerId === provider.id && !declared.has(providerId))) {
-						throw new ProtocolError("invalid_request", "This is a built-in provider; choose another ID");
-					}
-					await this.#modelConfig.write(mergeProvider(await this.#modelConfig.read(), provider));
-					return this.#settings();
-				});
+				const next = this.#configWrites
+					.catch(() => {})
+					.then(async () => {
+						await this.#reloadModelConfig();
+						const declared = new Set(this.#configStatus.providers.filter((entry) => !entry.overlay).map((entry) => entry.providerId));
+						if (this.#runtime.listProviders().some(({ providerId }) => providerId === provider.id && !declared.has(providerId))) {
+							throw new ProtocolError("invalid_request", "This is a built-in provider; choose another ID");
+						}
+						await this.#modelConfig.write(mergeProvider(await this.#modelConfig.read(), provider));
+						return this.#settings();
+					});
 				this.#configWrites = next;
 				return next;
 			},
@@ -283,7 +296,11 @@ export class HostService {
 		await this.#reloadModelConfig();
 		const at = this.#now();
 		await this.#runtime.ensureCoreBot(at);
-		try { this.#audit({ operationId: randomUUID(), operation: "core.ensure", at, durationMs: this.#now() - at, outcome: "succeeded" }); } catch { /* Keep diagnostics independent of startup. */ }
+		try {
+			this.#audit({ operationId: randomUUID(), operation: "core.ensure", at, durationMs: this.#now() - at, outcome: "succeeded" });
+		} catch {
+			/* Keep diagnostics independent of startup. */
+		}
 		await this.#approvals.start(this.#runtime.approvals());
 		for (const bot of await this.#runtime.listBots()) if (bot.status !== "deleted") await this.#observe(bot.botId);
 		await this.#runs.start();
@@ -305,14 +322,85 @@ export class HostService {
 		const at = this.#now();
 		let outcome: "succeeded" | "failed" = "failed";
 		try {
-			const result = await handler(params);
+			const result = await (["bots.create", "bots.update", "bots.duplicate", "bots.delete", "messages.submit"].includes(method)
+				? this.#serializeBots(() => handler(params))
+				: handler(params));
 			outcome = method === "models.test" && (result as { ok?: boolean }).ok === false ? "failed" : "succeeded";
 			return result;
 		} finally {
-			if (!method.endsWith(".get") && !method.endsWith(".list") && !["host.status", "conversations.snapshot", "conversations.subscribe", "conversations.markRead", "files.resolveReveal"].includes(method)) {
-				try { this.#audit({ operationId: randomUUID(), operation: method, at, durationMs: this.#now() - at, outcome }); } catch { /* Diagnostics must not undo a committed action. */ }
+			if (
+				!method.endsWith(".get") &&
+				!method.endsWith(".list") &&
+				!method.endsWith(".history") &&
+				!["host.status", "conversations.snapshot", "conversations.subscribe", "conversations.markRead", "files.resolveReveal"].includes(
+					method,
+				)
+			) {
+				try {
+					this.#audit({ operationId: randomUUID(), operation: method, at, durationMs: this.#now() - at, outcome });
+				} catch {
+					/* Diagnostics must not undo a committed action. */
+				}
 			}
 		}
+	}
+
+	#serializeBots<T>(work: () => Promise<T>): Promise<T> {
+		const result = this.#botChanges.then(work);
+		this.#botChanges = result.catch(() => {});
+		return result;
+	}
+
+	async manageBots(call: ManagementCall): Promise<{ status: "succeeded" | "failed"; output: string }> {
+		return this.#serializeBots(async () => {
+			try {
+				if (call.tool === "bot_inspect") {
+					const decision = await this.management.prepare(call);
+					if (decision.kind === "deny") throw new ProtocolError("invalid_request", decision.reason);
+					const bots = (await this.#runtime.listBots()).filter(
+						(b) => b.status !== "deleted" && (call.args.botId == null || call.args.botId === b.botId),
+					);
+					const profiles = call.args.botId == null ? bots.map(({ instructions: _instructions, ...summary }) => summary) : bots;
+					return { status: "succeeded", output: JSON.stringify(profiles) };
+				}
+				const proposal = await this.management.confirmed(call);
+				const saved = await this.#runtime.management().get(proposal.invocationId);
+				let result = saved?.result;
+				if (!result) {
+					if (proposal.action === "delete") {
+						const run = this.#runs.active(proposal.botId);
+						if (run) await this.#runs.cancel(run.runId);
+						this.#conversationStopped(proposal.botId);
+					}
+					call.signal.throwIfAborted();
+					if (proposal.action === "create") {
+						const { model, ...fields } = proposal.change;
+						result = await this.#runtime.createBot(
+							{ ...fields, name: proposal.change.name!, botId: proposal.botId, createdAt: proposal.createdAt, ...(model ? { model } : {}) },
+							proposal,
+						);
+					} else
+						result = await this.#runtime.updateBot(
+							proposal.botId,
+							proposal.action === "delete" ? { status: "deleted" } : proposal.change,
+							proposal,
+						);
+				}
+				if (result.status === "deleted") {
+					this.#observers.get(result.botId)?.stop();
+					this.#observers.delete(result.botId);
+					if (this.#feed.subscribed === result.botId) this.#feed.subscribe(null);
+				} else await this.#observe(result.botId);
+				this.#emit({ type: "bots.changed", payload: {} });
+				return { status: "succeeded", output: JSON.stringify({ action: proposal.action, bot: result }) };
+			} catch (error) {
+				if (call.signal.aborted) throw error;
+				return {
+					status: "failed",
+					output: error instanceof ProtocolError ? error.message : "Bot management failed. Inspect the current state before trying again.",
+				};
+			}
+		});
 	}
 
 	async #listBots(): Promise<BotSummary[]> {
@@ -327,7 +415,9 @@ export class HostService {
 					pendingApprovals: this.#approvals.forBot(bot.botId).length,
 					...(lastRun === undefined
 						? {}
-						: { lastRun: { runId: lastRun.runId, state: lastRun.state, ...(lastRun.error === undefined ? {} : { error: lastRun.error }) } }),
+						: {
+								lastRun: { runId: lastRun.runId, state: lastRun.state, ...(lastRun.error === undefined ? {} : { error: lastRun.error }) },
+							}),
 				};
 			});
 	}
@@ -348,20 +438,23 @@ export class HostService {
 			setupComplete: await this.#runtime.setupComplete(),
 			language: await this.#runtime.language(),
 			...(defaultModel === undefined ? {} : { defaultModel }),
-			providers: this.#runtime.listProviders().filter(({ providerId }) => !providerId.startsWith(SEARCH_PROVIDER_PREFIX)).map(({ providerId, name }) => {
-				const configured = fromConfig.get(providerId);
-				const keyStored = stored.has(providerId);
-				// An overlay without its own `apiKey` still needs a stored key: the Host clears provider variables.
-				const keyFromConfig = configured?.keyAvailable === true && !(configured.overlay && !configured.keyConfigured);
-				return {
-					providerId,
-					name,
-					source: configured === undefined ? ("builtin" as const) : ("config" as const),
-					overlay: configured?.overlay ?? false,
-					configured: keyStored || keyFromConfig,
-					keyStored,
-				};
-			}),
+			providers: this.#runtime
+				.listProviders()
+				.filter(({ providerId }) => !providerId.startsWith(SEARCH_PROVIDER_PREFIX))
+				.map(({ providerId, name }) => {
+					const configured = fromConfig.get(providerId);
+					const keyStored = stored.has(providerId);
+					// An overlay without its own `apiKey` still needs a stored key: the Host clears provider variables.
+					const keyFromConfig = configured?.keyAvailable === true && !(configured.overlay && !configured.keyConfigured);
+					return {
+						providerId,
+						name,
+						source: configured === undefined ? ("builtin" as const) : ("config" as const),
+						overlay: configured?.overlay ?? false,
+						configured: keyStored || keyFromConfig,
+						keyStored,
+					};
+				}),
 			dataDirectory: this.#dataDirectory,
 			modelConfig: { path: this.#modelConfig.path, errors: this.#configStatus.errors },
 			workspace: this.#workspace,
@@ -429,6 +522,8 @@ export class HostService {
 		for (const item of snapshot.items) {
 			if (item.kind !== "tool" || item.status === "pending" || item.status === "running" || state.settled.has(item.id)) continue;
 			state.settled.add(item.id);
+			if (["bot_create", "bot_update", "bot_delete"].includes(item.tool))
+				void this.management.settled(botId, item.id, item.status).catch(() => {});
 			this.#toolSettled(botId, item.id);
 		}
 	}

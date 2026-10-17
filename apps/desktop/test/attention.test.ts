@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { attention } from "../src/main/attention";
 
 const bot = (botId: string, change: Partial<BotSummary> = {}): BotSummary => ({
-	kind: "specialist",
+	kind: "specialist", revision: 1,
 	botId,
 	name: botId.toUpperCase(),
 	role: "",

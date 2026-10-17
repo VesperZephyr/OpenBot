@@ -257,6 +257,8 @@ export function decide(call: PolicyCall, definition: ToolDefinition, policy: Pol
 				alwaysAllowOptions: folderOptions(canonical, call.tool === "local_list", access),
 			};
 		}
+		case "bot.management":
+			return { kind: "ask", reason: "Review this Bot change" };
 		case "web":
 		case "memory":
 		// Reading or stopping a background command the user already approved.
