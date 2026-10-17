@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { MODEL_APIS, type ModelApi, type ModelRef } from "@openbot/protocol";
 import { type FormEvent, useState } from "react";
 import { api, refreshSettings, useStore } from "./store";
@@ -52,30 +53,30 @@ export function ModelSetup({ onDone }: { readonly onDone?: () => void }) {
 			setResult({ ok: false, message: error instanceof Error ? error.message : "Could not save model settings." });
 		} finally { setBusy(false); }
 	};
-	return <form className="model-setup" aria-label="Model setup" onSubmit={submit}>
-		<div className="model-source-switch" role="radiogroup" aria-label="Model source">
-			<button type="button" role="radio" aria-checked={source === "builtin"} disabled={busy} onClick={() => { setSource("builtin"); clearResult(); }}><strong>Built-in models</strong><span>Choose from the Pi catalog</span></button>
-			<button type="button" role="radio" aria-checked={source === "custom"} disabled={busy} onClick={() => { setSource("custom"); clearResult(); }}><strong>Custom provider</strong><span>Your gateway or local model</span></button>
+	return <form className="model-setup" aria-label={t("Model setup")} onSubmit={submit}>
+		<div className="model-source-switch" role="radiogroup" aria-label={t("Model source")}>
+			<button type="button" role="radio" aria-checked={source === "builtin"} disabled={busy} onClick={() => { setSource("builtin"); clearResult(); }}><strong>{t("Built-in models")}</strong><span>{t("Choose from the Pi catalog")}</span></button>
+			<button type="button" role="radio" aria-checked={source === "custom"} disabled={busy} onClick={() => { setSource("custom"); clearResult(); }}><strong>{t("Custom provider")}</strong><span>{t("Your gateway or local model")}</span></button>
 		</div>
 		<fieldset disabled={busy}>
 		{source === "builtin" ? <>
-			<label className="field"><span>Provider</span><select value={providerId} onChange={(e) => { setProvider(e.target.value); setModelId(""); setKey(""); clearResult(); }}>{providers.map((p) => <option key={p.providerId} value={p.providerId}>{p.name}{p.overlay ? " · Local override" : ""}</option>)}</select></label>
-			<label className="field"><span>Model</span><select value={selectedId} onChange={(e) => { setModelId(e.target.value); clearResult(); }}>{available.map((m) => <option key={m.modelId} value={m.modelId}>{m.name}</option>)}</select></label>
-			<p className="model-caption">{configured ? "Credential available · Connection not tested here" : "Credential needed"}{selected?.endpoint ? ` · ${selected.endpoint}` : ""}{selected?.overridden ? " · Local override" : ""}</p>
-			<p className="model-caption">API key setup. Subscription and OAuth sign-in are not available here.</p>
+			<label className="field"><span>{t("Provider")}</span><select value={providerId} onChange={(e) => { setProvider(e.target.value); setModelId(""); setKey(""); clearResult(); }}>{providers.map((p) => <option key={p.providerId} value={p.providerId}>{p.name}{p.overlay ? t(" · Local override") : ""}</option>)}</select></label>
+			<label className="field"><span>{t("Model")}</span><select value={selectedId} onChange={(e) => { setModelId(e.target.value); clearResult(); }}>{available.map((m) => <option key={m.modelId} value={m.modelId}>{m.name}</option>)}</select></label>
+			<p className="model-caption">{t(configured ? "Credential available · Connection not tested here" : "Credential needed")}{selected?.endpoint ? ` · ${selected.endpoint}` : ""}{selected?.overridden ? t(" · Local override") : ""}</p>
+			<p className="model-caption">{t("API key setup. Subscription and OAuth sign-in are not available here.")}</p>
 		</> : <>
 			<div className="model-form-grid">
-				<label className="field"><span>Name</span><input value={custom.name} placeholder="My provider" onChange={(e) => { setCustom({ ...custom, name: e.target.value }); clearResult(); }} /></label>
-				<label className="field"><span>Protocol</span><select value={custom.api} onChange={(e) => { setCustom({ ...custom, api: e.target.value as ModelApi }); clearResult(); }}>{MODEL_APIS.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+				<label className="field"><span>{t("Name")}</span><input value={custom.name} placeholder={t("My provider")} onChange={(e) => { setCustom({ ...custom, name: e.target.value }); clearResult(); }} /></label>
+				<label className="field"><span>{t("Protocol")}</span><select value={custom.api} onChange={(e) => { setCustom({ ...custom, api: e.target.value as ModelApi }); clearResult(); }}>{MODEL_APIS.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
 			</div>
-			<label className="field"><span>Base URL</span><input value={custom.baseUrl} placeholder="http://localhost:11434/v1" onChange={(e) => { setCustom({ ...custom, baseUrl: e.target.value }); clearResult(); }} /></label>
-			<label className="field"><span>Model ID</span><input value={custom.modelId} placeholder="Model identifier from your provider" onChange={(e) => { setCustom({ ...custom, modelId: e.target.value }); clearResult(); }} /></label>
+			<label className="field"><span>{t("Base URL")}</span><input value={custom.baseUrl} placeholder="http://localhost:11434/v1" onChange={(e) => { setCustom({ ...custom, baseUrl: e.target.value }); clearResult(); }} /></label>
+			<label className="field"><span>{t("Model ID")}</span><input value={custom.modelId} placeholder={t("Model identifier from your provider")} onChange={(e) => { setCustom({ ...custom, modelId: e.target.value }); clearResult(); }} /></label>
 		</>}
-		<label className="field"><span>API key</span><input type="password" autoComplete="off" value={key} placeholder={source === "builtin" && configured ? "Keep stored credential" : "Stored in macOS Keychain"} onChange={(e) => { setKey(e.target.value); clearResult(); }} /></label>
-		{source === "custom" && <p className="model-caption">For a local server without authentication, enter a placeholder such as local. Existing providers can be edited in your local configuration file.</p>}
+		<label className="field"><span>{t("API key")}</span><input type="password" autoComplete="off" value={key} placeholder={t(source === "builtin" && configured ? "Keep stored credential" : "Stored in macOS Keychain")} onChange={(e) => { setKey(e.target.value); clearResult(); }} /></label>
+		{source === "custom" && <p className="model-caption">{t("For a local server without authentication, enter a placeholder such as local. Existing providers can be edited in your local configuration file.")}</p>}
 		</fieldset>
-		{result && <p className={result.ok ? "model-result" : "onboarding-error"} role={result.ok ? "status" : "alert"}>{result.message}</p>}
-		<div className="dialog-actions"><button className="primary" type="submit" disabled={!ready || busy}>{busy ? "Testing connection…" : onDone ? "Test and continue" : "Test and use model"}</button></div>
-		<p className="model-caption">Testing sends a short test message to this provider. A successful text response does not test every tool or image capability.</p>
+		{result && <p className={result.ok ? "model-result" : "onboarding-error"} role={result.ok ? "status" : "alert"}>{t(result.message)}</p>}
+		<div className="dialog-actions"><button className="primary" type="submit" disabled={!ready || busy}>{t(busy ? "Testing connection…" : onDone ? "Test and continue" : "Test and use model")}</button></div>
+		<p className="model-caption">{t("Testing sends a short test message to this provider. A successful text response does not test every tool or image capability.")}</p>
 	</form>;
 }

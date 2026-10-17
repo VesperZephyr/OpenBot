@@ -57,7 +57,7 @@ Dated entries added during execution. Empty when ready.
 
 ## Index
 
-Product design (not an implementation task): [D1: Core Bot, Specialist Bots, and Model Sources](d1-bot-product-design.md), **draft**. Research, recommended contracts, and proposed B16–B19/B13 sequencing; no product code changes.
+Product design (not an implementation task): [D1: Core Bot, Specialist Bots, and Model Sources](d1-bot-product-design.md), **accepted direction**. Research and task contracts for the product foundation. Agent mechanisms continue to reuse Pi.
 
 Phase 1 (MVP). Every batch is implemented on `feat/mvp` and in review until the owner's acceptance run.
 
@@ -76,12 +76,13 @@ Phase 1 (MVP). Every batch is implemented on `feat/mvp` and in review until the 
 
 ## Product foundation
 
-Execute in order: B16, B17, B18, B19, B13a, B13b, B13c. Only ready specs may start.
+Current increment: B16, B17, then B20 desktop experience and English/Chinese. B18, B19 and B13 remain draft; agent mechanisms continue to reuse Pi. Only ready specs may start.
 
 | Task | Status |
 | --- | --- |
 | [B16](b16-model-sources.md) | in review |
 | [B17](b17-core-bot.md) | in review |
+| [B20](b20-desktop-experience.md) | in review |
 | [B18](b18-core-management.md) | draft |
 | [B19](b19-memory-controls.md) | draft |
 | [B13A](b13a-channel-contexts.md) | draft |

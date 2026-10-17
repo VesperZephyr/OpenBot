@@ -34,3 +34,17 @@ it("reuses the allocated identity after interrupted bootstrap", async () => {
 	expect((await runtime.ensureCoreBot(2)).botId).toBe(allocated);
 	expect(await runtime.listBots()).toHaveLength(1);
 });
+
+it("persists an explicit UI language without changing Bot instructions or memory", async () => {
+ expect(await runtime.language()).toBe("en");
+ const core = await runtime.ensureCoreBot(1);
+ await runtime.updateBot(core.botId, { instructions: "Do not translate this prompt." });
+ await runtime.setMemory(core.botId, "Keep Cedar unchanged.");
+ await runtime.setLanguage("zh-CN");
+ await runtime.close(); runtime = await open();
+ expect(await runtime.language()).toBe("zh-CN");
+ expect((await runtime.getBot(core.botId))?.instructions).toBe("Do not translate this prompt.");
+ expect(await runtime.memory(core.botId)).toBe("Keep Cedar unchanged.");
+ await runtime.setLanguage("en");
+ expect(await runtime.language()).toBe("en");
+});

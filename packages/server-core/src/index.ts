@@ -180,7 +180,8 @@ export class HostService {
 				return null;
 			},
 			"settings.get": () => this.#settings(),
-			"settings.update": async ({ defaultModel, setupComplete }) => {
+			"settings.update": async ({ defaultModel, setupComplete, language }) => {
+				if (language !== undefined) await this.#runtime.setLanguage(language);
 				if (setupComplete !== undefined) await this.#runtime.setSetupComplete(setupComplete);
 				if (defaultModel !== undefined) await this.#runtime.setDefaultModel(defaultModel);
 				return this.#settings();
@@ -345,6 +346,7 @@ export class HostService {
 		const defaultModel = await this.#runtime.defaultModel();
 		return {
 			setupComplete: await this.#runtime.setupComplete(),
+			language: await this.#runtime.language(),
 			...(defaultModel === undefined ? {} : { defaultModel }),
 			providers: this.#runtime.listProviders().filter(({ providerId }) => !providerId.startsWith(SEARCH_PROVIDER_PREFIX)).map(({ providerId, name }) => {
 				const configured = fromConfig.get(providerId);

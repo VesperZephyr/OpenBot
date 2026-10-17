@@ -34,7 +34,7 @@ describe("attention", () => {
 		expect(result.badge).toBe(1);
 		expect(result.notices).toEqual([
 			{ botId: "a", title: "A", body: "Needs your approval to continue" },
-			{ botId: "b", title: "B", body: "Could not finish: rate limited" },
+			{ botId: "b", title: "B", body: "Could not finish" },
 		]);
 		// The same roster again announces nothing.
 		expect(attention(next, next).notices).toEqual([]);

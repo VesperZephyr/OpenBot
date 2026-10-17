@@ -5,6 +5,9 @@ Branch: task/b19-memory-controls
 Depends on: B18
 Architecture: Sections 5.1, 5.7, 8.3
 
+## Scheduling
+Deferred. The current product increment retains Pi execution, context, thinking and the existing per-Bot memory document/editor. Revision history, conflict handling and new memory orchestration need separate acceptance before this spec becomes ready.
+
 ## Goal
 Make independent instructions and learned memory understandable, inspectable and correctable.
 

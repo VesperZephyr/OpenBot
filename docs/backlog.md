@@ -56,7 +56,7 @@ The MVP is done when all of these pass on a packaged build installed on a Mac th
 
 Approach only; each becomes a spec when Phase 1 lands.
 
-Product design under review: [D1](tasks/d1-bot-product-design.md) proposes prioritizing B16 (built-in/custom model setup), B17 (permanent Core identity), B18 (Core Bot management), and B19 (instructions and memory controls), followed by splitting B13 into channel contexts, group lifecycle, and bounded collaboration. These are proposed batches, not implemented features or ready execution specs. B13's conversation mapping and management authority must be reconciled with D1 before implementation; connectors, routines, and computer control are not prerequisites for Core identity.
+Accepted product direction: [D1](tasks/d1-bot-product-design.md). B16/B17 establish model entry and permanent Core identity; B20 refines the desktop and adds English/Chinese. Core management (B18), new memory controls (B19) and groups (B13) remain draft. Existing agent mechanisms continue to reuse Pi. Connectors, routines and computer control are not prerequisites for this foundation.
 
 - **B9. MCP connectors** (architecture M7). Executor-supervised stdio servers and HTTP sessions, credentials from the Keychain injected only into their own server, tools named `mcp__<server>__<tool>` through Tool Router with receipts, a Connect apps page. OAuth through the default browser comes after the first token-based connectors work.
 - **B10. Skills.** Library at `<data>/skills/<name>/SKILL.md`, a `skills` prompt section listing names and descriptions, `skill_load`, `skill_save` with user confirmation, `/` in the composer to attach one.
@@ -74,4 +74,5 @@ Architecture M3 (managed browser, takeover, secret requests), M6 (desktop comput
 
 - [B16: Model sources](tasks/b16-model-sources.md): implemented on `task/b16-model-sources`, awaiting review; 183 unit tests and 27 background e2e tests pass.
 - [B17: Core Bot](tasks/b17-core-bot.md): implemented on `task/b17-core-bot`, awaiting review; 186 unit tests and 29 background e2e tests pass. Only the Core is seeded; Specialists require user creation.
+- [B20: Desktop experience and English / Chinese](tasks/b20-desktop-experience.md): implemented on `task/b20-desktop-experience`; local language preference, refined UI and isolated real-model desktop verification.
 - Remaining specs: [B18](tasks/b18-core-management.md), [B19](tasks/b19-memory-controls.md), [B13a](tasks/b13a-channel-contexts.md), [B13b](tasks/b13b-group-lifecycle.md), [B13c](tasks/b13c-collaboration.md). Agent runtime behavior continues to reuse Pi; later custom orchestration/memory work is not part of this increment.

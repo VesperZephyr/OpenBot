@@ -519,7 +519,7 @@ The transport is private IPC with versioned request, response, and event envelop
 | `secrets.provide`, `secrets.cancel` | Answer a secret request; the value travels only from main to Host |
 | `inputs.provide` | Answer a structured question or form step |
 | `artifacts.import`, `artifacts.export` | Copy selected inputs or generated outputs through authorized local paths |
-| `settings.get`, `settings.update`, `usage.get` | Read redacted settings, update configuration, and read per-Bot usage |
+| `settings.get`, `settings.update`, `usage.get` | Read redacted settings, update configuration (including local `language: en \| zh-CN`, default English), and read per-Bot usage |
 
 A request carries `protocolVersion`, `messageId`, `method`, and `params`. Electron main and the Host both validate `params` against the method's TypeBox schema (`@openbot/protocol/schemas`) and answer `invalid_request` otherwise. Mutating operations include a stable application request identity where retries could otherwise create duplicate work. `messages.submit` returns the same Run for the same request ID and content; different content under that ID is a conflict. Durable receipt does not mean model generation has started. A Bot's queued Run collects messages sent while it waits and submits them as one input when it starts.
 

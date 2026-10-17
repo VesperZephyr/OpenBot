@@ -8,16 +8,18 @@ import { randomUUID } from "node:crypto";
 import { type BrowserWindow, dialog } from "electron";
 import type { FolderSelection } from "../shared/api";
 
+import { translate, type Language } from "../shared/i18n";
+
 const TOKEN_TTL_MS = 5 * 60 * 1000;
 
 export class FolderSelections {
 	readonly #pending = new Map<string, { readonly path: string; readonly ownerId: number; readonly expires: number }>();
 
 	/** Show the dialog attached to `window` for the renderer `ownerId`; null when the user cancels. */
-	async pick(window: BrowserWindow, ownerId: number): Promise<FolderSelection | null> {
+	async pick(window: BrowserWindow, ownerId: number, language: Language = "en"): Promise<FolderSelection | null> {
 		const result = await dialog.showOpenDialog(window, {
-			title: "Choose a folder Bots may use",
-			buttonLabel: "Grant access",
+			title: translate(language, "Choose a folder Bots may use"),
+			buttonLabel: translate(language, "Grant access"),
 			properties: ["openDirectory", "createDirectory"],
 		});
 		const path = result.filePaths[0];

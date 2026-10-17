@@ -103,7 +103,7 @@ describe("recovery", () => {
 		expect(await countLines()).toEqual(["run", "start"]);
 		expect(await orphanedSleeps()).toEqual([]);
 		// The model was told the action may have partly run.
-		expect(JSON.stringify(h.model.requests.at(-1)?.messages.at(-1))).toContain("may have partly run");
+		await expect.poll(() => JSON.stringify(h.model.requests.at(-1)?.messages.at(-1))).toContain("may have partly run");
 		await h.shot("04-interrupted");
 	});
 });

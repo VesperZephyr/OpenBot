@@ -77,7 +77,7 @@ const BotsDoc = defineDoc<{ bots: Record<string, BotRecord> }>({
 });
 
 /** Application settings that live with the conversation store. */
-const SettingsDoc = defineDoc<{ defaultModel?: ModelRef; setupComplete?: boolean }>({
+const SettingsDoc = defineDoc<{ defaultModel?: ModelRef; setupComplete?: boolean; language?: "en" | "zh-CN" }>({
 	kind: "openbot.settings",
 	version: 1,
 	scope: "session",
@@ -249,6 +249,11 @@ export class BotRuntime {
 			doc.bots[botId] = { ...existing, kind: "core", status: "active", pinned: true };
 			return toProfile(JSON.parse(JSON.stringify(doc.bots[botId])) as BotRecord);
 		}, this.#context);
+	}
+
+	async language(): Promise<"en" | "zh-CN"> { return (await this.#harness.snapshot(SettingsDoc, this.#context))?.language ?? "en"; }
+	async setLanguage(language: "en" | "zh-CN"): Promise<void> {
+		await this.#harness.commit(async (tx) => { (await tx.doc(SettingsDoc)).language = language; }, this.#context);
 	}
 
 	async setupComplete(): Promise<boolean> { return (await this.#harness.snapshot(SettingsDoc, this.#context))?.setupComplete === true; }

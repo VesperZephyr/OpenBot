@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import type { PendingApproval } from "@openbot/protocol";
 import { useState } from "react";
 import { api, report } from "./store";
@@ -17,20 +18,18 @@ export function AlwaysAllow({ approval }: { readonly approval: PendingApproval }
 	if (!open) {
 		return (
 			<div className="always-allow">
-				<button type="button" onClick={() => setOpen(true)}>
-					Always allow
-				</button>
+				<button type="button" onClick={() => setOpen(true)}>{t("Always allow")}</button>
 			</div>
 		);
 	}
 	return (
-		<div className="always-allow" role="group" aria-label="Always allow">
+		<div className="always-allow" role="group" aria-label={t("Always allow")}>
 			<p className="muted">
-				{folder
+				{t(folder
 					? "Bots may use this folder without asking until you revoke it in Settings → Folders."
-					: "Matching commands run without asking until you delete the rule in Settings → Commands."}
+					: "Matching commands run without asking until you delete the rule in Settings → Commands.")}
 			</p>
-			<div className="always-allow-options" role="radiogroup" aria-label={folder ? "Folder" : "Rule"}>
+			<div className="always-allow-options" role="radiogroup" aria-label={t(folder ? "Folder" : "Rule")}>
 				{options.map((candidate, index) => (
 					<label key={candidate.label} className="always-allow-option">
 						<input type="radio" name={`always-${approval.approvalId}`} checked={index === chosen} onChange={() => setChosen(index)} />
@@ -39,9 +38,7 @@ export function AlwaysAllow({ approval }: { readonly approval: PendingApproval }
 				))}
 			</div>
 			<div className="approval-actions">
-				<button type="button" onClick={() => setOpen(false)}>
-					Cancel
-				</button>
+				<button type="button" onClick={() => setOpen(false)}>{t("Cancel")}</button>
 				<button
 					type="button"
 					className="primary"
@@ -52,7 +49,7 @@ export function AlwaysAllow({ approval }: { readonly approval: PendingApproval }
 						}).catch(report)
 					}
 				>
-					{folder ? "Grant and allow" : "Save rule and allow"}
+					{t(folder ? "Grant and allow" : "Save rule and allow")}
 				</button>
 			</div>
 		</div>

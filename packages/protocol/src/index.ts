@@ -264,7 +264,7 @@ export type ProviderSummary = {
 
 /** Settings as returned to renderers: credentials are never included, only whether one is stored. */
 export type RedactedSettings = {
-	readonly setupComplete?: boolean;
+	readonly setupComplete?: boolean; readonly language?: "en" | "zh-CN";
 	readonly defaultModel?: ModelRef;
 	readonly providers: readonly ProviderSummary[];
 	readonly dataDirectory: string;
@@ -328,7 +328,7 @@ export type HostMethods = {
 	"runs.cancel": { params: { readonly runId: RunId }; result: { readonly state: RunRecord["state"] } };
 	"approvals.decide": { params: { readonly approvalId: string; readonly decision: ApprovalDecision }; result: null };
 	"settings.get": { params: Record<string, never>; result: RedactedSettings };
-	"settings.update": { params: { readonly defaultModel?: ModelRef | null; readonly setupComplete?: boolean }; result: RedactedSettings };
+	"settings.update": { params: { readonly defaultModel?: ModelRef | null; readonly setupComplete?: boolean; readonly language?: "en" | "zh-CN" }; result: RedactedSettings };
 	"models.list": { params: Record<string, never>; result: readonly ModelSummary[] };
 	"credentials.set": {
 		params: { readonly providerId: string; readonly apiKey: string };
