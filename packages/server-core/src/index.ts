@@ -180,7 +180,8 @@ export class HostService {
 				return null;
 			},
 			"settings.get": () => this.#settings(),
-			"settings.update": async ({ defaultModel }) => {
+			"settings.update": async ({ defaultModel, setupComplete }) => {
+				if (setupComplete !== undefined) await this.#runtime.setSetupComplete(setupComplete);
 				if (defaultModel !== undefined) await this.#runtime.setDefaultModel(defaultModel);
 				return this.#settings();
 			},
@@ -240,7 +241,7 @@ export class HostService {
 					instructions: source.instructions,
 					...(source.model === undefined ? {} : { model: source.model }),
 					...(source.thinkingLevel === undefined ? {} : { thinkingLevel: source.thinkingLevel }),
-					memory: await this.#runtime.memory(botId),
+					memory: source.kind === "core" ? "" : await this.#runtime.memory(botId),
 					createdAt: this.#now(),
 				});
 				await this.#observe(profile.botId);
@@ -250,6 +251,7 @@ export class HostService {
 			"bots.delete": async ({ botId }) => {
 				const bot = await this.#runtime.getBot(botId);
 				if (bot === undefined) throw new ProtocolError("not_found", `Unknown Bot: ${botId}`);
+				if (bot.kind === "core") throw new ProtocolError("invalid_request", "The Core Bot cannot be deleted");
 				if (bot.status === "deleted") return null;
 				// Stop its work first, so no Run keeps going for a Bot the user can no longer see. Background commands
 				// outlive the Run that started them, so they are stopped whether or not a Run is active.
@@ -278,6 +280,9 @@ export class HostService {
 	 */
 	async start(): Promise<void> {
 		await this.#reloadModelConfig();
+		const at = this.#now();
+		await this.#runtime.ensureCoreBot(at);
+		try { this.#audit({ operationId: randomUUID(), operation: "core.ensure", at, durationMs: this.#now() - at, outcome: "succeeded" }); } catch { /* Keep diagnostics independent of startup. */ }
 		await this.#approvals.start(this.#runtime.approvals());
 		for (const bot of await this.#runtime.listBots()) if (bot.status !== "deleted") await this.#observe(bot.botId);
 		await this.#runs.start();
@@ -339,6 +344,7 @@ export class HostService {
 		const fromConfig = new Map(this.#configStatus.providers.map((provider) => [provider.providerId, provider]));
 		const defaultModel = await this.#runtime.defaultModel();
 		return {
+			setupComplete: await this.#runtime.setupComplete(),
 			...(defaultModel === undefined ? {} : { defaultModel }),
 			providers: this.#runtime.listProviders().filter(({ providerId }) => !providerId.startsWith(SEARCH_PROVIDER_PREFIX)).map(({ providerId, name }) => {
 				const configured = fromConfig.get(providerId);

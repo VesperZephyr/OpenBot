@@ -66,7 +66,7 @@ export function App() {
 
 	return (
 		<div className="app">
-			{onboarding !== true && <Sidebar onNew={() => setCreating(true)} />}
+			<Sidebar onNew={() => setCreating(true)} />
 			<main className="main">
 				{host.status !== "ready" && (
 					<div className={`banner banner-${host.status}`}>
@@ -100,7 +100,7 @@ export function App() {
 function visibleBots(bots: readonly BotSummary[]): BotSummary[] {
 	return bots
 		.filter((bot) => bot.status === "active")
-		.toSorted((a, b) => Number(b.pinned) - Number(a.pinned) || a.createdAt - b.createdAt);
+		.toSorted((a, b) => Number(b.kind === "core") - Number(a.kind === "core") || Number(b.pinned) - Number(a.pinned) || a.createdAt - b.createdAt);
 }
 
 function Sidebar({ onNew }: { onNew: () => void }) {
@@ -108,7 +108,8 @@ function Sidebar({ onNew }: { onNew: () => void }) {
 	const view = useStore((state) => state.view);
 	const showHidden = useStore((state) => state.showHidden);
 	const visible = visibleBots(bots);
-	const pinned = visible.filter((bot) => bot.pinned);
+	const core = visible.filter((bot) => bot.kind === "core");
+	const pinned = visible.filter((bot) => bot.pinned && bot.kind !== "core");
 	const others = visible.filter((bot) => !bot.pinned);
 	const hidden = bots.filter((bot) => bot.status === "hidden");
 	const selected = view.kind === "bot" ? view.botId : undefined;
@@ -119,8 +120,9 @@ function Sidebar({ onNew }: { onNew: () => void }) {
 			<button type="button" className="new-button" onClick={onNew}>
 				<span aria-hidden>＋</span> New <kbd>⌘N</kbd>
 			</button>
+			<BotSection title="Your assistant" bots={core} selected={selected} />
 			{pinned.length > 0 && <BotSection title="Pinned" bots={pinned} selected={selected} />}
-			<BotSection title="Bots" bots={others} selected={selected} empty="No Bots yet" />
+			<BotSection title="Bots" bots={others} selected={selected} empty="Create a Bot for a specific job" />
 			{hidden.length > 0 && (
 				<div className="section">
 					<button
@@ -183,7 +185,7 @@ function BotRow({ bot, selected }: { readonly bot: BotSummary; readonly selected
 		>
 			<Avatar name={bot.name} />
 			<span className="bot-row-text">
-				<span className="bot-row-name">{bot.name}</span>
+				<span className="bot-row-name">{bot.name}{bot.kind === "core" && <span className="core-badge">Core</span>}</span>
 				<span className="bot-row-role">{label ?? bot.role}</span>
 			</span>
 			{label !== undefined && <span className={`activity activity-${bot.activity}`} aria-label={label} />}
@@ -494,6 +496,7 @@ function BotMenu({ bot, onEdit }: { readonly bot: BotSummary; readonly onEdit: (
 					<button type="button" role="menuitem" onClick={() => (setOpen(false), onEdit())}>
 						Edit profile
 					</button>
+					{bot.kind !== "core" && <>
 					<button type="button" role="menuitem" onClick={() => void update({ pinned: !bot.pinned })}>
 						{bot.pinned ? "Unpin" : "Pin"}
 					</button>
@@ -504,11 +507,12 @@ function BotMenu({ bot, onEdit }: { readonly bot: BotSummary; readonly onEdit: (
 					>
 						{bot.status === "hidden" ? "Show in sidebar" : "Hide from sidebar"}
 					</button>
+					</>}
 					<button type="button" role="menuitem" onClick={() => void newTopic()}>
 						New topic
 					</button>
 					<DuplicateBotItem bot={bot} onDone={() => setOpen(false)} />
-					<DeleteBotItem onChoose={() => (setOpen(false), setDeleting(true))} />
+					{bot.kind !== "core" && <DeleteBotItem onChoose={() => (setOpen(false), setDeleting(true))} />}
 				</div>
 			)}
 			{deleting && <ConfirmDeleteBot bot={bot} onClose={() => setDeleting(false)} />}

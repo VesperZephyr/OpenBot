@@ -73,5 +73,5 @@ Architecture M3 (managed browser, takeover, secret requests), M6 (desktop comput
 ## Product foundation implementation
 
 - [B16: Model sources](tasks/b16-model-sources.md): implemented on `task/b16-model-sources`, awaiting review; 183 unit tests and 27 background e2e tests pass.
-- [B17: Core Bot](tasks/b17-core-bot.md): ready, next. Only the Core is seeded; Specialists require user creation.
+- [B17: Core Bot](tasks/b17-core-bot.md): implemented on `task/b17-core-bot`, awaiting review; 186 unit tests and 29 background e2e tests pass. Only the Core is seeded; Specialists require user creation.
 - Remaining specs: [B18](tasks/b18-core-management.md), [B19](tasks/b19-memory-controls.md), [B13a](tasks/b13a-channel-contexts.md), [B13b](tasks/b13b-group-lifecycle.md), [B13c](tasks/b13c-collaboration.md). Agent runtime behavior continues to reuse Pi; later custom orchestration/memory work is not part of this increment.

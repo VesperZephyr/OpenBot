@@ -11,7 +11,7 @@ let h: AppHarness;
 
 beforeAll(async () => {
 	h = await launchApp("app");
-	await h.page().getByRole("heading", { name: "Meet your teammates" }).waitFor();
+	await h.page().getByRole("textbox", { name: "Message OpenBot" }).waitFor();
 }, 60_000);
 
 afterAll(async () => {
@@ -41,7 +41,7 @@ describe("OpenBot desktop", () => {
 		const card = page.getByRole("group", { name: "Approval request" });
 		await card.waitFor();
 		await expect.poll(() => card.locator(".approval-args").textContent()).toContain("wc -c hello.md | tee size.txt");
-		await expect.poll(() => page.locator(".bot-row").first().textContent()).toContain("Needs attention");
+		await expect.poll(() => page.locator(".bot-row", { hasText: "Scout" }).textContent()).toContain("Needs attention");
 		await h.shot("03-approval");
 
 		await card.getByRole("button", { name: "Allow once" }).click();

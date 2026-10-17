@@ -963,3 +963,7 @@ textarea {
 .model-setup .field { margin-bottom: 12px; }
 .model-result { color: var(--text); border-left: 2px solid var(--text); padding-left: 12px; }
 @media (max-width: 650px) { .model-source-switch, .model-form-grid { grid-template-columns: 1fr; } }
+
+.core-badge { display: inline-block; font-size: 10px; line-height: 18px; padding: 0 6px; margin-left: 7px; border: 1px solid var(--border); border-radius: 5px; color: var(--muted); font-weight: 500; }
+.eyebrow { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .1em; }
+.setup-skip { display: block; margin: 18px auto 0; background: transparent; border: 0; color: var(--muted); }

@@ -2,6 +2,7 @@
  * The only OpenBot package that imports Pi. It maps Bots to Pi Durable conversations and exposes OpenBot-shaped
  * operations and snapshots; callers never see Pi types.
  */
+import { randomUUID } from "node:crypto";
 import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import type { CredentialStore, Provider, ToolCall } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
@@ -65,7 +66,7 @@ export { isTerminal, KEPT_TERMINAL_RUNS, type RunInput, type RunMessage, type Ru
 type PiConversationId = ConversationRecord["id"];
 
 /** Pi IDs are branded numbers; the record keeps the Pi conversation ID in that form. */
-type BotRecord = BotProfile & { readonly conversationId: number };
+type BotRecord = Omit<BotProfile, "kind"> & { readonly kind?: BotProfile["kind"]; readonly conversationId: number };
 
 /** Session-scoped Bot index stored next to Pi's own documents. */
 const BotsDoc = defineDoc<{ bots: Record<string, BotRecord> }>({
@@ -76,11 +77,16 @@ const BotsDoc = defineDoc<{ bots: Record<string, BotRecord> }>({
 });
 
 /** Application settings that live with the conversation store. */
-const SettingsDoc = defineDoc<{ defaultModel?: ModelRef }>({
+const SettingsDoc = defineDoc<{ defaultModel?: ModelRef; setupComplete?: boolean }>({
 	kind: "openbot.settings",
 	version: 1,
 	scope: "session",
 	initial: () => ({}),
+});
+
+/** Allocate identity before its conversation: restart reconciles the same Core rather than allocating another. */
+const CoreDoc = defineDoc<{ coreBotId?: string }>({
+	kind: "openbot.core", version: 1, scope: "session", initial: () => ({}),
 });
 
 /**
@@ -147,6 +153,7 @@ export class BotRuntime {
 	readonly #builtins: ReadonlyMap<string, Provider>;
 	#configuredIds: readonly string[] = [];
 	/** Stored entries before each conversation's current head marker; entries are immutable, so one read per head. */
+	 #coreBootstrap: Promise<BotProfile> | undefined;
 	readonly #history = new Map<number, { readonly head: number; readonly entries: readonly EntryRecord[] }>();
 
 	private constructor(harness: Harness, models: MutableModels, context: Context) {
@@ -224,6 +231,31 @@ export class BotRuntime {
 		return record === undefined ? undefined : toProfile(record);
 	}
 
+	async ensureCoreBot(now: number): Promise<BotProfile> {
+		const pending = this.#coreBootstrap ??= this.#bootstrapCore(now);
+		try { return await pending; } finally { if (this.#coreBootstrap === pending) this.#coreBootstrap = undefined; }
+	}
+
+	async #bootstrapCore(now: number): Promise<BotProfile> {
+		const botId = await this.#harness.commit(async (tx) => {
+			const doc = await tx.doc(CoreDoc);
+			doc.coreBotId ??= `core_${randomUUID()}`;
+			return doc.coreBotId;
+		}, this.#context);
+		await this.createBot({ botId, name: "OpenBot", role: "Personal assistant", instructions: "You are the user's personal assistant. Help with everyday tasks, keep useful preferences in your own memory, and use only the tools actually available to you. Reply in the user's language.", createdAt: now });
+		return this.#harness.commit(async (tx) => {
+			const doc = await tx.doc(BotsDoc);
+			const existing = doc.bots[botId]!;
+			doc.bots[botId] = { ...existing, kind: "core", status: "active", pinned: true };
+			return toProfile(JSON.parse(JSON.stringify(doc.bots[botId])) as BotRecord);
+		}, this.#context);
+	}
+
+	async setupComplete(): Promise<boolean> { return (await this.#harness.snapshot(SettingsDoc, this.#context))?.setupComplete === true; }
+	async setSetupComplete(value: boolean): Promise<void> {
+		await this.#harness.commit(async (tx) => { (await tx.doc(SettingsDoc)).setupComplete = value; }, this.#context);
+	}
+
 	/** Idempotent for the same `botId`: returns the existing Bot instead of creating a second conversation. */
 	async createBot(input: CreateBotInput): Promise<BotProfile> {
 		const existing = await this.#record(input.botId);
@@ -263,6 +295,10 @@ export class BotRuntime {
 	async updateBot(botId: BotId, change: UpdateBotInput): Promise<BotProfile> {
 		const record = await this.#record(botId);
 		if (record === undefined) throw new ProtocolError("not_found", `Unknown Bot: ${botId}`);
+		const coreId = (await this.#harness.snapshot(CoreDoc, this.#context))?.coreBotId;
+		if ((record.kind === "core" || botId === coreId) && (change.pinned === false || (change.status !== undefined && change.status !== "active"))) {
+			throw new ProtocolError("invalid_request", "The Core Bot cannot be deleted, hidden or unpinned");
+		}
 		const { model: currentModel, ...rest } = record;
 		const model = change.model === undefined ? currentModel : (change.model ?? undefined);
 		const updated: BotRecord = {
@@ -586,7 +622,7 @@ function agentChange(input: {
 
 function toProfile(record: BotRecord): BotProfile {
 	const { conversationId: _conversationId, ...profile } = record;
-	return profile;
+	return { ...profile, kind: profile.kind ?? "specialist" };
 }
 
 /** Text blocks of a user or assistant message; images are not projected yet. */

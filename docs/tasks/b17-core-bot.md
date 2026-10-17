@@ -1,6 +1,6 @@
 # B17: Permanent Default Core Bot
 
-Status: ready
+Status: in review
 Branch: task/b17-core-bot
 Depends on: B16
 Architecture: Sections 5.1, 5.7, 6.5, 8.3
@@ -20,6 +20,7 @@ Project a required kind:core|specialist in BotProfile; legacy records default to
 The Core is named OpenBot, role Personal assistant, pinned and active. It has a general-purpose Prompt without claiming management tools that are not implemented yet. It opens by default. Existing users retain their selected conversation during Host reconnect. Fresh users can configure a model or skip setup and still inspect/edit the Core. Remove preset Research/Coding/Writing cards entirely. New only creates a Specialist on explicit user submission.
 
 ## Contracts
+- settings.update and RedactedSettings add setupComplete?:boolean, stored locally; skipping or completing onboarding persists it.
 - New Core identity session document: {coreBotId?:string}; written before profile creation, never changed by ordinary UI/model APIs.
 - BotProfile.kind: core|specialist; storage permits absent kind for legacy records, projection supplies specialist.
 - BotRuntime.ensureCoreBot(now): Promise<BotProfile>, serialized/idempotent; fresh ID is persisted first, repeated calls return the same protected profile.
@@ -47,3 +48,8 @@ Existing bootstrap can leave an orphan Pi conversation if interrupted between se
 
 ## Open questions
 None. Migration creates a new Core and preserves all existing Bots unchanged.
+
+## Verification
+- `pnpm run check`: 186 tests in 28 files passed.
+- `pnpm run e2e`: 29 tests in 12 suites passed, all background.
+- Inspected first-launch and protection screenshots and the Core conversation/menu in an isolated background desktop through agent-browser.

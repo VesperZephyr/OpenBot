@@ -31,7 +31,7 @@ beforeAll(async () => {
 	});
 	await new Promise<void>((resolve) => tavily.listen(0, "127.0.0.1", resolve));
 	h = await launchApp("web", { env: { OPENBOT_TAVILY_BASE_URL: `http://127.0.0.1:${(tavily.address() as AddressInfo).port}` } });
-	await h.page().getByRole("heading", { name: "Meet your teammates" }).waitFor();
+	await h.page().getByRole("textbox", { name: "Message OpenBot" }).waitFor();
 }, 60_000);
 
 afterAll(async () => {

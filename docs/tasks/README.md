@@ -81,7 +81,7 @@ Execute in order: B16, B17, B18, B19, B13a, B13b, B13c. Only ready specs may sta
 | Task | Status |
 | --- | --- |
 | [B16](b16-model-sources.md) | in review |
-| [B17](b17-core-bot.md) | ready |
+| [B17](b17-core-bot.md) | in review |
 | [B18](b18-core-management.md) | draft |
 | [B19](b19-memory-controls.md) | draft |
 | [B13A](b13a-channel-contexts.md) | draft |

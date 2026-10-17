@@ -53,6 +53,7 @@ export type ModelApi = (typeof MODEL_APIS)[number];
 export type ThinkingLevel = "off" | "low" | "medium" | "high";
 
 export type BotProfile = {
+	readonly kind: "core" | "specialist";
 	readonly botId: BotId;
 	readonly name: string;
 	/** Short job label shown under the name, such as "Research". */
@@ -263,6 +264,7 @@ export type ProviderSummary = {
 
 /** Settings as returned to renderers: credentials are never included, only whether one is stored. */
 export type RedactedSettings = {
+	readonly setupComplete?: boolean;
 	readonly defaultModel?: ModelRef;
 	readonly providers: readonly ProviderSummary[];
 	readonly dataDirectory: string;
@@ -326,7 +328,7 @@ export type HostMethods = {
 	"runs.cancel": { params: { readonly runId: RunId }; result: { readonly state: RunRecord["state"] } };
 	"approvals.decide": { params: { readonly approvalId: string; readonly decision: ApprovalDecision }; result: null };
 	"settings.get": { params: Record<string, never>; result: RedactedSettings };
-	"settings.update": { params: { readonly defaultModel?: ModelRef | null }; result: RedactedSettings };
+	"settings.update": { params: { readonly defaultModel?: ModelRef | null; readonly setupComplete?: boolean }; result: RedactedSettings };
 	"models.list": { params: Record<string, never>; result: readonly ModelSummary[] };
 	"credentials.set": {
 		params: { readonly providerId: string; readonly apiKey: string };
