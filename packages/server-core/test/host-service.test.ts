@@ -126,6 +126,33 @@ describe("HostService", () => {
 		await expect(service.handle("conversations.markRead", { conversationKey: `bot:${bot.botId}`, through: 0 })).rejects.toThrow("Unknown Bot");
 	});
 
+	it("searches current eligible identities and unread conversations without history reads or content audit", async () => {
+		await service.handle("settings.update", { defaultModel: SCRIPTED_MODEL });
+		const bot = await service.handle("bots.create", { requestId: "search", name: "Reader" });
+		await service.handle("conversations.subscribe", { botId: bot.botId });
+		const answered = nextSnapshot((s) => s.botId === bot.botId && s.items.some((i) => i.kind === "assistant"));
+		await service.handle("messages.submit", { botId: bot.botId, requestId: "q", text: "SEARCH_PRIVATE_SENTINEL" });
+		await answered;
+		const snap = vi.spyOn(runtime, "snapshot");
+		const store = runtime.groups(), posts = vi.fn(store.posts), history = vi.fn(store.history);
+		const groups = vi.spyOn(runtime, "groups").mockReturnValue({ ...store, posts, history });
+		const before = await service.handle("conversations.list", {});
+		const calls = audit.length;
+		expect((await service.handle("conversations.search", { query: "search_private_sentinel", unreadOnly: true })).items).toHaveLength(1);
+		expect(await service.handle("conversations.list", {})).toEqual(before);
+		expect(snap).not.toHaveBeenCalled(); expect(posts).not.toHaveBeenCalled(); expect(history).not.toHaveBeenCalled();
+		expect(audit).toHaveLength(calls);
+		expect(JSON.stringify(audit)).not.toContain("SEARCH_PRIVATE_SENTINEL");
+		snap.mockRestore(); groups.mockRestore();
+		await service.handle("conversations.markRead", { conversationKey: `bot:${bot.botId}`, through: 1 });
+		expect((await service.handle("conversations.search", { query: "sentinel", unreadOnly: true })).items).toHaveLength(0);
+		await service.handle("bots.update", { botId: bot.botId, status: "hidden" });
+		expect((await service.handle("conversations.search", { query: "sentinel" })).items).toHaveLength(0);
+		expect((await service.handle("conversations.search", { query: "sentinel", includeHidden: true })).items).toHaveLength(1);
+		await service.handle("bots.delete", { botId: bot.botId });
+		expect((await service.handle("conversations.search", { query: "sentinel", includeHidden: true })).items).toHaveLength(0);
+	});
+
 	it("creates one Bot per request ID", async () => {
 		const first = await service.handle("bots.create", { requestId: "same", name: "Scout" });
 		const second = await service.handle("bots.create", { requestId: "same", name: "Other" });

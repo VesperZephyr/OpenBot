@@ -9,6 +9,7 @@ describe("Host method parameter schemas", () => {
 
 	it("accept well-formed params", () => {
 		expect(paramsError("bots.list", {})).toBeUndefined();
+		expect(paramsError("conversations.search", { query: "中文", unreadOnly: true, includeHidden: false })).toBeUndefined();
 		expect(paramsError("conversations.markRead", { conversationKey: "group:group_g", through: 2 })).toBeUndefined();
 		expect(paramsError("conversations.markRead", { conversationKey: "bot:a", through: 0 })).toBeUndefined();
 		// A root key includes JSON-escaped group and request IDs.
@@ -32,6 +33,7 @@ describe("Host method parameter schemas", () => {
 		for (const conversationKey of ["", "bot:", "group:", "direct:a"]) expect(paramsError("conversations.markRead", { conversationKey, through: 1 })).toBeDefined();
 		for (const through of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1]) expect(paramsError("conversations.markRead", { conversationKey: "bot:a", through })).toBeDefined();
 		expect(paramsError("conversations.snapshot", null)).toBeDefined();
+		for (const params of [{query:"x".repeat(201)}, {query:"x",unreadOnly:1}, {query:"x",cursor:""}, {query:"x",regex:true}]) expect(paramsError("conversations.search", params)).toBeDefined();
 		expect(paramsError("conversations.snapshot", [])).toBeDefined();
 	});
 

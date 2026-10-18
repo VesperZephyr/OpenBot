@@ -92,4 +92,4 @@ Current increment: B13a channel contexts and B13b group lifecycle follow merged 
 | [B13C](b13c-collaboration.md) | in review |
 | [B21](b21-conversation-experience.md) | done (PR #17) |
 | [B22](b22-conversation-list.md) | in review |
-| [B23](b23-conversation-search.md) | in progress |
+| [B23](b23-conversation-search.md) | in review |

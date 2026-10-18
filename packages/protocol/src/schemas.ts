@@ -78,6 +78,7 @@ export const HOST_PARAM_SCHEMAS = {
 	}),
 	"conversations.snapshot": BotOnly,
 	"conversations.list": NoParams,
+	"conversations.search": strict({ query: Type.String({ maxLength: 200 }), unreadOnly: Type.Optional(Type.Boolean()), includeHidden: Type.Optional(Type.Boolean()), cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })) }),
 	"conversations.markRead": strict({
 		conversationKey: Type.TemplateLiteral(
 			[Type.Union([Type.Literal("bot:"), Type.Literal("group:")]), Type.String()],

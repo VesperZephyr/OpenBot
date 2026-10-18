@@ -60,6 +60,17 @@ export type ConversationSummary = {
 	readonly unreadCount: number;
 };
 
+export type ConversationSearchHit = {
+	readonly conversationKey: ConversationKey;
+	readonly messageId: string;
+	readonly senderId: string;
+	readonly at: number;
+	readonly snippet: string;
+	readonly matchStart: number;
+	readonly matchEnd: number;
+};
+export type ConversationSearchResult = { readonly items: readonly ConversationSearchHit[]; readonly nextCursor?: string };
+
 export type GroupFields = {
 	readonly name: string;
 	readonly objective: string;
@@ -460,6 +471,10 @@ export type HostMethods = {
 		result: BotProfile;
 	};
 	"conversations.snapshot": { params: { readonly botId: BotId }; result: ConversationSnapshot };
+	"conversations.search": {
+		params: { readonly query: string; readonly unreadOnly?: boolean; readonly includeHidden?: boolean; readonly cursor?: string };
+		result: ConversationSearchResult;
+	};
 	"conversations.list": { params: Record<string, never>; result: readonly ConversationSummary[] };
 	"conversations.markRead": { params: { readonly conversationKey: ConversationKey; readonly through: number }; result: null };
 	"messages.submit": {
@@ -554,6 +569,7 @@ export const HOST_METHODS = [
 	"bots.update",
 	"conversations.snapshot",
 	"conversations.list",
+	"conversations.search",
 	"conversations.markRead",
 	"messages.submit",
 	"runs.cancel",

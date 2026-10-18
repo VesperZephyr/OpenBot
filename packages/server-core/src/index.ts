@@ -182,6 +182,15 @@ export class HostService {
 				return profile;
 			},
 			"conversations.snapshot": async ({ botId }) => this.#view(await this.#runtime.snapshot(botId)),
+			"conversations.search": async ({ query, unreadOnly = false, includeHidden = false, cursor }) => {
+				const [bots, groups, summaries] = await Promise.all([this.#runtime.listBots(), this.#runtime.groups().list(), this.#runtime.conversationIndex().list()]);
+				const unread = new Set(summaries.filter((r) => r.unreadCount > 0).map((r) => r.conversationKey));
+				const keys = [
+					...bots.filter((b) => b.status === "active" || (includeHidden && b.status === "hidden")).map((b) => `bot:${b.botId}` as const),
+					...groups.map((g) => `group:${g.groupId}` as const),
+				].filter((key) => !unreadOnly || unread.has(key));
+				return this.#runtime.searchConversations(query, new Set(keys), unreadOnly, includeHidden, cursor);
+			},
 			"conversations.list": async () => {
 				const keys = new Set([
 					...(await this.#runtime.listBots()).filter((b) => b.status !== "deleted").map((b) => `bot:${b.botId}`),
@@ -370,6 +379,7 @@ export class HostService {
 					"conversations.snapshot",
 					"conversations.subscribe",
 					"conversations.markRead",
+					"conversations.search",
 					"files.resolveReveal",
 				].includes(method)
 			) {

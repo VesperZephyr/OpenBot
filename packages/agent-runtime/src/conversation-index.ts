@@ -43,22 +43,19 @@ function project(messages: readonly ConversationPreview[]): Projection {
 		...(latest ? { latest: { ...latest, text: previewText(latest.text) } } : {}),
 	};
 }
-export function directProjection(snapshot: ConversationSnapshot): Projection {
-	return project(
-		snapshot.items.flatMap((item) => {
-			if (item.kind !== "user" && item.kind !== "assistant") return [];
-			const text = item.parts.map((p) => p.text).join("\n");
-			return text.trim() ? [{ id: item.id, senderId: item.kind === "user" ? "user" : snapshot.botId, text, at: item.at ?? 0 }] : [];
-		}),
-	);
+export function directMessages(snapshot: ConversationSnapshot): ConversationPreview[] {
+	return snapshot.items.flatMap((item) => {
+		if (item.kind !== "user" && item.kind !== "assistant") return [];
+		const text = item.parts.map((p) => p.text).join("\n");
+		return text.trim() ? [{ id: item.id, senderId: item.kind === "user" ? "user" : snapshot.botId, text, at: item.at ?? 0 }] : [];
+	});
 }
-export function groupProjection(posts: readonly GroupPost[]): Projection {
-	return project(
-		posts
-			.filter((p) => p.kind !== "delegation" && p.kind !== "handoff" && p.text.trim())
-			.map((p) => ({ id: p.postId, senderId: p.senderId, text: p.text, at: p.at })),
-	);
+export function groupMessages(posts: readonly GroupPost[]): ConversationPreview[] {
+	return posts.filter((p) => p.kind !== "delegation" && p.kind !== "handoff" && p.text.trim())
+		.map((p) => ({ id: p.postId, senderId: p.senderId, text: p.text, at: p.at }));
 }
+export const directProjection = (snapshot: ConversationSnapshot): Projection => project(directMessages(snapshot));
+export const groupProjection = (posts: readonly GroupPost[]): Projection => project(groupMessages(posts));
 function summary(key: ConversationKey, record: RecordState): ConversationSummary {
 	const { messageCount: _count, ...state } = record;
 	return { conversationKey: key, ...state, unreadCount: state.incomingCount - state.readThrough };

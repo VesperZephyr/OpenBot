@@ -1,6 +1,6 @@
 # B23: Local Conversation Search and Unread Filtering
 
-Status: in progress
+Status: implemented, awaiting review (PR #20)
 Branch: task/b23-conversation-search
 Depends on: B22 (PR #19), B21
 Architecture: Sections 5.1, 6.1, 7.1, 8
@@ -74,3 +74,14 @@ The derived corpus uses memory proportional to committed text and rebuilds on Ho
 ## Open questions
 
 Scope and verification authorized by the owner on 2026-10-18. The unread filter applies at conversation level; the UI labels it explicitly. B23 is stacked on B22 until PR #19 merges.
+
+## Verification (2026-10-18)
+
+- Acceptance 1: runtime tests cover literal case-insensitive English, Chinese, punctuation, full old text beyond the preview, direct reset/compaction and group restart reconstruction; thinking, tools, live fragments and coordination receipts are excluded.
+- Acceptance 2: cursor ties, query binding, malformed cursors, new arrivals between pages, replay/stale projections and bounded Unicode snippets are covered. A 10,000-message fixture returns 30 results with a continuation. The Host test rejects any per-query snapshot/history reads and checks that searching adds no audit event.
+- Acceptance 3: Host and background desktop checks cover conversation-level unread filtering, explicit read, hidden/deleted Bots and dissolved group history. Querying and history navigation leave read cursors intact.
+- Acceptance 4–5: six new background Electron tests cover English/Chinese, small dark layout, Cmd+K, Tab/Enter, Escape/IME, empty/loading/error/retry, 34-result pagination, stale queries/pages, private/group exact and repeated jumps, drafts, native-foreground simulation and Jump to latest.
+- Acceptance 6: `pnpm run check` passed (239 tests, 39 files); full `pnpm run e2e` passed (65 tests, 20 files). Inspected search screenshots in light/dark layouts, including the minimum-size Chinese window.
+- Separate real-model spot check: launched an isolated hidden Electron app using the locally configured provider. Verified English private replies across New topic and a Chinese Core-coordinated group reply, searched both histories, jumped to exact messages, preserved drafts/unread and explored the desktop with agent-browser. A full Electron/Host restart produced identical search results and read summaries, retained the Chinese draft and kept the native window inactive. No model retry was needed. Search itself made no inference requests. Removed the temporary model configuration and stopped the isolated app afterward; synthetic evidence remains outside Git.
+
+The branch is stacked on B22 / PR #19. No packaged signing or native-permission claim is made by these checks. Large-history memory/startup costs and transcript virtualization remain follow-ups.

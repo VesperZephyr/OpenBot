@@ -152,6 +152,7 @@ describe("Bot quality", () => {
 			{ kind: "assistant", parts: [{ text: "Fresh answer." }] },
 		]);
 		expect((await runtime!.conversationIndex().list()).find((row) => row.conversationKey === "bot:scout")).toMatchObject({ incomingCount: 2, unreadCount: 2 });
+		expect(runtime!.searchConversations("New topic question", new Set(["bot:scout"])).items).toHaveLength(1);
 	});
 
 	it("projects a compaction divider and keeps earlier messages", async () => {
@@ -183,6 +184,7 @@ describe("Bot quality", () => {
 		expect((await runtime!.conversationIndex().list()).find((row) => row.conversationKey === "bot:scout")!.unreadCount).toBe(0);
 		const users = items.flatMap((item) => (item.kind === "user" ? [item.parts[0]?.text] : []));
 		expect(users).toEqual(Array.from({ length: 8 }, (_, index) => `Question ${index + 1}`));
+		expect(runtime!.searchConversations("Question 1", new Set(["bot:scout"])).items).toHaveLength(1);
 		expect(items.some((item) => item.kind === "other")).toBe(false);
 	});
 

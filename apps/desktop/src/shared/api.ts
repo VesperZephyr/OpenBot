@@ -17,6 +17,7 @@ export const RENDERER_METHODS = [
 	"bots.update",
 	"conversations.snapshot",
 	"conversations.list",
+	"conversations.search",
 	"conversations.markRead",
 	"messages.submit",
 	"runs.cancel",

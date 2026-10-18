@@ -13,7 +13,10 @@ export type View =
 	| { readonly kind: "settings" }
 	| { readonly kind: "home" };
 
+export type SearchTarget = { conversationKey: ConversationKey; messageId: string; nonce: string };
+
 type State = {
+	searchTarget: SearchTarget | undefined;
 	host: HostState;
 	windowActive: boolean;
 	bots: readonly BotSummary[];
@@ -30,6 +33,7 @@ type State = {
 };
 
 export const useStore = create<State>(() => ({
+	searchTarget: undefined,
 	host: { status: "starting" },
 	windowActive: false,
 	bots: [],
@@ -94,8 +98,8 @@ export async function refreshSettings(): Promise<void> {
 }
 
 /** Select a Bot: its conversation becomes the one the Host streams to this window, then it is fetched fresh. */
-export async function openBot(botId: string): Promise<void> {
-	useStore.setState({ view: { kind: "bot", botId } });
+export async function openBot(botId: string, searchTarget?: SearchTarget): Promise<void> {
+	useStore.setState({ view: { kind: "bot", botId }, searchTarget });
 	await api["conversations.subscribe"]({ botId });
 	const snapshot = await api["conversations.snapshot"]({ botId });
 	useStore.setState((state) => ({ conversations: { ...state.conversations, [botId]: snapshot } }));

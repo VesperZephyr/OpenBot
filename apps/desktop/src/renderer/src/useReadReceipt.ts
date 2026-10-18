@@ -19,6 +19,8 @@ export function useReadReceipt(
 		let sending = false;
 		const readable = () =>
 			useStore.getState().windowActive &&
+			useStore.getState().searchTarget?.conversationKey !== key &&
+			!document.activeElement?.closest(".conversation-search, .search-results, .conversation-filters") &&
 			document.visibilityState === "visible" &&
 			document.hasFocus() &&
 			following() &&
@@ -44,6 +46,8 @@ export function useReadReceipt(
 		window.addEventListener("focus", schedule);
 		window.addEventListener("blur", schedule);
 		document.addEventListener("visibilitychange", schedule);
+		document.addEventListener("focusin", schedule);
+		document.addEventListener("focusout", schedule);
 		const modals = new MutationObserver(schedule);
 		modals.observe(document.body, { childList: true, subtree: true });
 		schedule();
@@ -54,6 +58,8 @@ export function useReadReceipt(
 			window.removeEventListener("focus", schedule);
 			window.removeEventListener("blur", schedule);
 			document.removeEventListener("visibilitychange", schedule);
+			document.removeEventListener("focusin", schedule);
+			document.removeEventListener("focusout", schedule);
 		};
 	}, [key, cursor, persisted, element, nativeActive]);
 }
