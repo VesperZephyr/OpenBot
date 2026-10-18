@@ -1,3 +1,4 @@
+import { Observation } from "./observation.ts";
 import { legacyManagementName } from "@openbot/protocol";
 /**
  * Transport-independent application methods for the Host Runtime. Process composition, credential storage, and IPC
@@ -97,6 +98,7 @@ export class HostService {
 	readonly management: BotManagement;
 	readonly groups: Groups;
 	#botChanges: Promise<unknown> = Promise.resolve();
+	readonly #observation = new Observation();
 	readonly #audit: (event: OperationAudit) => void;
 	#configWrites: Promise<unknown> = Promise.resolve();
 	readonly #runtime: BotRuntime;
@@ -130,7 +132,10 @@ export class HostService {
 		this.#toolSettled = options.toolSettled ?? (() => {});
 		this.#conversationStopped = options.conversationStopped ?? (() => {});
 		this.#workspace = options.workspace;
-		this.#emit = options.emit;
+		this.#emit = (event) => {
+			this.#observation.changed(event.type === "bots.changed" ? 1 : event.type === "groups.changed" ? 2 : 4);
+			options.emit(event);
+		};
 		this.#now = options.now ?? Date.now;
 		this.management = new BotManagement(this.#runtime, this.#status.targetId, this.#now);
 		this.#runs = new RunScheduler({
@@ -159,6 +164,7 @@ export class HostService {
 			...(options.coalesce?.timers === undefined ? {} : { timers: options.coalesce.timers }),
 		});
 		this.#handlers = {
+			"observation.wait": ({ cursor, waitMs }) => this.#observation.wait(cursor, waitMs),
 			"collaboration.stop": ({ rootId }) => this.groups.stopTree(rootId),
 			"groups.list": () => this.#runtime.groups().list(),
 			"groups.snapshot": ({ groupId }) => this.groups.snapshot(groupId),
@@ -331,6 +337,7 @@ export class HostService {
 
 	/** Call before the runtime closes: the shutdown aborts waiting calls, and their approvals must stay pending. */
 	async stop(): Promise<void> {
+		this.#observation.close();
 		await this.groups.stop();
 		this.#approvals.close();
 		this.#runs.stop();
@@ -365,6 +372,7 @@ export class HostService {
 				!method.endsWith(".list") &&
 				!method.endsWith(".history") &&
 				![
+					"observation.wait",
 					"host.status",
 					"groups.snapshot",
 					"conversations.snapshot",
@@ -375,6 +383,7 @@ export class HostService {
 				].includes(method)
 			) {
 				try {
+					if (outcome === "succeeded") this.#observation.changed(8);
 					this.#audit({ operationId: randomUUID(), operation: method, at, durationMs: this.#now() - at, outcome });
 				} catch {
 					/* Diagnostics must not undo a committed action. */

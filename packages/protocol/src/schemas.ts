@@ -39,7 +39,14 @@ const GroupFields = strict({
 	leadBotId: Id,
 });
 export const HOST_PARAM_SCHEMAS = {
- "collaboration.stop": strict({ rootId: Type.String({ minLength: 1, maxLength: 2048 }) }),
+	"observation.wait": strict({
+		cursor: Type.Optional(strict({
+			streamId: Type.String({ minLength: 1, maxLength: 128 }),
+			seq: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+		})),
+		waitMs: Type.Optional(Type.Integer({ minimum: 0, maximum: 5000 })),
+	}),
+	"collaboration.stop": strict({ rootId: Type.String({ minLength: 1, maxLength: 2048 }) }),
 	"groups.list": NoParams,
 	"groups.snapshot": strict({ groupId: GroupId }),
 	"groups.change": strict({

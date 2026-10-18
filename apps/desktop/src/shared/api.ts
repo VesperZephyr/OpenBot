@@ -2,10 +2,11 @@
  * The renderer-facing API. Every entry is one allowlisted Host method; the preload exposes one named function per
  * entry and main forwards only these methods. Adding a method here is the only way to reach the Host from the renderer.
  */
-import type { GrantAccess, HostEvent, HostMethod, HostParams, HostResult } from "@openbot/protocol";
+import type { GrantAccess, HostMethod, HostParams, HostResult } from "@openbot/protocol";
 
 export const RENDERER_METHODS = [
- "collaboration.stop",
+	"observation.wait",
+	"collaboration.stop",
 	"groups.list",
 	"groups.snapshot",
 	"groups.change",
@@ -61,8 +62,6 @@ export type FolderSelection = { readonly selection: string; readonly path: strin
 
 export type OpenBotApi = {
 	readonly methods: { readonly [M in RendererMethod]: (params: RendererParams<M>) => Promise<HostResult<M>> };
-	/** Subscribe to Host events; returns an unsubscribe function. */
-	readonly onEvent: (listener: (event: HostEvent) => void) => () => void;
 	/** Host connection state, so the UI can show a starting or stopped notice. */
 	readonly onHostState: (listener: (state: HostState) => void) => () => void;
 	readonly hostState: () => Promise<HostState>;
@@ -82,7 +81,6 @@ export type OpenBotApi = {
 /** IPC channel names between preload and main. */
 export const CHANNELS = {
 	call: "openbot:call",
-	event: "openbot:event",
 	hostState: "openbot:host-state",
 	getHostState: "openbot:get-host-state",
 	getWindowActive: "openbot:get-window-active",

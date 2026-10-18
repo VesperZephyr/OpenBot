@@ -1,6 +1,6 @@
 # B14a: Reliable, Bounded Desktop Observation
 
-Status: ready
+Status: in review
 Branch: task/b14a-reliable-observation; pull request target: main
 Depends on: G0, merged B22–B26
 Architecture: Sections 6.1, 7.1 and 8.2
@@ -15,7 +15,7 @@ In: bounded observation credit, stream identity/sequence recovery, single-flight
 
 ## Design
 
-Use pull-based invalidation credit over the existing private RPC channel. The renderer requests one observation at a time, then refreshes current state before requesting another. An acknowledged cursor is the credit for the next response. Host retains only one stream ID and revision, never a queue of transcript snapshots. A sequence gap means coalesced state and is recovered with current snapshots; notifications are not an authoritative event journal. Approvals, Runs, messages, group publications and Code Mode receipts remain durable in their existing stores.
+Use pull-based invalidation credit over the existing private RPC channel. The renderer requests one observation at a time, then refreshes current state before requesting another. An acknowledged cursor is the credit for the next response. Host retains one stream ID, revision and four topic revisions, never a queue of transcript snapshots. A sequence gap means coalesced state and is recovered with current snapshots; notifications are not an authoritative event journal. Approvals, Runs, messages, group publications and Code Mode receipts remain durable in their existing stores.
 
 Main has an independent single-flight observer for native attention while the renderer is absent. Stop sending application event payloads over the Host/main/renderer push channels. Host lifecycle state and window-activity channels remain separate and low-volume. The service's internal event callbacks remain available to existing fixtures; production composition does not forward them.
 
@@ -23,9 +23,9 @@ Snapshot reads are serialized/coalesced by logical resource. A refresh requested
 
 ## Contracts
 
-`observation.wait({ cursor?: { streamId: string, seq: number }, waitMs?: number })` returns `{ streamId, seq }`. The Host owns a random stream ID and monotonically increasing safe-integer revision. Any internal state event or successful configuration mutation increments the revision. A missing, different-stream or ahead-of-Host cursor returns immediately and requires fresh snapshots. An equal cursor waits until a change or deadline. Default/max wait is 5,000 ms; zero performs a nonblocking check. IDs are bounded to 128 characters and sequence values are nonnegative safe integers.
+`observation.wait({ cursor?: { streamId: string, seq: number }, waitMs?: number })` returns `{ streamId, seq, changes }`, where changes is a bitmask (1 roster/summary, 2 groups/summary, 4 selected conversation, 8 settings/models). The next cursor contains only streamId/seq. Four last-change revisions coalesce invalidation by topic; a new/invalid stream requests all topics. The Host owns a random stream ID and monotonically increasing safe-integer revision. Any internal state event or successful configuration mutation increments the revision. A missing, different-stream or ahead-of-Host cursor returns immediately and requires fresh snapshots. An equal cursor waits until a change or deadline. Default/max wait is 5,000 ms; zero performs a nonblocking check. IDs are bounded to 128 characters and sequence values are nonnegative safe integers.
 
-There are at most four pending Host observation waits. Excess requests fail with `invalid_request`, never an unbounded waiter list. Each response contains only a bounded UUID and number (under 128 UTF-8 bytes with generated IDs); shutdown resolves outstanding waits and clears timers. Each production consumer has at most one pending request and a minimum 100 ms refresh cadence. A paused renderer can therefore retain at most one observation response plus its explicitly requested snapshot responses; full-history snapshot size remains existing behavior, assigned to B14c.
+There are at most four pending Host observation waits. Excess requests fail with `invalid_request`, never an unbounded waiter list. Each response contains only a bounded UUID and number (under 192 UTF-8 bytes with generated IDs); shutdown resolves outstanding waits and clears timers. Each production consumer has at most one pending request and a minimum 100 ms refresh cadence. A paused renderer can therefore retain at most one observation response plus its explicitly requested snapshot responses; full-history snapshot size remains existing behavior, assigned to B14c.
 
 The observation API is desktop-only, with ordinary frame/parameter validation. It is not exposed as a model tool or through Code Mode. It carries no grants and changes no task authority. Existing protocol version 1 remains per the unreleased compatibility policy; main/preload/renderer/Host ship together.
 
@@ -52,3 +52,12 @@ Baseline `54c2a1c` is merged through B26. Its full background e2e passed 73 test
 ## Open questions
 
 None. Pull credit deliberately replaces buffered push snapshots; it satisfies acknowledged backpressure without adding an event-log replay store or claiming an atomic snapshot across all application documents. Current-state reads converge, while durable domain stores remain authoritative.
+
+## Implementation and verification
+
+- Replaced production Host event pushes with bounded topic invalidation. Main and renderer independently request observation credit; the renderer coalesces snapshots, while main keeps coalesced native-attention reads. Late Host responses and stale roster reads cannot affect a new generation.
+- Group channel changes invalidate the selected group, including live progress and task admission. Direct conversations keep the existing subscription coalescer. Native activity and read acknowledgements remain independent.
+- `pnpm run check`: 290 tests in 46 files, including 10,000-change coalescing, four-waiter cap, schema limits, timeout/close cleanup, stale snapshot generations, stopped observers and stale native-attention reads.
+- Targeted background e2e: 15 tests across groups, conversation search and Code Mode management passed. Two new observation scenarios passed: exact approval reload/Host recovery without duplicated creation; group search/unread and bilingual draft recovery.
+- Isolated real-model check: locally configured `mafia / gpt-6.1-sol` successfully called `app_bots_inspect` through Code Mode and persisted an English/Chinese reply. Host restart preserved transcript item identities; renderer reload retained the bilingual draft. The hidden window stayed inactive. The copied model configuration was removed after shutdown; synthetic screenshots and evidence remain outside the repository.
+- Screenshot inspection covered the recovered English result and Chinese group search. No installed production bundle, owner-data app or native permission dialog was opened. Native signing/permission/power acceptance remains outstanding as described under G0.

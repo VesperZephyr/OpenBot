@@ -195,7 +195,7 @@ The Host and executor run on a **bundled, pinned, signed Node 24 binary** starte
 - Process exit codes, signals, and process-group termination keep ordinary POSIX semantics.
 - Cost: one more Mach-O per architecture, signed with the hardened runtime and the `com.apple.security.cs.allow-jit` entitlement; without it, the hardened runtime kills V8 at startup.
 
-Streams between processes need application-level backpressure: neither Node IPC nor `MessagePort` applies flow control. Producers pause after a window of unacknowledged events, as VS Code's terminal does.
+Streams between processes need application-level backpressure: neither Node IPC nor `MessagePort` applies flow control. Desktop observation uses pull credit: one bounded invalidation response per pending request, followed by current-state reads before granting another credit. The Host coalesces changes by topic instead of buffering event payloads.
 
 The renderer uses an allowlisted preload API; it cannot launch processes, open the database, read credentials, or connect directly to the Host or executor.
 
@@ -533,6 +533,7 @@ The transport is private IPC with versioned request, response, and event envelop
 | `bots.create`, `bots.update`, `bots.list`, `bots.duplicate`, `bots.delete`, `bots.export`, `bots.import` | Manage Bot profiles and templates; Duplicate copies profile and Prompt with empty memory and history; Delete cancels the Bot's Run and keeps its conversation on disk |
 | `bots.memory.get`, `bots.memory.update`, `bots.memory.restore` | Inspect current memory and bounded history; edit/restore with expected-revision checks |
 | `conversations.list`, `conversations.markRead` | Bounded local Bot/group latest-message summaries and durable read cursors; acknowledge a rendered snapshot through its incoming-message ordinal |
+| `observation.wait` | Bounded topic invalidation with a Host stream ID and revision; one pending request per production consumer and four per Host |
 | `conversations.snapshot`, `conversations.subscribe`, `conversations.reset` | Deliver the current direct-chat view and subscribed updates; start a new topic |
 | `groups.create`, `groups.update`, `groups.delete` | Manage group chats and membership |
 | `messages.submit` | Accept `requestId`, conversation, content, mentions, skill and connector attachments, and artifact references; return `runId`, state, and whether the message steered an active Run, after durable receipt |
@@ -553,7 +554,9 @@ The transport is private IPC with versioned request, response, and event envelop
 
 A request carries `protocolVersion`, `messageId`, `method`, and `params`. Electron main and the Host both validate `params` against the method's TypeBox schema (`@openbot/protocol/schemas`) and answer `invalid_request` otherwise. Mutating operations include a stable application request identity where retries could otherwise create duplicate work. `messages.submit` returns the same Run for the same request ID and content; different content under that ID is a conflict. Durable receipt does not mean model generation has started. A Bot's queued Run collects messages sent while it waits and submits them as one input when it starts.
 
-Observation events include `streamId`, `seq`, `conversationId`, `type`, and `payload`. A subscription starts from a consistent snapshot and continues with updates after that snapshot. Reconnection, a sequence gap, or a new Host instance requires a new snapshot; Pi's watch does not replay arbitrary historical events. See [Pi observation semantics](https://github.com/earendil-works/pi/blob/b45e0ebcc5ae2fc42a6f2f23104d10e656e6bedb/packages/durable/README.md#watching-a-conversation).
+Desktop observation uses `observation.wait({cursor?: {streamId, seq}, waitMs?})`. A response carries only the current stream identity, revision and a topic bitmask: roster/summaries (1), groups/summaries (2), selected direct conversation (4), settings/models (8). The Host retains four last-change revisions; no event payload queue crosses IPC. Each consumer refreshes affected snapshots before requesting the next observation, at a minimum 100 ms cadence. Missing, changed-stream or ahead cursors request every snapshot; equal cursors wait at most five seconds. Sequence gaps represent coalesced current state, not lost durable records. Four pending waits bound abandoned renderer requests; excess requests are rejected. Main has its own observer and coalesced roster reads for native attention when the window is closed.
+
+Snapshot reads are single-flight per resource. New refreshes invalidate older reads; Host and selection changes reject stale results. Observation does not move read cursors, clear drafts or reset an active search target. Domain stores remain authoritative for approvals, Runs, messages and receipts; cross-document snapshots are not transactional. Full-history snapshot size remains a separate B14c concern. See [B14a](tasks/b14a-reliable-observation.md) for limits and recovery acceptance.
 
 Electron main raises macOS notifications for approvals, takeover and secret requests, completed or failed Runs, and routine reports. Dictation in the composer uses macOS on-device speech recognition or a configured transcription endpoint.
 
@@ -608,7 +611,7 @@ Rules:
 - **Main owns processes; the renderer owns nothing privileged.** Main starts the Host, holds the only Host connection, and is the only code that shows native dialogs, notifications, tray menus, and global shortcuts.
 - **Named methods only.** The preload exposes one function per Section 6.1 method. A generic `invoke(channel, args)` is not allowed. Main checks that every call comes from the application's own frame and validates arguments before forwarding.
 - **Typed end to end.** `shared/api.ts` is derived from `@openbot/protocol`, so a renamed or removed method fails type checking in main, preload, and renderer. Runtime validation uses one TypeBox schema per method from `@openbot/protocol/schemas` (TypeBox is the version Pi already uses); a method without a schema fails type checking.
-- **Snapshot then events.** The renderer store for a conversation is a `conversations.snapshot` followed by `seq`-ordered events. A sequence gap or Host restart discards the store and requests a new snapshot. Token deltas are coalesced before they cross IPC.
+- **Snapshots with observation credit.** One `observation.wait` response invalidates affected snapshots. The renderer completes coalesced reads before granting more credit; Host changes invalidate old reads and refresh current state. No transcript event payloads are pushed into a suspended renderer.
 - **Secrets never reach the renderer.** A secret request renders a masked field, but the value goes renderer → preload → main → Host in one call and is never kept in renderer state. Settings arrive redacted.
 - **Closing the window is not quitting.** The tray menu, the dock, and the global shortcut reopen the window. Quit runs the Section 8.1 shutdown sequence before the process exits. Main relays `powerMonitor` suspend, resume, lock, and unlock events to the Host, and holds `powerSaveBlocker` only while Runs are active.
 

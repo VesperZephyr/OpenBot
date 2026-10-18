@@ -85,7 +85,6 @@ const host = new HostProcess({
 	// Both callbacks first fire after `host.start()` below, when `attentionWatcher` exists.
 	onEvent: (event) => {
 		attentionWatcher.onEvent(event);
-		window?.webContents.send(CHANNELS.event, event);
 	},
 	onState: (state: HostState) => {
 		attentionWatcher.onHostState(state);

@@ -37,6 +37,13 @@ describe("Host method parameter schemas", () => {
 		expect(paramsError("conversations.snapshot", [])).toBeDefined();
 	});
 
+ it("bounds observation cursors and wait deadlines", () => {
+  expect(paramsError("observation.wait", {})).toBeUndefined();
+  expect(paramsError("observation.wait", {cursor:{streamId:"host",seq:0},waitMs:5000})).toBeUndefined();
+  for (const params of [{waitMs:-1},{waitMs:5001},{waitMs:0.5},{cursor:{streamId:"",seq:0}},{cursor:{streamId:"x".repeat(129),seq:0}},{cursor:{streamId:"x",seq:Number.MAX_SAFE_INTEGER+1}},{cursor:{streamId:"x",seq:-1}},{cursor:{streamId:"x",seq:0,changes:15}}])
+   expect(paramsError("observation.wait",params)).toBeDefined();
+ });
+
 	it("never echoes a rejected value", () => {
 		const message = paramsError("credentials.set", { providerId: "openai", apiKey: 12345678, leaked: "sk-secret" }) ?? "";
 		expect(message).not.toContain("sk-secret");
