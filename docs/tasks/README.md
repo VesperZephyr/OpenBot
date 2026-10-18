@@ -135,3 +135,9 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Task | Status |
 | --- | --- |
 | [B12a: Deterministic policy, revocation and approval expiry](b12a-deterministic-policy.md) | in review; depends on B14b, targets main |
+
+## Integration gates
+
+| Task | Status |
+| --- | --- |
+| [I1: Integrated product foundation](i1-product-foundation.md) | in progress; prerequisite PRs #28–#33; targets main |

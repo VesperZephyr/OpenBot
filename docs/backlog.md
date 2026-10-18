@@ -65,7 +65,7 @@ Accepted product direction: [D1](tasks/d1-bot-product-design.md). B16/B17 establ
 - **B11. Routines** (after B2). Scheduler in `server-core` with occurrence request IDs `routine:<id>:<scheduledAt>`, a fresh conversation per occurrence admitted through B2's queue, test run, coalesced catch-up after sleep, Grok Bot limits (50 per Bot, 5-minute spacing, 20 runs of history), `routine_propose` with a confirmation card.
 - **B12b. Optional Auto Review.** Remaining: URL/connector predicates and a model reviewer that can only escalate. B12a supplies deterministic command/file Ask first rules, scoped revocation and unattended expiry; see its spec and acceptance evidence.
 - **B13. Bots together** (architecture M4). Core-coordinated group chats, explicit mentions, bounded delegation and ownership transfer (B13a–c); remaining work: templates (export and import without memory, history, credentials, or grants), usage per Bot from `pi.usage`.
-- **B14. Desktop completion** (architecture M2 rest). [B14a](tasks/b14a-reliable-observation.md) implements bounded observation and reconnect recovery (in review). B23 provides `Cmd+K` history search. Remaining: menu-bar app with running Bots and **Pause all**, Normal and Verbose tool detail, transcript virtualization, login item, Keychain moved out of the `security` CLI, auto-update with electron-updater.
+- **B14. Desktop completion** (architecture M2 rest). [B14a](tasks/b14a-reliable-observation.md) implements bounded observation and reconnect recovery (in review). B23 provides `Cmd+K` history search. B14b adds sidebar Pause all and lifecycle gates. Remaining: richer menu-bar status, Normal and Verbose tool detail, transcript virtualization, login item, Keychain moved out of the `security` CLI, auto-update with electron-updater.
 - **B15. Agent extras.** Image results from `local_read` for vision models, waking the Bot when a background task finishes, attachments in the composer, background subagents for parallel research within one Bot.
 
 ## Phase 3: Computer control
@@ -105,12 +105,17 @@ Attention-state mutation, UI navigation, cross-Bot memory operations, new dispat
 ## Post-B26 artifact delivery
 
 - [B15a: Bounded file inputs and result artifacts](tasks/b15a-bounded-artifacts.md): implemented, in review in [PR #30](https://github.com/VesperZephyr/OpenBot/pull/30), targeting `main`. 293 unit/Host tests, 79 full background e2e tests, six final artifact scenarios and isolated real-model text/image/publication/export/restart acceptance. Private text/image input, durable local copies, result cards, exact group result publication, safe preview/export/removal and spill quotas. B14a PR #29 remains independent.
-- Next serial batch: B14b lifecycle gates, followed by B12a deterministic policy. Native packaged evidence remains a release gate; validation stays in isolated background apps.
+- Native packaged evidence remains a release gate; validation stays in isolated background apps.
 ## Post-B26 implementation
 
 - [B14b: Lifecycle gates](tasks/b14b-lifecycle-gates.md): implemented on `task/b14b-lifecycle-gates`, in review. 301 unit/Host tests, 80 full background e2e tests, seven final lifecycle scenarios, bundled runtime startup and isolated real-model interruption/continuation passed. Global sidebar Pause all, durable queue retention, native handshake and lock/sleep/quit gating, executor quiescence, explicit private continuation, and group-chain interruption. Unexpected Host crashes preserve the existing replay contract; intentional quitting withdraws active approvals. Packaged native lock/sleep acceptance remains a release gate.
-- B14a observation and B15a artifacts are independently in review in PRs #29 and #30. This branch does not include those changes; integration must preserve their observation guards and immutable attachment references.
+- I1 integrates the independently reviewed B14a/B15a/B14b/B12a/B13d heads while preserving observation guards, immutable attachment references and interruption settlement.
 
 ## Deterministic policy delivery
 
 - [B12a](tasks/b12a-deterministic-policy.md): implemented on `task/b12a-deterministic-policy`, dependent on B14b / PR #31. Target-bound revisions, atomic approval scopes, exact approval identity, conservative scoped revocation, unattended expiry and English/Chinese settings. 319 unit/Host tests and 84 full background e2e tests passed, with bundled startup and isolated real-model acceptance. Evidence is recorded in the task spec; the PR targets `main`, with prerequisite B14b merged first.
+
+## Current integration gate
+
+- [I1: Integrated product foundation](tasks/i1-product-foundation.md) is in progress on `task/i1-product-foundation`. PRs #28–#33 remain unmerged; this local candidate combines their exact reviewed heads. It adds combined acceptance for interruption usage settlement, immutable attachment continuation, publication policy/revocation and bounded lifecycle observation.
+- Next: B10 shared reviewed skills, then B15b background completion delivery, following the roadmap. Each starts from a verified prerequisite candidate with its own spec and PR targeting main.

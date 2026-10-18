@@ -78,7 +78,15 @@ export async function captureUsage(tx: Tx, run: StoredRun, previous: StoredRun |
 		};
 	}
 	const interval = doc.intervals[run.runId];
-	if (!interval || interval.settled || run.state === "running" || run.state === "queued") return;
+	// Interruption intent is persisted before Pi cancellation has drained its last counters.
+	if (
+		!interval ||
+		interval.settled ||
+		run.state === "running" ||
+		run.state === "queued" ||
+		(run.state === "needs_attention" && run.interruption?.settledAt === undefined)
+	)
+		return;
 	const summary = usageSummary(current, interval.baseline, interval.stamp, capture.stamp.epoch);
 	interval.settled = JSON.parse(JSON.stringify(summary));
 	interval.endEntry = tail;

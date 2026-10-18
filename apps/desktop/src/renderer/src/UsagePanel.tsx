@@ -68,7 +68,9 @@ export function UsagePanel({ botId, onNavigate }: { botId: string; onNavigate: (
 													? "Stopped"
 													: run.state === "queued"
 														? "Queued"
-														: "Working",
+														: run.state === "needs_attention"
+															? "Needs attention"
+															: "Working",
 									)}
 								</span>
 								<time>{new Date(run.createdAt).toLocaleString(language)}</time>

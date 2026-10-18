@@ -201,6 +201,7 @@ export class BotRuntime {
 	#configuredIds: readonly string[] = [];
 	#pricing: Readonly<Record<string, boolean>> = {};
 	#usageEpoch = randomUUID();
+	#usageConfigDigest: string | undefined;
 	readonly #search = new ConversationSearchIndex();
 	#coreBootstrap: Promise<BotProfile> | undefined;
 	/** Stored entries before each conversation's current head marker; entries are immutable, so one read per head. */
@@ -1018,7 +1019,12 @@ export class BotRuntime {
 		for (const provider of providers) this.#models.setProvider(provider);
 		this.#configuredIds = providers.map((provider) => provider.id);
 		this.#pricing = pricing ?? {};
-		this.#usageEpoch = randomUUID();
+		// Observation refreshes settings routinely. Only a changed configuration invalidates pricing.
+		const digest = createHash("sha256").update(JSON.stringify(text ?? null)).digest("hex");
+		if (digest !== this.#usageConfigDigest) {
+			this.#usageConfigDigest = digest;
+			this.#usageEpoch = randomUUID();
+		}
 		return status;
 	}
 

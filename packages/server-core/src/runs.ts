@@ -208,7 +208,27 @@ export class RunScheduler {
 				.map((message) => message.text)
 				.join("\n\n")
 				.slice(0, 24000);
-		return this.submit(run.botId, `continuation:${run.runId}:${requestId}`, text);
+		return this.#serial(async () => {
+			if (!this.#canAdmit()) throw new ProtocolError("invalid_request", "Work is paused. Resume work before continuing.");
+			const key = `continuation:${run.runId}:${requestId}`;
+			const existing = await this.#byRequest(run.botId, key);
+			if (existing) return { runId: existing.runId, state: existing.state, steered: false };
+			// Carry immutable per-message references, including inputs interrupted before Pi admission.
+			// A separate Run preserves usage boundaries and never steers unrelated active work.
+			const messages = run.messages.some(message => message.attachments?.length)
+				? run.messages.map((message, index) => ({
+					...message, requestId: index === 0 ? key : `${key}:input:${index}`,
+					text: index === 0 ? `${text}\n\n${message.text}` : message.text,
+				}))
+				: [{ requestId: key, text }];
+			const next: StoredRun = {
+				runId: `run_${randomUUID()}`, botId: run.botId, origin: "user", state: "queued",
+				requestIds: messages.map(message => message.requestId), createdAt: this.#now(), messages, inputs: [],
+			};
+			await this.#put(next);
+			await this.#admit();
+			return { runId: next.runId, state: this.#runs.get(next.runId)?.state ?? next.state, steered: false };
+		});
 	}
 
 	/** Stop observing; Pi keeps the work, and the next start picks it up. */

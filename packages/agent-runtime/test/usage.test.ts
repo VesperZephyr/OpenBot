@@ -220,3 +220,52 @@ it("accounts actual Pi compaction requests and settled task intervals exactly on
 	expect(data.total.totalTokens).toBe(measured.reduce((sum, n) => sum + n, 0));
 	expect(data.runs.reduce((sum, r) => sum + r.usage.totalTokens, 0)).toBe(data.total.totalTokens);
 });
+
+it("settles interrupted usage only after cancellation drains, and keeps a continuation separate", async () => {
+	const { rt, databasePath } = await open(undefined, [answer(), answer(), answer()]);
+	await rt.createBot({ botId: "scout", name: "Scout", model, createdAt: 0 });
+	rt.resume();
+	await begin(rt, "interrupted");
+	await rt.submitAndWait("scout", "before-stop", "First committed response");
+	const before = (await rt.usage("scout")).total.totalTokens;
+	const intent = run("interrupted", "needs_attention", { interruption: { reason: "user", requestedAt: 2 } });
+	await rt.runsStore().put(intent);
+	// A provider may finish committing its usage after interruption intent, before Pi's drain completes.
+	await rt.submitAndWait("scout", "late-stop", "Late committed response");
+	const drained = (await rt.usage("scout")).runs[0]!.usage.totalTokens;
+	expect(drained).toBeGreaterThan(before);
+	const settled = { ...intent, interruption: { ...intent.interruption!, settledAt: 3 } };
+	await rt.runsStore().put(settled);
+	const frozen = (await rt.usage("scout")).runs[0]!.usage;
+	expect(frozen.totalTokens).toBe(drained);
+	await rt.runsStore().put(settled);
+	await begin(rt, "continuation", { createdAt: 4 });
+	await rt.submitAndWait("scout", "continuation", "Explicit continuation");
+	await finish(rt, "continuation", { createdAt: 4 });
+	await rt.runsStore().put(settled);
+	const result = await rt.usage("scout");
+	expect(result.runs.find((r) => r.runId === "interrupted")!.usage).toEqual(frozen);
+	expect(result.total.totalTokens).toBe(drained + result.runs[0]!.usage.totalTokens);
+	expect(result.total.estimatedUsd).toBe(0);
+	await rt.close();
+	runtimes.splice(runtimes.indexOf(rt), 1);
+	expect(await (await open(databasePath, [])).rt.usage("scout")).toEqual(result);
+});
+
+it("preserves estimates across unchanged configuration reads and invalidates a changed configuration", async () => {
+	const { rt } = await open(undefined, [answer(), answer()]);
+	const environment = { env: () => undefined, run: async () => "" };
+	rt.reloadConfiguredProviders(undefined, environment);
+	await rt.createBot({ botId: "scout", name: "Scout", model, createdAt: 0 });
+	rt.resume();
+	await begin(rt, "same");
+	await rt.submitAndWait("scout", "same", "Same configuration");
+	rt.reloadConfiguredProviders(undefined, environment);
+	await finish(rt, "same");
+	expect((await rt.usage("scout")).runs[0]!.usage.estimatedUsd).toBe(0);
+	await begin(rt, "changed-config", { createdAt: 2 });
+	await rt.submitAndWait("scout", "changed-config", "Changed configuration");
+	rt.reloadConfiguredProviders('{"providers":{}}', environment);
+	await finish(rt, "changed-config", { createdAt: 2 });
+	expect((await rt.usage("scout")).runs[0]!.usage.estimatedUsd).toBeUndefined();
+});

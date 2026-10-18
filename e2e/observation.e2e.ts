@@ -13,7 +13,8 @@ const unread = async (key: string) => (await api("conversations.list")).find((r:
 async function restartHost() {
 	const cursor = await api("observation.wait", { waitMs: 0 });
 	const pid = Number((await readFile(join(h.dataDirectory, "host.lock"), "utf8")).trim());
-	process.kill(pid, "SIGTERM");
+	// SIGTERM is an intentional quit and now withdraws approvals; this fixture needs unexpected loss.
+	process.kill(pid, "SIGKILL");
 	await poll(async () => {
 		try {
 			return (await api("observation.wait", { waitMs: 0 })).streamId;

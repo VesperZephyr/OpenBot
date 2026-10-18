@@ -200,6 +200,29 @@ describe("RunScheduler", () => {
 		await close();
 	});
 
+	it("continues immutable attachments interrupted before Pi admission without joining unrelated work", async () => {
+		const ref = { artifactId: `artifact_${"c".repeat(32)}`, name: "saved.txt", bytes: 4, mediaType: "text/plain", sha256: "c".repeat(64), createdAt: 1, source: "input" as const, availability: "available" as const };
+		const hydrated: string[][] = [];
+		attachments = { hydrateAttachments: async (_bot, refs) => { hydrated.push(refs.map(r => r.artifactId)); return refs.map(artifact => ({ artifact, text: "data", truncated: false })); } };
+		await open(WAIT, "Unrelated answer", "Continued attachment answer");
+		await createBots("a");
+		await runtime.runsStore().put({ runId: "interrupted-file", botId: "a", origin: "user", state: "needs_attention", createdAt: 1, requestIds: ["original"], messages: [{ requestId: "original", text: "Use the file", attachments: [ref] }], inputs: [], interruption: { reason: "user", requestedAt: 2, settledAt: 3 } });
+		await scheduler.start();
+		const unrelated = await scheduler.submit("a", "other", "Unrelated task");
+		await gates.entered("a");
+		const continued = await scheduler.continue("interrupted-file", "explicit");
+		expect(continued).toMatchObject({ state: "queued", steered: false });
+		expect(continued.runId).not.toBe(unrelated.runId);
+		expect((await scheduler.continue("interrupted-file", "explicit")).runId).toBe(continued.runId);
+		gates.release("a");
+		await reaches("a", continued.runId, "completed");
+		expect(hydrated).toEqual([[ref.artifactId]]);
+		const saved = await runtime.runsStore().get(continued.runId);
+		expect(saved?.messages[0]?.attachments).toEqual([ref]);
+		expect(saved?.inputs[0]?.attachments).toEqual([ref]);
+		await close();
+	});
+
 	it("interrupts active work, preserves the queue and continues with a fresh stable request", async () => {
 		await open(WAIT, "Queued answer", "Continued answer");
 		await createBots("a", "b");

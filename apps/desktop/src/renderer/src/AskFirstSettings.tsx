@@ -134,7 +134,7 @@ export function AskFirstSettings({
 							setPath("");
 						}}
 					>
-						{["local_exec", "local_read", "local_list", "local_write", "local_edit"].map((name) => (
+						{["local_exec", "local_read", "local_list", "local_write", "local_edit", "artifact_publish"].map((name) => (
 							<option key={name}>{name}</option>
 						))}
 					</select>

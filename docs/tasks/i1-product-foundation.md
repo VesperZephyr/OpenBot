@@ -1,6 +1,6 @@
 # I1: Integrated Product Foundation
 
-Status: ready
+Status: in progress
 Branch: task/i1-product-foundation; PR target: main
 Depends on: D4 (#28), B14a (#29), B15a (#30), B14b (#31), B12a (#32), B13d (#33)
 Architecture: Sections 3–6 and 8; prerequisite task specs remain authoritative
@@ -18,9 +18,9 @@ In: combine the exact reviewed prerequisite heads, resolve conflicts preserving 
 ## Contracts
 
 1. Observation retains B14a stream identity, monotonic revision/cursor validation, gap recovery, bounded pull credit/backpressure and stale-child rejection. New artifact, lifecycle, policy and usage views must not bypass these guards or change read cursors through a background fetch.
-2. Durable Run input identity includes B15a immutable ordered attachment references, original request text, channel and provenance. Admission still respects B14b gates and B12a current authority. A replay cannot rehydrate a different attachment, duplicate an accepted input, or create fresh permission authority.
-3. Lifecycle interruption has intent and settled phases. B13d may freeze a terminal interruption's usage only after `interruption.settledAt`; before that it remains a live delta. Late committed provider-abort usage is included once. Repeated stop/revocation/restart cannot double-credit a Bot or charge a later explicit continuation to the old Run. Usage UI shows needs-attention distinctly from working.
-4. Artifact import/export remains user-selected main authority; model publication remains an executor file-read operation under Tool Router. B12a revision fences, Ask first file predicates and grant revocation apply to publication's canonical source. Cancellation never claims rollback of an immutable copy already committed. Receipt reconciliation must return a verified committed artifact without rereading a now-missing or revoked source, and must never start a new publication under stale authority.
+2. Durable Run input identity includes B15a immutable ordered attachment references, original request text, channel and provenance. Admission still respects B14b gates and B12a current authority. A replay cannot rehydrate a different attachment, duplicate an accepted input, or create fresh permission authority. Explicit continuation creates one new queued Run with a stable continuation request, preserves each original message's immutable attachment references and per-message limits, and adds the reconciliation instruction. It must not steer into unrelated active work. A missing copy fails visibly through the existing attachment hydration contract; continuation does not silently omit an accepted file.
+3. Lifecycle interruption has intent and settled phases. B13d may freeze a terminal interruption's usage only after `interruption.settledAt`; before that it remains a live delta. Late committed provider-abort usage is included once. Repeated stop/revocation/restart cannot double-credit a Bot or charge a later explicit continuation to the old Run. Usage UI shows needs-attention distinctly from working. Re-reading unchanged model configuration during observation does not invalidate the pricing epoch; a changed configuration or model selection still does. The adapter retains only an internal configuration digest, never exports it.
+4. Artifact import/export remains user-selected main authority; model publication remains an executor file-read operation under Tool Router. B12a revision fences and grant revocation apply to publication's canonical source. Add `artifact_publish` to the bounded Ask first file-tool predicate union, validation and tool selector; its rule requires exact confirmation even within an existing read grant. Existing per-tool predicates keep their meaning. Cancellation never claims rollback of an immutable copy already committed. Receipt reconciliation must return a verified committed artifact without rereading a now-missing or revoked source, and must never start a new publication under stale authority.
 5. Executor private IPC preserves all three envelopes: artifact operations, lifecycle quiescence and revision/scoped revocation control. Every request validates the local target; replies are correlated to the current child and bounded by existing limits. Lifecycle stop does not acknowledge an old child or falsely complete an uncertain operation.
 6. User-visible English/Chinese text, details panels, attachment cards, usage links and pause/revocation states coexist. Combined navigation expands folded tools, preserves drafts/accepted attachments, and retains Core-default group routing and private Bot chats.
 7. No current-state documentation labels an unmerged PR done. The combined candidate lists exact prerequisite heads and keeps native release evidence separate from hidden verification.
@@ -44,3 +44,20 @@ In: combine the exact reviewed prerequisite heads, resolve conflicts preserving 
 ## Open questions
 
 None for this integration contract. Any incompatibility requiring a new externally visible contract must be recorded here before its design changes; prerequisite behavior cannot be silently weakened.
+
+## Integrated prerequisite heads
+
+| Packet | PR | Head |
+| --- | --- | --- |
+| D4 | #28 | `7ff71ae` |
+| B14a | #29 | `e43a773d6ecd95c8443321ddcca51b0cbfd2b57e` |
+| B15a | #30 | `68626e59816c655d1106b0f9a1d294633fcbbc2e` |
+| B14b | #31 | `4a02589d8a0b07ff02d192f3b0dc72d7ee838c43` |
+| B12a | #32 | `dab0bfd348cee3ccefe5a0c23a15b4fe3a8b116f` |
+| B13d | #33 | `ca7356107368085a7a69bd767f9037173affc3e1` |
+
+B12a contains the B14b head. I1 started from B13d, then merged D4, B14a, B15a and B12a using ordinary merge commits. No main branch merge or release occurred. Lifecycle changes invalidate the existing settings observation bit and use a generation-bound single-flight read; no additional event stream is introduced.
+
+Combined fixtures: `usage.test.ts` interrupted intent/drain/continuation/restart; `runs.test.ts` pre-admission attachment continuation behind unrelated work; `ask-first.test.ts` publication predicates and scoped revocation; `executor.test.ts` stale dispatch and committed missing-source recovery; `product-foundation.e2e.ts` queued attachment/restart, approved publication, actual command interruption, usage/evidence navigation, English/Chinese, drafts and immutable copies.
+
+Observation recovery fixtures use unexpected Host loss (SIGKILL). SIGTERM and normal quitting intentionally withdraw active approvals under B14b; those semantics remain unchanged.

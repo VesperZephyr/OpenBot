@@ -71,3 +71,21 @@ it("rejects forged scope and unbounded predicates at the user-only protocol boun
 	])
 		expect(paramsError("policy.ask.create", changed)).toBeDefined();
 });
+
+it("binds artifact publication to file Ask first and scoped read-grant revocation", async () => {
+	const { paramsError } = await import("@openbot/protocol/schemas");
+	const input = normalizeAsk({ predicate: { tool: "artifact_publish", path: "." } }, root);
+	expect(paramsError("policy.ask.create", { ...input, requestId: "publish-rule", expectedRevision: 1 })).toBeUndefined();
+	const call = { tool: "artifact_publish", args: { path: "report.txt" } };
+	const scoped = { ...rule, ...input };
+	expect(decide(call, toolDefinition(call.tool)!, { ...policy, askFirst: [scoped] }).kind).toBe("ask");
+	expect(decide({ ...call, tool: "local_read" }, toolDefinition("local_read")!, { ...policy, askFirst: [scoped] }).kind).toBe("allow");
+	const before = {
+		settings: { ...settings, askFirst: [] },
+		grants: [{ id: "read", path: "/outside", access: "read" as const, version: 1, createdAt: 0 }],
+	};
+	const after = { settings: before.settings, grants: [] };
+	expect(affected(before, after, { ...call, args: { path: "/outside/report.txt" } }, root)).toBe(true);
+	expect(affected(before, after, call, root)).toBe(false);
+	expect(affected({ ...before, grants: [] }, { ...after, settings: { ...settings, askFirst: [scoped] } }, call, root)).toBe(true);
+});

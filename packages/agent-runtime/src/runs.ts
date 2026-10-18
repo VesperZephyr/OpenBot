@@ -94,7 +94,7 @@ export function runStore(harness: Harness, context: Context, capture?: (run: Sto
 
 function prune(runs: Record<string, Stored<StoredRun>>, botId: BotId): void {
 	const ended = Object.values(runs)
-		.filter((run) => run.botId === botId && !run.channelId && isTerminal(run.state))
+		.filter((run) => run.botId === botId && !run.channelId && isTerminal(run.state) && (run.state !== "needs_attention" || run.interruption?.settledAt !== undefined))
 		.sort((a, b) => b.createdAt - a.createdAt);
 	for (const run of ended.slice(KEPT_TERMINAL_RUNS)) delete runs[run.runId];
 }

@@ -1,13 +1,13 @@
 # OpenBot Development Roadmap
 
-Status: proposed delivery sequence after B26; documentation only.
+Status: owner-authorized sequential delivery after B26; implementation evidence remains per task.
 Design record: [D4: Post-B26 Delivery Plan](tasks/d4-delivery-plan.md).
 Reviewed: 2026-10-18.
 Baseline: `54c2a1c` on `main`, including B26 merged in [PR #27](https://github.com/VesperZephyr/OpenBot/pull/27). The research was imported unchanged from documentation commit `4568df0`; its competitor claims remain a dated research snapshot, not a fresh benchmark.
 
 This plan translates the [Grok Bot research](research/grok-bot.md) into bounded OpenBot work. The [architecture](architecture.md) owns module and authorization contracts; the [technical plan](technical-plan.md) records implementation; the [backlog](backlog.md) indexes capability batches. Existing task specs remain authoritative. Priorities below order the remaining work without expanding the current MVP acceptance scope.
 
-New sub-batches are planning briefs, not ready execution specs. Before implementation, each needs one spec in `docs/tasks/` with exact protocol/schema changes, migration and recovery rules, steps, and resolved open questions. Use one task branch and pull request per spec, always targeting `main`. No product implementation is authorized by this document.
+New sub-batches are planning briefs, not ready execution specs. Before implementation, each needs one spec in `docs/tasks/` with exact protocol/schema changes, migration and recovery rules, steps, and resolved open questions. Use one task branch and pull request per spec, always targeting `main`. The owner has authorized sequential execution of the queue. Each increment still requires its ready spec before product changes.
 
 ## 1. Product outcome and constraints
 
@@ -255,7 +255,7 @@ A documentation update does not establish product acceptance. Native permissions
 
 ## 11. Delivery queue and execution packets
 
-This is a dependency-driven queue for one implementation stream, not a calendar commitment. Each row is one reviewable spec/PR unless explicitly a gate. Do not start a dependent implementation before prerequisites merge to `main`. A design packet may be prepared earlier. Re-estimate after each accepted increment using actual effort and defects; no dates or staffing commitments are assumed.
+This is a dependency-driven queue for one implementation stream, not a calendar commitment. Each row is one reviewable spec/PR unless explicitly a gate. Prerequisites normally merge to `main` before dependent implementation. For the owner-authorized uninterrupted queue, [I1](tasks/i1-product-foundation.md) assembles reviewed prerequisite heads on an integration branch and validates their combined contracts before B10 starts. Dependent task branches may start from that verified candidate; each PR still targets `main` and records its dependency. Only the owner merges. A design packet may be prepared earlier. Re-estimate after each accepted increment using actual effort and defects; no dates or staffing commitments are assumed.
 
 Effort bands indicate scope only: **small** is a focused existing-surface change; **medium** crosses protocol/Host/UI; **large** adds a persisted lifecycle or process boundary and should be split at design review if it cannot fit one verifiable PR. All include failure tests, bilingual UI, background verification and documentation.
 
@@ -267,6 +267,7 @@ Effort bands indicate scope only: **small** is a focused existing-surface change
 | 3 | B14b | Pause all and interrupted-work states match what Host/executor actually do | G0; no post-gate dispatch, repeated wake/restart/Stop tests pass | Large |
 | 4 | B12a | Users can inspect Ask-first rules, revoke access and understand approval expiry | B14b cancellation contract; precedence, active revocation and earliest-deadline tests pass | Large |
 | 5 | B13d | A task exposes its model, token usage and estimated cost when available | Existing receipts; nested/replayed usage cannot double count | Medium |
+| 5a | I1 | Observation, artifacts, lifecycle, permissions and usage work as one desktop | Exact reviewed PR #28–#33 heads; combined interrupted usage, attachment continuation, Ask first publication and receipt recovery evidence | Integration gate |
 | 6 | B10 | Turn an accepted report workflow into a reviewed skill and reuse it | B12a + B15a fixture; revisioned skill and attachment survive restart | Large |
 | 7 | B15b | A background command returns its final result without repeated user polling | B14b + B12a; durable wake deduplication and cancellation tombstones pass | Medium |
 | 8 | B9a | Connect apps can install, inspect, use and remove a supervised stdio fixture | B12a + B14b; credential isolation, tool changes and unknown writes tested | Large |
@@ -279,7 +280,7 @@ Effort bands indicate scope only: **small** is a focused existing-surface change
 
 B14e and B14d are safety dependencies, not permission to postpone credential or migration checks: a batch that changes credential ownership or irreversibly changes storage must bring the relevant design/evidence forward. B9b is not needed to develop local routines, and no connector is needed for the first local report workflow.
 
-### Packet 1: B14a — next implementation spec to prepare
+### Packet 1: B14a — observation foundation
 
 **User story:** Core is waiting for approval; the renderer disconnects while a child finishes; reopening the conversation shows the current approval, completed object and unread status exactly once.
 
@@ -295,7 +296,7 @@ B14e and B14d are safety dependencies, not permission to postpone credential or 
 
 **Out:** new unread mutations, permanent indexing, transcript virtualization, scheduler work and a general event-bus rewrite. Pi remains the source of agent state; this packet fixes application delivery.
 
-### Packet 2: B15a — the next visible product improvement
+### Packet 2: B15a — file inputs and results
 
 **User story:** select a CSV or text file, ask a Bot to analyze it, receive a durable report card, quit/reopen, and export the same result.
 
@@ -364,3 +365,7 @@ A real provider may be unavailable or lack a required modality. Record that limi
 **Merge and release:** one ready task spec per branch/PR, target `main`; the owner merges. A merged task becomes `done`; an open PR is `in review`, even when tests pass. Update backlog and technical current state with actual evidence. Keep the next unstarted packets `draft` until their contracts and open questions are resolved. A milestone gate accepts the integrated user outcome, not only its individual unit tests.
 
 **Review after each packet:** compare scope and actual effort, new defects, interventions, time-to-result, token/cost availability and recovery outcomes. Reorder only unstarted packets, recording changed dependencies here. Do not pursue generic parity, a new agent runtime or another UI rewrite when a concrete workflow is still missing its result, approval or recovery behavior.
+
+## 14. Current delivery checkpoint
+
+PRs #28–#33 are in review, not merged: D4 delivery design, B14a observation, B15a artifacts, B14b lifecycle, B12a policy and B13d usage. [I1](tasks/i1-product-foundation.md) is the current integration gate, followed by the B10 skill spec. Native credential identity, signing/TCC and physical power-event evidence remain separate release gates; hidden tests do not satisfy them.

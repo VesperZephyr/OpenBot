@@ -210,7 +210,7 @@ export function affected(
 			(before.settings.readOnlyDefault && !after.settings.readOnlyDefault);
 		return removedAllow && decide(call, toolDefinition(call.tool)!, current).kind !== "allow";
 	}
-	if (["local_read", "local_list", "local_write", "local_edit"].includes(call.tool) && typeof call.args.path === "string") {
+	if (["artifact_publish", "local_read", "local_list", "local_write", "local_edit"].includes(call.tool) && typeof call.args.path === "string") {
 		const path = canonicalPath(call.args.path, workspace),
 			write = call.tool === "local_write" || call.tool === "local_edit";
 		return (
