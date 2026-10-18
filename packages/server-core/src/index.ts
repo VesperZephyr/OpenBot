@@ -1,3 +1,4 @@
+import {LifecycleController} from "./lifecycle.ts";
 import { legacyManagementName } from "@openbot/protocol";
 /**
  * Transport-independent application methods for the Host Runtime. Process composition, credential storage, and IPC
@@ -63,6 +64,8 @@ export type OperationAudit = {
 };
 
 export type HostServiceOptions = {
+ readonly nativeLifecycleRequired?:boolean;
+ readonly quiesce?:()=>Promise<void>;
 	/** Content-free diagnostics; authoritative action state stays in its own durable store. */
 	readonly audit?: (event: OperationAudit) => void;
 	readonly runtime: BotRuntime;
@@ -93,6 +96,7 @@ export type HostServiceOptions = {
 type Handlers = { [M in HostMethod]: (params: HostParams<M>) => Promise<HostResult<M>> };
 
 export class HostService {
+ readonly lifecycle:LifecycleController;
 	readonly capabilities: AppCapabilities;
 	readonly management: BotManagement;
 	readonly groups: Groups;
@@ -135,6 +139,7 @@ export class HostService {
 		this.management = new BotManagement(this.#runtime, this.#status.targetId, this.#now);
 		this.#runs = new RunScheduler({
 			runtime: this.#runtime,
+			canAdmit: () => !this.lifecycle.state.blocked,
 			maxActiveRuns: options.maxActiveRuns ?? DEFAULT_MAX_ACTIVE_RUNS,
 			changed: (botId) => this.#republish(botId),
 			now: this.#now,
@@ -142,6 +147,7 @@ export class HostService {
 			admissible: (run) => this.groups.admissible(run),
 		});
 		this.groups = new Groups({
+			canRun: () => !this.lifecycle.state.blocked,
 			runtime: this.#runtime,
 			authority: this.management,
 			runs: this.#runs,
@@ -150,6 +156,23 @@ export class HostService {
 			settled: this.#toolSettled,
 			stopping: (botId, channelId, runId) => this.#conversationStopped(botId, channelId, runId),
 		});
+		this.lifecycle = new LifecycleController({
+			hasWork: async () => this.#runs.hasWork() || (await this.#runtime.groups().deliveries()).some((delivery) => delivery.state === "pending"),
+			store: this.#runtime.lifecycle(),
+			targetId: this.#status.targetId,
+			...(options.nativeLifecycleRequired ? { nativeRequired: true } : {}),
+			changed: (state) => this.#emit({ type: "lifecycle.changed", payload: state }),
+			suspend: async (reason) => {
+				await this.#runs.interruptAll(reason, options.quiesce);
+				await this.groups.interruptActive();
+			},
+			resume: async () => {
+				await this.#runs.resume();
+				await this.groups.sweep();
+				if (!this.lifecycle.state.blocked) this.#runtime.resume();
+			},
+		});
+
 		this.capabilities = new AppCapabilities(this.#runtime, this.#status.targetId, (run) => this.groups.admissible(run));
 		this.management.appGuard = (call) => this.capabilities.authorizeManagement(call);
 		this.#policy = new PolicyService({ runtime: this.#runtime, approvals: this.#approvals, workspace: this.#workspace, now: this.#now });
@@ -159,6 +182,11 @@ export class HostService {
 			...(options.coalesce?.timers === undefined ? {} : { timers: options.coalesce.timers }),
 		});
 		this.#handlers = {
+			"lifecycle.get": async () => this.lifecycle.state,
+			"lifecycle.pause": () => this.lifecycle.pause(),
+			"lifecycle.resume": () => this.lifecycle.resume(),
+			"lifecycle.native": (params) => this.lifecycle.native(params),
+			"runs.continue": ({ runId, requestId }) => this.#runs.continue(runId, requestId),
 			"collaboration.stop": ({ rootId }) => this.groups.stopTree(rootId),
 			"groups.list": () => this.#runtime.groups().list(),
 			"groups.snapshot": ({ groupId }) => this.groups.snapshot(groupId),
@@ -315,6 +343,7 @@ export class HostService {
 	 * restart show before Pi reruns.
 	 */
 	async start(): Promise<void> {
+		await this.lifecycle.start();
 		await this.#reloadModelConfig();
 		const at = this.#now();
 		await this.#runtime.ensureCoreBot(at);
@@ -326,7 +355,9 @@ export class HostService {
 		await this.#approvals.start(this.#runtime.approvals());
 		for (const bot of await this.#runtime.listBots()) if (bot.status !== "deleted") await this.#observe(bot.botId);
 		await this.#runs.start();
+		if (this.lifecycle.state.needsResume) await this.lifecycle.pause("recovery").catch(() => {});
 		await this.groups.start();
+		if (!this.lifecycle.state.blocked) this.#runtime.resume();
 	}
 
 	/** Call before the runtime closes: the shutdown aborts waiting calls, and their approvals must stay pending. */
@@ -552,7 +583,7 @@ export class HostService {
 
 	/** A queued Run's messages are not in Pi yet; they show as pending until the Run starts. */
 	#withRun(snapshot: ConversationSnapshot): ConversationSnapshot {
-		const stored = this.#runs.active(snapshot.botId, snapshot.channelId);
+		const stored = this.#runs.active(snapshot.botId, snapshot.channelId) ?? this.#runs.attention(snapshot.botId, snapshot.channelId);
 		if (stored === undefined) return snapshot;
 		const { messages, inputs: _inputs, ...run } = stored;
 		if (run.state !== "queued") return { ...snapshot, run };
@@ -613,7 +644,7 @@ type ObserverState = {
 
 /** Live attention is separate from the durable unread cursor used by the roster. */
 function nextActivity(snapshot: ConversationSnapshot): BotActivity {
-	if (snapshot.approvals.length > 0) return "needs_attention";
+	if (snapshot.approvals.length > 0 || snapshot.run?.state==="needs_attention") return "needs_attention";
 	const sinceUser = snapshot.items.slice(snapshot.items.findLastIndex((item) => item.kind === "user") + 1);
 	if (sinceUser.some((item) => item.kind === "tool" && item.status === "interrupted")) return "needs_attention";
 	if (snapshot.live !== undefined) return "working";

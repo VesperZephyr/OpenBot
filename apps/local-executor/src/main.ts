@@ -42,6 +42,22 @@ const send = (message: ExecutorMessage): void => {
 
 process.on("message", (message: ExecutorRequest) => {
 	switch (message.kind) {
+		case "execution.quiesce": {
+			if (
+				message.targetId !== targetId ||
+				typeof message.messageId !== "string" ||
+				message.messageId.length > 256 ||
+				Object.keys(message).length !== 3
+			) {
+				send({ kind: "execution.quiesced", messageId: message.messageId, confirmed: false });
+				return;
+			}
+			void executor.cancelAll().then(
+				(confirmed) => send({ kind: "execution.quiesced", messageId: message.messageId, confirmed }),
+				() => send({ kind: "execution.quiesced", messageId: message.messageId, confirmed: false }),
+			);
+			return;
+		}
 		case "tool.invoke": {
 			const { invocationId } = message.invocation;
 			void executor

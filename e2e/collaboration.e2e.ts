@@ -114,7 +114,7 @@ it("stops the full tree and approval after restart while preserving an unrelated
 	await send("Do the command task.");
 	await h.page().getByRole("group", { name: "Approval request" }).waitFor();
 	const taskRoot = (await snapshot()).roots.at(-1).rootId;
-	await h.relaunch();
+	await h.crashHost();
 	await open();
 	await h.page().getByRole("group", { name: "Approval request" }).waitFor();
 	// A separate user request waits for the active Bot; stopping this tree must preserve it.

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * The Host's connection to the local executor process: starts it, checks its handshake against the bound target, and
  * correlates invocations with results. Implements Tool Router's `ExecutorTransport`.
@@ -13,13 +14,25 @@ export class ExecutorProcess implements ExecutorTransport {
 	readonly #entry: string;
 	readonly #env: NodeJS.ProcessEnv;
 	readonly #targetId: string;
+	readonly #assertAllowed: () => void;
 	readonly #pending = new Map<string, Pending>();
 	readonly #statusWaiters = new Map<string, ((reply: StatusReply) => void)[]>();
 	#child: ChildProcess | undefined;
 	#ready: Promise<void> | undefined;
+	#quiescence:
+		| { id: string; promise: Promise<void>; resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+		| undefined;
 
-	constructor(options: { entry: string; targetId: string; workspace: string; dataDirectory: string; env: NodeJS.ProcessEnv }) {
+	constructor(options: {
+		entry: string;
+		targetId: string;
+		workspace: string;
+		dataDirectory: string;
+		env: NodeJS.ProcessEnv;
+		assertAllowed?: () => void;
+	}) {
 		this.#entry = options.entry;
+		this.#assertAllowed = options.assertAllowed ?? (() => {});
 		this.#targetId = options.targetId;
 		// The data directory is passed explicitly: the Host may have resolved a default its own environment lacks.
 		this.#env = {
@@ -42,6 +55,7 @@ export class ExecutorProcess implements ExecutorTransport {
 		await this.#start();
 		// The Run may have been stopped while the router or the start awaited: nothing was sent, so nothing runs.
 		signal.throwIfAborted();
+		this.#assertAllowed();
 		const child = this.#child;
 		if (child === undefined || !child.connected) return { status: "failed", output: "The local executor is not running" };
 		const { promise, resolve } = Promise.withResolvers<ToolOutcome>();
@@ -54,6 +68,20 @@ export class ExecutorProcess implements ExecutorTransport {
 		} finally {
 			signal.removeEventListener("abort", cancel);
 		}
+	}
+
+	async quiesce(): Promise<void> {
+		await this.#start();
+		if (this.#quiescence) return this.#quiescence.promise;
+		const waiting = Promise.withResolvers<void>(),
+			id = randomUUID();
+		const timer = setTimeout(() => {
+			this.#quiescence = undefined;
+			waiting.reject(new Error("Executor stop could not be confirmed"));
+		}, 10000);
+		this.#quiescence = { id, ...waiting, timer };
+		this.#send({ kind: "execution.quiesce", messageId: id, targetId: this.#targetId });
+		return waiting.promise;
 	}
 
 	/** The Host committed the invocation's outcome; the executor may prune its receipt later. */
@@ -94,7 +122,17 @@ export class ExecutorProcess implements ExecutorTransport {
 		this.#child = child;
 		const { promise, resolve, reject } = Promise.withResolvers<void>();
 		child.on("message", (message: ExecutorMessage) => {
+			if (this.#child !== child) return;
 			switch (message.kind) {
+				case "execution.quiesced": {
+					const pending = this.#quiescence;
+					if (pending?.id !== message.messageId) return;
+					this.#quiescence = undefined;
+					clearTimeout(pending.timer);
+					if (message.confirmed) pending.resolve();
+					else pending.reject(new Error("Executor stop could not be confirmed"));
+					return;
+				}
 				case "executor.hello":
 					if (message.targetId !== this.#targetId) reject(new Error(`Executor bound to ${message.targetId}, expected ${this.#targetId}`));
 					else resolve();
@@ -116,6 +154,13 @@ export class ExecutorProcess implements ExecutorTransport {
 			}
 		});
 		child.on("exit", (code, signal) => {
+			if (this.#child !== child) return;
+			const waiting = this.#quiescence;
+			this.#quiescence = undefined;
+			if (waiting) {
+				clearTimeout(waiting.timer);
+				waiting.reject(new Error("Executor stopped before quiescence was confirmed"));
+			}
 			reject(new Error(`The local executor exited (${signal ?? code})`));
 			// An invocation the executor accepted but did not answer may have had an effect.
 			for (const [invocationId, pending] of this.#pending) {

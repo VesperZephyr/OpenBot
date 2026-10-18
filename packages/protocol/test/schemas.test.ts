@@ -7,6 +7,14 @@ describe("Host method parameter schemas", () => {
 		expect(Object.keys(HOST_PARAM_SCHEMAS).sort()).toEqual([...HOST_METHODS].sort());
 	});
 
+ it("bounds native lifecycle observations and rejects renderer-controlled recovery fields",()=>{
+  const native={sourceId:"desktop",seq:1,locked:false,suspended:false,quitting:false};
+  expect(paramsError("lifecycle.native",native)).toBeUndefined();
+  for(const change of [{seq:-1},{seq:1.5},{sourceId:"x".repeat(257)},{locked:"false"},{targetId:"forged"}])expect(paramsError("lifecycle.native",{...native,...change})).toBeDefined();
+  expect(paramsError("lifecycle.resume",{nativeReady:true})).toBeDefined();
+  expect(paramsError("runs.continue",{runId:"r",requestId:"retry"})).toBeUndefined();
+ });
+
 	it("accept well-formed params", () => {
 		expect(paramsError("bots.list", {})).toBeUndefined();
 		expect(paramsError("conversations.search", { query: "中文", unreadOnly: true, includeHidden: false })).toBeUndefined();

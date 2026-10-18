@@ -144,7 +144,7 @@ export class CommandTasks {
 	}
 
 	/** Stop every task, for shutdown: no command outlives the executor that started it. */
-	stopAll(): Promise<unknown> {
+	stopAll(): Promise<CommandExit[]> {
 		return Promise.all([...this.#tasks.values()].map((task) => (task.command.cancel(), task.ended)));
 	}
 

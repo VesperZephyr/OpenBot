@@ -50,6 +50,7 @@ export function createToolRouter(options: {
 		};
 	};
 	return new ToolRouter({
+  assertExecutionAllowed:()=>options.service().lifecycle.assertAllowed(),
 		target: options.target,
 		closeAppManagement: (call) => options.service().closeAppManagement(call),
 		approvals: options.approvals,

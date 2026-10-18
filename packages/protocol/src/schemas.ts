@@ -57,6 +57,9 @@ export const HOST_PARAM_SCHEMAS = {
 	}),
 
 	"host.status": NoParams,
+ "lifecycle.get":NoParams,"lifecycle.pause":NoParams,"lifecycle.resume":NoParams,
+ "lifecycle.native":strict({sourceId:Id,seq:Type.Integer({minimum:0,maximum:Number.MAX_SAFE_INTEGER}),locked:Type.Boolean(),suspended:Type.Boolean(),quitting:Type.Boolean()}),
+ "runs.continue":strict({runId:Id,requestId:Id}),
 	"bots.list": NoParams,
 	"bots.management.history": NoParams,
 	"bots.create": strict({

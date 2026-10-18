@@ -70,7 +70,9 @@ export class HostProcess {
 			process.stderr.write(chunk);
 			this.#options.onOutput(chunk);
 		});
-		child.on("message", (message: HostToDesktop) => this.#receive(message));
+		child.on("message", (message: HostToDesktop) => {
+			if (this.#child === child) this.#receive(message);
+		});
 		child.on("error", (error) => this.#exited(child, `Could not start the Host Runtime: ${error.message}`));
 		child.on("exit", (code, signal) => this.#exited(child, `Host Runtime exited (${signal ?? `code ${code}`})`));
 	}

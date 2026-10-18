@@ -1,3 +1,5 @@
+import type {LifecycleState,NativeLifecycle,LifecycleReason} from "./lifecycle.ts";
+export type {LifecycleState,NativeLifecycle,LifecycleReason,LifecycleRecord} from "./lifecycle.ts";
 import { MANAGEMENT_TOOL_DEFINITIONS, APP_MANAGEMENT_TOOL_DEFINITIONS } from "./app-management.ts";
 export * from "./app-management.ts";
 import { CODEMODE_DEFINITION } from "./app-execution.ts";
@@ -316,7 +318,8 @@ export type RunRecord = {
 	readonly channelId?: string;
 	readonly runId: RunId;
 	readonly botId: BotId;
-	readonly state: "queued" | "running" | "completed" | "failed" | "cancelled";
+	readonly state: "queued" | "running" | "completed" | "failed" | "cancelled" | "needs_attention";
+ readonly interruption?: {readonly reason:LifecycleReason;readonly requestedAt:number;readonly settledAt?:number};
 	/** OpenBot request IDs of every message in this Run, first one starts it. */
 	readonly requestIds: readonly string[];
 	readonly createdAt: number;
@@ -445,6 +448,11 @@ export type ModelSummary = {
 // Desktop-to-Host methods (Section 6.1). Each entry maps a method name to its params and result.
 
 export type HostMethods = {
+ "lifecycle.get":{params:Record<string,never>;result:LifecycleState};
+ "lifecycle.pause":{params:Record<string,never>;result:LifecycleState};
+ "lifecycle.resume":{params:Record<string,never>;result:LifecycleState};
+ "lifecycle.native":{params:NativeLifecycle;result:LifecycleState};
+ "runs.continue":{params:{runId:string;requestId:string};result:{runId:string;state:RunRecord["state"];steered:boolean}};
 	"collaboration.stop": { params: { rootId: string }; result: null };
 	"groups.list": { params: Record<string, never>; result: readonly Group[] };
 	"groups.snapshot": { params: { groupId: string }; result: GroupSnapshot };
@@ -566,6 +574,7 @@ export type HostParams<M extends HostMethod> = HostMethods[M]["params"];
 export type HostResult<M extends HostMethod> = HostMethods[M]["result"];
 
 export const HOST_METHODS = [
+ "lifecycle.get","lifecycle.pause","lifecycle.resume","lifecycle.native","runs.continue",
 	"collaboration.stop",
 	"groups.list",
 	"groups.snapshot",
@@ -622,6 +631,7 @@ export type HostStatus = {
 // Host-to-Desktop events
 
 export type HostEvents = {
+ "lifecycle.changed": LifecycleState;
 	"groups.changed": Record<string, never>;
 	/** The roster or a Bot's sidebar state changed; fetch `bots.list` again. */
 	"bots.changed": Record<string, never>;
@@ -737,6 +747,7 @@ export type ToolOutcome = {
 
 /** Host to executor. */
 export type ExecutorRequest =
+ | {readonly kind:"execution.quiesce";readonly messageId:string;readonly targetId:string}
 	| { readonly kind: "tool.invoke"; readonly invocation: ToolInvocation }
 	| { readonly kind: "tool.cancel"; readonly invocationId: string }
 	/** Read-only receipt lookup; the executor answers with `tool.status`. */
@@ -748,6 +759,7 @@ export type ExecutorRequest =
 
 /** Executor to Host. */
 export type ExecutorMessage =
+ | {readonly kind:"execution.quiesced";readonly messageId:string;readonly confirmed:boolean}
 	| {
 			readonly kind: "executor.hello";
 			readonly protocolVersion: typeof PROTOCOL_VERSION;

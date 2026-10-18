@@ -96,3 +96,8 @@ Owner-requested architecture increment: expose selected current application capa
 3. [B26: Code Mode management](tasks/b26-code-mode-management.md) — done, in review in PR #27 targeting `main`; eight direct-Core management aliases, exact nested approvals, transactional receipt checks, failure latching, expiry and bilingual partial-completion activity. Acceptance is recorded in the spec.
 
 Attention-state mutation, UI navigation, cross-Bot memory operations, new dispatch surfaces and external API transports remain separately specified follow-ups. Existing desktop method availability never automatically confers model authority.
+
+## Post-B26 implementation
+
+- [B14b: Lifecycle gates](tasks/b14b-lifecycle-gates.md): implemented on `task/b14b-lifecycle-gates`, in review. 301 unit/Host tests, 80 full background e2e tests, seven final lifecycle scenarios, bundled runtime startup and isolated real-model interruption/continuation passed. Global sidebar Pause all, durable queue retention, native handshake and lock/sleep/quit gating, executor quiescence, explicit private continuation, and group-chain interruption. Unexpected Host crashes preserve the existing replay contract; intentional quitting withdraws active approvals. Packaged native lock/sleep acceptance remains a release gate.
+- B14a observation and B15a artifacts are independently in review in PRs #29 and #30. This branch does not include those changes; integration must preserve their observation guards and immutable attachment references.

@@ -65,6 +65,7 @@ export interface ExecutorTransport {
 export type HostToolHandler = (args: Readonly<Record<string, unknown>>, signal: AbortSignal, call: ToolCall) => Promise<ToolOutcome>;
 
 export type ToolRouterOptions = {
+	readonly assertExecutionAllowed?: () => void;
 	readonly target: ExecutionTarget;
 	readonly policy: PolicyPort;
 	readonly approvals: ApprovalPort;
@@ -88,6 +89,7 @@ export class ToolRouter {
 
 	/** Parent admission deliberately does not take the leaf mutex. */
 	async admitOrchestration(call: ToolCall): Promise<ExecutionTarget> {
+		this.#options.assertExecutionAllowed?.();
 		call.signal.throwIfAborted();
 		if (
 			call.tool !== "codemode" ||
@@ -101,6 +103,7 @@ export class ToolRouter {
 			throw new Error("Code Mode is not authorized");
 		const decision = await this.#options.policy.decide({ ...call, target: this.#options.target }, CODEMODE_DEFINITION);
 		call.signal.throwIfAborted();
+		this.#options.assertExecutionAllowed?.();
 		if (decision.kind !== "allow") throw new Error("Code Mode is not authorized");
 		return this.#options.target;
 	}
@@ -131,6 +134,7 @@ export class ToolRouter {
 	}
 
 	async #route(call: ToolCall): Promise<ToolOutcome> {
+		this.#options.assertExecutionAllowed?.();
 		const management = appManagementCapability(call.tool);
 		const app = appToolCapability(call.tool);
 		if (app && call.signal.aborted) return appFailure("cancelled", "Application read was cancelled");
@@ -149,6 +153,7 @@ export class ToolRouter {
 		const definition = toolDefinition(call.tool);
 		if (definition === undefined) return { status: "failed", output: `Unknown tool: ${call.tool}` };
 		const decision = await this.#options.policy.decide(call, definition);
+		this.#options.assertExecutionAllowed?.();
 		if (decision.kind === "deny")
 			return app || management
 				? appFailure("permission_denied", "Application access is not authorized")
@@ -184,12 +189,14 @@ export class ToolRouter {
 		if (app && call.signal.aborted) return appFailure("cancelled", "Application read was cancelled");
 		call.signal.throwIfAborted();
 
+		this.#options.assertExecutionAllowed?.();
 		if (definition.destination === "host") {
 			const handler = this.#options.hostTools[definition.name];
 			if (handler === undefined) return { status: "failed", output: `No handler for ${definition.name}` };
 			if (management) {
 				const current = await this.#options.policy.decide(call, definition);
 				if (current.kind === "deny") return appFailure("permission_denied", "Application management is not authorized");
+				this.#options.assertExecutionAllowed?.();
 				const outcome = await handler(call.args, call.signal, call);
 				if (outcome.status !== "succeeded")
 					return appFailure(
@@ -210,6 +217,8 @@ export class ToolRouter {
 			return handler(call.args, call.signal, call);
 		}
 		const grants = await this.#options.policy.grants(call, approvedOnce);
+		this.#options.assertExecutionAllowed?.();
+		call.signal.throwIfAborted();
 		const invocation: ToolInvocation = {
 			...(call.runId ? { runId: call.runId } : {}),
 			invocationId: `${call.conversationId}:${call.callId}`,

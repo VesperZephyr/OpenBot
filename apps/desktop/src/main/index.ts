@@ -1,3 +1,4 @@
+import { NativeLifecycleBridge } from "./lifecycle";
 /**
  * Electron main: application lifecycle, the single window, the menu-bar item, and the only connection to the Host
  * Runtime. The renderer reaches the Host exclusively through the allowlisted methods in `ipc.ts`.
@@ -67,6 +68,7 @@ const forwarded = (names: readonly string[]): Record<string, string> =>
 	Object.fromEntries(names.flatMap((name) => (process.env[name] === undefined ? [] : [[name, process.env[name]]])));
 
 const hostEnvironment: NodeJS.ProcessEnv = {
+	OPENBOT_DESKTOP_LIFECYCLE: "1",
 	PATH: process.env.PATH ?? "",
 	HOME: process.env.HOME ?? "",
 	USER: process.env.USER ?? "",
@@ -89,9 +91,14 @@ const host = new HostProcess({
 	},
 	onState: (state: HostState) => {
 		attentionWatcher.onHostState(state);
+		if (state.status === "ready") void nativeLifecycle.ready();
 		window?.webContents.send(CHANNELS.hostState, state);
 	},
 });
+
+const nativeLifecycle = new NativeLifecycleBridge(host, () =>
+	console.error("[openbot] lifecycle synchronization failed; work remains gated"),
+);
 
 const attentionWatcher = new AttentionWatcher({
 	host,
@@ -126,7 +133,8 @@ function createWindow(): BrowserWindow {
 		},
 	});
 
-	const publishActive = () => created.webContents.send(CHANNELS.windowActive, created.isVisible() && created.isFocused() && !created.isMinimized());
+	const publishActive = () =>
+		created.webContents.send(CHANNELS.windowActive, created.isVisible() && created.isFocused() && !created.isMinimized());
 	created.on("show", publishActive);
 	created.on("hide", publishActive);
 	created.on("focus", publishActive);
@@ -181,7 +189,10 @@ app.on("before-quit", (event) => {
 	quitting = true;
 	event.preventDefault();
 	attentionWatcher.stop();
-	void host.stop().finally(() => app.quit());
+	void nativeLifecycle
+		.update({ quitting: true })
+		.finally(() => host.stop())
+		.finally(() => app.quit());
 });
 
 void app.whenReady().then(async () => {
@@ -190,20 +201,29 @@ void app.whenReady().then(async () => {
 	session.defaultSession.setPermissionCheckHandler(() => false);
 
 	if (devServerUrl === undefined) serveAppScheme(join(__dirname, "../renderer"));
-	registerIpc({ host, isTrustedFrame: (url) => isTrustedRendererUrl(url), language: () => language, onSettings: (settings) => {
-		const next = settings.language ?? "en";
-		if (next === language) return;
-		language = next;
-		if (tray) { tray.destroy(); tray = createTray(); }
-	} });
+	registerIpc({
+		host,
+		isTrustedFrame: (url) => isTrustedRendererUrl(url),
+		language: () => language,
+		onSettings: (settings) => {
+			const next = settings.language ?? "en";
+			if (next === language) return;
+			language = next;
+			if (tray) {
+				tray.destroy();
+				tray = createTray();
+			}
+		},
+	});
 	window = createWindow();
 	if (testMode === undefined) tray = createTray();
 
-	// Lifecycle events reach the Host in M1 to gate execution (architecture §8.1); logged for now.
-	powerMonitor.on("suspend", () => console.log("[openbot] power event: suspend"));
-	powerMonitor.on("resume", () => console.log("[openbot] power event: resume"));
-	powerMonitor.on("lock-screen", () => console.log("[openbot] power event: lock-screen"));
-	powerMonitor.on("unlock-screen", () => console.log("[openbot] power event: unlock-screen"));
+	// Main is the only authority for native session state. Test emitters never lock or suspend the real Mac.
+	void nativeLifecycle.update({ locked: powerMonitor.getSystemIdleState(1) === "locked" });
+	powerMonitor.on("suspend", () => void nativeLifecycle.update({ suspended: true }));
+	powerMonitor.on("resume", () => void nativeLifecycle.update({ suspended: false }));
+	powerMonitor.on("lock-screen", () => void nativeLifecycle.update({ locked: true }));
+	powerMonitor.on("unlock-screen", () => void nativeLifecycle.update({ locked: false }));
 
 	hostEnvironment.PATH = await resolveLoginPath(process.env);
 	if (!quitting) host.start();

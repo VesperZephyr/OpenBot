@@ -41,7 +41,7 @@ it("Core creates only after confirmation; approval survives restart and creates 
 	).toBe(0);
 	expect(JSON.stringify(h.model.requests[0]?.tools)).toContain("bot_create");
 	await h.shot("01-create-confirmation");
-	await h.relaunch();
+	await h.crashHost();
 	await h.page().getByText("Creates a Specialist with its own instructions and empty memory.").waitFor();
 	await approve();
 	await h.page().getByText("Researcher created.", { exact: true }).waitFor();

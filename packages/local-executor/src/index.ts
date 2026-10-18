@@ -30,7 +30,10 @@ export const EXECUTOR_TOOLS: readonly ExecutorToolName[] = [
 ];
 
 /** The ledger operations the executor needs; tests wrap a real ledger to simulate a crash between steps. */
-export type ExecutorLedger = Pick<ReceiptLedger, "get" | "accept" | "recordGroup" | "finish" | "ack" | "recordTask" | "finishTask" | "task">;
+export type ExecutorLedger = Pick<
+	ReceiptLedger,
+	"get" | "accept" | "recordGroup" | "finish" | "ack" | "recordTask" | "finishTask" | "task"
+>;
 
 export type ExecutorOptions = {
 	readonly targetId: string;
@@ -84,10 +87,12 @@ export class LocalExecutor {
 		const entry: Running = { argsDigest: invocation.argsDigest, outcome: Promise.resolve(DIGEST_MISMATCH), abort: new AbortController() };
 		this.#running.set(invocation.invocationId, entry);
 		const outcome = this.#run(invocation, entry.abort.signal, onProgress)
-			.catch((error: unknown): ToolOutcome => ({
-				status: "failed",
-				output: error instanceof AccessDenied ? `Access denied: ${errorText(error)}` : errorText(error),
-			}))
+			.catch(
+				(error: unknown): ToolOutcome => ({
+					status: "failed",
+					output: error instanceof AccessDenied ? `Access denied: ${errorText(error)}` : errorText(error),
+				}),
+			)
 			.then((result) => {
 				this.#running.delete(invocation.invocationId);
 				ledger.finish(invocation.invocationId, result);
@@ -109,12 +114,14 @@ export class LocalExecutor {
 	}
 
 	/** Cancel everything this process runs, for shutdown: no command outlives the executor that started it. */
-	cancelAll(): Promise<unknown> {
+	async cancelAll(): Promise<boolean> {
 		const outcomes = [...this.#running.values()].map((entry) => {
 			entry.abort.abort();
 			return entry.outcome;
 		});
-		return Promise.all([...outcomes, this.#tasks.stopAll()]);
+		const [finished, tasks] = await Promise.all([Promise.all(outcomes), this.#tasks.stopAll()]);
+		const lateTasks = await this.#tasks.stopAll();
+		return finished.every((outcome) => outcome.status !== "unknown") && [...tasks, ...lateTasks].every((exit) => exit.groupGone !== false);
 	}
 
 	/** The Host committed the outcome; the receipt may be pruned after the retention period. */

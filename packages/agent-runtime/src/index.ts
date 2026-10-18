@@ -1,3 +1,6 @@
+import { gatedModels, type ModelExecutionGate } from "./model-gate.ts";
+import { lifecycleStore } from "./lifecycle.ts";
+export type { LifecycleStore } from "./lifecycle.ts";
 import { BotsDoc, type BotRecord } from "./bots.ts";
 import { validateAppMutation, appChildDigest } from "./app-executions.ts";
 /**
@@ -128,6 +131,7 @@ export type ToolInvoker = (call: {
 }) => Promise<{ readonly status: string; readonly output: string; readonly value?: import("@openbot/protocol").JsonValue; readonly taskId?: string }>;
 
 export type BotRuntimeOptions = {
+	readonly executionGate?: ModelExecutionGate;
 	/** SQLite file owned exclusively by this Host process. */
 	readonly databasePath: string;
 	/**
@@ -170,6 +174,9 @@ export type SubmitResult =
 	{ readonly status: "answered"; readonly answer: readonly MessagePart[] } | { readonly status: "unanswered"; readonly reason: string };
 
 export class BotRuntime {
+	lifecycle() {
+		return lifecycleStore(this.#harness, this.#context);
+	}
 	readonly #harness: Harness;
 	readonly #extensions: { bot: Extension; core: Extension; group: Extension; app: Extension };
 	readonly #models: MutableModels;
@@ -280,7 +287,7 @@ export class BotRuntime {
 		const harness = await Harness.open(
 			await openNodeSqliteStorage(options.databasePath),
 			{
-				models,
+				models: options.executionGate ? gatedModels(models, options.executionGate) : models,
 				registry,
 				// No `env` and no CodingTools: every side effect must go through Tool Router and the executor.
 				settings: { toolExecution: "sequential", extensions: [bot] },
@@ -555,8 +562,10 @@ export class BotRuntime {
 		text: string,
 		mode: "start" | "steer",
 		channelId = "direct",
+		assertAllowed?: () => void,
 	): Promise<{ submissionId: string }> {
 		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
+		assertAllowed?.();
 		const submission = await conversation.submit(
 			{ type: "input", content: text, requestId, ...(mode === "steer" ? { whenBusy: "steer" as const } : {}) },
 			this.#context,
@@ -578,9 +587,11 @@ export class BotRuntime {
 		botId: BotId,
 		submissionId: string,
 		channelId = "direct",
+		assertAllowed?: () => void,
 	): Promise<{ status: "done" | "unanswered"; reason?: string }> {
 		const owned = await this.#ownedSubmission(botId, submissionId, channelId);
 		if (owned === undefined) throw new ProtocolError("not_found", `Unknown submission ${submissionId} for Bot ${botId}`);
+		assertAllowed?.();
 		const settled = await owned.submission.wait(this.#context);
 		return settled.status === "done" ? { status: "done" } : { status: "unanswered", reason: settled.reason };
 	}
@@ -623,7 +634,7 @@ export class BotRuntime {
 	async submissionAnswer(botId: string, submissionId: string, channelId: string): Promise<string> {
 		const owned = await this.#ownedSubmission(botId, submissionId, channelId);
 		if (!owned) return "";
-		const settled = await owned.submission.wait(this.#context);
+		const settled = owned.status;
 		if (settled.type !== "input" || settled.status !== "done") return "";
 		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		const page = await conversation.entries({ minEntryId: settled.answer, maxEntryId: settled.answer }, 1, undefined, this.#context);
@@ -632,6 +643,26 @@ export class BotRuntime {
 					.map((p) => p.text)
 					.join("\n")
 			: "";
+	}
+
+	/** Mark every live Pi task before enabling its cancellation drain, including startup with scheduling paused. */
+	async interruptAll(): Promise<void> {
+		const work = await this.#harness.inspect(this.#context);
+		for (const input of work.submissions) {
+			if (input.type === "input" && input.status === "queued") await this.#harness.abortSubmission(input.id, this.#context);
+		}
+		for (const task of work.tasks) await this.#harness.abortTask(task.record.id, this.#context);
+		this.#harness.resume();
+		await Promise.all(work.tasks.map((task) => this.#harness.waitForTask(task.record.id, this.#context)));
+		await this.#harness.waitForIdle(this.#context);
+		await this.#harness.commit(async (tx) => {
+			for (const execution of Object.values((await tx.doc(AppExecutionsDoc)).executions)) {
+				if (!["admitted", "running"].includes(execution.state)) continue;
+				execution.state = "cancelled";
+				execution.endedAt = Date.now();
+				for (const child of execution.children) if (child.state === "running") child.state = "cancelled";
+			}
+		}, this.#context);
 	}
 
 	/** Abort channel work. Startup uses background mode to mark cancellation before the scheduler resumes. */

@@ -1,3 +1,4 @@
+import type { LifecycleState } from "@openbot/protocol";
 /**
  * Renderer state. Every Host-owned value is a snapshot fetched through the preload API and replaced by events; the
  * renderer never keeps its own copy of the transcript or settings.
@@ -16,6 +17,7 @@ export type View =
 export type SearchTarget = { conversationKey: ConversationKey; messageId: string; nonce: string };
 
 type State = {
+	lifecycle: LifecycleState | undefined;
 	searchTarget: SearchTarget | undefined;
 	host: HostState;
 	windowActive: boolean;
@@ -33,6 +35,7 @@ type State = {
 };
 
 export const useStore = create<State>(() => ({
+	lifecycle: undefined,
 	searchTarget: undefined,
 	host: { status: "starting" },
 	windowActive: false,
@@ -58,6 +61,13 @@ export function errorMessage(error: unknown): string {
 
 export function report(error: unknown): void {
 	useStore.setState({ notice: errorMessage(error) });
+}
+
+let lifecycleVersion = 0;
+export async function refreshLifecycle(): Promise<void> {
+	const version = ++lifecycleVersion;
+	const lifecycle = await api["lifecycle.get"]({});
+	if (version === lifecycleVersion) useStore.setState({ lifecycle });
 }
 
 let summaryRefresh: Promise<void> | undefined;
@@ -121,6 +131,10 @@ export function connect(): () => void {
 	void window.openbot.windowActive().then((windowActive) => { if (!activityEvent) useStore.setState({ windowActive }); }).catch(report);
 	const stopEvents = window.openbot.onEvent((event) => {
 		switch (event.type) {
+			case "lifecycle.changed":
+				lifecycleVersion++;
+				useStore.setState({ lifecycle: event.payload });
+				return;
 			case "groups.changed":
 				void refreshSummaries().catch(report);
 				void refreshGroups().catch(report);
@@ -157,7 +171,7 @@ export function connect(): () => void {
 
 async function loadAll(): Promise<void> {
 	try {
-		await Promise.all([refreshBots(), refreshGroups(), refreshSettings(), refreshSummaries()]);
+		await Promise.all([refreshBots(), refreshGroups(), refreshSettings(), refreshSummaries(), refreshLifecycle()]);
 		const { view, onboarding, settings, bots } = useStore.getState();
 		// Decided once per window: later Host restarts never interrupt or restart the flow.
 		if (onboarding === undefined && settings !== undefined) useStore.setState({ onboarding: needsOnboarding(settings, bots) });

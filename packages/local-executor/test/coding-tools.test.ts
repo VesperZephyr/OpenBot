@@ -158,6 +158,20 @@ describe("coding tools", () => {
 		expect(foreign.output).toContain("Unknown task");
 	});
 
+	it("global quiescence waits for background groups from every conversation", async () => {
+		const exec = executor();
+		const first = await run(exec, "local_exec", { command: "sleep 30 & sleep 30", description: "first", background: true });
+		const second = await exec.invoke(
+			{ ...invocation("local_exec", { command: "sleep 30", description: "second", background: true }), conversationId: "other" },
+			() => {},
+		);
+		const groups = [taskGroup(first.taskId!), taskGroup(second.taskId!)];
+		expect(groups.every(groupAlive)).toBe(true);
+		expect(await exec.cancelAll()).toBe(true);
+		expect(groups.some(groupAlive)).toBe(false);
+		expect(await exec.cancelAll()).toBe(true);
+	});
+
 	it("task_stop kills the whole process group", async () => {
 		const exec = executor();
 		const started = await run(exec, "local_exec", { command: "sleep 30 & sleep 30", description: "two sleeps", background: true });
