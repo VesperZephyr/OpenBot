@@ -118,4 +118,4 @@ Attention-state mutation, UI navigation, cross-Bot memory operations, new dispat
 ## Current integration gate
 
 - [I1: Integrated product foundation](tasks/i1-product-foundation.md) is in review in PR #34 on `task/i1-product-foundation`, validated with 358 unit/Host tests, 99 hidden e2e tests, bundled startup and an isolated real-model workflow. PRs #28–#33 remain unmerged; this local candidate combines their exact reviewed heads. It adds combined acceptance for interruption usage settlement, immutable attachment continuation, publication policy/revocation and bounded lifecycle observation.
-- Next: B10 shared reviewed skills, then B15b background completion delivery, following the roadmap. Each starts from a verified prerequisite candidate with its own spec and PR targeting main.
+- Current: [B10 shared reviewed skills](tasks/b10-reviewed-skills.md) on `task/b10-reviewed-skills`, based on verified I1. Next: B15b background completion delivery. Each starts from a verified prerequisite candidate with its own spec and PR targeting main.

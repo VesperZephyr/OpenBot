@@ -141,3 +141,5 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Task | Status |
 | --- | --- |
 | [I1: Integrated product foundation](i1-product-foundation.md) | in review (#34); prerequisite PRs #28–#33; targets main |
+
+| [B10: Reviewed reusable skills](b10-reviewed-skills.md) | in progress; depends on #34; targets main |
