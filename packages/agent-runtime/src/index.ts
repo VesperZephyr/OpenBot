@@ -126,6 +126,7 @@ export type ToolInvoker = (call: {
 	readonly runId?: string;
 	readonly collaboration?: { readonly runId: string };
 	readonly authority?: ManagementAuthority;
+	readonly appAuthority?: import("@openbot/protocol").AppReadAuthority;
 	readonly botId: BotId;
 	readonly conversationId: string;
 	readonly callId: string;
@@ -133,7 +134,7 @@ export type ToolInvoker = (call: {
 	readonly args: Readonly<Record<string, unknown>>;
 	readonly signal: AbortSignal;
 	readonly onProgress: (output: string) => void;
-}) => Promise<{ readonly status: string; readonly output: string; readonly taskId?: string }>;
+}) => Promise<{ readonly status: string; readonly output: string; readonly value?: import("@openbot/protocol").JsonValue; readonly taskId?: string }>;
 
 export type BotRuntimeOptions = {
 	/** SQLite file owned exclusively by this Host process. */
@@ -178,7 +179,7 @@ export type SubmitResult =
 
 export class BotRuntime {
 	readonly #harness: Harness;
-	readonly #extensions: { bot: Extension; core: Extension; group: Extension };
+	readonly #extensions: { bot: Extension; core: Extension; group: Extension; app: Extension };
 	readonly #models: MutableModels;
 	readonly #context: Context;
 	/** Built-in providers as registered at open, so a removed overlay restores the original. */
@@ -193,7 +194,7 @@ export class BotRuntime {
 		harness: Harness,
 		models: MutableModels,
 		context: Context,
-		extensions: { bot: Extension; core: Extension; group: Extension },
+		extensions: { bot: Extension; core: Extension; group: Extension; app: Extension },
 	) {
 		this.#extensions = extensions;
 		this.#harness = harness;
@@ -212,7 +213,7 @@ export class BotRuntime {
 				options.tools === undefined
 					? []
 					: options.tools.definitions
-							.filter((d) => !d.capability.endsWith(".management") && d.capability !== "collaboration")
+							.filter((d) => !d.capability.endsWith(".management") && d.capability !== "collaboration" && d.capability !== "app.read")
 							.map((definition) => routedTool(definition, options.tools!.invoke)),
 			sections: botSections(async (input, context) => {
 				const bots = (await input.read.snapshot(BotsDoc, context))?.bots ?? {};
@@ -235,6 +236,8 @@ export class BotRuntime {
 				.filter((d) => d.capability === "collaboration")
 				.map((d) => routedTool(d, options.tools!.invoke)),
 		});
+		const app = defineExtension({name: "openbot.app-read", tools: (options.tools?.definitions ?? []).filter(d => d.capability === "app.read").map(d => routedTool(d, options.tools!.invoke))});
+		registry.install(app);
 		registry.install(group);
 		registry.install(bot);
 		registry.install(core);
@@ -258,10 +261,11 @@ export class BotRuntime {
 		}, context);
 		await harness.commit(async (tx) => {
 			const channels = await tx.doc(ChannelsDoc);
+			const bots = (await tx.doc(BotsDoc)).bots;
 			for (const channel of Object.values(channels.channels))
-				await configure(tx, channel.conversationId as PiConversationId, { extensions: [bot, group] });
+				await configure(tx, channel.conversationId as PiConversationId, { extensions: [bot, group, ...(bots[channel.botId]?.kind === "core" ? [app] : [])] });
 		}, context);
-		return new BotRuntime(harness, models, context, { bot, core, group });
+		return new BotRuntime(harness, models, context, { bot, core, group, app });
 	}
 
 	/** Start the scheduler so work interrupted by the last shutdown continues. Call after recovery checks pass. */
@@ -282,10 +286,17 @@ export class BotRuntime {
 		return conversationIndexStore(this.#harness, this.#context);
 	}
 
-	searchConversations(query: string, eligible: ReadonlySet<string>, unreadOnly = false, includeHidden = false, cursor?: string) {
+	searchConversations(query: string, eligible: ReadonlySet<string>, unreadOnly = false, includeHidden = false, cursor?: string, scope = "legacy") {
 		if (query.length > 200) throw new ProtocolError("invalid_request", "Search is limited to 200 characters");
 		const normalized = normalizeQuery(query);
-		return this.#search.search(normalized, eligible, JSON.stringify([normalized, unreadOnly, includeHidden]), cursor);
+		return this.#search.search(normalized, eligible, JSON.stringify([normalized, unreadOnly, includeHidden, scope]), cursor);
+	}
+
+	async committedMessages(key: import("@openbot/protocol").ConversationKey) {
+		const bot = key.startsWith("bot:") ? await this.getBot(key.slice(4)) : undefined;
+		const exists = key.startsWith("bot:") ? !!bot && bot.status !== "deleted" : !!await this.groups().get(key.slice(6));
+		if (!exists) throw new ProtocolError("not_found", "Conversation is unavailable");
+		return this.#search.read(key);
 	}
 
 	groups() {
@@ -327,7 +338,7 @@ export class BotRuntime {
 			await configure(tx, conversation.id, {
 				...agentChange({ ...bot, ...((bot.model ?? defaultModel) ? { model: (bot.model ?? defaultModel)! } : {}) }),
 				instructions: revisionedInstructions(bot.instructions, bot.revision ?? 1),
-				extensions: [this.#extensions.bot, this.#extensions.group],
+				extensions: [this.#extensions.bot, this.#extensions.group, ...(bot.kind === "core" ? [this.#extensions.app] : [])],
 			});
 			channels.channels[key] = { botId, channelId, conversationId: conversation.id };
 			return String(conversation.id);
@@ -379,7 +390,7 @@ export class BotRuntime {
 			const doc = await tx.doc(BotsDoc);
 			const existing = doc.bots[botId]!;
 			doc.bots[botId] = { ...existing, kind: "core", status: "active", pinned: true };
-			await configure(tx, existing.conversationId as PiConversationId, { extensions: [this.#extensions.bot, this.#extensions.core] });
+			await configure(tx, existing.conversationId as PiConversationId, { extensions: [this.#extensions.bot, this.#extensions.core, this.#extensions.app] });
 			return toProfile(JSON.parse(JSON.stringify(doc.bots[botId])) as BotRecord);
 		}, this.#context);
 	}
@@ -1056,6 +1067,7 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 		description: definition.description,
 		// Plain JSON Schema from the protocol catalog; Pi validates arguments against it before `execute`.
 		parameters: definition.parameters as never,
+		...(definition.resultSchema ? { structuredOutputSchema: definition.resultSchema as never } : {}),
 		replay: "safe",
 		executionMode: "sequential",
 		async execute(args, api, context) {
@@ -1101,15 +1113,31 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 				);
 				runId = await api.memo("openbot.run-id", run?.runId ?? null, context);
 			}
+			let appAuthority: import("@openbot/protocol").AppReadAuthority | undefined;
+			if (definition.capability === "app.read") {
+				const saved = await api.memo<import("@openbot/protocol").AppReadAuthority | null>("openbot.app-authority", context);
+				if (saved !== undefined) appAuthority = saved ?? undefined;
+				else {
+					const run = runId ? (await api.snapshot(RunsDoc, context))?.runs[runId] : undefined;
+					appAuthority = (await api.memo("openbot.app-authority", run?.origin && run.requestIds[0] ? {
+						runId: run.runId, channelId: run.channelId ?? "direct", origin: run.origin, rootRequestId: run.requestIds[0],
+					} : null, context)) ?? undefined;
+				}
+			}
+			const required = new Set((definition.parameters.required as string[] | undefined) ?? []);
+			const input = definition.capability === "app.read"
+				? Object.fromEntries(Object.entries(args as Record<string, unknown>).filter(([key, value]) => value !== null || required.has(key) || !Object.hasOwn(definition.parameters.properties as object, key)))
+				: args;
 			const outcome = await invoke({
 				...(runId ? { runId } : {}),
 				...(collaboration ? { collaboration } : {}),
 				...(authority === undefined ? {} : { authority }),
+				...(appAuthority ? {appAuthority} : {}),
 				botId,
 				conversationId: String(api.conversationId),
 				callId: api.callId,
 				tool: definition.name,
-				args: args as Record<string, unknown>,
+				args: input as Record<string, unknown>,
 				signal,
 				onProgress: (output) => api.output(output),
 			});
@@ -1119,6 +1147,7 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 			const text = outcome.status === "unknown" ? UNKNOWN_OUTCOME_TEXT : outcome.output === "" ? "(no output)" : outcome.output;
 			return {
 				output: [{ type: "text", text }],
+				...(outcome.value === undefined ? {} : { structuredOutput: outcome.value }),
 				isError: outcome.status !== "succeeded",
 				details: { status: outcome.status, ...(outcome.taskId === undefined ? {} : { taskId: outcome.taskId }) },
 			};

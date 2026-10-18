@@ -1,3 +1,4 @@
+import { validAppInput } from "@openbot/protocol/app-validation";
 /**
  * Every model-selected tool call enters here. The router binds the call to the local target, asks the policy port for a
  * decision, waits for the user when policy asks, and dispatches to the executor or a host handler. It depends only on
@@ -5,6 +6,7 @@
  */
 import { createHash } from "node:crypto";
 import {
+	appToolCapability,
 	type ApprovalDecision,
 	type ExecutionTarget,
 	type ExecutorToolName,
@@ -19,6 +21,8 @@ export type ToolCall = {
 	readonly runId?: string;
 	readonly collaboration?: { readonly runId: string };
 	readonly authority?: import("@openbot/protocol").ManagementAuthority;
+	readonly appAuthority?: import("@openbot/protocol").AppReadAuthority;
+	readonly target?: ExecutionTarget;
 	readonly botId: string;
 	readonly conversationId: string;
 	/** Stable across reruns of the same Pi tool task, so a rerun never becomes a second invocation. */
@@ -87,10 +91,16 @@ export class ToolRouter {
 	}
 
 	async #route(call: ToolCall): Promise<ToolOutcome> {
+		const app = appToolCapability(call.tool);
+		if (app && call.signal.aborted) return appFailure("cancelled", "Application read was cancelled");
+		call.signal.throwIfAborted();
+		if (this.#options.target.kind !== "local" || (call.target && (call.target.kind !== "local" || call.target.targetId !== this.#options.target.targetId))) return app ? appFailure("permission_denied", "Application access is not authorized") : {status:"failed",output:"Application target is not authorized"};
+		call = {...call, target:this.#options.target};
+		if (app && !validAppInput(app.id,call.args)) return appFailure("invalid_request", "Invalid application arguments");
 		const definition = toolDefinition(call.tool);
 		if (definition === undefined) return { status: "failed", output: `Unknown tool: ${call.tool}` };
 		const decision = await this.#options.policy.decide(call, definition);
-		if (decision.kind === "deny") return { status: "failed", output: `Not allowed: ${decision.reason}` };
+		if (decision.kind === "deny") return app ? appFailure("permission_denied", "Application access is not authorized") : { status: "failed", output: `Not allowed: ${decision.reason}` };
 
 		let approvedOnce = false;
 		if (decision.kind === "ask") {
@@ -116,6 +126,7 @@ export class ToolRouter {
 			}
 			approvedOnce = true;
 		}
+		if (app && call.signal.aborted) return appFailure("cancelled", "Application read was cancelled");
 		call.signal.throwIfAborted();
 
 		if (definition.destination === "host") {
@@ -139,6 +150,11 @@ export class ToolRouter {
 		};
 		return this.#options.executor.invoke(invocation, call.onProgress, call.signal);
 	}
+}
+
+function appFailure(code: import("@openbot/protocol").AppErrorCode, message: string): ToolOutcome {
+	const value = {ok: false as const, error: {code, message}};
+	return {status: code === "cancelled" ? "cancelled" : "failed", output: JSON.stringify(value), value};
 }
 
 /** SHA-256 of canonical JSON (sorted keys), shared by router and executor to detect a reused ID with other arguments. */
