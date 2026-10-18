@@ -509,6 +509,14 @@ Credential handling:
 - For form steps that are not secrets, `request_user_input` presents one form per step and the Bot fills the answers into the page.
 - Users should not paste passwords or one-time codes into chat; the UI warns when a message looks like one.
 
+### 5.10 Application Capabilities and Local Code Mode (planned)
+
+[D3](tasks/d3-app-capabilities.md) specifies an authorized application capability gateway in `server-core`, pure input/output descriptors in `protocol`, and separate desktop/Pi adapters over shared domain services. This is planned work; current desktop IPC and management tools are not a general model-facing API. Search/read capabilities begin in [B24](tasks/b24-app-capability-api.md), local read-only Code Mode in [B25](tasks/b25-local-app-code-mode.md), and existing management integration in [B26](tasks/b26-code-mode-management.md).
+
+Core uses the vendored Pi QuickJS Code Mode implementation through `agent-runtime`; no remote code execution, unrestricted `env`, extra `models.*` calls or generic Host-method dispatcher is exposed. Caller identity, originating Run, scope, target and nested invocation ancestry are bound by the Host. Core direct user Runs may search retained nondeleted application history; Core group Runs are limited to that group's public content. Specialist management remains prohibited. Credentials, grants, approval decisions and Core self-modification stay outside the model surface.
+
+The parent script enters Tool Router orchestration admission without retaining a leaf sequencing lock. Every nested application call enters ordinary router validation/policy and the capability gateway, with current authorization checked again before dispatch. Typed result schemas, bounded discovery/output/worker lifetimes and stable child identities are required. Pi journals provide deterministic replay, while existing domain receipts and exact-change approvals remain authoritative for mutations. Partial script success never implies rollback. D3 specifies resource limits, privacy, UI projection and gates; B25/B26 remain draft until their integration evidence is available.
+
 ## 6. Local Interfaces
 
 ### 6.1 Desktop Application Protocol

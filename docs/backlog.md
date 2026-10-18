@@ -86,3 +86,13 @@ Architecture M3 (managed browser, takeover, secret requests), M6 (desktop comput
 - [B22: Conversation list previews and unread state](tasks/b22-conversation-list.md): implemented, awaiting review; 234 unit tests and 59 background e2e; isolated real-model private/group replies and full restart verification; local Host index, snapshot-bound durable read cursors, bilingual previews/time/counts, draft/activity precedence and recency within protected Core/pinned sections.
 - [B23: Conversation search and unread filtering](tasks/b23-conversation-search.md): implemented, awaiting review in PR #20 (stacked on B22); 239 unit tests and 65 background e2e; isolated real-model private/group history search and full restart; local literal matching, bounded results, unread composition, bilingual exact-message navigation, stale-response guards and draft/read preservation.
 - Remaining UI work: group pin/hide, manual mark-unread, transcript virtualization, large-history search indexing and artifact previews require separate specs.
+
+## Application capability foundation (D3)
+
+Owner-requested architecture increment: expose selected current application capabilities to Core through an authorized shared Host layer, then local programmatic composition. [D3](tasks/d3-app-capabilities.md) records source research, authority, module boundaries, budgets, recovery and privacy. No product behavior is changed by the design.
+
+1. [B24: Authorized application API](tasks/b24-app-capability-api.md) — ready; shared typed read services, scoped search/history and Core routed tools.
+2. [B25: Local app Code Mode](tasks/b25-local-app-code-mode.md) — draft; reuse vendored Pi QuickJS/discovery/replay after the bounded-adapter and packaged-worker spike. Read-only application APIs first.
+3. [B26: Code Mode management](tasks/b26-code-mode-management.md) — draft; adapt existing Core Bot/group operations after B25 acceptance, retaining exact child approvals and mutation receipts.
+
+Attention-state mutation, UI navigation, cross-Bot memory operations, new dispatch surfaces and external API transports remain separately specified follow-ups. Existing desktop method availability never automatically confers model authority.

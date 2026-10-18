@@ -38,6 +38,10 @@ Each section marks state explicitly: **Implemented** means code in the repositor
 
 Phase 1 (MVP, backlog B1–B8) is implemented on `feat/mvp`; each batch's design and as-built notes are in [`docs/tasks/`](tasks/README.md). The MVP acceptance list in [the backlog](backlog.md) still needs the owner's run of the real app and the e2e suites. Phase 2 enhancements (B9–B15) and Phase 3 computer control follow.
 
+### Planned application capability foundation
+
+[D3](tasks/d3-app-capabilities.md) designs a shared authorized Host capability gateway and local Pi Code Mode. This is unimplemented: B24 extracts typed read services and Core read tools; B25 gates Code Mode on bounded worker/bridge/output, original Run ancestry, replay and packaged assets; B26 adapts existing exact-approval Bot/group mutations. No unrestricted desktop method mapping or provider-hosted execution is planned. Code Mode primitives already exist in the pinned Pi vendor, but OpenBot does not install the extension.
+
 ### 1.2 Known Gaps in Existing Code
 
 [D1: Core Bot, Specialist Bots, and Model Sources](tasks/d1-bot-product-design.md) is a design proposal for the next product increment. Current code has per-Bot instructions and memory, and a protected Core identity, with Core-only model-facing Specialist management. B13b adds Core-only group management and user-directed group tasks. All duplicated Bots start with empty memory and conversation history. B19 provides revisioned memory and Prompt controls; Pi continues to own agent execution and compaction. B13a isolates group contexts from direct chat; B13c implements bounded group delegation and ownership transfer. Cross-group dispatch and direct-chat peer collaboration remain out of scope. Memory history is bounded in the active document, but complete erasure from the journal, backups and prior provider requests is not implemented.
