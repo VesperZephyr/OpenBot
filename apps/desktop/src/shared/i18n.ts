@@ -1,6 +1,15 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
+ "Reading application data": "正在读取应用数据",
+ "Read application data": "已读取应用数据",
+ "Application read steps": "应用读取步骤",
+ "View script": "查看脚本",
+ "Code Mode execution failed": "应用读取执行失败",
+ "Code Mode authority is no longer valid": "原任务已无读取权限",
+ "Code Mode cannot resume this execution": "无法恢复此应用读取任务",
+ "Code Mode execution limit exceeded": "应用读取超出执行限制",
+
  "All": "全部",
  "Conversation filter": "会话筛选",
  "Clear search": "清除搜索",

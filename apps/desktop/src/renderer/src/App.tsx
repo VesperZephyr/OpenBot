@@ -504,6 +504,7 @@ function MessageText({ parts, markdown = false }: { readonly parts: readonly { r
 }
 
 const TOOL_VERBS: Record<string, readonly [running: string, done: string]> = {
+	codemode: ["Reading application data", "Read application data"],
 	app_conversations_search: ["Searching chat history", "Searched chat history"],
 	app_conversations_read: ["Reading chat context", "Read chat context"],
 	app_conversations_list: ["Listing conversations", "Listed conversations"],
@@ -539,6 +540,7 @@ function ToolCard({
 }) {
 	const args = (item.args ?? {}) as Record<string, unknown>;
 	let output = item.output;
+	if(item.tool === "codemode" && item.execution?.error) output=t(item.execution.error);
 	if (item.tool.startsWith("app_") && output) {
 		try {
 			const result = JSON.parse(output);
@@ -591,6 +593,11 @@ function ToolCard({
 					)}
 					<RevealButton item={item} />
 				</summary>
+				{item.execution ? <ul className="code-activity" aria-label={t("Application read steps")}>{item.execution.children.map(child => {
+					const verb = TOOL_VERBS[child.capability];
+					return <li key={child.callId} data-state={child.state}><span>{t(verb?.[child.state === "running" ? 0 : 1] ?? child.capability)}</span><span>{t(child.state === "running" ? "Running" : child.state === "succeeded" ? "Completed" : child.state === "cancelled" ? "Stopped" : "Failed")}</span></li>;
+				})}</ul> : null}
+				{item.tool === "codemode" && typeof args.code === "string" ? <details className="code-source"><summary>{t("View script")}</summary><pre className="tool-output">{args.code}</pre></details> : null}
 				{item.tool === "local_exec" && typeof args.command === "string" && <pre className="tool-command">$ {args.command}</pre>}
 				{output !== undefined && output !== "" && <pre className="tool-output">{output}</pre>}
 			</details>

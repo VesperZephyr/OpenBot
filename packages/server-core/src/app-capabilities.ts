@@ -3,13 +3,13 @@ import { validAppInput, validAppOutput } from "@openbot/protocol/app-validation"
 import { createHash } from "node:crypto";
 import type { BotRuntime } from "@openbot/agent-runtime";
 import {
-	APP_MAX_RESULT_BYTES, appCapability, appToolCapability, ProtocolError,
+	APP_CODE_VERSION, APP_CAPABILITIES, APP_MAX_RESULT_BYTES, appCapability, appToolCapability, ProtocolError,
 	type AppCapabilityId, type AppErrorCode, type AppReadAuthority, type AppReadValue, type AppResult,
 	type ConversationKey, type ConversationSummary, type ExecutionTarget, type HostParams, type JsonValue, type ToolOutcome,
 } from "@openbot/protocol";
 import type { ManagementCall } from "./bot-management.ts";
 
-type Call = ManagementCall & { appAuthority?: AppReadAuthority; target?: ExecutionTarget };
+type Call = ManagementCall & { appAuthority?: AppReadAuthority; appExecutionId?: string; target?: ExecutionTarget };
 type Scope = { principal: string; groupId?: string };
 type Input = { query?: string; unreadOnly?: boolean; includeHidden?: boolean; conversationKey?: ConversationKey; cursor?: string; anchorMessageId?: string; before?: number; after?: number };
 class AppFailure extends Error {
@@ -63,6 +63,12 @@ export class AppCapabilities {
 		const run = await this.runtime.runsStore().get(authority.runId);
 		if (!run || run.state !== "running" || run.botId !== call.botId || run.origin !== authority.origin || (run.channelId ?? "direct") !== authority.channelId || run.requestIds[0] !== authority.rootRequestId || await this.runtime.conversationKey(call.botId, authority.channelId) !== call.conversationId)
 			return fail("permission_denied","Application access is not authorized");
+		if (call.appExecutionId) {
+			const execution = await this.runtime.appExecution(call.appExecutionId);
+			const child = execution?.children.find(c => c.callId === call.callId);
+			if (!execution || execution.version !== APP_CODE_VERSION || execution.catalogDigest !== fingerprint([APP_CODE_VERSION,APP_CAPABILITIES]) || execution.state !== "running" || execution.deadline <= Date.now() || execution.botId !== call.botId || execution.conversationId !== call.conversationId || execution.targetId !== this.targetId || fingerprint(execution.authority) !== fingerprint(authority) || !child || child.capability !== call.tool || child.digest !== fingerprint([call.tool,call.args]))
+				return fail("permission_denied","Application access is not authorized");
+		}
 		const principal = fingerprint([this.targetId,call.botId,call.conversationId,authority]);
 		if (authority.channelId === "direct") {
 			if (run.origin !== "user") return fail("permission_denied","Application access is not authorized");

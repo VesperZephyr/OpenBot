@@ -28,3 +28,9 @@ None.
 | Test | Result | Reason |
 | --- | --- | --- |
 | `codemode/test/worker-lifetime.test.ts`, three `Bun process lifetime` cases | Fail with Bun 1.3.14 when `bun` is on `PATH`; skipped otherwise | The fixture prints its exit line only when Bun terminates the worker; upstream notes Bun-specific `terminate()` behavior. OpenBot runs Pi on Node, where the matching cases pass. |
+
+## Runtime patches
+
+| ID | Change | Files | Validation |
+| --- | --- | --- | --- |
+| OB-CODEMODE-1 | Optional bridge budgets enforced inside the QuickJS VM before messages cross into the Host: total/tool/pending calls, argument bytes, output bytes/items, return bytes and scratch writes. Overflow latches a failure and interrupts even if script code catches it. Budgets enter the replay fingerprint; defaults retain upstream behavior. | `packages/codemode/src/{types,index}.ts`, `packages/codemode/src/runtime/{execution,protocol,vm}.ts`, `packages/codemode/test/bridge-limits.test.ts` | Bridge flood, allocation, empty-output, interrupt and physical-worker-exit tests; durable Code Mode replay/model tests; OpenBot B25 Host integration. |

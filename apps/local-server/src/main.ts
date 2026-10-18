@@ -90,7 +90,8 @@ const router = createToolRouter({
 const runtime = await BotRuntime.open({
 	databasePath: join(dataDirectory, "openbot.sqlite"),
 	credentials,
-	tools: { definitions: TOOL_DEFINITIONS, invoke: (call) => router.invoke(call) },
+	tools: { definitions: TOOL_DEFINITIONS, invoke: (call) => router.invoke(call), admitOrchestration: call => router.admitOrchestration(call) },
+	...(import.meta.url.endsWith(".mjs") ? {codemodeAssets:{workerUrl:new URL("./codemode-worker.mjs",import.meta.url).href,wasmPath:fileURLToPath(new URL("./quickjs.wasm",import.meta.url))}} : {}),
 });
 
 const status: HostStatus = {

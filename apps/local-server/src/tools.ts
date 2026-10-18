@@ -76,7 +76,7 @@ export function createToolRouter(options: {
 			// Policy is read fresh for every call, so a rule or grant change applies to the next call (Section 5.3).
 			decide: async (call, definition) =>
 				(await options.service().groups.executionGate(call)) ??
-				(definition.capability === "app.read" ? options.service().capabilities.authorize(call) : definition.capability === "collaboration"
+				((definition.capability === "app.read" || definition.capability === "app.orchestrate") ? options.service().capabilities.authorize(call) : definition.capability === "collaboration"
 					? options.service().groups.prepareCollaboration(call)
 					: definition.capability === "group.management"
 						? options.service().groups.prepare(call)

@@ -4,12 +4,14 @@
 //   node           pinned official Node binary, checksum-verified (cached under .cache/node/)
 //   node-LICENSE   its license
 //   host/host.mjs, host/executor.mjs   the Host Runtime and local executor, each bundled into one ESM file
+import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { verifyRuntime } from "./verify-runtime.mjs";
 
 const NODE_VERSION = "24.22.0";
 const NODE_ARCH = "darwin-arm64";
@@ -25,10 +27,13 @@ async function bundleRuntime() {
 		entryPoints: {
 			host: join(apps, "local-server", "src", "main.ts"),
 			executor: join(apps, "local-executor", "src", "main.ts"),
+			"codemode-worker": join(apps, "..", "packages", "agent-runtime", "src", "codemode-worker.ts"),
 		},
 		outdir: join(stage, "host"),
 		outExtension: { ".js": ".mjs" },
 		bundle: true,
+		// The UMD build passes require through a factory; esbuild cannot follow those relative imports.
+		alias: {"jsonc-parser":createRequire(join(apps,"..","packages","server-core","package.json")).resolve("jsonc-parser/lib/esm/main.js")},
 		platform: "node",
 		format: "esm",
 		target: "node24",
@@ -88,3 +93,9 @@ rmSync(stage, { recursive: true, force: true });
 mkdirSync(join(stage, "host"), { recursive: true });
 await bundleRuntime();
 stageNode();
+const piRequire = createRequire(join(apps,"..","third_party","pi","packages","codemode","package.json"));
+const wasm = piRequire.resolve("quickjs-wasi/quickjs.wasm");
+copyFileSync(wasm, join(stage,"host","quickjs.wasm"));
+copyFileSync(join(dirname(wasm),"LICENSE"), join(stage,"host","quickjs-LICENSE"));
+
+await verifyRuntime(stage);

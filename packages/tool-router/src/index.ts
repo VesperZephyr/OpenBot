@@ -6,7 +6,7 @@ import { validAppInput } from "@openbot/protocol/app-validation";
  */
 import { createHash } from "node:crypto";
 import {
-	appToolCapability,
+	APP_CODE_LIMITS, CODEMODE_DEFINITION, appToolCapability,
 	type ApprovalDecision,
 	type ExecutionTarget,
 	type ExecutorToolName,
@@ -21,6 +21,7 @@ export type ToolCall = {
 	readonly runId?: string;
 	readonly collaboration?: { readonly runId: string };
 	readonly authority?: import("@openbot/protocol").ManagementAuthority;
+	readonly appExecutionId?: string;
 	readonly appAuthority?: import("@openbot/protocol").AppReadAuthority;
 	readonly target?: ExecutionTarget;
 	readonly botId: string;
@@ -77,6 +78,16 @@ export class ToolRouter {
 
 	constructor(options: ToolRouterOptions) {
 		this.#options = options;
+	}
+
+	/** Parent admission deliberately does not take the leaf mutex. */
+	async admitOrchestration(call: ToolCall): Promise<ExecutionTarget> {
+		call.signal.throwIfAborted();
+		if (call.tool !== "codemode" || Object.keys(call.args).join() !== "code" || typeof call.args.code !== "string" || !call.args.code.trim() || Buffer.byteLength(call.args.code) > APP_CODE_LIMITS.sourceBytes || this.#options.target.kind !== "local" || (call.target && (call.target.kind !== "local" || call.target.targetId !== this.#options.target.targetId))) throw new Error("Code Mode is not authorized");
+		const decision = await this.#options.policy.decide({...call,target:this.#options.target}, CODEMODE_DEFINITION);
+		call.signal.throwIfAborted();
+		if (decision.kind !== "allow") throw new Error("Code Mode is not authorized");
+		return this.#options.target;
 	}
 
 	async invoke(call: ToolCall): Promise<ToolOutcome> {

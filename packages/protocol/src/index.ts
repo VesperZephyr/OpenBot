@@ -1,3 +1,5 @@
+import { CODEMODE_DEFINITION } from "./app-execution.ts";
+export * from "./app-execution.ts";
 import { APP_TOOL_DEFINITIONS } from "./app-capabilities.ts";
 export * from "./app-capabilities.ts";
 /**
@@ -254,6 +256,7 @@ export type TranscriptItem =
 			readonly output?: string;
 			/** Set when a `local_exec` call moved its command to the background. */
 			readonly taskId?: string;
+			readonly execution?: import("./app-execution.ts").AppExecution;
 	  }
 	/** Where earlier messages left the model's context: a compaction summary or a new topic. */
 	| { readonly kind: "divider"; readonly id: string; readonly reason: "compaction" | "reset" }
@@ -762,7 +765,7 @@ export type ExecutorMessage =
 // Tool catalog: what the model is offered. Schemas are plain JSON Schema, which Pi validates tool arguments against.
 
 export type ToolCapability =
-	"app.read" | "files.read" | "files.write" | "commands" | "tasks" | "web" | "memory" | "bot.management" | "group.management" | "collaboration";
+	"app.orchestrate" | "app.read" | "files.read" | "files.write" | "commands" | "tasks" | "web" | "memory" | "bot.management" | "group.management" | "collaboration";
 
 export type ToolDefinition = {
 	readonly name: string;
@@ -800,6 +803,7 @@ const groupFields = {
 };
 export const TOOL_CATALOG = [
 	...APP_TOOL_DEFINITIONS,
+	CODEMODE_DEFINITION,
 	...(["bot_delegate", "bot_handoff"] as const).map((name) => ({
 		name,
 		capability: "collaboration" as const,

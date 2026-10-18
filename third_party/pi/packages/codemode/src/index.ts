@@ -41,6 +41,7 @@ export {
 	parseCodemodeSource,
 } from "./source.ts";
 export type {
+	CodemodeBridgeLimits,
 	CodemodeCall,
 	CodemodeCallStatus,
 	CodemodeDeclaredGlobal,
