@@ -625,6 +625,8 @@ References: [goose `ui/desktop`](https://github.com/aaif-goose/goose/tree/main/u
 
 The desktop interface follows Grok Bot's layout and vocabulary so that users and contributors can rely on a known product.
 
+B21 implements a shared private/group conversation shell, name/role filtering, unified New, responsive contextual details, structured group mentions and scroll anchoring. Private chats remain direct; ordinary group messages go to Core. The renderer stores versioned drafts and immutable send attempts locally, persists before dispatch and retries uncertain delivery only on explicit request using the same Host request ID. Newer edits survive late acknowledgements. Drafts are not model context and are not synchronized. The broader target interface below includes future surfaces tracked by separate task specs.
+
 | Area | Content |
 | --- | --- |
 | Sidebar | **New** (`Cmd+N`), search (`Cmd+K`), pinned Bots, Bots, groups, **Hidden Bots**, and entries for Routines, Skills, Connect apps, and Settings. Each Bot row shows its avatar, name, and state: Needs attention, Working, or Unread, in that priority |
@@ -646,6 +648,7 @@ The desktop interface follows Grok Bot's layout and vocabulary so that users and
 | Conversations, model context, generation tasks, tool tasks, and compaction | Pi Durable in the Host |
 | Bots, memory, groups, message queues, Runs, policy rules, grants, approvals, invocation records, routines, connector definitions, and settings | Versioned OpenBot documents in the Pi store, accessed through the runtime adapter |
 | Command lifetimes, invocation acceptance, final execution receipts, and retransmission | The executor's separate persistent ledger |
+| Unsent drafts and immutable send attempts | Versioned local storage in the desktop renderer partition; Host receipts remain authoritative for accepted messages |
 | Skill library | Files in the application data directory |
 | Artifact contents | The application-owned artifact directory; metadata in OpenBot documents |
 | Managed-browser profile, cookies, and logins | The browser's user-data directory owned by OpenBot |

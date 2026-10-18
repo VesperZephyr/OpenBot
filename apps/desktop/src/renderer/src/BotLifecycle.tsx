@@ -56,7 +56,7 @@ export function ConfirmDeleteBot({ bot, onClose }: { readonly bot: BotSummary; r
 				<p className="muted">
 					{bot.name}{t(" stops any work in progress and disappears from OpenBot. Files it saved in the workspace stay where they are.")}</p>
 				<div className="dialog-actions">
-					<button type="button" onClick={onClose} autoFocus>{t("Cancel")}</button>
+					<button type="button" data-dialog-close onClick={onClose} autoFocus>{t("Cancel")}</button>
 					<button type="button" className="danger" disabled={busy} onClick={() => void confirm()}>{t("Delete Bot")}</button>
 				</div>
 			</div>

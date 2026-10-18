@@ -39,6 +39,7 @@ it("starts with only the Core, permits setup later, and protects its identity", 
 it("creates a Specialist only when the user requests it and keeps the Core first", async () => {
 	const page = h.page();
 	await page.getByRole("button", { name: /^New/ }).click();
+ await page.getByRole("button", { name: /^Create new Bot/ }).click();
 	await page.getByPlaceholder("Piper").fill("Research partner");
 	await page.getByPlaceholder("Piper").press("Enter");
 	await page.getByRole("textbox", { name: "Message Research partner" }).waitFor();

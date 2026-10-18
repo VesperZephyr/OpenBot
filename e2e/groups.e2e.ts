@@ -42,7 +42,11 @@ it("creates from desktop, routes to Core or selected member, and isolates privat
 	await api("messages.submit", { botId: alpha, requestId: "private", text: "PRIVATE_CANARY" });
 	await until(async () => (await api("bots.list")).find((b: any) => b.botId === alpha).lastRun?.state).toBe("completed");
 	expect(JSON.stringify(h.model.requests[0]?.tools)).not.toContain('"name":"bot_delegate"');
-	await h.page().getByRole("button", { name: "Create group", exact: true }).click();
+	await h.page().getByRole("button", { name: "New", exact: true }).click();
+	await h
+		.page()
+		.getByRole("button", { name: /^Create group/ })
+		.click();
 	const dialog = h.page().getByRole("dialog", { name: "Create group" });
 	await dialog.getByLabel("Group name").fill("Studio");
 	await dialog.getByLabel("Objective").fill("Plan a local research project");
@@ -51,6 +55,8 @@ it("creates from desktop, routes to Core or selected member, and isolates privat
 	await dialog.getByLabel("Lead", { exact: true }).selectOption(alpha);
 	await dialog.getByRole("button", { name: "Create group", exact: true }).click();
 	groupId = (await api("groups.list"))[0].groupId;
+	if (!(await h.page().getByRole("button", { name: "Edit group", exact: true }).isVisible()))
+		await h.page().getByRole("button", { name: "Conversation details", exact: true }).click();
 	await h.page().getByRole("button", { name: "Edit group", exact: true }).click();
 	const editor = h.page().getByRole("dialog", { name: "Edit group" });
 	await editor.getByLabel("Objective").fill("Unsaved draft");
@@ -78,7 +84,8 @@ it("creates from desktop, routes to Core or selected member, and isolates privat
 	expect(req).not.toContain('"name":"group_create"');
 	expect((await snapshot()).posts[1].senderId).toBe(core);
 	h.model.script({ text: "Beta response" });
-	await h.page().locator(".group-recipients").getByRole("button", { name: "Beta", exact: true }).click();
+	await h.page().getByRole("button", { name: "Mention a Bot", exact: true }).click();
+	await h.page().getByRole("option", { name: "@Beta", exact: true }).click();
 	await send("Review the lead's plan.");
 	await waitReply("Beta response");
 	expect((await snapshot()).posts[3].senderId).toBe(beta);
@@ -88,7 +95,10 @@ it("creates from desktop, routes to Core or selected member, and isolates privat
 	await h.shot("01-group-transcript");
 	const beforeFanout = h.model.requests.length;
 	h.model.script({ text: "Parallel response one" }, { text: "Parallel response two" });
-	await h.page().locator(".group-recipients").getByRole("button", { name: "Alpha", exact: true }).click();
+	await h.page().getByRole("button", { name: "Mention a Bot", exact: true }).click();
+	await h.page().getByRole("option", { name: "@Alpha", exact: true }).click();
+	await h.page().getByRole("button", { name: "Mention a Bot", exact: true }).click();
+	await h.page().getByRole("option", { name: "@Beta", exact: true }).click();
 	await send("Both members: give one short response.");
 	await waitReply("Parallel response one");
 	await waitReply("Parallel response two");
@@ -117,6 +127,12 @@ it("group approval survives restart, stop is scoped, removal cancels queued work
 	h.model.script({ tool: "local_exec", args: { command: "echo should-not-run", description: "Pending command" } });
 	await send("Wait for my approval.");
 	await h.page().getByRole("group", { name: "Approval request" }).waitFor();
+	await h
+		.page()
+		.locator(".collaboration-root")
+		.filter({ has: h.page().getByRole("button", { name: "Stop task chain", exact: true }) })
+		.locator("summary")
+		.click();
 	await h.page().getByRole("button", { name: "Stop", exact: true }).click();
 	await until(async () => (await snapshot()).tasks.filter((d: any) => d.state === "pending").length).toBe(0);
 	// Occupy Alpha in its direct channel, then queue an explicit group delivery to Alpha.
@@ -125,6 +141,8 @@ it("group approval survives restart, stop is scoped, removal cancels queued work
 	await until(async () => (await api("conversations.snapshot", { botId: alpha })).approvals.length).toBe(1);
 	await api("groups.send", { groupId, requestId: "queued-group", text: "This must never run", recipientIds: [alpha] });
 	await until(async () => (await snapshot()).tasks.find((d: any) => d.state === "pending")?.conversation?.run.state).toBe("queued");
+	if (!(await h.page().getByRole("button", { name: "Edit group", exact: true }).isVisible()))
+		await h.page().getByRole("button", { name: "Conversation details", exact: true }).click();
 	await h.page().getByRole("button", { name: "Edit group", exact: true }).click();
 	const dialog = h.page().getByRole("dialog", { name: "Edit group" });
 	await dialog.getByLabel("OpenBot", { exact: true }).check();
@@ -193,10 +211,11 @@ it("Chinese management and dissolution retain history and stop pending work", as
 	await api("settings.update", { language: "zh-CN" });
 	await h.relaunch();
 	await h.page().locator(".group-nav", { hasText: "Studio" }).click();
-	await h.page().getByRole("button", { name: "编辑群组", exact: true }).waitFor();
+	await h.page().getByRole("button", { name: "会话详情", exact: true }).waitFor();
 	await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(880, 620));
 	await h.page().locator(".approval-actions").scrollIntoViewIfNeeded();
 	await h.shot("03-chinese-group-small");
+	await h.page().getByRole("button", { name: "会话详情", exact: true }).click();
 	await h.page().getByRole("button", { name: "解散群组", exact: true }).click();
 	await h.shot("04-chinese-dissolve");
 	await h.page().getByRole("dialog", { name: "解散群组" }).getByRole("button", { name: "解散群组", exact: true }).click();
@@ -221,6 +240,8 @@ it("deleting the lead pauses the group until the user repairs membership", async
 	const room = (await api("groups.list")).find((g: any) => g.name === "Core room");
 	expect(room.leadBotId).toBeNull();
 	expect(room.memberIds).toEqual([alpha]);
+	if (!(await h.page().getByRole("button", { name: "Edit group", exact: true }).isVisible()))
+		await h.page().getByRole("button", { name: "Conversation details", exact: true }).click();
 	await h.page().getByRole("button", { name: "Edit group", exact: true }).click();
 	const dialog = h.page().getByRole("dialog", { name: "Edit group" });
 	await dialog.getByLabel("OpenBot", { exact: true }).check();

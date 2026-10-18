@@ -4,6 +4,7 @@
  */
 import type { Group, BotSummary, ConversationSnapshot, ModelSummary, RedactedSettings } from "@openbot/protocol";
 import { create } from "zustand";
+import { composers } from "./useComposer";
 import { ERROR_PREFIX, type HostState } from "../../shared/api";
 
 export type View =
@@ -56,7 +57,11 @@ export async function refreshGroups(): Promise<void> {
 }
 
 export async function refreshBots(): Promise<void> {
-	useStore.setState({ bots: await api["bots.list"]({}) });
+	const bots = await api["bots.list"]({});
+	for (const key of Object.keys(composers.snapshot())) {
+		if (key.startsWith("bot:") && !bots.some((bot) => bot.botId === key.slice(4))) composers.remove(key as `bot:${string}`);
+	}
+	useStore.setState({ bots });
 }
 
 export async function refreshSettings(): Promise<void> {
@@ -79,8 +84,8 @@ export async function createBot(name: string): Promise<void> {
 	await openBot(bot.botId);
 }
 
-export async function sendMessage(botId: string, text: string): Promise<void> {
-	await api["messages.submit"]({ botId, requestId: crypto.randomUUID(), text });
+export async function sendMessage(botId: string, text: string, requestId: string = crypto.randomUUID()): Promise<void> {
+	await api["messages.submit"]({ botId, requestId, text });
 }
 
 export function connect(): () => void {

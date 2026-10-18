@@ -1,9 +1,9 @@
 # B21: Conversation Experience
 
-Status: in progress
+Status: in review
 Branch: task/b21-conversation-design
 Depends on: B13c, B19, B20
-Architecture: Sections 5.7, 8
+Architecture: Sections 5.7, 6.5, 7.1, 8
 Research: [D2: Grok Bot Interaction Research](d2-grok-ui-research.md)
 
 ## Goal
@@ -45,7 +45,7 @@ type SendAttempt = {
   text: string;
   recipientIds: readonly string[];
   draftRevision: number;
-  state: "pending" | "uncertain" | "failed";
+  state: "pending" | "uncertain";
 };
 ```
 
@@ -99,3 +99,25 @@ Drafts contain user text and must stay in the local desktop partition. Storage q
 ## Open questions
 
 None. The owner authorized implementation on 2026-10-18. Persistent draft and send-attempt recovery are part of this batch.
+
+## Implementation and verification
+
+Implemented in `apps/desktop` without Host, protocol or Pi changes. `ConversationUI` supplies the shared shell, responsive details, modal focus and scroll anchoring. `ChatComposer` supplies structured mentions and send recovery; `ComposerStore` persists local drafts and immutable attempts. Private chat remains direct; ordinary group messages continue through Core.
+
+Verified on macOS on 2026-10-18:
+
+| Acceptance | Evidence |
+| --- | --- |
+| 1. Navigation and identity | Existing Core/lifecycle e2e and new conversation-experience e2e cover the unique protected Core, both New choices, private chat and local name/role filtering with no model requests. |
+| 2. Draft and send recovery | Six store tests cover scoping, late acknowledgements, duplicate pending sends, immutable retry, restored pending state, storage failure/corruption and deletion races. Desktop restart e2e preserves drafts; a lost UI acknowledgement replays one request with one Host post/model call and retains a newer draft. |
+| 3. Mentions | Keyboard Enter/Tab/Escape, pointer selection, Chinese IME, stale-member blocking and explicit Core reset pass in e2e. |
+| 4. Reading | Private/group updates while reading history preserve scroll position; details resize and Jump to latest pass. Locale/restart and navigation preserve drafts. |
+| 5. Activity and control | Group regressions cover Core dispatch, ownership transfer, permission boundaries, recovery, approval visibility, root Stop and expanded individual Stop. Public results remain after completion. |
+| 6. Visuals and keyboard | Inspected English/Chinese screenshots in light/dark at 1440×900 and 880×700, including long names, horizontally scrolling code, details and dissolved-group drafts. Focus/Escape and reduced-motion media are exercised. Agent-browser exploration of the isolated desktop covered details, memory, group navigation and pointer mentions. |
+| 7. Full validation | `pnpm run check`: 229 tests across 37 files. Full background `pnpm run e2e`: 54 tests across 18 suites. |
+
+Real-model spot check used an isolated, hidden desktop with synthetic Bots/groups and a configured endpoint. Bot and group creation used the UI. A direct private message received its expected response. An ordinary group message went to Core, delegated 23 × 19 to Analyst, and returned 437 through a completed `user → peer → result` chain with two automatic deliveries. Explicit keyboard @Reviewer returned 42 in Chinese for 41 + 1. Private/group drafts survived navigation, language change and renderer restart; Prompt/memory and group details remained accessible. These observations validate one configured model, not every provider or packaged macOS permissions.
+
+Synthetic screenshots remain outside version control under `e2e/.run/conversation-experience/` and the temporary real-model acceptance directory. The isolated desktop was stopped and its copied model configuration removed after verification. No owner conversation data was used.
+
+Follow-ups remain separate: durable sidebar latest-message/unread projections, full-text search, transcript virtualization, artifacts, attachments and richer editing.

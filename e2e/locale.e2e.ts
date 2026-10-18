@@ -40,6 +40,7 @@ it("defaults to English, supports Chinese onboarding and persists language acros
 it("preserves user names, instructions and memory while switching languages", async () => {
  const page = h.page();
  await page.getByRole("button", { name: /^New/ }).click();
+ await page.getByRole("button", { name: /^Create new Bot/ }).click();
  await page.getByPlaceholder("Piper").fill("Cedar 研究");
  await page.getByPlaceholder("Piper").press("Enter");
  await page.getByRole("textbox", { name: "Message Cedar 研究" }).fill("Unsent draft 草稿");
