@@ -93,7 +93,9 @@ describe("coding tools", () => {
 		// The artifacts directory is readable without a grant, and only by local_read.
 		const continued = await run(exec, "local_read", { path, offset: Number(offset), limit: 2 });
 		expect(continued.status).toBe("succeeded");
-		expect(continued.output).toContain(`${String(offset).padStart(6)}\t${offset}\n${String(Number(offset) + 1).padStart(6)}\t${Number(offset) + 1}`);
+		expect(continued.output).toContain(
+			`${String(offset).padStart(6)}\t${offset}\n${String(Number(offset) + 1).padStart(6)}\t${Number(offset) + 1}`,
+		);
 		expect((await run(exec, "local_list", { path: artifacts })).output).toMatch(/^Access denied/);
 	});
 
@@ -174,6 +176,22 @@ describe("coding tools", () => {
 		const stopped = await run(exec, "task_output", { taskId: started.taskId, wait_seconds: 10 });
 		expect(stopped.output).toContain("stopped");
 		expect(groupAlive(pgid)).toBe(false);
+	});
+
+	it("stopping one Run preserves another Run's background command in the same conversation", async () => {
+		const exec = executor();
+		const first = await exec.invoke(
+			{ ...invocation("local_exec", { command: "sleep 30", description: "first", background: true }), runId: "first" },
+			() => {},
+		);
+		const second = await exec.invoke(
+			{ ...invocation("local_exec", { command: "sleep 30", description: "second", background: true }), runId: "second" },
+			() => {},
+		);
+		exec.stopTasks("conv", "second");
+		expect((await run(exec, "task_output", { taskId: second.taskId, wait_seconds: 10 })).output).toContain("stopped");
+		expect(groupAlive(taskGroup(first.taskId!))).toBe(true);
+		expect(groupAlive(taskGroup(second.taskId!))).toBe(false);
 	});
 
 	it("an executor restart kills a background task and reports it unknown", async () => {

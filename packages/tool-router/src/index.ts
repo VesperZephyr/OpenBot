@@ -16,6 +16,8 @@ import {
 } from "@openbot/protocol";
 
 export type ToolCall = {
+	readonly runId?: string;
+	readonly collaboration?: { readonly runId: string };
 	readonly authority?: import("@openbot/protocol").ManagementAuthority;
 	readonly botId: string;
 	readonly conversationId: string;
@@ -51,11 +53,7 @@ export interface ExecutorTransport {
 }
 
 /** `call` identifies the Bot and conversation, for handlers whose state is per Bot, such as memory. */
-export type HostToolHandler = (
-	args: Readonly<Record<string, unknown>>,
-	signal: AbortSignal,
-	call: ToolCall,
-) => Promise<ToolOutcome>;
+export type HostToolHandler = (args: Readonly<Record<string, unknown>>, signal: AbortSignal, call: ToolCall) => Promise<ToolOutcome>;
 
 export type ToolRouterOptions = {
 	readonly target: ExecutionTarget;
@@ -127,6 +125,7 @@ export class ToolRouter {
 		}
 		const grants = await this.#options.policy.grants(call, approvedOnce);
 		const invocation: ToolInvocation = {
+			...(call.runId ? { runId: call.runId } : {}),
 			invocationId: `${call.conversationId}:${call.callId}`,
 			botId: call.botId,
 			conversationId: call.conversationId,

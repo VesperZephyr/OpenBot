@@ -137,6 +137,7 @@ export async function createBot(harness: AppHarness, name: string): Promise<void
 		() => (document.querySelector(".settings-group select") as HTMLSelectElement | null)?.value === "scripted/scripted",
 	);
 	await page.getByRole("button", { name: /^New/ }).click();
+ await page.getByRole("button", { name: /^Create new Bot/ }).click();
 	await page.getByPlaceholder("Piper").fill(name);
 	await page.getByPlaceholder("Piper").press("Enter");
 	await page.getByRole("textbox", { name: `Message ${name}` }).waitFor();

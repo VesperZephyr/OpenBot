@@ -54,6 +54,7 @@ import { type PolicyStore, policyStore } from "./policy.ts";
 import { applyMemoryEdit, checkMemorySize, type MemoryEdit, MemoryDoc, MemoryReceiptDoc, memoryState } from "./memory.ts";
 import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
 import { botSections } from "./prompt.ts";
+import { groupStore, detachGroupBot } from "./groups.ts";
 import { ManagementDoc, managementStore } from "./management.ts";
 import { type RunStore, runStore, RunsDoc } from "./runs.ts";
 
@@ -120,6 +121,8 @@ const CoreDoc = defineDoc<{ coreBotId?: string }>({
  * same call and never becomes a second invocation.
  */
 export type ToolInvoker = (call: {
+	readonly runId?: string;
+	readonly collaboration?: { readonly runId: string };
 	readonly authority?: ManagementAuthority;
 	readonly botId: BotId;
 	readonly conversationId: string;
@@ -169,12 +172,11 @@ export type UpdateBotInput = {
 };
 
 export type SubmitResult =
-	| { readonly status: "answered"; readonly answer: readonly MessagePart[] }
-	| { readonly status: "unanswered"; readonly reason: string };
+	{ readonly status: "answered"; readonly answer: readonly MessagePart[] } | { readonly status: "unanswered"; readonly reason: string };
 
 export class BotRuntime {
 	readonly #harness: Harness;
-	readonly #extensions: { bot: Extension; core: Extension };
+	readonly #extensions: { bot: Extension; core: Extension; group: Extension };
 	readonly #models: MutableModels;
 	readonly #context: Context;
 	/** Built-in providers as registered at open, so a removed overlay restores the original. */
@@ -184,7 +186,12 @@ export class BotRuntime {
 	#coreBootstrap: Promise<BotProfile> | undefined;
 	readonly #history = new Map<number, { readonly head: number; readonly entries: readonly EntryRecord[] }>();
 
-	private constructor(harness: Harness, models: MutableModels, context: Context, extensions: { bot: Extension; core: Extension }) {
+	private constructor(
+		harness: Harness,
+		models: MutableModels,
+		context: Context,
+		extensions: { bot: Extension; core: Extension; group: Extension },
+	) {
 		this.#extensions = extensions;
 		this.#harness = harness;
 		this.#models = models;
@@ -202,7 +209,7 @@ export class BotRuntime {
 				options.tools === undefined
 					? []
 					: options.tools.definitions
-							.filter((d) => d.capability !== "bot.management")
+							.filter((d) => !d.capability.endsWith(".management") && d.capability !== "collaboration")
 							.map((definition) => routedTool(definition, options.tools!.invoke)),
 			sections: botSections(async (input, context) => {
 				const bots = (await input.read.snapshot(BotsDoc, context))?.bots ?? {};
@@ -216,9 +223,16 @@ export class BotRuntime {
 		const core = defineExtension({
 			name: CORE_EXTENSION,
 			tools: (options.tools?.definitions ?? [])
-				.filter((d) => d.capability === "bot.management")
+				.filter((d) => d.capability.endsWith(".management"))
 				.map((d) => routedTool(d, options.tools!.invoke)),
 		});
+		const group = defineExtension({
+			name: "openbot.group-collaboration",
+			tools: (options.tools?.definitions ?? [])
+				.filter((d) => d.capability === "collaboration")
+				.map((d) => routedTool(d, options.tools!.invoke)),
+		});
+		registry.install(group);
 		registry.install(bot);
 		registry.install(core);
 		const harness = await Harness.open(
@@ -239,7 +253,12 @@ export class BotRuntime {
 				});
 			}
 		}, context);
-		return new BotRuntime(harness, models, context, { bot, core });
+		await harness.commit(async (tx) => {
+			const channels = await tx.doc(ChannelsDoc);
+			for (const channel of Object.values(channels.channels))
+				await configure(tx, channel.conversationId as PiConversationId, { extensions: [bot, group] });
+		}, context);
+		return new BotRuntime(harness, models, context, { bot, core, group });
 	}
 
 	/** Start the scheduler so work interrupted by the last shutdown continues. Call after recovery checks pass. */
@@ -254,6 +273,10 @@ export class BotRuntime {
 	/** The durable approval records; Host code (the approval book) is their only writer. */
 	approvals(): ApprovalStore {
 		return approvalStore(this.#harness, this.#context);
+	}
+
+	groups() {
+		return groupStore(this.#harness, this.#context, async (tx) => Object.values((await tx.doc(BotsDoc)).bots).map(toProfile));
 	}
 
 	management() {
@@ -291,7 +314,7 @@ export class BotRuntime {
 			await configure(tx, conversation.id, {
 				...agentChange({ ...bot, ...((bot.model ?? defaultModel) ? { model: (bot.model ?? defaultModel)! } : {}) }),
 				instructions: revisionedInstructions(bot.instructions, bot.revision ?? 1),
-				extensions: [this.#extensions.bot],
+				extensions: [this.#extensions.bot, this.#extensions.group],
 			});
 			channels.channels[key] = { botId, channelId, conversationId: conversation.id };
 			return String(conversation.id);
@@ -440,6 +463,7 @@ export class BotRuntime {
 				}
 			}
 			doc.bots[botId] = updated;
+			if (updated.status === "deleted") await detachGroupBot(tx, botId);
 			const result = toProfile(updated);
 			await completeManagement(tx, proposal, result);
 			return result;
@@ -522,10 +546,25 @@ export class BotRuntime {
 		return { status: "answered", answer: answer === undefined ? [] : textParts(answer) };
 	}
 
-	/** Abort the Bot's work: withdraw queued inputs and abort the active run; resolves once the conversation is idle. */
-	async cancel(botId: BotId, channelId = "direct"): Promise<void> {
+	/** Read the exact answer of a settled delivery, even after later channel tasks have run. */
+	async submissionAnswer(botId: string, submissionId: string, channelId: string): Promise<string> {
+		const owned = await this.#ownedSubmission(botId, submissionId, channelId);
+		if (!owned) return "";
+		const settled = await owned.submission.wait(this.#context);
+		if (settled.type !== "input" || settled.status !== "done") return "";
 		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
-		await conversation.abort(this.#context);
+		const page = await conversation.entries({ minEntryId: settled.answer, maxEntryId: settled.answer }, 1, undefined, this.#context);
+		return page.items[0]
+			? textParts(page.items[0])
+					.map((p) => p.text)
+					.join("\n")
+			: "";
+	}
+
+	/** Abort channel work. Startup uses background mode to mark cancellation before the scheduler resumes. */
+	async cancel(botId: BotId, channelId = "direct", background = false): Promise<void> {
+		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
+		await conversation.abort(this.#context, { background });
 	}
 
 	/**
@@ -971,8 +1010,7 @@ function projectView(botId: BotId, view: ConversationView, earlier: readonly Ent
 	// Running tool slots carry live status and output until their result entry exists.
 	for (const slot of liveDoc?.tools ?? []) {
 		const item = items.find((entry): entry is MutableToolItem => entry.kind === "tool" && entry.id === slot.callId) as
-			| MutableToolItem
-			| undefined;
+			MutableToolItem | undefined;
 		if (
 			item === undefined ||
 			item.status === "succeeded" ||
@@ -1014,7 +1052,7 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 			if (!botId) throw new Error("No Bot owns this conversation");
 			const signal = context.abortSignal ?? new AbortController().signal;
 			let authority: ManagementAuthority | undefined;
-			if (definition.capability === "bot.management") {
+			if (definition.capability.endsWith(".management")) {
 				const saved = await api.memo<{ origin: "user"; runId: string } | null>("openbot.management-authority", context);
 				if (saved !== undefined) authority = saved ?? undefined;
 				else {
@@ -1027,7 +1065,29 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 						undefined;
 				}
 			}
+			let collaboration: { runId: string } | undefined;
+			if (definition.capability === "collaboration") {
+				const saved = await api.memo<{ runId: string } | null>("openbot.collaboration-authority", context);
+				if (saved !== undefined) collaboration = saved ?? undefined;
+				else {
+					const runs = Object.values((await api.snapshot(RunsDoc, context))?.runs ?? {});
+					const run = runs.find(
+						(r) => r.botId === botId && (r.channelId ?? "direct") === (channel?.channelId ?? "direct") && r.state === "running",
+					);
+					collaboration = (await api.memo("openbot.collaboration-authority", run ? { runId: run.runId } : null, context)) ?? undefined;
+				}
+			}
+			let runId = await api.memo<string | null>("openbot.run-id", context);
+			if (runId === undefined) {
+				const runs = Object.values((await api.snapshot(RunsDoc, context))?.runs ?? {});
+				const run = runs.find(
+					(r) => r.botId === botId && (r.channelId ?? "direct") === (channel?.channelId ?? "direct") && r.state === "running",
+				);
+				runId = await api.memo("openbot.run-id", run?.runId ?? null, context);
+			}
 			const outcome = await invoke({
+				...(runId ? { runId } : {}),
+				...(collaboration ? { collaboration } : {}),
 				...(authority === undefined ? {} : { authority }),
 				botId,
 				conversationId: String(api.conversationId),

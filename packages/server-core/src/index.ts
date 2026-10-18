@@ -5,6 +5,7 @@
 import { randomUUID } from "node:crypto";
 import type { BotRuntime, ConfigEnvironment, ModelConfigStatus } from "@openbot/agent-runtime";
 import type { ApprovalBook } from "./approvals.ts";
+import { Groups } from "./groups.ts";
 import { BotManagement, type ManagementCall } from "./bot-management.ts";
 import { PolicyService } from "./policy-service.ts";
 import type { Timers } from "./coalescer.ts";
@@ -75,8 +76,8 @@ export type HostServiceOptions = {
 	 * when observation starts.
 	 */
 	readonly toolSettled?: (botId: BotId, callId: string, conversationId?: string) => void;
-	/** Runs when the user stops a Bot's work; the Host stops the background commands its conversation started. */
-	readonly conversationStopped?: (botId: BotId, channelId?: string) => void;
+	/** Stops background commands for a Run, or the full conversation for lifecycle changes. */
+	readonly conversationStopped?: (botId: BotId, channelId?: string, runId?: string) => void;
 	/** The shared folder every Bot may use without asking. */
 	readonly workspace: string;
 	readonly emit: EventSink;
@@ -91,6 +92,7 @@ type Handlers = { [M in HostMethod]: (params: HostParams<M>) => Promise<HostResu
 
 export class HostService {
 	readonly management: BotManagement;
+	readonly groups: Groups;
 	#botChanges: Promise<unknown> = Promise.resolve();
 	readonly #audit: (event: OperationAudit) => void;
 	#configWrites: Promise<unknown> = Promise.resolve();
@@ -101,7 +103,7 @@ export class HostService {
 	readonly #modelConfig: ModelConfigFile;
 	readonly #approvals: ApprovalBook;
 	readonly #toolSettled: (botId: BotId, callId: string, conversationId?: string) => void;
-	readonly #conversationStopped: (botId: BotId, channelId?: string) => void;
+	readonly #conversationStopped: (botId: BotId, channelId?: string, runId?: string) => void;
 	readonly #workspace: string;
 	readonly #emit: EventSink;
 	readonly #now: () => number;
@@ -133,7 +135,17 @@ export class HostService {
 			maxActiveRuns: options.maxActiveRuns ?? DEFAULT_MAX_ACTIVE_RUNS,
 			changed: (botId) => this.#republish(botId),
 			now: this.#now,
-			stopping: (botId, channelId) => this.#conversationStopped(botId, channelId),
+			stopping: (botId, channelId, runId) => this.#conversationStopped(botId, channelId, runId),
+			admissible: (run) => this.groups.admissible(run),
+		});
+		this.groups = new Groups({
+			runtime: this.#runtime,
+			authority: this.management,
+			runs: this.#runs,
+			approvals: this.#approvals,
+			changed: () => this.#emit({ type: "groups.changed", payload: {} }),
+			settled: this.#toolSettled,
+			stopping: (botId, channelId, runId) => this.#conversationStopped(botId, channelId, runId),
 		});
 		this.#policy = new PolicyService({ runtime: this.#runtime, approvals: this.#approvals, workspace: this.#workspace, now: this.#now });
 		this.#feed = new ConversationFeed({
@@ -142,6 +154,11 @@ export class HostService {
 			...(options.coalesce?.timers === undefined ? {} : { timers: options.coalesce.timers }),
 		});
 		this.#handlers = {
+			"collaboration.stop": ({ rootId }) => this.groups.stopTree(rootId),
+			"groups.list": () => this.#runtime.groups().list(),
+			"groups.snapshot": ({ groupId }) => this.groups.snapshot(groupId),
+			"groups.change": (change) => this.groups.change(change),
+			"groups.send": ({ groupId, requestId, text, recipientIds }) => this.groups.send(groupId, requestId, text, recipientIds),
 			"host.status": async () => this.#status,
 			"bots.list": () => this.#listBots(),
 			"bots.management.history": () => this.management.history(),
@@ -302,10 +319,12 @@ export class HostService {
 		await this.#approvals.start(this.#runtime.approvals());
 		for (const bot of await this.#runtime.listBots()) if (bot.status !== "deleted") await this.#observe(bot.botId);
 		await this.#runs.start();
+		await this.groups.start();
 	}
 
 	/** Call before the runtime closes: the shutdown aborts waiting calls, and their approvals must stay pending. */
 	async stop(): Promise<void> {
+		await this.groups.stop();
 		this.#approvals.close();
 		this.#runs.stop();
 		this.#feed.stop();
@@ -320,7 +339,15 @@ export class HostService {
 		const at = this.#now();
 		let outcome: "succeeded" | "failed" = "failed";
 		try {
-			const result = await (["bots.create", "bots.update", "bots.duplicate", "bots.delete", "messages.submit"].includes(method)
+			const result = await ([
+				"bots.create",
+				"bots.update",
+				"bots.duplicate",
+				"bots.delete",
+				"messages.submit",
+				"groups.change",
+				"groups.send",
+			].includes(method)
 				? this.#serializeBots(() => handler(params))
 				: handler(params));
 			outcome = method === "models.test" && (result as { ok?: boolean }).ok === false ? "failed" : "succeeded";
@@ -330,9 +357,14 @@ export class HostService {
 				!method.endsWith(".get") &&
 				!method.endsWith(".list") &&
 				!method.endsWith(".history") &&
-				!["host.status", "conversations.snapshot", "conversations.subscribe", "conversations.markRead", "files.resolveReveal"].includes(
-					method,
-				)
+				![
+					"host.status",
+					"groups.snapshot",
+					"conversations.snapshot",
+					"conversations.subscribe",
+					"conversations.markRead",
+					"files.resolveReveal",
+				].includes(method)
 			) {
 				try {
 					this.#audit({ operationId: randomUUID(), operation: method, at, durationMs: this.#now() - at, outcome });
@@ -347,6 +379,10 @@ export class HostService {
 		const result = this.#botChanges.then(work);
 		this.#botChanges = result.catch(() => {});
 		return result;
+	}
+
+	async manageGroups(call: ManagementCall) {
+		return this.#serializeBots(() => this.groups.manage(call));
 	}
 
 	async manageBots(call: ManagementCall): Promise<{ status: "succeeded" | "failed"; output: string }> {
@@ -418,11 +454,11 @@ export class HostService {
 			});
 	}
 
- async #stopBot(botId: BotId): Promise<void> {
- await this.#runs.cancelMatching(run => run.botId === botId);
- this.#conversationStopped(botId);
- for (const channel of await this.#runtime.channels()) if (channel.botId === botId) this.#conversationStopped(botId, channel.channelId);
- }
+	async #stopBot(botId: BotId): Promise<void> {
+		await this.#runs.cancelMatching((run) => run.botId === botId);
+		this.#conversationStopped(botId);
+		for (const channel of await this.#runtime.channels()) if (channel.botId === botId) this.#conversationStopped(botId, channel.channelId);
+	}
 
 	/** A Bot the user can still see; a deleted one is unknown to every method that acts on it. */
 	async #liveBot(botId: BotId): Promise<BotProfile> {
@@ -524,6 +560,7 @@ export class HostService {
 		for (const item of snapshot.items) {
 			if (item.kind !== "tool" || item.status === "pending" || item.status === "running" || state.settled.has(item.id)) continue;
 			state.settled.add(item.id);
+			if (item.tool.startsWith("group_")) void this.groups.settled(botId, item.id, item.status).catch(() => {});
 			if (["bot_create", "bot_update", "bot_delete"].includes(item.tool))
 				void this.management.settled(botId, item.id, item.status).catch(() => {});
 			this.#toolSettled(botId, item.id, snapshot.conversationId);

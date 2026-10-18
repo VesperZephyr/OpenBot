@@ -103,9 +103,9 @@ export class LocalExecutor {
 		this.#running.get(invocationId)?.abort.abort();
 	}
 
-	/** The conversation's work was stopped: stop the background tasks it started. */
-	stopTasks(conversationId: string): void {
-		this.#tasks.stopConversation(conversationId);
+	/** Stop background commands for one Run, or the whole conversation when no Run is specified. */
+	stopTasks(conversationId: string, runId?: string): void {
+		this.#tasks.stopConversation(conversationId, runId);
 	}
 
 	/** Cancel everything this process runs, for shutdown: no command outlives the executor that started it. */

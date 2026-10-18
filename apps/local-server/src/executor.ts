@@ -61,9 +61,9 @@ export class ExecutorProcess implements ExecutorTransport {
 		this.#send({ kind: "result.ack", invocationId });
 	}
 
-	/** The conversation's work was stopped: the executor stops the background commands it started. */
-	stopTasks(conversationId: string): void {
-		this.#send({ kind: "tasks.stop", conversationId });
+	/** Stop background commands for one Run, or the whole conversation when no Run is specified. */
+	stopTasks(conversationId: string, runId?: string): void {
+		this.#send({ kind: "tasks.stop", conversationId, ...(runId ? { runId } : {}) });
 	}
 
 	/** Read-only receipt lookup, for diagnostics. */
@@ -120,7 +120,10 @@ export class ExecutorProcess implements ExecutorTransport {
 			// An invocation the executor accepted but did not answer may have had an effect.
 			for (const [invocationId, pending] of this.#pending) {
 				this.#pending.delete(invocationId);
-				pending.resolve({ status: "unknown", output: "The local executor stopped before reporting a result; the action may have partly run" });
+				pending.resolve({
+					status: "unknown",
+					output: "The local executor stopped before reporting a result; the action may have partly run",
+				});
 			}
 			for (const [invocationId, waiters] of this.#statusWaiters) {
 				this.#statusWaiters.delete(invocationId);

@@ -12,11 +12,13 @@ import {
 import type { Decision } from "./approvals.ts";
 
 export type ManagementCall = {
+	readonly runId?: string;
 	readonly botId: string;
 	readonly conversationId: string;
 	readonly callId: string;
 	readonly tool: string;
 	readonly args: Readonly<Record<string, unknown>>;
+	readonly collaboration?: { readonly runId: string };
 	readonly authority?: ManagementAuthority;
 	readonly signal: AbortSignal;
 };

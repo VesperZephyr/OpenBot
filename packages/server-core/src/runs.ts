@@ -24,7 +24,7 @@ export type RunSchedulerOptions = {
 	readonly changed: (botId: BotId) => void;
 	readonly now: () => number;
 	/** Runs right before a running Run's conversation is aborted, so work it left in the background stops too. */
-	readonly stopping?: (botId: BotId, channelId?: string) => void;
+	readonly stopping?: (botId: BotId, channelId?: string, runId?: string) => void;
 	readonly admissible?: (run: StoredRun) => Promise<boolean>;
 };
 
@@ -38,7 +38,7 @@ export class RunScheduler {
 	readonly #cap: number;
 	readonly #changed: (botId: BotId) => void;
 	readonly #now: () => number;
-	readonly #stopping: (botId: BotId, channelId?: string) => void;
+	readonly #stopping: (botId: BotId, channelId?: string, runId?: string) => void;
 	readonly #admissible: (run: StoredRun) => Promise<boolean>;
 	/** Current Runs by ID: every non-terminal Run, and terminal ones looked up since start. */
 	readonly #runs = new Map<RunId, StoredRun>();
@@ -76,7 +76,13 @@ export class RunScheduler {
 				this.#runs.set(run.runId, run);
 				const latest = this.#latest.get(run.botId);
 				if (latest === undefined || latest.createdAt <= run.createdAt) this.#latest.set(run.botId, run);
-				if (run.state === "running") await this.#submitInputs(run);
+				if (!(await this.#admissible(run))) {
+					if (run.state === "running") {
+						this.#stopping(run.botId, run.channelId, run.runId);
+						await this.#runtime.cancel(run.botId, run.channelId, true);
+					}
+					await this.#put({ ...run, state: "cancelled", endedAt: this.#now() });
+				} else if (run.state === "running") await this.#submitInputs(run);
 			}
 			await this.#admit();
 		});
@@ -175,7 +181,7 @@ export class RunScheduler {
 		});
 		if ("state" in target) return target.state;
 		// Outside the line: the abort waits for Pi to settle the inputs, whose handling needs the line.
-		this.#stopping(target.abort, target.channelId);
+		this.#stopping(target.abort, target.channelId, runId);
 		await this.#runtime.cancel(target.abort, target.channelId);
 		return target.ended;
 	}

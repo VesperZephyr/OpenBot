@@ -127,10 +127,10 @@ const service = new HostService({
 		})().catch((error: unknown) => console.error("Could not settle a tool call", error));
 	},
 	// Stop also ends the background commands the conversation started; they are no longer any Pi call's.
-	conversationStopped: (botId, channelId) => {
+	conversationStopped: (botId, channelId, runId) => {
 		void runtime
 			.conversationKey(botId, channelId)
-			.then((conversationId) => executor.stopTasks(conversationId))
+			.then((conversationId) => executor.stopTasks(conversationId, runId))
 			.catch((error: unknown) => console.error("Could not stop background commands", error));
 	},
 });

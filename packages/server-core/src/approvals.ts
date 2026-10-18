@@ -176,7 +176,13 @@ export class ApprovalBook {
 	 */
 	async settled(botId: BotId, callId: string, conversationId?: string): Promise<void> {
 		for (const [approvalId, { record }] of this.#entries) {
-			if (record.botId !== botId || record.callId !== callId || (conversationId !== undefined && (record.conversationId ?? record.approvalId.split(":")[1]) !== conversationId) || record.decision === undefined) continue;
+			if (
+				record.botId !== botId ||
+				record.callId !== callId ||
+				(conversationId !== undefined && (record.conversationId ?? record.approvalId.split(":")[1]) !== conversationId) ||
+				record.decision === undefined
+			)
+				continue;
 			this.#entries.delete(approvalId);
 			if (!this.#closed) await this.#requireStore().put({ ...record, state: "consumed" });
 			return;
@@ -185,7 +191,12 @@ export class ApprovalBook {
 
 	forBot(botId: BotId, conversationId?: string): PendingApproval[] {
 		return [...this.#entries.values()]
-			.filter((entry) => entry.record.state === "pending" && entry.record.botId === botId && (conversationId === undefined || (entry.record.conversationId ?? entry.record.approvalId.split(":")[1]) === conversationId))
+			.filter(
+				(entry) =>
+					entry.record.state === "pending" &&
+					entry.record.botId === botId &&
+					(conversationId === undefined || (entry.record.conversationId ?? entry.record.approvalId.split(":")[1]) === conversationId),
+			)
 			.map(({ record: { state: _state, decision: _decision, decidedAt: _decidedAt, ...approval } }) => approval)
 			.sort((a, b) => a.createdAt - b.createdAt);
 	}
@@ -257,6 +268,10 @@ export function decide(call: PolicyCall, definition: ToolDefinition, policy: Pol
 				alwaysAllowOptions: folderOptions(canonical, call.tool === "local_list", access),
 			};
 		}
+		case "collaboration":
+   return {kind:"deny",reason:"Collaboration requires assigned task authority"};
+		case "group.management":
+			return { kind: "deny", reason: "Group management requires Core authorization" };
 		case "bot.management":
 			return { kind: "ask", reason: "Review this Bot change" };
 		case "web":
