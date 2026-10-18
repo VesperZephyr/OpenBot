@@ -833,6 +833,12 @@ Permissions, policy, and execution records are part of M1 from the start. Use Pi
 
 The Pi source baseline and interfaces above were checked against upstream revision `b45e0ebcc` in a local checkout on 2026-10-14. Tool permissions, browser and macOS integration, crash recovery, real-model behavior, and packaged distribution remain implementation and acceptance work.
 
+### Local usage evidence (B13d)
+
+Desktop-only `usage.get({ botId, limit? })` projects a live Bot's Pi model usage and at most 50 recent Runs through the agent-runtime adapter. Model-facing application capabilities are unchanged. A local version-1 `openbot.usage-evidence` document records cumulative-counter baselines atomically with Run admission and freezes their deltas atomically with terminal settlement. Replays do not re-add usage; compaction is already included in Pi's model ledger, and tool/Code Mode child buckets are not added again. Per-Bot token totals include older retained conversation data even after recent Run details are pruned.
+
+Estimates use recorded Pi cost counters only with known admission-time rates and an unchanged pricing epoch. Configured providers require explicitly complete nonnegative rates, including explicit tiers where applicable. Legacy/unattributed or active intervals spanning a configuration change/restart show unavailable prices. Completed estimates remain frozen; these figures are not provider billing reconciliation. Provider/model identifiers and source class may be shown locally; endpoints, credentials, prompts and tool content are excluded from the usage payload and operation audit. Private timeline links and published group result links reuse existing navigation; reading the projection does not advance a read cursor.
+
 ### Local privacy and operation diagnostics
 
 Product stores, transcripts, memory, configuration and diagnostics stay on the Mac. There is no automatic analytics or log upload. Configured model and search services receive task-relevant inputs; local storage does not imply offline inference. Credentials stay in Keychain or explicitly configured local credential sources. B16 adds allowlisted operation diagnostics (generated ID, method, time, duration, outcome) to the bounded local Host log, excluding inputs, outputs, Prompt, memory and credential material. Authoritative Runs, approvals and execution receipts remain separate durable records.

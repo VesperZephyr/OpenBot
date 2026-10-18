@@ -2,6 +2,7 @@
  * Durable Run records (Section 7.2), stored as a session document next to Pi's own state so a Run and the Pi
  * submissions it maps to survive a restart together. Scheduling lives in `server-core`; this module only stores.
  */
+import { captureUsage, pruneUsage, type UsageCapture } from "./usage.ts";
 import type { Context } from "@earendil-works/chord/context";
 import { defineDoc, type Harness } from "@earendil-works/pi-durable";
 import type { BotId, RunRecord } from "@openbot/protocol";
@@ -59,7 +60,7 @@ const TERMINAL: Record<RunRecord["state"], boolean> = {
 /** Completed, failed, and cancelled Runs never change again. */
 export const isTerminal = (state: RunRecord["state"]): boolean => TERMINAL[state];
 
-export function runStore(harness: Harness, context: Context): RunStore {
+export function runStore(harness: Harness, context: Context, capture?: (run: StoredRun) => Promise<UsageCapture | undefined>): RunStore {
 	return {
 		async get(runId) {
 			return (await harness.snapshot(RunsDoc, context))?.runs[runId];
@@ -67,10 +68,15 @@ export function runStore(harness: Harness, context: Context): RunStore {
 		async put(run) {
 			// Drafts accept only strict JSON: drop undefined optional fields.
 			const value = JSON.parse(JSON.stringify(run)) as Stored<StoredRun>;
+			const usage = await capture?.(run);
 			await harness.commit(async (tx) => {
 				const doc = await tx.doc(RunsDoc);
+				await captureUsage(tx, run, doc.runs[run.runId], usage);
 				doc.runs[run.runId] = value;
-				if (isTerminal(run.state)) prune(doc.runs, run.botId);
+				if (isTerminal(run.state)) {
+					prune(doc.runs, run.botId);
+					await pruneUsage(tx, new Set(Object.keys(doc.runs)));
+				}
 			}, context);
 		},
 		async list() {

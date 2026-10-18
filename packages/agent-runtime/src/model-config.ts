@@ -130,7 +130,11 @@ export type ModelConfigStatus = {
 	readonly errors: readonly string[];
 };
 
-export type ModelConfigBuild = { readonly providers: readonly Provider[]; readonly status: ModelConfigStatus };
+export type ModelConfigBuild = {
+	readonly pricing?: Readonly<Record<string, boolean>>;
+	readonly providers: readonly Provider[];
+	readonly status: ModelConfigStatus;
+};
 
 export type ModelConfigOptions = {
 	readonly environment: ConfigEnvironment;
@@ -157,11 +161,10 @@ export function buildConfiguredProviders(text: string | undefined, options: Mode
 		return failed(...(errors.length > 0 ? errors : ["Invalid configuration"]));
 	}
 
-	const catalog = [...options.builtins.values()].flatMap((provider) =>
-		provider.getModels().filter((model) => isModelType(model, "chat")),
-	);
+	const catalog = [...options.builtins.values()].flatMap((provider) => provider.getModels().filter((model) => isModelType(model, "chat")));
 	const providers: Provider[] = [];
 	const statuses: ConfiguredProviderStatus[] = [];
+	const pricing: Record<string, boolean> = Object.create(null);
 	const errors: string[] = [];
 	for (const [providerId, config] of Object.entries(parsed.providers)) {
 		try {
@@ -171,32 +174,37 @@ export function buildConfiguredProviders(text: string | undefined, options: Mode
 					? newProvider(providerId, config, catalog, options.environment)
 					: overlayProvider(base, config, options.environment);
 			providers.push(provider);
+			for (const model of provider.getModels()) {
+				const supplied = { ...config.models?.find((item) => item.id === model.id)?.cost, ...config.modelOverrides?.[model.id]?.cost };
+				pricing[`${providerId}/${model.id}`] =
+					(!model.cost.tiers?.length || supplied.tiers !== undefined) &&
+					[supplied, ...(supplied.tiers ?? [])].every((rates) =>
+						["input", "output", "cacheRead", "cacheWrite"].every((key) => {
+							const n = rates[key as keyof typeof rates];
+							return typeof n === "number" && Number.isFinite(n) && n >= 0;
+						}),
+					);
+			}
 			statuses.push({
 				providerId,
 				name: provider.name,
 				overlay: base !== undefined,
 				keyConfigured: config.apiKey !== undefined,
 				keyAvailable:
-					config.apiKey === undefined ||
-					referencedVariables(config.apiKey).every((name) => options.environment.env(name) !== undefined),
+					config.apiKey === undefined || referencedVariables(config.apiKey).every((name) => options.environment.env(name) !== undefined),
 			});
 		} catch (error) {
 			errors.push(`providers.${providerId}: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
-	return { providers, status: { providers: statuses, errors } };
+	return { providers, pricing, status: { providers: statuses, errors } };
 }
 
 function failed(...errors: string[]): ModelConfigBuild {
 	return { providers: [], status: { providers: [], errors } };
 }
 
-function newProvider(
-	providerId: string,
-	config: ProviderConfig,
-	catalog: readonly Model<Api>[],
-	environment: ConfigEnvironment,
-): Provider {
+function newProvider(providerId: string, config: ProviderConfig, catalog: readonly Model<Api>[], environment: ConfigEnvironment): Provider {
 	const definitions = config.models ?? [];
 	if (definitions.length === 0) throw new Error(`list at least one model in "models"`);
 	const models = definitions.map((definition) => {
@@ -243,8 +251,7 @@ function overlayProvider(base: Provider, config: ProviderConfig, environment: Co
 	}
 	const patched = models.map((model) => applyOverride(model, config.modelOverrides?.[model.id]));
 	const baseApis = new Set(baseModels.map((model) => model.api));
-	const streamFor = (model: Model<Api>) =>
-		baseApis.has(model.api) ? base : STREAMS[model.api as keyof typeof STREAMS];
+	const streamFor = (model: Model<Api>) => (baseApis.has(model.api) ? base : STREAMS[model.api as keyof typeof STREAMS]);
 	// The built-in's dynamic catalog would replace the configured list, so an overlaid provider is static.
 	const { refreshModels: _dynamicCatalog, ...builtin } = base;
 	return {
@@ -261,10 +268,7 @@ function overlayProvider(base: Provider, config: ProviderConfig, environment: Co
 
 /** The catalog model a definition inherits omitted fields from: same ID and API first, then same ID. */
 function findDefaults(catalog: readonly Model<Api>[], id: string, api: string | undefined): Model<Api> | undefined {
-	return (
-		catalog.find((model) => model.id === id && (api === undefined || model.api === api)) ??
-		catalog.find((model) => model.id === id)
-	);
+	return catalog.find((model) => model.id === id && (api === undefined || model.api === api)) ?? catalog.find((model) => model.id === id);
 }
 
 /**
@@ -332,11 +336,7 @@ function mergedCompat(base: Model<Api>["compat"], extra: object | undefined): { 
  * own sources (its environment variables). Configured headers apply to every resolution, and `authHeader` also sends
  * the key as `Authorization: Bearer`.
  */
-function configuredKeyAuth(
-	config: ProviderConfig,
-	environment: ConfigEnvironment,
-	inherited: ApiKeyAuth | undefined,
-): ApiKeyAuth {
+function configuredKeyAuth(config: ProviderConfig, environment: ConfigEnvironment, inherited: ApiKeyAuth | undefined): ApiKeyAuth {
 	const rawKey = config.apiKey;
 	const withConfigured = async (result: AuthResult | undefined): Promise<AuthResult | undefined> => {
 		if (result === undefined) return undefined;
@@ -488,9 +488,7 @@ function describeValidationError(error: TLocalizedValidationError): string[] {
 				(name) => `${at(name)}: unknown property`,
 			);
 		case "required":
-			return ((error.params as { requiredProperties?: string[] }).requiredProperties ?? []).map(
-				(name) => `${at(name)}: required`,
-			);
+			return ((error.params as { requiredProperties?: string[] }).requiredProperties ?? []).map((name) => `${at(name)}: required`);
 		case "enum": {
 			const allowed = (error.params as { allowedValues?: unknown[] }).allowedValues ?? [];
 			return [`${at()}: must be one of ${allowed.map((value) => JSON.stringify(value)).join(", ")}`];

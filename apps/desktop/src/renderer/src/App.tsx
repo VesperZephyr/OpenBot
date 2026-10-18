@@ -1,3 +1,4 @@
+import { UsagePanel } from "./UsagePanel";
 import { appManagementCapability, legacyManagementName, type AppExecution } from "@openbot/protocol";
 import { ConversationSearch } from "./ConversationSearch";
 import { ChatComposer } from "./ChatComposer";
@@ -369,6 +370,7 @@ function Conversation({ botId }: { readonly botId: string }) {
 			details={
 				editing && (
 					<DetailsPanel title={t("Conversation details")} onClose={() => setEditing(false)}>
+						<UsagePanel botId={botId} onNavigate={() => setEditing(false)} />
 						<EditProfile bot={bot} onClose={() => setEditing(false)} />
 					</DetailsPanel>
 				)
@@ -591,7 +593,7 @@ function ToolCard({
 						: t(done);
 	const open = waiting || item.status === "failed" || item.status === "interrupted";
 	return (
-		<li className={`tool-card tool-${waiting ? "waiting" : item.status}`}>
+		<li data-message-id={item.id} className={`tool-card tool-${waiting ? "waiting" : item.status}`}>
 			<details open={open}>
 				<summary>
 					<span className="tool-status" aria-hidden />

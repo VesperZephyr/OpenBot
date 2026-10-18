@@ -22,6 +22,7 @@ export const RENDERER_METHODS = [
 	"messages.submit",
 	"runs.cancel",
 	"approvals.decide",
+	"usage.get",
 	"settings.get",
 	"settings.update",
 	"models.list",

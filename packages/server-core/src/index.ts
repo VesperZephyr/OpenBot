@@ -214,6 +214,7 @@ export class HostService {
 				if (typeof decision !== "string") await this.#policy.reevaluate();
 				return null;
 			},
+			"usage.get": ({botId,limit}) => this.#runtime.usage(botId,limit),
 			"settings.get": () => this.#settings(),
 			"settings.update": async ({ defaultModel, setupComplete, language }) => {
 				if (language !== undefined) await this.#runtime.setLanguage(language);

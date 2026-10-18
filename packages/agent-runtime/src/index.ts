@@ -62,6 +62,8 @@ import { ConversationSearchIndex, normalizeQuery } from "./conversation-search.t
 import { conversationIndexStore, projectConversation, directMessages } from "./conversation-index.ts";
 import { groupStore, detachGroupBot } from "./groups.ts";
 import { ManagementDoc, managementStore } from "./management.ts";
+import type { PriceStamp } from "./usage.ts";
+import { readUsage } from "./usage-read.ts";
 import { type RunStore, runStore, RunsDoc } from "./runs.ts";
 
 /** The OpenBot extension every conversation selects: prompt sections, and routed tools when the Host passes them. */
@@ -177,6 +179,8 @@ export class BotRuntime {
 	/** Built-in providers as registered at open, so a removed overlay restores the original. */
 	readonly #builtins: ReadonlyMap<string, Provider>;
 	#configuredIds: readonly string[] = [];
+	#pricing: Readonly<Record<string, boolean>> = {};
+	#usageEpoch = randomUUID();
 	readonly #search = new ConversationSearchIndex();
 	#coreBootstrap: Promise<BotProfile> | undefined;
 	/** Stored entries before each conversation's current head marker; entries are immutable, so one read per head. */
@@ -501,6 +505,7 @@ export class BotRuntime {
 	}
 
 	async updateBot(botId: BotId, change: UpdateBotInput, proposal?: BotManagementProposal): Promise<BotProfile> {
+		if (change.model !== undefined) this.#usageEpoch = randomUUID();
 		const defaultModel = await this.defaultModel();
 		return this.#harness.commit(async (tx) => {
 			const receipt = await committedManagement(tx, proposal);
@@ -596,8 +601,29 @@ export class BotRuntime {
 
 	/** Durable Run records; scheduling is the Host's job. */
 	runsStore(): RunStore {
-		return runStore(this.#harness, this.#context);
+		return runStore(this.#harness, this.#context, async run => {
+            const bot = await this.#record(run.botId); if (!bot) return undefined;
+            const record = await this.#contextRecord(run.botId, run.channelId);
+            return { conversationId: record.conversationId, stamp: this.#priceStamp(bot.model ?? await this.defaultModel()) };
+        });
 	}
+
+    #priceStamp(ref: ModelRef | undefined): PriceStamp {
+        const model = ref && this.#models.getModel(ref.provider, ref.modelId);
+        const modelKey = ref ? `${ref.provider}/${ref.modelId}` : "";
+        const configured = !!ref && this.#configuredIds.includes(ref.provider);
+        const rates = model ? [model.cost, ...(model.cost.tiers ?? [])] : [];
+        const priced = configured ? this.#pricing[modelKey] === true : !!model && rates.every(rate => [rate.input,rate.output,rate.cacheRead,rate.cacheWrite].every(n => Number.isFinite(n) && n >= 0)) && rates.some(rate => [rate.input,rate.output,rate.cacheRead,rate.cacheWrite].some(n => n > 0));
+        return { epoch: this.#usageEpoch, modelKey, source: configured ? "configured" : model ? "builtin" : "unknown", priced };
+    }
+
+    async usage(botId: string, limit = 10): Promise<import("@openbot/protocol").BotUsage> {
+        if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new ProtocolError("invalid_request", "Invalid usage limit");
+        const bot = await this.#requireRecord(botId);
+        if (bot.status === "deleted") throw new ProtocolError("not_found", "Bot is unavailable");
+        const ids = [...new Set([bot.conversationId, ...(await this.channels()).filter(c => c.botId === botId).map(c => c.conversationId)])];
+        return readUsage(this.#harness,this.#context,botId,ids,limit,this.#usageEpoch);
+    }
 
 	async #ownedSubmission(botId: BotId, submissionId: string, channelId = "direct") {
 		const record = await this.#contextRecord(botId, channelId);
@@ -850,7 +876,7 @@ export class BotRuntime {
 	 * removed or restored. Takes effect from the next model request.
 	 */
 	reloadConfiguredProviders(text: string | undefined, environment: ConfigEnvironment): ModelConfigStatus {
-		const { providers, status } = buildConfiguredProviders(text, { environment, builtins: this.#builtins });
+		const { providers, status, pricing } = buildConfiguredProviders(text, { environment, builtins: this.#builtins });
 		for (const providerId of this.#configuredIds) {
 			const builtin = this.#builtins.get(providerId);
 			if (builtin === undefined) this.#models.deleteProvider(providerId);
@@ -858,6 +884,8 @@ export class BotRuntime {
 		}
 		for (const provider of providers) this.#models.setProvider(provider);
 		this.#configuredIds = providers.map((provider) => provider.id);
+		this.#pricing = pricing ?? {};
+		this.#usageEpoch = randomUUID();
 		return status;
 	}
 
@@ -870,6 +898,7 @@ export class BotRuntime {
 	 * reconfigured so the change applies from their next request.
 	 */
 	async setDefaultModel(model: ModelRef | null): Promise<void> {
+		this.#usageEpoch = randomUUID();
 		await this.#harness.commit(async (tx) => {
 			const doc = await tx.doc(SettingsDoc);
 			if (model === null) delete doc.defaultModel;

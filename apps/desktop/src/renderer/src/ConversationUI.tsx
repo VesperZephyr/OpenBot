@@ -177,6 +177,11 @@ export function Timeline({
 		state.current.following = false;
 		if (!el || !row) { setMissing(true); return; }
 		setMissing(false);
+        // Evidence links may target a tool inside a folded step group.
+        for (let parent = row.parentElement; parent && parent !== el; parent = parent.parentElement)
+            if (parent instanceof HTMLDetailsElement) parent.open = true;
+        const detail = row.classList.contains("tool-card") ? row.querySelector("details") : undefined;
+        if (detail) detail.open = true;
 		row.classList.add("search-target");
 		if (located.current === target.nonce) return () => { row.classList.remove("search-target"); };
 		el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - el.clientHeight / 3;

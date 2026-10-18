@@ -80,7 +80,7 @@ Architecture M3 (managed browser, takeover, secret requests), M6 (desktop comput
 - [B13a: Channel contexts](tasks/b13a-channel-contexts.md): merged in PR #13; shared Bot identity with isolated channel context, scoped lifecycle and durable Run mapping. B13b supplies group UX.
 - [B13b: Group lifecycle](tasks/b13b-group-lifecycle.md): implemented, awaiting review; local group records, exact Core approvals, participant-only group contexts, durable delivery/recovery and bilingual desktop controls.
 - [B13c: Bounded collaboration](tasks/b13c-collaboration.md): implemented, awaiting review; Core-default group entry, explicit @, delegate/transfer/result receipts, two-hop/twelve-delivery limits, tree cancellation, local state and bilingual UI. 223 unit tests and 49 background e2e; isolated real-model collaboration and recovery.
-- Remaining B13 work: Bot templates and usage. Cross-group/direct-chat peer dispatch, selective memory transfer and full data purge require separate specs; agent execution continues to reuse Pi.
+- Remaining B13 work: Bot templates. B13d usage evidence is implemented in its independent review branch. Cross-group/direct-chat peer dispatch, selective memory transfer and full data purge require separate specs; agent execution continues to reuse Pi.
 - [D2: Grok UI research](tasks/d2-grok-ui-research.md): complete, including installed 0.71.2 client inspection.
 - [B21: Conversation experience](tasks/b21-conversation-experience.md): merged in PR #17; shared private/group shell, contextual details, local filtering/New, durable local drafts and send recovery, keyboard mentions, scroll preservation and compact task activity. English/Chinese; 229 unit tests and 54 background e2e; isolated real-model private chat, Core delegation/result return and explicit @.
 - [B22: Conversation list previews and unread state](tasks/b22-conversation-list.md): implemented, awaiting review; 234 unit tests and 59 background e2e; isolated real-model private/group replies and full restart verification; local Host index, snapshot-bound durable read cursors, bilingual previews/time/counts, draft/activity precedence and recency within protected Core/pinned sections.
@@ -96,3 +96,7 @@ Owner-requested architecture increment: expose selected current application capa
 3. [B26: Code Mode management](tasks/b26-code-mode-management.md) — done, in review in PR #27 targeting `main`; eight direct-Core management aliases, exact nested approvals, transactional receipt checks, failure latching, expiry and bilingual partial-completion activity. Acceptance is recorded in the spec.
 
 Attention-state mutation, UI navigation, cross-Bot memory operations, new dispatch surfaces and external API transports remain separately specified follow-ups. Existing desktop method availability never automatically confers model authority.
+
+## Usage delivery
+
+- [B13d: Usage and execution evidence](tasks/b13d-usage-evidence.md): implemented on `task/b13d-usage-evidence`, independently based on merged `main`. Reads Pi's model ledger without counting Code Mode children again, freezes Run intervals with admission/settlement, preserves known-price estimates and distinguishes unavailable prices, and links private/group results and approvals from bilingual Bot details. Final acceptance is recorded in the spec.

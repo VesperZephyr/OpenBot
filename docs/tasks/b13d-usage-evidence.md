@@ -1,6 +1,6 @@
 # B13d: Local Usage and Execution Evidence
 
-Status: ready
+Status: implemented; final acceptance in progress
 Branch: task/b13d-usage-evidence; PR target: main
 Depends on: merged Runs, B13c channels, B24–B26 receipts
 Architecture: Sections 2.3, 5.1, 6.2 and 8
@@ -9,7 +9,7 @@ Architecture: Sections 2.3, 5.1, 6.2 and 8
 
 Let the user inspect a Bot's recorded model usage and recent tasks, connect a task to its conversation result and approvals, and understand when a cost estimate is unavailable. This is local execution evidence, not billing or telemetry.
 
-This independent increment starts from merged `main`. Lifecycle, artifacts and deterministic-policy PRs remain separate; their future integration must preserve the same Run admission/settlement boundaries.
+This independent increment starts from merged `main`. Lifecycle, artifacts and deterministic-policy PRs remain separate; their future integration must preserve the same Run admission/settlement boundaries. In particular B14b/B12a interruption intent is not final usage settlement: an integrated `needs_attention` Run must wait for `interruption.settledAt` before freezing counters. The integration packet must test this before dependent work starts.
 
 ## Scope
 
@@ -37,7 +37,7 @@ Use the delta of Pi's committed cost counters only when the bucket matches that 
 
 Add desktop-only `usage.get({ botId, limit? })`: limit 1–50, default 10. Validate the Bot exists and is not deleted; a model cannot invoke this Host method through a generic bridge. The result contains total counters, optional estimated USD, up to 100 model buckets with a truncation flag, and recent Run records with identity/state/time, recorded usage and local evidence references. Aggregate all counters before truncating display buckets. No task prompts, tool arguments, outputs or secret values are copied into the usage response or logs.
 
-Run evidence uses authoritative input submission answer IDs and tool call/approval identities from its bounded entry interval, never model-supplied paths. Return at most 20 result/tool references per Run, with a truncation indicator. Private results link to the existing timeline navigation; group Runs link to their group conversation/publication when available, without exposing a private result as a group post. Missing/pruned evidence is labeled unavailable. Approval references show identity/state and link to the associated tool in the conversation, not an approval-grant action.
+Run evidence uses authoritative input submission answer IDs and tool call/approval identities from its bounded entry interval, never model-supplied paths. Return at most 20 result/tool references per Run, with a truncation indicator. Private results link to the existing timeline navigation; group Runs link to their group conversation/publication when available, without exposing a private result as a group post. Missing/pruned evidence is labeled unavailable. Approval references show identity/state and link to the associated tool in the conversation, not an approval-grant action. Nested Code Mode approvals bind through the same Run and parent execution and navigate to that parent activity. Tool links expand folded step groups and tool details.
 
 The Bot details panel has a collapsed Usage and tasks section, with refresh, loading/empty/error states, totals and recent task rows. Open a task to inspect model buckets and evidence links. English defaults; all new labels and unavailable explanations have Simplified Chinese translations. Reuse existing conversation navigation and attention states. Reading usage never marks a conversation read; navigation follows existing rendered-timeline rules.
 
