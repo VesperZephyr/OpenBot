@@ -78,6 +78,7 @@ it("keeps tools scoped after restart and reports Chinese read activity; Speciali
 	expect(toolResults(h.model.requests.at(-1)!).at(-1)?.ok).toBe(true);await h.shot("03-core-read-zh-restart");
 	h.model.script({tool:"app_conversations_read",args:{conversationKey:"bot:bot_analyst",anchorMessageId:"absent",before:null,after:null}},{text:"原消息已不可用。"});
 	await send("读取一条已不存在的历史消息。");await done(core);
+	await h.page().getByText("原消息已不可用。",{exact:true}).waitFor();
 	await h.page().locator(".steps-row > details > summary").last().click();
 	await h.page().getByText("消息不可用",{exact:true}).waitFor();
 	await h.shot("04-read-error-zh");
