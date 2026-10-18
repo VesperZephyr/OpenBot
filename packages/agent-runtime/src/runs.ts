@@ -10,7 +10,11 @@ import type { BotId, RunRecord } from "@openbot/protocol";
 export const KEPT_TERMINAL_RUNS = 50;
 
 /** One message of a Run as the user sent it; the text is kept to detect a reused request ID with other content. */
-export type RunMessage = { readonly requestId: string; readonly text: string };
+export type RunMessage = {
+	readonly requestId: string;
+	readonly text: string;
+	readonly attachments?: readonly import("@openbot/protocol").ArtifactRef[];
+};
 
 /**
  * One Pi input of a running Run: the first starts the Run, later ones steer it. `requestId` is also the Pi request ID,
@@ -20,6 +24,7 @@ export type RunMessage = { readonly requestId: string; readonly text: string };
 export type RunInput = {
 	readonly requestId: string;
 	readonly text: string;
+	readonly attachments?: readonly import("@openbot/protocol").ArtifactRef[];
 	readonly submissionId?: string;
 	readonly outcome?: { readonly status: "done" | "unanswered"; readonly reason?: string };
 };

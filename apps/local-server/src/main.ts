@@ -90,8 +90,19 @@ const router = createToolRouter({
 const runtime = await BotRuntime.open({
 	databasePath: join(dataDirectory, "openbot.sqlite"),
 	credentials,
-	tools: { definitions: TOOL_DEFINITIONS, invoke: (call) => router.invoke(call), admitOrchestration: call => router.admitOrchestration(call) },
-	...(import.meta.url.endsWith(".mjs") ? {codemodeAssets:{workerUrl:new URL("./codemode-worker.mjs",import.meta.url).href,wasmPath:fileURLToPath(new URL("./quickjs.wasm",import.meta.url))}} : {}),
+	tools: {
+		definitions: TOOL_DEFINITIONS,
+		invoke: (call) => router.invoke(call),
+		admitOrchestration: (call) => router.admitOrchestration(call),
+	},
+	...(import.meta.url.endsWith(".mjs")
+		? {
+				codemodeAssets: {
+					workerUrl: new URL("./codemode-worker.mjs", import.meta.url).href,
+					wasmPath: fileURLToPath(new URL("./quickjs.wasm", import.meta.url)),
+				},
+			}
+		: {}),
 });
 
 const status: HostStatus = {
@@ -109,6 +120,7 @@ const send = (message: HostToDesktop): void => {
 };
 
 const service = new HostService({
+	artifacts: { request: (requestId, operation) => executor.artifactRequest(requestId, operation) },
 	audit: (event) => console.info(JSON.stringify({ type: "operation", ...event })),
 	runtime,
 	secrets: credentials,
@@ -118,12 +130,11 @@ const service = new HostService({
 	approvals,
 	workspace,
 	maxActiveRuns: maxActiveRuns(process.env.OPENBOT_MAX_ACTIVE_RUNS),
-	emit: (event) =>
-		send({ ...event, protocolVersion: PROTOCOL_VERSION, kind: "event", streamId, seq: ++seq }),
+	emit: (event) => send({ ...event, protocolVersion: PROTOCOL_VERSION, kind: "event", streamId, seq: ++seq }),
 	// Pi committed the call's result: the executor may prune its receipt, and the call's approval is used up.
 	toolSettled: (botId, callId, conversationId) => {
 		void (async () => {
-			executor.ack(`${conversationId ?? await runtime.conversationKey(botId)}:${callId}`);
+			executor.ack(`${conversationId ?? (await runtime.conversationKey(botId))}:${callId}`);
 			await approvals.settled(botId, callId, conversationId);
 		})().catch((error: unknown) => console.error("Could not settle a tool call", error));
 	},

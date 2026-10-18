@@ -5,7 +5,10 @@
 import type { GrantAccess, HostEvent, HostMethod, HostParams, HostResult } from "@openbot/protocol";
 
 export const RENDERER_METHODS = [
- "collaboration.stop",
+	"artifacts.get",
+	"artifacts.preview",
+	"artifacts.remove",
+	"collaboration.stop",
 	"groups.list",
 	"groups.snapshot",
 	"groups.change",
@@ -60,6 +63,8 @@ export type HostState = { readonly status: "starting" | "ready" | "stopped"; rea
 export type FolderSelection = { readonly selection: string; readonly path: string };
 
 export type OpenBotApi = {
+	readonly attachFiles: () => Promise<{ attachments: readonly import("@openbot/protocol").ArtifactRef[]; errors: readonly string[] }>;
+	readonly exportArtifact: (params: { artifactId: string; requestId: string }) => Promise<boolean>;
 	readonly methods: { readonly [M in RendererMethod]: (params: RendererParams<M>) => Promise<HostResult<M>> };
 	/** Subscribe to Host events; returns an unsubscribe function. */
 	readonly onEvent: (listener: (event: HostEvent) => void) => () => void;
@@ -81,6 +86,8 @@ export type OpenBotApi = {
 
 /** IPC channel names between preload and main. */
 export const CHANNELS = {
+	attachFiles: "openbot:attach-files",
+	exportArtifact: "openbot:export-artifact",
 	call: "openbot:call",
 	event: "openbot:event",
 	hostState: "openbot:host-state",

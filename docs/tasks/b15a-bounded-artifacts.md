@@ -1,6 +1,6 @@
 # B15a: Bounded File Inputs and Result Artifacts
 
-Status: ready
+Status: in progress
 Branch: task/b15a-bounded-artifacts; pull request target: main
 Depends on: G0, existing B3/B7/B21/B26 contracts
 Architecture: Sections 4.2, 5.1, 6.1–6.2 and 8.2
@@ -17,7 +17,7 @@ This is independent of B14a and branches from merged main. B14a PR #29 stays ind
 
 ## User flow
 
-1. The private composer has Attach files. A native picker selects up to four files. Import finishes before a chip appears; cancel leaves the draft unchanged. The chip displays the name, size and removable draft reference. Attachment-only messages are supported.
+1. The private composer has Attach files. A native picker selects up to four files. Import finishes before a chip appears; cancel leaves the draft unchanged. A multi-selection keeps successful imports and reports failed files without discarding the current draft. The chip displays the name, size and removable draft reference. Attachment-only messages are supported.
 2. Send freezes text and ordered attachment identities in the existing immutable send attempt. A later draft edit cannot change a pending or uncertain attempt. Retry reuses its original request ID and identities. Reload restores chips and marks unresolved sends uncertain without dispatching them.
 3. The accepted user message displays file cards. The model receives bounded text or image parts, not arbitrary original paths. Text is explicitly labeled as user-provided file content rather than trusted instructions. Incompatible image models fail clearly before new admission; dispatch checks compatibility again if model settings changed while queued.
 4. A Bot can publish a file it can already read with `artifact_publish`. The executor freezes that file; later edits to the source do not alter the result card. A successful card appears only after a committed executor receipt. It offers Preview, Export copy and Remove local copy. Removal asks in-app confirmation and explains that it affects every card for that copy, while prior model requests and conversation records may retain content.
@@ -34,9 +34,10 @@ This is independent of B14a and branches from merged main. B14a PR #29 stays ind
 | Published result | Same formats plus `.html`/`.htm` as text; 8 MiB per file; image dimension bounds remain |
 | Preview | 64 KiB UTF-8 text with truncation indication, or one validated image at its file limit |
 | Durable artifact storage | 256 MiB of live file bytes; 4096 metadata records; quota failure never evicts accepted content |
+| Operation receipts | 16,384 import/export/publication identities plus at most one removal per live artifact; exhaustion rejects new operations and never silently loses replay evidence |
 | Names | Basename only, at most 180 Unicode characters; control characters removed; no path authority |
 | Lifetime | No automatic expiry for durable inputs/results. Explicit removal deletes the blob and leaves a bounded tombstone; a full metadata quota requires a later maintenance operation, not silent history loss |
-| Spill output | 10 MiB per spill file, 64 MiB combined spill files; existing seven-day startup cleanup; retained head/tail remains bounded and states when full output was not saved |
+| Spill output | 10 MiB per spill file, 64 MiB combined spill files, at most 4096 files; existing seven-day startup cleanup; retained head/tail remains bounded and states when full output was not saved |
 
 The quota covers OpenBot's artifact blob store, not copies already embedded in Pi journals, exports or backups. This is not a complete data-erasure feature. Draft detachment only removes the reference; it does not delete the shared local copy. Empty text files are valid inputs; invalid image content is rejected. File sizes and signatures are checked before allocation beyond the limits.
 
@@ -62,12 +63,12 @@ Model-facing `artifact_publish({path,name?})` is an executor tool. It goes throu
 
 - Serialize artifact mutations; reserve quota before copying. Open only regular files, cap reads, reject symlink components and traversal, verify descriptors and file identity, and validate format/signature. Grant checks use the canonical source for model publication. Bots share the Mac; these checks do not claim an OS sandbox against arbitrary shell access.
 - Blob filenames are generated from validated opaque IDs, never display names. Directory/file modes are 0700/0600. Blob writes use exclusive temporary files and atomic publication; interrupted temporary files are reclaimed at startup.
-- Record operation identity and argument digest before side effects. Import/publish records enough staged metadata to reconcile a published blob if the process dies before returning. Same identity/digest returns the committed ref; changed arguments conflict. The model publication receipt remains authoritative across retries.
+- Record operation identity and argument digest before side effects. Import/publish records enough staged metadata to reconcile a published blob if the process dies before returning. Same identity/digest returns the committed ref; changed arguments conflict. The model publication receipt remains authoritative across retries. Both status reconciliation and retry can complete an unknown publication receipt from its committed immutable copy without opening the original source again.
 - Export writes to a new filename only; existing destinations are never overwritten. Stage in the selected canonical parent and atomically publish without replacement. An interrupted export reconciles the recorded destination/hash before retrying; mismatched or unverifiable effects remain uncertain. A save-dialog cancellation creates no intent. Return no secret/source content in diagnostics.
 - Removal is idempotent and retains a tombstone. Preview/import hydration detects missing content or a changed digest and fails explicitly. No automatic resurrection on retry.
-- The Run stores immutable attachment references along with each original message and aggregated input. Deduplication compares text, channel/origin and ordered IDs/digests. Existing retained request receipts are checked before re-reading files, so a retry does not depend on the original source file. Attachment contents are hydrated from the immutable store for Pi admission; failure before admission records a clear failure, not an empty input.
-- Pi's existing input content and custom application-entry support carry text/image parts and display metadata. Use an `openbot.user-input` entry with original user text and immutable refs; the transcript projection must not echo base64 or the entire injected text. Update history/search projections to understand the new entry; search indexes user text and display names, not attachment bodies. No vendor patch is required.
-- Preserve ordered attachments when queued messages combine and when inputs steer a Run. Recovered inputs use the original identities and Pi request IDs. Image bytes are encoded only inside `agent-runtime`'s Pi boundary. Public protocol types never reference Pi types.
+- The Run stores immutable attachment references along with each original message and aggregated input. Deduplication compares text, channel/origin and ordered IDs/digests. Existing retained request receipts are checked before re-reading files, so a retry does not depend on the original source file. Attachment contents are hydrated from the immutable store for Pi admission; failure before admission records a passive user entry with the original text, refs and failure, not an empty model input. An older admitted input remains active until it settles.
+- Pi's existing input content and custom application-entry support carry text/image parts and display metadata. Use an `openbot.user-input` entry with original user text and immutable refs; the transcript projection must not echo base64 or the entire injected text. Update history/search projections to understand the new entry; search indexes user text and display names, not attachment bodies. No vendor patch is required. Group result posts carry only the committed artifact receipts between that delivery’s Pi input and answer; later deliveries do not inherit those cards.
+- Keep attachment-bearing queued messages as separate bounded Pi inputs (the first starts, later inputs steer); only text-only queued messages combine. Preserve ordered attachments when inputs steer a Run. Recovered inputs use the original identities and Pi request IDs. The executor returns bounded image base64 through the private content port; only `agent-runtime` constructs Pi image parts. Public protocol types never reference Pi types.
 - Composer storage adds optional refs without discarding version-1 text drafts. Frozen attempts carry refs independently of newer edits. Clearing a sent draft clears only the version that was sent.
 
 ## Diagnostics and privacy

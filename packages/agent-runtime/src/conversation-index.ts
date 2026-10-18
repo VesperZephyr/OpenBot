@@ -46,12 +46,15 @@ function project(messages: readonly ConversationPreview[]): Projection {
 export function directMessages(snapshot: ConversationSnapshot): ConversationPreview[] {
 	return snapshot.items.flatMap((item) => {
 		if (item.kind !== "user" && item.kind !== "assistant") return [];
-		const text = item.parts.map((p) => p.text).join("\n");
+		const text = [...item.parts.map((p) => p.text), ...(item.kind === "user" ? (item.attachments?.map((a) => a.name) ?? []) : [])].join(
+			"\n",
+		);
 		return text.trim() ? [{ id: item.id, senderId: item.kind === "user" ? "user" : snapshot.botId, text, at: item.at ?? 0 }] : [];
 	});
 }
 export function groupMessages(posts: readonly GroupPost[]): ConversationPreview[] {
-	return posts.filter((p) => p.kind !== "delegation" && p.kind !== "handoff" && p.text.trim())
+	return posts
+		.filter((p) => p.kind !== "delegation" && p.kind !== "handoff" && p.text.trim())
 		.map((p) => ({ id: p.postId, senderId: p.senderId, text: p.text, at: p.at }));
 }
 export const directProjection = (snapshot: ConversationSnapshot): Projection => project(directMessages(snapshot));

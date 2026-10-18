@@ -103,3 +103,9 @@ Current increment: B13a channel contexts and B13b group lifecycle follow merged 
 | [B24: Authorized application API](b24-app-capability-api.md) | in review (PR #23) |
 | [B25: Local app Code Mode](b25-local-app-code-mode.md) | implemented, in review |
 | [B26: Code Mode management](b26-code-mode-management.md) | done; in review in [PR #27](https://github.com/VesperZephyr/OpenBot/pull/27) |
+
+## Post-B26 delivery
+
+| Task | Status |
+| --- | --- |
+| [B15a: Bounded file inputs and result artifacts](b15a-bounded-artifacts.md) | in progress; acceptance under execution |

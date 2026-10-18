@@ -10,6 +10,40 @@ const storage = () => {
 	};
 };
 describe("local composers", () => {
+	it("freezes attachment-only attempts and keeps a newer attachment draft after retry", async () => {
+		const disk = storage(),
+			store = new ComposerStore(disk);
+		const ref = {
+			artifactId: `artifact_${"a".repeat(32)}`,
+			name: "notes.txt",
+			bytes: 1,
+			mediaType: "text/plain",
+			sha256: "a".repeat(64),
+			createdAt: 1,
+			source: "input" as const,
+			availability: "available" as const,
+		};
+		store.edit("bot:a", { text: "", attachments: [ref] });
+		let original = "";
+		await store.send("bot:a", async (attempt) => {
+			original = attempt.requestId;
+			expect(attempt.attachments).toEqual([ref]);
+			throw Error("lost acknowledgement");
+		});
+		const newer = { ...ref, artifactId: `artifact_${"b".repeat(32)}` };
+		store.edit("bot:a", { attachments: [newer] });
+		const restored = new ComposerStore(disk);
+		await restored.send(
+			"bot:a",
+			async (attempt) => {
+				expect(attempt.requestId).toBe(original);
+				expect(attempt.attachments).toEqual([ref]);
+			},
+			true,
+		);
+		expect(restored.get("bot:a").draft.attachments).toEqual([newer]);
+	});
+
 	it("isolates drafts by conversation kind and restores drafts without dispatch", () => {
 		const disk = storage(),
 			store = new ComposerStore(disk);

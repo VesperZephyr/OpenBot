@@ -1,3 +1,4 @@
+import { ArtifactCard } from "./ArtifactCard";
 import { t } from "./i18n";
 /**
  * Run states in the conversation: messages the Bot has not read yet, the queued-Run notice, the Stop button, and the
@@ -12,6 +13,9 @@ export function PendingMessages({ snapshot }: { readonly snapshot: ConversationS
 		<>
 			{(snapshot.pending ?? []).map((message) => (
 				<li key={message.id} className="message message-user is-pending">
+					{message.attachments?.map((ref) => (
+						<ArtifactCard key={ref.artifactId} artifact={ref} />
+					))}
 					<div className="message-text">
 						{message.parts.map((part, index) => (
 							// Parts have no identity of their own; their order is stable within one message.
@@ -31,7 +35,9 @@ export function PendingMessages({ snapshot }: { readonly snapshot: ConversationS
 
 export function StoppedNote() {
 	return (
-		<li className="run-note" role="note">{t("Stopped")}</li>
+		<li className="run-note" role="note">
+			{t("Stopped")}
+		</li>
 	);
 }
 
@@ -39,6 +45,8 @@ export function StoppedNote() {
 export function StopButton({ run }: { readonly run: RunRecord | undefined }) {
 	if (run?.state !== "running" && run?.state !== "queued") return null;
 	return (
-		<button type="button" className="stop" onClick={() => void api["runs.cancel"]({ runId: run.runId }).catch(report)}>{t("Stop")}</button>
+		<button type="button" className="stop" onClick={() => void api["runs.cancel"]({ runId: run.runId }).catch(report)}>
+			{t("Stop")}
+		</button>
 	);
 }

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolInvocation } from "@openbot/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { LocalExecutor, ReceiptLedger } from "../src/index.ts";
+import { ArtifactStore, LocalExecutor, ReceiptLedger } from "../src/index.ts";
 
 describe("LocalExecutor", () => {
 	let root: string;
@@ -13,7 +13,11 @@ describe("LocalExecutor", () => {
 	let ledger: ReceiptLedger;
 	let next = 0;
 
-	const invocation = (tool: ToolInvocation["tool"], args: Record<string, unknown>, overrides: Partial<ToolInvocation> = {}): ToolInvocation => ({
+	const invocation = (
+		tool: ToolInvocation["tool"],
+		args: Record<string, unknown>,
+		overrides: Partial<ToolInvocation> = {},
+	): ToolInvocation => ({
 		invocationId: `inv-${++next}`,
 		botId: "bot",
 		conversationId: "1",
@@ -42,6 +46,40 @@ describe("LocalExecutor", () => {
 	afterEach(async () => {
 		ledger.close();
 		await rm(root, { recursive: true, force: true });
+	});
+
+	it("publishes only granted files and reconciles a committed artifact after a lost tool receipt", async () => {
+		const store = new ArtifactStore(join(root, "attachments"));
+		executor = new LocalExecutor({ targetId: "mac", workspace, ledger, artifactStore: store, artifactsDirectory: join(root, "artifacts") });
+		try {
+			const denied = await run(invocation("artifact_publish", { path: join(outside, "secret.txt") }));
+			expect(denied.status).toBe("failed");
+			expect(denied.artifact).toBeUndefined();
+			const source = join(workspace, "result.txt");
+			await writeFile(source, "immutable result");
+			const call = invocation("artifact_publish", { path: source });
+			ledger.accept(call);
+			const saved = store.capture(call.invocationId, source, "result");
+			await rm(source);
+			ledger.close();
+			ledger = ReceiptLedger.open(join(root, "receipts.sqlite"));
+			executor = new LocalExecutor({
+				targetId: "mac",
+				workspace,
+				ledger,
+				artifactStore: store,
+				artifactsDirectory: join(root, "artifacts"),
+			});
+			expect((await run({ ...call, target: { kind: "local", targetId: "wrong" } })).status).toBe("failed");
+			expect(ledger.get(call.invocationId)?.status).toBe("unknown");
+			expect(executor.receipt(call.invocationId)).toMatchObject({ status: "succeeded", outcome: { artifact: saved } });
+			expect(await run(call)).toMatchObject({ status: "succeeded", artifact: saved });
+			expect(ledger.get(call.invocationId)?.status).toBe("succeeded");
+			expect((await run({ ...call, argsDigest: "changed" })).status).toBe("failed");
+			expect(store.content(saved.artifactId).text).toBe("immutable result");
+		} finally {
+			store.close();
+		}
 	});
 
 	it("refuses paths outside the grants, including through a symbolic link", async () => {

@@ -96,3 +96,8 @@ Owner-requested architecture increment: expose selected current application capa
 3. [B26: Code Mode management](tasks/b26-code-mode-management.md) — done, in review in PR #27 targeting `main`; eight direct-Core management aliases, exact nested approvals, transactional receipt checks, failure latching, expiry and bilingual partial-completion activity. Acceptance is recorded in the spec.
 
 Attention-state mutation, UI navigation, cross-Bot memory operations, new dispatch surfaces and external API transports remain separately specified follow-ups. Existing desktop method availability never automatically confers model authority.
+
+## Post-B26 artifact delivery
+
+- [B15a: Bounded file inputs and result artifacts](tasks/b15a-bounded-artifacts.md): implemented, acceptance in progress on `task/b15a-bounded-artifacts`; PR target `main`. Private text/image input, durable local copies, result cards, exact group result publication, safe preview/export/removal and spill quotas. B14a PR #29 remains independent.
+- Next serial batch: B14b lifecycle gates, followed by B12a deterministic policy. Native packaged evidence remains a release gate; validation stays in isolated background apps.

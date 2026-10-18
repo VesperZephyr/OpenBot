@@ -1,3 +1,4 @@
+import type { ArtifactRef, ArtifactContent, ArtifactOperation, ArtifactOperationResult } from "./artifacts.ts";
 import { MANAGEMENT_TOOL_DEFINITIONS, APP_MANAGEMENT_TOOL_DEFINITIONS } from "./app-management.ts";
 export * from "./app-management.ts";
 import { CODEMODE_DEFINITION } from "./app-execution.ts";
@@ -114,6 +115,7 @@ export type CollaborationSnapshot = {
 	readonly tasks: readonly (GroupDelivery & { readonly conversation?: ConversationSnapshot })[];
 };
 export type GroupPost = {
+	readonly attachments?: readonly ArtifactRef[];
 	readonly rootId?: string;
 	readonly kind?: "delegation" | "handoff" | "result";
 
@@ -236,7 +238,14 @@ export type MessagePart = { readonly type: "text"; readonly text: string };
 export type ToolCallStatus = "pending" | "running" | "succeeded" | "failed" | "interrupted" | "cancelled";
 
 export type TranscriptItem =
-	| { readonly kind: "user"; readonly id: string; readonly parts: readonly MessagePart[]; readonly at?: number }
+	| {
+			readonly kind: "user";
+			readonly id: string;
+			readonly parts: readonly MessagePart[];
+			readonly at?: number;
+			readonly attachments?: readonly ArtifactRef[];
+			readonly error?: string;
+	  }
 	| {
 			readonly kind: "assistant";
 			readonly id: string;
@@ -259,6 +268,7 @@ export type TranscriptItem =
 			readonly output?: string;
 			/** Set when a `local_exec` call moved its command to the background. */
 			readonly taskId?: string;
+			readonly artifact?: ArtifactRef;
 			readonly execution?: import("./app-execution.ts").AppExecution;
 	  }
 	/** Where earlier messages left the model's context: a compaction summary or a new topic. */
@@ -306,7 +316,7 @@ export type ConversationSnapshot = {
 	readonly pending?: readonly PendingMessage[];
 };
 
-export type PendingMessage = { readonly id: string; readonly parts: readonly MessagePart[] };
+export type PendingMessage = { readonly id: string; readonly parts: readonly MessagePart[]; readonly attachments?: readonly ArtifactRef[] };
 
 /**
  * The work one message starts (Section 7.2). Messages sent while a Run is queued or running join it. A Run counts
@@ -445,6 +455,11 @@ export type ModelSummary = {
 // Desktop-to-Host methods (Section 6.1). Each entry maps a method name to its params and result.
 
 export type HostMethods = {
+	"artifacts.import": { params: { requestId: string; path: string }; result: ArtifactRef };
+	"artifacts.export": { params: { requestId: string; artifactId: string; path: string }; result: null };
+	"artifacts.get": { params: { artifactId: string }; result: ArtifactRef };
+	"artifacts.preview": { params: { artifactId: string }; result: ArtifactContent };
+	"artifacts.remove": { params: { requestId: string; artifactId: string }; result: null };
 	"collaboration.stop": { params: { rootId: string }; result: null };
 	"groups.list": { params: Record<string, never>; result: readonly Group[] };
 	"groups.snapshot": { params: { groupId: string }; result: GroupSnapshot };
@@ -481,13 +496,19 @@ export type HostMethods = {
 	};
 	"conversations.snapshot": { params: { readonly botId: BotId }; result: ConversationSnapshot };
 	"conversations.search": {
-		params: { readonly query: string; readonly unreadOnly?: boolean; readonly includeHidden?: boolean; readonly conversationKey?: ConversationKey; readonly cursor?: string };
+		params: {
+			readonly query: string;
+			readonly unreadOnly?: boolean;
+			readonly includeHidden?: boolean;
+			readonly conversationKey?: ConversationKey;
+			readonly cursor?: string;
+		};
 		result: ConversationSearchResult;
 	};
 	"conversations.list": { params: Record<string, never>; result: readonly ConversationSummary[] };
 	"conversations.markRead": { params: { readonly conversationKey: ConversationKey; readonly through: number }; result: null };
 	"messages.submit": {
-		params: { readonly botId: BotId; readonly requestId: string; readonly text: string };
+		params: { readonly botId: BotId; readonly requestId: string; readonly text: string; readonly artifactIds?: readonly string[] };
 		/** `steered`: the message joined the Bot's running or queued Run instead of starting one. */
 		result: { readonly runId: RunId; readonly state: RunRecord["state"]; readonly steered: boolean };
 	};
@@ -566,6 +587,11 @@ export type HostParams<M extends HostMethod> = HostMethods[M]["params"];
 export type HostResult<M extends HostMethod> = HostMethods[M]["result"];
 
 export const HOST_METHODS = [
+	"artifacts.import",
+	"artifacts.export",
+	"artifacts.get",
+	"artifacts.preview",
+	"artifacts.remove",
 	"collaboration.stop",
 	"groups.list",
 	"groups.snapshot",
@@ -733,10 +759,18 @@ export type ToolOutcome = {
 	readonly truncated?: boolean;
 	/** Set when `local_exec` moved the command to the background; `task_output` and `task_stop` take it. */
 	readonly taskId?: string;
+	readonly artifact?: ArtifactRef;
 };
 
 /** Host to executor. */
 export type ExecutorRequest =
+	| {
+			readonly kind: "artifact.request";
+			readonly messageId: string;
+			readonly requestId: string;
+			readonly targetId: string;
+			readonly operation: ArtifactOperation;
+	  }
 	| { readonly kind: "tool.invoke"; readonly invocation: ToolInvocation }
 	| { readonly kind: "tool.cancel"; readonly invocationId: string }
 	/** Read-only receipt lookup; the executor answers with `tool.status`. */
@@ -748,6 +782,8 @@ export type ExecutorRequest =
 
 /** Executor to Host. */
 export type ExecutorMessage =
+	| { readonly kind: "artifact.response"; readonly messageId: string; readonly result: ArtifactOperationResult; readonly error?: never }
+	| { readonly kind: "artifact.response"; readonly messageId: string; readonly error: string; readonly result?: never }
 	| {
 			readonly kind: "executor.hello";
 			readonly protocolVersion: typeof PROTOCOL_VERSION;
@@ -769,7 +805,17 @@ export type ExecutorMessage =
 // Tool catalog: what the model is offered. Schemas are plain JSON Schema, which Pi validates tool arguments against.
 
 export type ToolCapability =
-	"app.orchestrate" | "app.read" | "files.read" | "files.write" | "commands" | "tasks" | "web" | "memory" | "bot.management" | "group.management" | "collaboration";
+	| "app.orchestrate"
+	| "app.read"
+	| "files.read"
+	| "files.write"
+	| "commands"
+	| "tasks"
+	| "web"
+	| "memory"
+	| "bot.management"
+	| "group.management"
+	| "collaboration";
 
 export type ToolDefinition = {
 	readonly name: string;
@@ -790,6 +836,17 @@ const object = (properties: Record<string, unknown>, required: readonly string[]
 });
 
 export const TOOL_CATALOG = [
+	{
+		name: "artifact_publish",
+		capability: "files.read",
+		destination: "executor",
+		description:
+			"Publish an immutable local result file from an already authorized readable path. Supports text, Markdown, CSV, HTML (text preview only), PNG and JPEG. Maximum 8 MiB. This does not export, execute, or grant access to a file.",
+		parameters: object(
+			{ path: { type: "string", minLength: 1, maxLength: 4096 }, name: { type: "string", minLength: 1, maxLength: 180 } },
+			["path"],
+		),
+	},
 	...APP_TOOL_DEFINITIONS,
 	CODEMODE_DEFINITION,
 	...(["bot_delegate", "bot_handoff"] as const).map((name) => ({
@@ -966,3 +1023,6 @@ export type ExecutorToolName = Extract<(typeof TOOL_CATALOG)[number], { destinat
 export function toolDefinition(name: string): ToolDefinition | undefined {
 	return TOOL_CATALOG.find((tool) => tool.name === name);
 }
+
+export { ARTIFACT_LIMITS } from "./artifacts.ts";
+export type { ArtifactRef, ArtifactContent, ArtifactOperation, ArtifactOperationResult } from "./artifacts.ts";

@@ -6,7 +6,8 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
-import { DEFAULT_YIELD_MS, EXECUTOR_TOOLS, LocalExecutor, pruneArtifacts, ReceiptLedger } from "@openbot/local-executor";
+import { validArtifactRequest } from "@openbot/protocol/schemas";
+import { ArtifactStore, DEFAULT_YIELD_MS, EXECUTOR_TOOLS, LocalExecutor, pruneArtifacts, ReceiptLedger } from "@openbot/local-executor";
 import { type ExecutorMessage, type ExecutorRequest, PROTOCOL_VERSION } from "@openbot/protocol";
 
 const targetId = process.env.OPENBOT_TARGET_ID;
@@ -29,7 +30,9 @@ pruneArtifacts(artifactsDirectory);
 // Opening converts receipts a previous executor left `accepted` to `unknown`, marks its background tasks `unknown`,
 // and kills their orphaned process groups.
 const ledger = ReceiptLedger.open(join(ledgerDirectory, "receipts.sqlite"));
+const artifactStore = new ArtifactStore(join(dataDirectory, "attachments"));
 const executor = new LocalExecutor({
+	artifactStore,
 	targetId,
 	workspace,
 	ledger,
@@ -42,22 +45,102 @@ const send = (message: ExecutorMessage): void => {
 
 process.on("message", (message: ExecutorRequest) => {
 	switch (message.kind) {
+		case "artifact.request": {
+			if (!validArtifactRequest(message) || message.targetId !== targetId) {
+				send({ kind: "artifact.response", messageId: message.messageId, error: "Invalid artifact request" });
+				return;
+			}
+			const started = Date.now();
+			const audit = (outcome: string, ref?: import("@openbot/protocol").ArtifactRef) =>
+				console.info(
+					JSON.stringify({
+						type: "artifact.operation",
+						requestId: message.requestId,
+						targetId,
+						action: message.operation.action,
+						at: started,
+						durationMs: Date.now() - started,
+						outcome,
+						...(ref
+							? { artifactId: ref.artifactId, mediaType: ref.mediaType, bytes: ref.bytes }
+							: "artifactId" in message.operation
+								? { artifactId: message.operation.artifactId }
+								: {}),
+					}),
+				);
+			try {
+				const op = message.operation;
+				let result;
+				switch (op.action) {
+					case "import":
+						result = artifactStore.capture(message.requestId, op.path);
+						break;
+					case "get":
+						result = artifactStore.get(op.artifactId);
+						break;
+					case "preview":
+						result = artifactStore.content(op.artifactId, true);
+						break;
+					case "content":
+						result = artifactStore.content(op.artifactId);
+						break;
+					case "remove":
+						result = artifactStore.remove(message.requestId, op.artifactId);
+						break;
+					case "export":
+						result = artifactStore.export(message.requestId, op.artifactId, op.path);
+						break;
+				}
+				const ref = result
+					? "artifact" in result
+						? result.artifact
+						: result
+					: "artifactId" in op
+						? artifactStore.get(op.artifactId)
+						: undefined;
+				audit("succeeded", ref);
+				send({ kind: "artifact.response", messageId: message.messageId, result });
+			} catch (error) {
+				audit("failed");
+				send({
+					kind: "artifact.response",
+					messageId: message.messageId,
+					error: error instanceof Error && !("code" in error) ? error.message : "Could not access the selected attachment",
+				});
+			}
+			return;
+		}
 		case "tool.invoke": {
 			const { invocationId } = message.invocation;
 			void executor
 				.invoke(message.invocation, (output) => send({ kind: "tool.progress", invocationId, output }))
-				.catch((error: unknown) => ({
+				.catch((error: unknown): import("@openbot/protocol").ToolOutcome => ({
 					status: "unknown" as const,
 					output: `The executor could not record this action's result: ${error instanceof Error ? error.message : String(error)}`,
 				}))
-				.then((outcome) => send({ kind: "tool.result", invocationId, outcome }));
+				.then((outcome) => {
+					if (message.invocation.tool === "artifact_publish")
+						console.info(
+							JSON.stringify({
+								type: "artifact.publication",
+								invocationId,
+								targetId,
+								at: Date.now(),
+								outcome: outcome.status,
+								...(outcome.artifact
+									? { artifactId: outcome.artifact.artifactId, mediaType: outcome.artifact.mediaType, bytes: outcome.artifact.bytes }
+									: {}),
+							}),
+						);
+					send({ kind: "tool.result", invocationId, outcome });
+				});
 			return;
 		}
 		case "tool.cancel":
 			executor.cancel(message.invocationId);
 			return;
 		case "tool.status": {
-			const receipt = ledger.get(message.invocationId);
+			const receipt = executor.receipt(message.invocationId);
 			send({
 				kind: "tool.status",
 				invocationId: message.invocationId,
@@ -81,6 +164,7 @@ const shutdown = (): void => {
 	stopping = true;
 	setTimeout(() => process.exit(0), 3_500).unref();
 	void executor.cancelAll().finally(() => {
+		artifactStore.close();
 		ledger.close();
 		process.exit(0);
 	});
