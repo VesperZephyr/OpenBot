@@ -6,7 +6,7 @@ This plan turns [the architecture](architecture.md) into an ordered sequence of 
 
 Each section marks state explicitly: **Implemented** means code in the repository that was exercised as described; **Planned** means work that has not started.
 
-Delivery sequencing after merged B26 is maintained in the [development roadmap](development-roadmap.md), designed in [D4](tasks/d4-delivery-plan.md). B14a, B15a, B14b, B12a and B13d are implemented in review branches. I1 combines their contracts before the B10 skills increment. Native release evidence remains separate from feature merges.
+Delivery sequencing after merged B26 is maintained in the [development roadmap](development-roadmap.md), designed in [D4](tasks/d4-delivery-plan.md). B14a, B15a, B14b, B12a and B13d are implemented in review branches. I1 combines their contracts in PR #34 before the B10 skills increment: 358 unit/Host tests, 99 hidden e2e tests, bundled startup and an isolated real-model workflow passed. Native release evidence remains separate from feature merges.
 
 ## 1. Current State
 

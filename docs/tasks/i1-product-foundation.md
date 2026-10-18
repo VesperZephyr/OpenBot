@@ -1,6 +1,6 @@
 # I1: Integrated Product Foundation
 
-Status: in progress
+Status: in review (#34)
 Branch: task/i1-product-foundation; PR target: main
 Depends on: D4 (#28), B14a (#29), B15a (#30), B14b (#31), B12a (#32), B13d (#33)
 Architecture: Sections 3–6 and 8; prerequisite task specs remain authoritative
@@ -61,3 +61,11 @@ B12a contains the B14b head. I1 started from B13d, then merged D4, B14a, B15a an
 Combined fixtures: `usage.test.ts` interrupted intent/drain/continuation/restart; `runs.test.ts` pre-admission attachment continuation behind unrelated work; `ask-first.test.ts` publication predicates and scoped revocation; `executor.test.ts` stale dispatch and committed missing-source recovery; `product-foundation.e2e.ts` queued attachment/restart, approved publication, actual command interruption, usage/evidence navigation, English/Chinese, drafts and immutable copies.
 
 Observation recovery fixtures use unexpected Host loss (SIGKILL). SIGTERM and normal quitting intentionally withdraw active approvals under B14b; those semantics remain unchanged.
+
+## Verification evidence
+
+Candidate `53bfb87` passed `pnpm run check` (358 tests / 57 files), the full hidden `pnpm run e2e` (99 tests / 28 files), targeted observation/usage/integration regression (9 tests / 3 files), and bundled Host/executor startup with isolated state. English and Chinese integrated screenshots were inspected. The initial full run exposed intentional-quit fixture assumptions and unchanged-configuration pricing invalidation; both were corrected before the final complete rerun.
+
+A hidden isolated desktop run with the configured real model queued an attachment while paused, restarted, resumed, wrote exactly one report and published exactly one immutable result after Ask first approval. It recorded 30,027 model tokens; usage and the published copy survived restart after source removal. English/Chinese result and usage views were inspected, the window remained inactive, and audit records remained metadata-only. The first attempt selected an unintended path outside the test workspace; policy blocked it pending approval, no approval was granted, and the Run was cancelled. The successful retry named the synthetic workspace explicitly. Temporary credential configuration was removed after both attempts. Raw local evidence and screenshots are excluded from Git.
+
+PR #34 targets `main` and remains subject to owner review. Native signing, TCC identity, physical sleep/lock delivery and provider billing reconciliation are not established by these checks.
