@@ -89,7 +89,7 @@ it("admits a parent without holding the leaf lock, routes two nested reads and r
 		execution: { state: "succeeded", children: [{ state: "succeeded" }, { state: "succeeded" }] },
 	});
 }, 15000);
-it("excludes management, recursion, Node and models from the actual sandbox catalog", async () => {
+it("excludes legacy management, recursion, Node and models from the actual sandbox catalog", async () => {
 	const h = await setup("text([typeof process,typeof require,typeof fetch,typeof models,ALL_TOOLS.map(t=>t.name)]);");
 	await h.run();
 	const item = (await runtime!.snapshot(h.core)).items.find((i) => i.kind === "tool");
@@ -98,7 +98,7 @@ it("excludes management, recursion, Node and models from the actual sandbox cata
 	expect(h.seen).toHaveLength(0);
 }, 15000);
 it("rejects wider source options and bounds bridge floods before Host allocation", async () => {
-	const h = await setup('// @options: {"timeout_ms":60001}\ntext("unsafe");');
+	const h = await setup('// @options: {"timeout_ms":600001}\ntext("unsafe");');
 	await h.run();
 	expect((await runtime!.snapshot(h.core)).items.find((i) => i.kind === "tool")).toMatchObject({ status: "failed" });
 	expect(h.seen).toHaveLength(0);

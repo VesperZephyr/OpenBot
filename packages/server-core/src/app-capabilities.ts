@@ -3,7 +3,7 @@ import { validAppInput, validAppOutput } from "@openbot/protocol/app-validation"
 import { createHash } from "node:crypto";
 import type { BotRuntime } from "@openbot/agent-runtime";
 import {
-	APP_CODE_VERSION, APP_CAPABILITIES, APP_MAX_RESULT_BYTES, appCapability, appToolCapability, ProtocolError,
+	APP_CODE_VERSION, APP_CAPABILITIES, APP_MANAGEMENT_CAPABILITIES, APP_MAX_RESULT_BYTES, appCapability, appToolCapability, ProtocolError,
 	type AppCapabilityId, type AppErrorCode, type AppReadAuthority, type AppReadValue, type AppResult,
 	type ConversationKey, type ConversationSummary, type ExecutionTarget, type HostParams, type JsonValue, type ToolOutcome,
 } from "@openbot/protocol";
@@ -66,7 +66,7 @@ export class AppCapabilities {
 		if (call.appExecutionId) {
 			const execution = await this.runtime.appExecution(call.appExecutionId);
 			const child = execution?.children.find(c => c.callId === call.callId);
-			if (!execution || execution.version !== APP_CODE_VERSION || execution.catalogDigest !== fingerprint([APP_CODE_VERSION,APP_CAPABILITIES]) || execution.state !== "running" || execution.deadline <= Date.now() || execution.botId !== call.botId || execution.conversationId !== call.conversationId || execution.targetId !== this.targetId || fingerprint(execution.authority) !== fingerprint(authority) || !child || child.capability !== call.tool || child.digest !== fingerprint([call.tool,call.args]))
+			if (!execution || execution.version !== APP_CODE_VERSION || execution.catalogDigest !== fingerprint([APP_CODE_VERSION,APP_CAPABILITIES,APP_MANAGEMENT_CAPABILITIES]) || execution.state !== "running" || execution.deadline <= Date.now() || execution.botId !== call.botId || execution.conversationId !== call.conversationId || execution.targetId !== this.targetId || fingerprint(execution.authority) !== fingerprint(authority) || !child || child.capability !== call.tool || child.digest !== fingerprint([APP_CODE_VERSION,call.tool,call.args,execution.authority,execution.targetId,execution.executionId]))
 				return fail("permission_denied","Application access is not authorized");
 		}
 		const principal = fingerprint([this.targetId,call.botId,call.conversationId,authority]);
@@ -79,6 +79,12 @@ export class AppCapabilities {
 		const root = delivery?.rootId && (await this.runtime.groups().roots(authority.channelId)).find(r=>r.rootId===delivery.rootId);
 		if (!root || root.coreBotId !== call.botId || root.state !== "running" || delivery?.transferId) return fail("permission_denied","Application access is not authorized");
 		return {principal,groupId:authority.channelId};
+	}
+	async authorizeManagement(call: Call): Promise<void> {
+		const scope = await this.#modelScope(call);
+		const execution = call.appExecutionId && await this.runtime.appExecution(call.appExecutionId);
+		if (scope.groupId || !execution || execution.managementClosed || call.executionDeadline !== execution.deadline)
+			fail("permission_denied", "Application management is not authorized");
 	}
 	async authorize(call: Call): Promise<{kind:"allow"}|{kind:"deny";reason:string}> {
 		try { await this.#modelScope(call); return {kind:"allow"}; }

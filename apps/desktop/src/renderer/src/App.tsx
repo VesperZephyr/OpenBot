@@ -1,3 +1,4 @@
+import { appManagementCapability, legacyManagementName, type AppExecution } from "@openbot/protocol";
 import { ConversationSearch } from "./ConversationSearch";
 import { ChatComposer } from "./ChatComposer";
 import { ConversationShell, DetailsPanel, Timeline, useDialogFocus } from "./ConversationUI";
@@ -431,7 +432,12 @@ function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 	const retry = retryTarget(snapshot.items, snapshot.live !== undefined);
 	const item = (entry: TranscriptItem) =>
 		entry.kind === "tool" ? (
-			<ToolCard key={entry.id} item={entry} approval={approvals.get(entry.id)} />
+			<ToolCard
+				key={entry.id}
+				item={entry}
+				approval={approvals.get(entry.id)}
+				childApprovals={entry.execution?.children.flatMap((c) => (approvals.get(c.callId) ? [approvals.get(c.callId)!] : [])) ?? []}
+			/>
 		) : entry.kind === "divider" ? (
 			<Divider key={entry.id} item={entry} />
 		) : (
@@ -503,21 +509,21 @@ function MessageText({ parts, markdown = false }: { readonly parts: readonly { r
 	);
 }
 
-const TOOL_VERBS: Record<string, readonly [running: string, done: string]> = {
+const TOOL_VERBS: Record<string, readonly [running: string, done: string, action?: string]> = {
 	codemode: ["Reading application data", "Read application data"],
-	app_conversations_search: ["Searching chat history", "Searched chat history"],
-	app_conversations_read: ["Reading chat context", "Read chat context"],
-	app_conversations_list: ["Listing conversations", "Listed conversations"],
-	app_bots_list: ["Inspecting Bots", "Inspected Bots"],
-	app_groups_list: ["Inspecting groups", "Inspected groups"],
-	group_inspect: ["Inspecting groups", "Inspected groups"],
-	group_create: ["Creating group", "Created group"],
-	group_update: ["Updating group", "Updated group"],
-	group_dissolve: ["Dissolving group", "Dissolved group"],
-	bot_inspect: ["Inspecting Bots", "Inspected Bots"],
-	bot_create: ["Creating Bot", "Created Bot"],
-	bot_update: ["Updating Bot", "Updated Bot"],
-	bot_delete: ["Deleting Bot", "Deleted Bot"],
+	app_conversations_search: ["Searching chat history", "Searched chat history", "Search chat history"],
+	app_conversations_read: ["Reading chat context", "Read chat context", "Read chat context"],
+	app_conversations_list: ["Listing conversations", "Listed conversations", "List conversations"],
+	app_bots_list: ["Inspecting Bots", "Inspected Bots", "Inspect Bots"],
+	app_groups_list: ["Inspecting groups", "Inspected groups", "Inspect groups"],
+	group_inspect: ["Inspecting groups", "Inspected groups", "Inspect groups"],
+	group_create: ["Creating group", "Created group", "Create group"],
+	group_update: ["Updating group", "Updated group", "Update group"],
+	group_dissolve: ["Dissolving group", "Dissolved group", "Dissolve group"],
+	bot_inspect: ["Inspecting Bots", "Inspected Bots", "Inspect Bots"],
+	bot_create: ["Creating Bot", "Created Bot", "Create Bot"],
+	bot_update: ["Updating Bot", "Updated Bot", "Update Bot"],
+	bot_delete: ["Deleting Bot", "Deleted Bot", "Delete Bot"],
 	local_read: ["Reading", "Read"],
 	local_list: ["Listing", "Listed"],
 	local_write: ["Writing", "Wrote"],
@@ -534,24 +540,30 @@ const TOOL_VERBS: Record<string, readonly [running: string, done: string]> = {
 function ToolCard({
 	item,
 	approval,
+	childApprovals = [],
 }: {
 	readonly item: Extract<TranscriptItem, { kind: "tool" }>;
 	readonly approval: PendingApproval | undefined;
+	readonly childApprovals?: readonly PendingApproval[];
 }) {
 	const args = (item.args ?? {}) as Record<string, unknown>;
 	let output = item.output;
-	if(item.tool === "codemode" && item.execution?.error) output=t(item.execution.error);
+	if (item.tool === "codemode" && item.execution?.error) output = t(item.execution.error);
 	if (item.tool.startsWith("app_") && output) {
 		try {
 			const result = JSON.parse(output);
 			if (result.ok === false && typeof result.error?.message === "string") output = t(result.error.message);
-		} catch { /* Interrupted tools may not have a complete result envelope. */ }
+		} catch {
+			/* Interrupted tools may not have a complete result envelope. */
+		}
 	}
 	const managedName = useStore(
 		(state) =>
 			state.bots.find((bot) => bot.botId === args.botId)?.name ?? state.groups.find((group) => group.groupId === args.groupId)?.name,
 	);
-	const [running, done] = TOOL_VERBS[item.tool] ?? [item.tool, item.tool];
+	const [running, done] = item.execution?.children.some((c) => appManagementCapability(c.capability))
+		? ["Working with application", "Application work completed"]
+		: (TOOL_VERBS[item.tool] ?? [item.tool, item.tool]);
 	const subject = String(
 		args.name ??
 			managedName ??
@@ -565,7 +577,7 @@ function ToolCard({
 			args.taskId ??
 			"",
 	);
-	const waiting = approval !== undefined;
+	const waiting = approval !== undefined || childApprovals.length > 0;
 	const label = waiting
 		? t("Waiting for approval")
 		: item.status === "running" || item.status === "pending"
@@ -593,16 +605,75 @@ function ToolCard({
 					)}
 					<RevealButton item={item} />
 				</summary>
-				{item.execution ? <ul className="code-activity" aria-label={t("Application read steps")}>{item.execution.children.map(child => {
-					const verb = TOOL_VERBS[child.capability];
-					return <li key={child.callId} data-state={child.state}><span>{t(verb?.[child.state === "running" ? 0 : 1] ?? child.capability)}</span><span>{t(child.state === "running" ? "Running" : child.state === "succeeded" ? "Completed" : child.state === "cancelled" ? "Stopped" : "Failed")}</span></li>;
-				})}</ul> : null}
-				{item.tool === "codemode" && typeof args.code === "string" ? <details className="code-source"><summary>{t("View script")}</summary><pre className="tool-output">{args.code}</pre></details> : null}
+				{item.execution ? <CodeActivity children={item.execution.children} /> : null}
+				{item.tool === "codemode" && typeof args.code === "string" ? (
+					<details className="code-source">
+						<summary>{t("View script")}</summary>
+						<pre className="tool-output">{args.code}</pre>
+					</details>
+				) : null}
 				{item.tool === "local_exec" && typeof args.command === "string" && <pre className="tool-command">$ {args.command}</pre>}
 				{output !== undefined && output !== "" && <pre className="tool-output">{output}</pre>}
 			</details>
 			{approval !== undefined && <ApprovalCard approval={approval} />}
+			{childApprovals.map((child) => (
+				<ApprovalCard key={child.approvalId} approval={child} />
+			))}
 		</li>
+	);
+}
+
+function CodeActivity({ children }: { readonly children: AppExecution["children"] }) {
+	return (
+		<ul className="code-activity" aria-label={t("Application steps")}>
+			{children.map((child) => {
+				const verb = TOOL_VERBS[legacyManagementName(child.capability)];
+				const status =
+					child.outcome === "expired"
+						? "Expired"
+						: child.outcome === "denied"
+							? "Denied"
+							: child.outcome === "unknown"
+								? "Needs attention"
+								: child.state === "running"
+									? "Running"
+									: child.state === "succeeded"
+										? "Completed"
+										: child.state === "cancelled"
+											? "Stopped"
+											: "Failed";
+				return (
+					<li key={child.callId} data-state={child.state}>
+						<span>{t(verb?.[child.state === "running" ? 0 : child.state === "succeeded" ? 1 : 2] ?? child.capability)}</span>
+						<span>{t(status)}</span>
+						{child.object ? <CodeObject object={child.object} /> : null}
+					</li>
+				);
+			})}
+		</ul>
+	);
+}
+function CodeObject({ object }: { readonly object: NonNullable<AppExecution["children"][number]["object"]> }) {
+	const resource = useStore((state) =>
+		object.kind === "bot" ? state.bots.find((b) => b.botId === object.id) : state.groups.find((g) => g.groupId === object.id),
+	);
+	const label = `${resource?.name ?? `${t(object.kind === "bot" ? "Bot" : "Group")} · ${object.id.slice(-8)}`} · ${t("Revision")} ${object.revision}`;
+	return resource ? (
+		<button
+			className="code-object"
+			type="button"
+			title={object.id}
+			onClick={() => {
+				if (object.kind === "bot") void openBot(object.id).catch(report);
+				else useStore.setState({ view: { kind: "group", groupId: object.id } });
+			}}
+		>
+			{label}
+		</button>
+	) : (
+		<span className="code-object" title={object.id}>
+			{label}
+		</span>
 	);
 }
 

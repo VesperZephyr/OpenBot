@@ -1,3 +1,5 @@
+import { BotsDoc, type BotRecord } from "./bots.ts";
+import { validateAppMutation, appChildDigest } from "./app-executions.ts";
 /**
  * The only OpenBot package that imports Pi. It maps Bots to Pi Durable conversations and exposes OpenBot-shaped
  * operations and snapshots; callers never see Pi types.
@@ -80,21 +82,6 @@ export { isTerminal, KEPT_TERMINAL_RUNS, type RunInput, type RunMessage, type Ru
 
 type PiConversationId = ConversationRecord["id"];
 
-/** Pi IDs are branded numbers; the record keeps the Pi conversation ID in that form. */
-type BotRecord = Omit<BotProfile, "kind" | "revision"> & {
-	readonly revision?: number;
-	readonly kind?: BotProfile["kind"];
-	readonly conversationId: number;
-};
-
-/** Session-scoped Bot index stored next to Pi's own documents. */
-const BotsDoc = defineDoc<{ bots: Record<string, BotRecord> }>({
-	kind: "openbot.bots",
-	version: 1,
-	scope: "session",
-	initial: () => ({ bots: {} }),
-});
-
 const ChannelsDoc = defineDoc<{ channels: Record<string, { botId: string; channelId: string; conversationId: number }> }>({
 	kind: "openbot.channels",
 	version: 1,
@@ -129,6 +116,7 @@ export type ToolInvoker = (call: {
 	readonly collaboration?: { readonly runId: string };
 	readonly authority?: ManagementAuthority;
 	readonly appExecutionId?: string;
+	readonly executionDeadline?: number;
 	readonly appAuthority?: import("@openbot/protocol").AppReadAuthority;
 	readonly botId: BotId;
 	readonly conversationId: string;
@@ -217,7 +205,13 @@ export class BotRuntime {
 				options.tools === undefined
 					? []
 					: options.tools.definitions
-							.filter((d) => !d.capability.endsWith(".management") && d.capability !== "collaboration" && d.capability !== "app.read" && d.capability !== "app.orchestrate")
+							.filter(
+								(d) =>
+									!d.capability.endsWith(".management") &&
+									d.capability !== "collaboration" &&
+									d.capability !== "app.read" &&
+									d.capability !== "app.orchestrate",
+							)
 							.map((definition) => routedTool(definition, options.tools!.invoke)),
 			sections: botSections(async (input, context) => {
 				const bots = (await input.read.snapshot(BotsDoc, context))?.bots ?? {};
@@ -232,7 +226,8 @@ export class BotRuntime {
 			name: CORE_EXTENSION,
 			tools: (options.tools?.definitions ?? [])
 				.filter((d) => d.capability.endsWith(".management"))
-				.map((d) => routedTool(d, options.tools!.invoke)),
+				.filter((d) => !d.name.startsWith("app_") || !!options.tools?.admitOrchestration)
+				.map((d) => routedTool(d, options.tools!.invoke, d.name.startsWith("app_"))),
 		});
 		const group = defineExtension({
 			name: "openbot.group-collaboration",
@@ -240,21 +235,44 @@ export class BotRuntime {
 				.filter((d) => d.capability === "collaboration")
 				.map((d) => routedTool(d, options.tools!.invoke)),
 		});
-		const code = options.tools?.admitOrchestration ? appCodemode(options.tools.admitOrchestration, async (api, context) => {
-			const saved = await api.memo<import("./codemode.ts").CodeIdentity>("openbot.code-identity", context);
-			if (saved) return saved;
-			const bots = (await api.snapshot(BotsDoc, context))?.bots ?? {};
-			const direct = Object.values(bots).find(b => b.conversationId === Number(api.conversationId));
-			const channel = Object.values((await api.snapshot(ChannelsDoc, context))?.channels ?? {}).find(c => c.conversationId === Number(api.conversationId));
-			const botId = direct?.botId ?? channel?.botId;
-			const run = Object.values((await api.snapshot(RunsDoc, context))?.runs ?? {}).find(r => r.botId === botId && (r.channelId ?? "direct") === (channel?.channelId ?? "direct") && r.state === "running");
-			if (!botId || !run?.origin || !run.requestIds[0]) throw Error("Code Mode is not authorized");
-			return api.memo("openbot.code-identity", {botId, authority:{runId:run.runId,channelId:run.channelId??"direct",origin:run.origin,rootRequestId:run.requestIds[0]}}, context);
-		}, options.codemodeAssets) : undefined;
-		const app = defineExtension({...code, name: "openbot.app-read", tools: [
-			...(code?.tools ?? []),
-			...(options.tools?.definitions ?? []).filter(d => d.capability === "app.read").map(d => routedTool(d, options.tools!.invoke, !!code)),
-		]});
+		const code = options.tools?.admitOrchestration
+			? appCodemode(
+					options.tools.admitOrchestration,
+					async (api, context) => {
+						const saved = await api.memo<import("./codemode.ts").CodeIdentity>("openbot.code-identity", context);
+						if (saved) return saved;
+						const bots = (await api.snapshot(BotsDoc, context))?.bots ?? {};
+						const direct = Object.values(bots).find((b) => b.conversationId === Number(api.conversationId));
+						const channel = Object.values((await api.snapshot(ChannelsDoc, context))?.channels ?? {}).find(
+							(c) => c.conversationId === Number(api.conversationId),
+						);
+						const botId = direct?.botId ?? channel?.botId;
+						const run = Object.values((await api.snapshot(RunsDoc, context))?.runs ?? {}).find(
+							(r) => r.botId === botId && (r.channelId ?? "direct") === (channel?.channelId ?? "direct") && r.state === "running",
+						);
+						if (!botId || !run?.origin || !run.requestIds[0]) throw Error("Code Mode is not authorized");
+						return api.memo(
+							"openbot.code-identity",
+							{
+								botId,
+								authority: { runId: run.runId, channelId: run.channelId ?? "direct", origin: run.origin, rootRequestId: run.requestIds[0] },
+							},
+							context,
+						);
+					},
+					options.codemodeAssets,
+				)
+			: undefined;
+		const app = defineExtension({
+			...code,
+			name: "openbot.app-read",
+			tools: [
+				...(code?.tools ?? []),
+				...(options.tools?.definitions ?? [])
+					.filter((d) => d.capability === "app.read")
+					.map((d) => routedTool(d, options.tools!.invoke, !!code)),
+			],
+		});
 		registry.install(app);
 		registry.install(group);
 		registry.install(bot);
@@ -270,6 +288,7 @@ export class BotRuntime {
 			context,
 		);
 		await harness.commit(async (tx) => {
+			await tx.doc(AppExecutionsDoc);
 			const profiles = await tx.doc(BotsDoc);
 			for (const record of Object.values(profiles.bots)) {
 				await configure(tx, record.conversationId as PiConversationId, {
@@ -281,7 +300,9 @@ export class BotRuntime {
 			const channels = await tx.doc(ChannelsDoc);
 			const bots = (await tx.doc(BotsDoc)).bots;
 			for (const channel of Object.values(channels.channels))
-				await configure(tx, channel.conversationId as PiConversationId, { extensions: [bot, group, ...(bots[channel.botId]?.kind === "core" ? [app] : [])] });
+				await configure(tx, channel.conversationId as PiConversationId, {
+					extensions: [bot, group, ...(bots[channel.botId]?.kind === "core" ? [app] : [])],
+				});
 		}, context);
 		return new BotRuntime(harness, models, context, { bot, core, group, app });
 	}
@@ -304,7 +325,14 @@ export class BotRuntime {
 		return conversationIndexStore(this.#harness, this.#context);
 	}
 
-	searchConversations(query: string, eligible: ReadonlySet<string>, unreadOnly = false, includeHidden = false, cursor?: string, scope = "legacy") {
+	searchConversations(
+		query: string,
+		eligible: ReadonlySet<string>,
+		unreadOnly = false,
+		includeHidden = false,
+		cursor?: string,
+		scope = "legacy",
+	) {
 		if (query.length > 200) throw new ProtocolError("invalid_request", "Search is limited to 200 characters");
 		const normalized = normalizeQuery(query);
 		return this.#search.search(normalized, eligible, JSON.stringify([normalized, unreadOnly, includeHidden, scope]), cursor);
@@ -312,7 +340,7 @@ export class BotRuntime {
 
 	async committedMessages(key: import("@openbot/protocol").ConversationKey) {
 		const bot = key.startsWith("bot:") ? await this.getBot(key.slice(4)) : undefined;
-		const exists = key.startsWith("bot:") ? !!bot && bot.status !== "deleted" : !!await this.groups().get(key.slice(6));
+		const exists = key.startsWith("bot:") ? !!bot && bot.status !== "deleted" : !!(await this.groups().get(key.slice(6)));
 		if (!exists) throw new ProtocolError("not_found", "Conversation is unavailable");
 		return this.#search.read(key);
 	}
@@ -408,7 +436,9 @@ export class BotRuntime {
 			const doc = await tx.doc(BotsDoc);
 			const existing = doc.bots[botId]!;
 			doc.bots[botId] = { ...existing, kind: "core", status: "active", pinned: true };
-			await configure(tx, existing.conversationId as PiConversationId, { extensions: [this.#extensions.bot, this.#extensions.core, this.#extensions.app] });
+			await configure(tx, existing.conversationId as PiConversationId, {
+				extensions: [this.#extensions.bot, this.#extensions.core, this.#extensions.app],
+			});
 			return toProfile(JSON.parse(JSON.stringify(doc.bots[botId])) as BotRecord);
 		}, this.#context);
 	}
@@ -608,16 +638,17 @@ export class BotRuntime {
 	async cancel(botId: BotId, channelId = "direct", background = false): Promise<void> {
 		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		await conversation.abort(this.#context, { background });
-		const conversationId = await this.conversationKey(botId,channelId);
+		const conversationId = await this.conversationKey(botId, channelId);
 		await stopAppExecution(conversationId);
-		await this.#harness.commit(async tx => {
-			for(const record of Object.values((await tx.doc(AppExecutionsDoc)).executions)) {
-				if(record.conversationId === conversationId && ["admitted","running"].includes(record.state)) {
-					record.state="cancelled";record.endedAt=Date.now();
-					for(const child of record.children)if(child.state==="running")child.state="cancelled";
+		await this.#harness.commit(async (tx) => {
+			for (const record of Object.values((await tx.doc(AppExecutionsDoc)).executions)) {
+				if (record.conversationId === conversationId && ["admitted", "running"].includes(record.state)) {
+					record.state = "cancelled";
+					record.endedAt = Date.now();
+					for (const child of record.children) if (child.state === "running") child.state = "cancelled";
 				}
 			}
-		},this.#context);
+		}, this.#context);
 	}
 
 	/**
@@ -745,16 +776,30 @@ export class BotRuntime {
 		// Projection may read older entries, so updates are serialized to keep snapshots in commit order.
 		let queue = Promise.resolve();
 		let stopped = false;
-		const unsubscribe = view.subscribe((value) => {
+		const project = (value: ConversationView) => {
 			queue = queue
 				.then(async () => {
 					const snapshot = await this.#project(record, value, channelId);
 					if (!stopped) listener(snapshot);
 				})
 				.catch((error: unknown) => console.error(`Projecting the conversation of ${botId} failed`, error));
+		};
+		const unsubscribe = view.subscribe(project);
+		const executions = (await this.#harness.documentState(AppExecutionsDoc, this.#context))!;
+		let lastExecution = "";
+		const unsubscribeExecutions = executions.subscribe((value) => {
+			const current = JSON.stringify(
+				Object.values(value?.executions ?? {}).filter((e) => e.conversationId === String(record.conversationId)),
+			);
+			if (current !== lastExecution) {
+				lastExecution = current;
+				project(view.value);
+			}
 		});
 		return () => {
 			stopped = true;
+			unsubscribeExecutions();
+			executions.dispose();
 			unsubscribe();
 			view.dispose();
 		};
@@ -856,6 +901,20 @@ export class BotRuntime {
 		return conversation;
 	}
 
+	async closeAppManagement(call: Parameters<ToolInvoker>[0]): Promise<void> {
+		await this.#harness.commit(async (tx) => {
+			const execution = call.appExecutionId && (await tx.doc(AppExecutionsDoc)).executions[call.appExecutionId];
+			const child = execution && execution.children.find((c) => c.callId === call.callId);
+			if (
+				execution &&
+				child &&
+				execution.botId === call.botId &&
+				execution.conversationId === call.conversationId &&
+				child.digest === appChildDigest(execution, call.tool, call.args)
+			)
+				execution.managementClosed = true;
+		}, this.#context);
+	}
 	async appExecution(id: string) {
 		return (await this.#harness.snapshot(AppExecutionsDoc, this.#context))?.executions[id];
 	}
@@ -865,13 +924,16 @@ export class BotRuntime {
 		const marker = view.entries[0]?.head === undefined ? undefined : view.entries[0];
 		const earlier = marker === undefined ? [] : await this.#earlierEntries(record, marker);
 		const projected = projectView(record.botId, view, earlier);
-		const executions = new Map(Object.values((await this.#harness.snapshot(AppExecutionsDoc, this.#context))?.executions ?? {})
-			.filter(e => e.conversationId === String(record.conversationId)).map(e => [e.parentCallId,e]));
+		const executions = new Map(
+			Object.values((await this.#harness.snapshot(AppExecutionsDoc, this.#context))?.executions ?? {})
+				.filter((e) => e.conversationId === String(record.conversationId))
+				.map((e) => [e.parentCallId, e]),
+		);
 		const snapshot = {
 			...projected,
-			items: projected.items.map(item => {
+			items: projected.items.map((item) => {
 				const execution = executions.get(item.id);
-				return item.kind === "tool" && item.tool === "codemode" && execution ? {...item, execution} : item;
+				return item.kind === "tool" && item.tool === "codemode" && execution ? { ...item, execution } : item;
 			}),
 		};
 		if (channelId === "direct") this.#search.project(`bot:${record.botId}`, directMessages(snapshot));
@@ -1217,6 +1279,7 @@ async function committedManagement(tx: Tx, proposal?: BotManagementProposal): Pr
 	const record = (await tx.doc(ManagementDoc)).operations[proposal.invocationId];
 	if (!record || record.fingerprint !== proposal.fingerprint) throw new ProtocolError("request_conflict", "Management proposal mismatch");
 	if (record.outcome) throw new ProtocolError("request_conflict", "Management request already ended");
+	if (!record.result) await validateAppMutation(tx, proposal.appBinding, proposal.approvalId);
 	return record.result ? (JSON.parse(JSON.stringify(record.result)) as BotProfile) : undefined;
 }
 async function completeManagement(tx: Tx, proposal: BotManagementProposal | undefined, result: BotProfile): Promise<void> {

@@ -1,7 +1,14 @@
 /** Group lifecycle and durable delivery reconciliation; model replies never choose a destination. */
 import { createHash } from "node:crypto";
 import { isTerminal, type BotRuntime, type StoredRun } from "@openbot/agent-runtime";
-import { type GroupDelivery, type GroupChange, type GroupFields, type GroupSnapshot, ProtocolError } from "@openbot/protocol";
+import {
+	legacyManagementName,
+	type GroupDelivery,
+	type GroupChange,
+	type GroupFields,
+	type GroupSnapshot,
+	ProtocolError,
+} from "@openbot/protocol";
 import type { ApprovalBook, Decision } from "./approvals.ts";
 import { BotManagement, type ManagementCall } from "./bot-management.ts";
 import type { RunScheduler } from "./runs.ts";
@@ -105,12 +112,8 @@ export class Groups {
 		this.#observers.set(key, stop);
 	}
 	async change(change: GroupChange, intentId?: string) {
-		const before = await this.runtime.groups().get(change.groupId);
 		const result = await this.runtime.groups().change(change, Date.now(), intentId);
-		const affected = new Set([
-			...(before?.memberIds ?? []),
-			...(await this.runtime.channels()).filter((c) => c.channelId === result.groupId).map((c) => c.botId),
-		]);
+		const affected = new Set((await this.runtime.channels()).filter((c) => c.channelId === result.groupId).map((c) => c.botId));
 		for (const id of affected)
 			if (result.status === "dissolved" || (!result.memberIds.includes(id) && (await this.runtime.getBot(id))?.kind !== "core"))
 				this.#stopping(id, result.groupId);
@@ -196,7 +199,7 @@ export class Groups {
 				};
 			}),
 		);
-		return { group, roots: await this.runtime.groups().roots(groupId), ...await this.runtime.groups().history(groupId), tasks };
+		return { group, roots: await this.runtime.groups().roots(groupId), ...(await this.runtime.groups().history(groupId)), tasks };
 	}
 	async stopTree(rootId: string): Promise<null> {
 		await this.runtime.groups().stop(rootId);
@@ -323,17 +326,17 @@ export class Groups {
 		try {
 			const saved = await this.runtime.groups().intent(this.authority.key(call));
 			await this.authority.authorize(call, !saved?.result);
-			if (call.tool === "group_inspect") {
+			if (legacyManagementName(call.tool) === "group_inspect") {
 				if (Object.keys(call.args).some((k) => k !== "groupId") || (call.args.groupId != null && typeof call.args.groupId !== "string"))
 					fail("Invalid group change");
 				return { kind: "allow" };
 			}
 			const action =
-				call.tool === "group_create"
+				legacyManagementName(call.tool) === "group_create"
 					? "create"
-					: call.tool === "group_update"
+					: legacyManagementName(call.tool) === "group_update"
 						? "update"
-						: call.tool === "group_dissolve"
+						: legacyManagementName(call.tool) === "group_dissolve"
 							? "dissolve"
 							: undefined;
 			if (!action) return fail("Invalid group change");
@@ -369,7 +372,14 @@ export class Groups {
 				expectedRevision: action === "create" ? 0 : (expectedRevision as number),
 				...(action === "dissolve" ? {} : { fields: fields as GroupFields }),
 			};
-			await this.runtime.groups().propose(id, { fingerprint: this.authority.fingerprint(call), change, approvalId: `approval:${id}` });
+			await this.runtime
+				.groups()
+				.propose(id, {
+					...(await this.authority.binding(call)),
+					fingerprint: this.authority.fingerprint(call),
+					change,
+					approvalId: `approval:${id}`,
+				});
 			return { kind: "ask", reason: "Review this group change" };
 		} catch (error) {
 			if (call.signal.aborted) throw error;
@@ -378,7 +388,7 @@ export class Groups {
 	}
 	async manage(call: ManagementCall): Promise<{ status: "succeeded" | "failed"; output: string }> {
 		try {
-			if (call.tool === "group_inspect") {
+			if (legacyManagementName(call.tool) === "group_inspect") {
 				const decision = await this.prepare(call);
 				if (decision.kind === "deny") fail(decision.reason);
 				return {

@@ -50,6 +50,10 @@ export class ApprovalBook {
 		this.#store = store;
 		await store.prune(this.#now() - RETENTION_MS);
 		for (const record of await store.pending()) {
+			if (record.deadline !== undefined && record.deadline <= this.#now()) {
+				await store.put({ ...record, state: "withdrawn", decidedAt: this.#now() });
+				continue;
+			}
 			this.#entries.set(record.approvalId, { record, waiters: new Set() });
 			this.#changed(record.botId);
 		}
@@ -70,6 +74,8 @@ export class ApprovalBook {
 	async request(approval: PendingApproval, signal: AbortSignal): Promise<ApprovalDecision> {
 		signal.throwIfAborted();
 		const store = this.#requireStore();
+		if (approval.deadline !== undefined && approval.deadline <= this.#now())
+			throw new ProtocolError("invalid_request", "Application execution expired");
 		let entry = this.#entries.get(approval.approvalId);
 		if (entry === undefined) {
 			const stored = await store.get(approval.approvalId);
@@ -122,6 +128,7 @@ export class ApprovalBook {
 	async decide(approvalId: string, decision: ApprovalDecision): Promise<boolean> {
 		const entry = this.#entries.get(approvalId);
 		if (entry === undefined || entry.record.state !== "pending" || this.#closed) return false;
+		if (entry.record.deadline !== undefined && entry.record.deadline <= this.#now()) return false;
 		const saved =
 			typeof decision === "string"
 				? undefined
@@ -272,7 +279,7 @@ export function decide(call: PolicyCall, definition: ToolDefinition, policy: Pol
 		case "app.read":
 			return { kind: "deny", reason: "Application access requires Core authorization" };
 		case "collaboration":
-   return {kind:"deny",reason:"Collaboration requires assigned task authority"};
+			return { kind: "deny", reason: "Collaboration requires assigned task authority" };
 		case "group.management":
 			return { kind: "deny", reason: "Group management requires Core authorization" };
 		case "bot.management":

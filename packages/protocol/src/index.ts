@@ -1,3 +1,5 @@
+import { MANAGEMENT_TOOL_DEFINITIONS, APP_MANAGEMENT_TOOL_DEFINITIONS } from "./app-management.ts";
+export * from "./app-management.ts";
 import { CODEMODE_DEFINITION } from "./app-execution.ts";
 export * from "./app-execution.ts";
 import { APP_TOOL_DEFINITIONS } from "./app-capabilities.ts";
@@ -198,6 +200,7 @@ export type BotManagementProposal = {
 	readonly change: BotManagementChange;
 	readonly createdAt: number;
 	readonly fingerprint: string;
+	readonly appBinding?: import("./app-execution.ts").AppMutationBinding;
 };
 export type BotManagementReceipt = BotManagementProposal & {
 	readonly result?: BotProfile;
@@ -324,6 +327,7 @@ export type RunRecord = {
 
 /** A tool call stopped before dispatch until the user decides (Section 5.3). */
 export type PendingApproval = {
+	readonly deadline?: number;
 	readonly conversationId?: string;
 	readonly approvalId: string;
 	readonly botId: BotId;
@@ -785,22 +789,6 @@ const object = (properties: Record<string, unknown>, required: readonly string[]
 	additionalProperties: false,
 });
 
-const nullable = (schema: Record<string, unknown>) => ({ anyOf: [schema, { type: "null" }] });
-const botFields = {
-	name: nullable({ type: "string", minLength: 1, maxLength: 100 }),
-	role: nullable({ type: "string", maxLength: 500 }),
-	instructions: nullable({ type: "string", maxLength: 32000 }),
-	model: nullable(
-		object({ provider: string("Configured provider ID."), modelId: string("Configured model ID.") }, ["provider", "modelId"]),
-	),
-	thinkingLevel: nullable({ type: "string", enum: ["off", "low", "medium", "high"] }),
-};
-const groupFields = {
-	name: { type: "string", minLength: 1, maxLength: 100 },
-	objective: { type: "string", maxLength: 4000 },
-	memberIds: { type: "array", items: string("Existing Bot ID"), minItems: 2, maxItems: 6, uniqueItems: true },
-	leadBotId: string("Member with the lead role; ordinary messages always go to Core"),
-};
 export const TOOL_CATALOG = [
 	...APP_TOOL_DEFINITIONS,
 	CODEMODE_DEFINITION,
@@ -821,86 +809,8 @@ export const TOOL_CATALOG = [
 			["botId", "task", "expectedResult"],
 		),
 	})),
-	{
-		name: "group_inspect",
-		capability: "group.management",
-		destination: "host",
-		description:
-			"Core direct chat only. List local groups and revisions, or inspect one group. Does not read private Bot conversations. Use bot_inspect to find existing members.",
-		parameters: object({ groupId: nullable(string("Group ID, or null to list")) }, []),
-	},
-	{
-		name: "group_create",
-		capability: "group.management",
-		destination: "host",
-		description:
-			"Core direct chat only. Create a group of 2–6 existing Bots at the user's explicit request. Requires exact user approval. Never create Bots automatically. Do not retry a denied change.",
-		parameters: object(groupFields, Object.keys(groupFields)),
-	},
-	{
-		name: "group_update",
-		capability: "group.management",
-		destination: "host",
-		description:
-			"Core direct chat only. Replace group details, members and lead at the user's request. Inspect first, supply current revision and complete fields. Removing a member stops its group tasks. Requires exact approval.",
-		parameters: object({ ...groupFields, groupId: string("Group ID"), expectedRevision: integer("Current revision") }, [
-			...Object.keys(groupFields),
-			"groupId",
-			"expectedRevision",
-		]),
-	},
-	{
-		name: "group_dissolve",
-		capability: "group.management",
-		destination: "host",
-		description:
-			"Core direct chat only. Dissolve a group at the user's request after inspecting its revision. Requires approval, stops group work and retains read-only local history. Does not delete Bots.",
-		parameters: object({ groupId: string("Group ID"), expectedRevision: integer("Current revision") }, ["groupId", "expectedRevision"]),
-	},
-
-	{
-		name: "bot_inspect",
-		capability: "bot.management",
-		destination: "host",
-		description:
-			"Core only. Inspect the user's Bots and current revisions. Listing omits instructions; select a Bot ID to read its full profile. Omit botId or pass null to list live Bots. Inspect before updating or deleting a Specialist.",
-		parameters: object({ botId: nullable(string("Bot ID to inspect, or null to list.")) }, []),
-	},
-	{
-		name: "bot_create",
-		capability: "bot.management",
-		destination: "host",
-		description:
-			"Core only. Create one Specialist when the user explicitly requests it. Waits for user approval. Never create Bots proactively. Name is required; null or omitted fields use defaults: empty role/instructions, default model/thinking. Starts with empty memory. Do not retry a denied request.",
-		parameters: object({ ...botFields, name: { type: "string", minLength: 1, maxLength: 100 } }, ["name"]),
-	},
-	{
-		name: "bot_update",
-		capability: "bot.management",
-		destination: "host",
-		description:
-			"Core only. Update a Specialist at the user's request, with approval. Inspect first and supply the current revision. Null or omitted fields are UNCHANGED; empty role/instructions clears that text. model selects an override; useDefaultModel=true removes the override. Cannot edit Core, memory, identity or permissions. Do not retry a denied request.",
-		parameters: object(
-			{
-				...botFields,
-				botId: string("Specialist ID from bot_inspect."),
-				expectedRevision: integer("Current revision from bot_inspect."),
-				useDefaultModel: nullable({ type: "boolean", description: "True removes the model override; false/null leaves it unchanged." }),
-			},
-			["botId", "expectedRevision"],
-		),
-	},
-	{
-		name: "bot_delete",
-		capability: "bot.management",
-		destination: "host",
-		description:
-			"Core only. Delete a Specialist at the user's request, with approval. Inspect first. Stops its work and background commands, removes it from the roster and retains local history. Cannot delete Core. Do not retry a denied request.",
-		parameters: object(
-			{ botId: string("Specialist ID from bot_inspect."), expectedRevision: integer("Current revision from bot_inspect.") },
-			["botId", "expectedRevision"],
-		),
-	},
+	...MANAGEMENT_TOOL_DEFINITIONS,
+	...APP_MANAGEMENT_TOOL_DEFINITIONS,
 	{
 		name: "local_read",
 		capability: "files.read",

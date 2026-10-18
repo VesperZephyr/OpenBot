@@ -2,6 +2,9 @@
 import { createHash } from "node:crypto";
 import type { BotRuntime } from "@openbot/agent-runtime";
 import {
+	APP_CODE_VERSION, legacyManagementName,
+	type AppReadAuthority,
+	type ExecutionTarget,
 	type BotManagementActivity,
 	type BotManagementChange,
 	type BotManagementProposal,
@@ -12,6 +15,10 @@ import {
 import type { Decision } from "./approvals.ts";
 
 export type ManagementCall = {
+	readonly appExecutionId?: string;
+	readonly executionDeadline?: number;
+	readonly appAuthority?: AppReadAuthority;
+	readonly target?: ExecutionTarget;
 	readonly runId?: string;
 	readonly botId: string;
 	readonly conversationId: string;
@@ -36,6 +43,7 @@ function canonical(value: unknown): string {
 }
 export class BotManagement {
 	readonly runtime: BotRuntime;
+	appGuard?: (call: ManagementCall) => Promise<void>;
 	readonly targetId: string;
 	readonly now: () => number;
 	constructor(runtime: BotRuntime, targetId: string, now: () => number) {
@@ -45,13 +53,26 @@ export class BotManagement {
 	}
 	async authorize(call: ManagementCall, requireActive = true): Promise<void> {
 		call.signal.throwIfAborted();
+		if (call.tool.startsWith("app_") || call.appExecutionId) {
+			if (!this.appGuard) fail("Application management is not authorized");
+			await this.appGuard!(call);
+		}
+		if (call.target && (call.target.kind !== "local" || call.target.targetId !== this.targetId))
+			fail("Management target is not authorized");
+		if (call.runId && call.runId !== call.authority?.runId) fail("Management Run does not match");
 		const actor = await this.runtime.getBot(call.botId);
 		if (actor?.kind !== "core" || actor.status !== "active" || (await this.runtime.conversationKey(call.botId)) !== call.conversationId)
 			fail("Only the Core Bot can manage Bots");
 		if (call.authority?.origin !== "user") fail("Bot management requires a user request");
 		if (!requireActive) return;
 		const run = await this.runtime.runsStore().get(call.authority!.runId);
-		if (!run || run.botId !== call.botId || run.origin !== "user" || (run.channelId ?? "direct") !== "direct" || (requireActive && run.state !== "running"))
+		if (
+			!run ||
+			run.botId !== call.botId ||
+			run.origin !== "user" ||
+			(run.channelId ?? "direct") !== "direct" ||
+			(requireActive && run.state !== "running")
+		)
 			fail("The originating user Run is no longer active");
 	}
 	key(call: ManagementCall): string {
@@ -65,23 +86,37 @@ export class BotManagement {
 					conversationId: call.conversationId,
 					authority: call.authority,
 					targetId: this.targetId,
+					...(call.appExecutionId ? { appExecutionId: call.appExecutionId, appAuthority: call.appAuthority, version: APP_CODE_VERSION } : {}),
 					tool: call.tool,
 					args: call.args,
 				}),
 			)
 			.digest("hex");
 	}
+	async binding(call: ManagementCall) {
+		if (!call.appExecutionId) return {};
+		const execution = await this.runtime.appExecution(call.appExecutionId);
+		const child = execution?.children.find((c) => c.callId === call.callId);
+		if (!child) return fail("Application child is not authorized");
+		return { appBinding: { executionId: call.appExecutionId, callId: call.callId, digest: child.digest } };
+	}
 	async prepare(call: ManagementCall): Promise<Decision> {
 		try {
 			const saved = await this.runtime.management().get(this.key(call));
 			await this.authorize(call, !saved?.result);
-			if (call.tool === "bot_inspect") {
+			if (legacyManagementName(call.tool) === "bot_inspect") {
 				if (Object.keys(call.args).some((k) => k !== "botId") || (call.args.botId != null && typeof call.args.botId !== "string"))
 					fail("Invalid inspection arguments");
 				return { kind: "allow" };
 			}
 			const action =
-				call.tool === "bot_create" ? "create" : call.tool === "bot_update" ? "update" : call.tool === "bot_delete" ? "delete" : undefined;
+				legacyManagementName(call.tool) === "bot_create"
+					? "create"
+					: legacyManagementName(call.tool) === "bot_update"
+						? "update"
+						: legacyManagementName(call.tool) === "bot_delete"
+							? "delete"
+							: undefined;
 			if (!action) fail("Unknown management tool");
 			if (saved) {
 				if (saved.fingerprint !== this.fingerprint(call)) fail("Management invocation arguments changed");
@@ -119,6 +154,7 @@ export class BotManagement {
 			)
 				fail("Choose a model from the configured catalog");
 			const proposal: BotManagementProposal = {
+				...(await this.binding(call)),
 				invocationId: this.key(call),
 				approvalId: `approval:${this.key(call)}`,
 				actorId: call.botId,

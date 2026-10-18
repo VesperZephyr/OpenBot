@@ -1,5 +1,5 @@
 import type { AppReadAuthority } from "./app-capabilities.ts";
-export const APP_CODE_VERSION = 1;
+export const APP_CODE_VERSION = 2;
 export const APP_CODE_LIMITS = {
 	sourceBytes: 32768,
 	heapBytes: 64 * 1024 * 1024,
@@ -11,7 +11,9 @@ export const APP_CODE_LIMITS = {
 	outputTokens: 2000,
 	maxOutputTokens: 4000,
 } as const;
+export type AppMutationBinding = { executionId: string; callId: string; digest: string };
 export type AppExecution = {
+	managementClosed?: boolean;
 	executionId: string;
 	parentCallId: string;
 	botId: string;
@@ -35,7 +37,15 @@ export type AppExecution = {
 	admittedAt: number;
 	deadline: number;
 	state: "admitted" | "running" | "succeeded" | "failed" | "cancelled" | "needs_attention";
-	children: { callId: string; capability: string; digest: string; state: "running" | "succeeded" | "failed" | "cancelled" }[];
+	children: {
+		callId: string;
+		capability: string;
+		digest: string;
+		state: "running" | "succeeded" | "failed" | "cancelled";
+		outcome?: "denied" | "expired" | "unknown";
+		receiptId?: string;
+		object?: { kind: "bot" | "group"; id: string; revision: number };
+	}[];
 	endedAt?: number;
 	error?: string;
 };
@@ -43,7 +53,7 @@ export const CODEMODE_DEFINITION = {
 	name: "codemode",
 	capability: "app.orchestrate" as const,
 	destination: "host" as const,
-	description: "Compose authorized local application reads.",
+	description: "Compose authorized local application operations.",
 	parameters: {
 		type: "object",
 		properties: { code: { type: "string", minLength: 1, maxLength: 32768 } },

@@ -1029,3 +1029,6 @@ button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--text) 28%, 
 .code-activity li { display: flex; justify-content: space-between; gap: 24px; padding: 4px 0; font-size: 12px; }
 .code-activity li span:last-child { opacity: .65; }
 .code-source { margin: 8px 0; font-size: 12px; }
+
+.code-activity li { flex-wrap: wrap; gap: 6px 16px; }
+.code-object { max-width: 100%; overflow-wrap: anywhere; font-size: 11px; text-align: left; }

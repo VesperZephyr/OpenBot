@@ -1,3 +1,4 @@
+import { legacyManagementName } from "@openbot/protocol";
 /**
  * Transport-independent application methods for the Host Runtime. Process composition, credential storage, and IPC
  * live in `apps/local-server`; this package only sees ports.
@@ -149,7 +150,8 @@ export class HostService {
 			settled: this.#toolSettled,
 			stopping: (botId, channelId, runId) => this.#conversationStopped(botId, channelId, runId),
 		});
-		this.capabilities = new AppCapabilities(this.#runtime, this.#status.targetId, run => this.groups.admissible(run));
+		this.capabilities = new AppCapabilities(this.#runtime, this.#status.targetId, (run) => this.groups.admissible(run));
+		this.management.appGuard = (call) => this.capabilities.authorizeManagement(call);
 		this.#policy = new PolicyService({ runtime: this.#runtime, approvals: this.#approvals, workspace: this.#workspace, now: this.#now });
 		this.#feed = new ConversationFeed({
 			deliver: (snapshot) => this.#emit({ type: "conversation.updated", payload: snapshot }),
@@ -185,11 +187,11 @@ export class HostService {
 				return profile;
 			},
 			"conversations.snapshot": async ({ botId }) => this.#view(await this.#runtime.snapshot(botId)),
-			"conversations.search": input => this.capabilities.desktopSearch(input),
+			"conversations.search": (input) => this.capabilities.desktopSearch(input),
 			"conversations.list": () => this.capabilities.desktopSummaries(),
 			"conversations.markRead": async ({ conversationKey, through }) => {
 				if (conversationKey.startsWith("bot:")) await this.#liveBot(conversationKey.slice(4));
-				else if (!conversationKey.startsWith("group:") || !await this.#runtime.groups().get(conversationKey.slice(6)))
+				else if (!conversationKey.startsWith("group:") || !(await this.#runtime.groups().get(conversationKey.slice(6))))
 					throw new ProtocolError("not_found", "Conversation is unavailable");
 				if (await this.#runtime.conversationIndex().markRead(conversationKey, through))
 					this.#emit({ type: conversationKey.startsWith("bot:") ? "bots.changed" : "groups.changed", payload: {} });
@@ -387,6 +389,10 @@ export class HostService {
 		return result;
 	}
 
+	async closeAppManagement(call: ManagementCall) {
+		await this.#runtime.closeAppManagement({ ...call, onProgress: () => {} });
+	}
+
 	async manageGroups(call: ManagementCall) {
 		return this.#serializeBots(() => this.groups.manage(call));
 	}
@@ -394,7 +400,7 @@ export class HostService {
 	async manageBots(call: ManagementCall): Promise<{ status: "succeeded" | "failed"; output: string }> {
 		return this.#serializeBots(async () => {
 			try {
-				if (call.tool === "bot_inspect") {
+				if (legacyManagementName(call.tool) === "bot_inspect") {
 					const decision = await this.management.prepare(call);
 					if (decision.kind === "deny") throw new ProtocolError("invalid_request", decision.reason);
 					const bots = (await this.#runtime.listBots()).filter(
@@ -411,6 +417,7 @@ export class HostService {
 						await this.#stopBot(proposal.botId);
 					}
 					call.signal.throwIfAborted();
+					await this.management.confirmed(call);
 					if (proposal.action === "create") {
 						const { model, ...fields } = proposal.change;
 						result = await this.#runtime.createBot(
@@ -451,7 +458,7 @@ export class HostService {
 				const activity = this.#observers.get(bot.botId)?.activity ?? "idle";
 				return {
 					...bot,
-					activity: activity === "idle" && (index.get(`bot:${bot.botId}`)?.unreadCount ?? 0) > 0 ? "unread" as const : activity,
+					activity: activity === "idle" && (index.get(`bot:${bot.botId}`)?.unreadCount ?? 0) > 0 ? ("unread" as const) : activity,
 					pendingApprovals: this.#approvals.forBot(bot.botId).length,
 					...(lastRun === undefined
 						? {}
@@ -561,12 +568,22 @@ export class HostService {
 		// The roster also carries the approval count and the latest Run, which Desktop main turns into the dock badge,
 		// notifications, and the power assertion.
 		const latest = this.#runs.latest(botId);
-		const message = view.items.findLast((item) => (item.kind === "user" || item.kind === "assistant") && item.parts.some((p) => p.text.trim()));
+		const message = view.items.findLast(
+			(item) => (item.kind === "user" || item.kind === "assistant") && item.parts.some((p) => p.text.trim()),
+		);
 		const roster = `${view.approvals.length}|${latest?.runId ?? ""}|${latest?.state ?? ""}|${message?.id ?? ""}|${view.readCursor ?? 0}`;
 		if (state.activity !== before || roster !== state.roster) this.#emit({ type: "bots.changed", payload: {} });
 		state.roster = roster;
 		this.#feed.publish(view);
 		for (const item of snapshot.items) {
+			if (item.kind === "tool" && item.execution)
+				for (const child of item.execution.children) {
+					if (child.state === "running" || state.settled.has(child.callId)) continue;
+					state.settled.add(child.callId);
+					if (child.capability.startsWith("app_groups_")) void this.groups.settled(botId, child.callId, child.state).catch(() => {});
+					if (child.capability.startsWith("app_bots_")) void this.management.settled(botId, child.callId, child.state).catch(() => {});
+					this.#toolSettled(botId, child.callId, snapshot.conversationId);
+				}
 			if (item.kind !== "tool" || item.status === "pending" || item.status === "running" || state.settled.has(item.id)) continue;
 			state.settled.add(item.id);
 			if (item.tool.startsWith("group_")) void this.groups.settled(botId, item.id, item.status).catch(() => {});
