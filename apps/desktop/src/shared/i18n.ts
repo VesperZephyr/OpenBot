@@ -1,13 +1,21 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
+ "Working with application": "正在操作应用",
+ "Application work completed": "应用操作已完成",
+ "Application steps": "应用操作步骤",
+ "Committed object": "已完成的对象",
+ "Application execution expired": "应用操作已过期",
+ "Management stopped. Completed changes are retained.": "管理操作已停止，已完成的更改会保留。",
+ "Management outcome needs attention": "管理操作结果待核实",
+ "Expired": "已过期",
  "Reading application data": "正在读取应用数据",
  "Read application data": "已读取应用数据",
  "Application read steps": "应用读取步骤",
  "View script": "查看脚本",
- "Code Mode execution failed": "应用读取执行失败",
- "Code Mode authority is no longer valid": "原任务已无读取权限",
- "Code Mode cannot resume this execution": "无法恢复此应用读取任务",
+ "Code Mode execution failed": "应用操作执行失败",
+ "Code Mode authority is no longer valid": "原任务已无应用访问权限",
+ "Code Mode cannot resume this execution": "无法恢复此应用操作任务",
  "Code Mode execution limit exceeded": "应用读取超出执行限制",
 
  "All": "全部",

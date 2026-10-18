@@ -1,4 +1,4 @@
-import { validAppInput } from "@openbot/protocol/app-validation";
+import { validAppInput, validManagementInput, validManagementOutput } from "@openbot/protocol/app-validation";
 /**
  * Every model-selected tool call enters here. The router binds the call to the local target, asks the policy port for a
  * decision, waits for the user when policy asks, and dispatches to the executor or a host handler. It depends only on
@@ -6,7 +6,10 @@ import { validAppInput } from "@openbot/protocol/app-validation";
  */
 import { createHash } from "node:crypto";
 import {
-	APP_CODE_LIMITS, CODEMODE_DEFINITION, appToolCapability,
+	appManagementCapability,
+	APP_CODE_LIMITS,
+	CODEMODE_DEFINITION,
+	appToolCapability,
 	type ApprovalDecision,
 	type ExecutionTarget,
 	type ExecutorToolName,
@@ -22,6 +25,7 @@ export type ToolCall = {
 	readonly collaboration?: { readonly runId: string };
 	readonly authority?: import("@openbot/protocol").ManagementAuthority;
 	readonly appExecutionId?: string;
+	readonly executionDeadline?: number;
 	readonly appAuthority?: import("@openbot/protocol").AppReadAuthority;
 	readonly target?: ExecutionTarget;
 	readonly botId: string;
@@ -67,6 +71,8 @@ export type ToolRouterOptions = {
 	readonly executor: ExecutorTransport;
 	readonly hostTools: Readonly<Record<string, HostToolHandler>>;
 	readonly now?: () => number;
+	/** Persist the terminal management latch before releasing the conversation leaf queue. */
+	readonly closeAppManagement?: (call: ToolCall) => Promise<void>;
 	/** How long an executor invocation may take before the executor refuses to start it. */
 	readonly deadlineMs?: number;
 };
@@ -83,8 +89,17 @@ export class ToolRouter {
 	/** Parent admission deliberately does not take the leaf mutex. */
 	async admitOrchestration(call: ToolCall): Promise<ExecutionTarget> {
 		call.signal.throwIfAborted();
-		if (call.tool !== "codemode" || Object.keys(call.args).join() !== "code" || typeof call.args.code !== "string" || !call.args.code.trim() || Buffer.byteLength(call.args.code) > APP_CODE_LIMITS.sourceBytes || this.#options.target.kind !== "local" || (call.target && (call.target.kind !== "local" || call.target.targetId !== this.#options.target.targetId))) throw new Error("Code Mode is not authorized");
-		const decision = await this.#options.policy.decide({...call,target:this.#options.target}, CODEMODE_DEFINITION);
+		if (
+			call.tool !== "codemode" ||
+			Object.keys(call.args).join() !== "code" ||
+			typeof call.args.code !== "string" ||
+			!call.args.code.trim() ||
+			Buffer.byteLength(call.args.code) > APP_CODE_LIMITS.sourceBytes ||
+			this.#options.target.kind !== "local" ||
+			(call.target && (call.target.kind !== "local" || call.target.targetId !== this.#options.target.targetId))
+		)
+			throw new Error("Code Mode is not authorized");
+		const decision = await this.#options.policy.decide({ ...call, target: this.#options.target }, CODEMODE_DEFINITION);
 		call.signal.throwIfAborted();
 		if (decision.kind !== "allow") throw new Error("Code Mode is not authorized");
 		return this.#options.target;
@@ -92,7 +107,21 @@ export class ToolRouter {
 
 	async invoke(call: ToolCall): Promise<ToolOutcome> {
 		const previous = this.#active.get(call.conversationId) ?? Promise.resolve();
-		const current = previous.catch(() => {}).then(() => this.#route(call));
+		const current = previous
+			.catch(() => {})
+			.then(async () => {
+				const management = !!appManagementCapability(call.tool);
+				if (management && !this.#options.closeAppManagement)
+					return appFailure("permission_denied", "Application management is not authorized");
+				try {
+					const outcome = await this.#route(call);
+					if (management && outcome.status !== "succeeded" && !call.signal.aborted) await this.#options.closeAppManagement!(call);
+					return outcome;
+				} catch (error) {
+					if (management && !call.signal.aborted) await this.#options.closeAppManagement!(call);
+					throw error;
+				}
+			});
 		this.#active.set(call.conversationId, current);
 		try {
 			return await current;
@@ -102,16 +131,28 @@ export class ToolRouter {
 	}
 
 	async #route(call: ToolCall): Promise<ToolOutcome> {
+		const management = appManagementCapability(call.tool);
 		const app = appToolCapability(call.tool);
 		if (app && call.signal.aborted) return appFailure("cancelled", "Application read was cancelled");
 		call.signal.throwIfAborted();
-		if (this.#options.target.kind !== "local" || (call.target && (call.target.kind !== "local" || call.target.targetId !== this.#options.target.targetId))) return app ? appFailure("permission_denied", "Application access is not authorized") : {status:"failed",output:"Application target is not authorized"};
-		call = {...call, target:this.#options.target};
-		if (app && !validAppInput(app.id,call.args)) return appFailure("invalid_request", "Invalid application arguments");
+		if (
+			this.#options.target.kind !== "local" ||
+			(call.target && (call.target.kind !== "local" || call.target.targetId !== this.#options.target.targetId))
+		)
+			return app || management
+				? appFailure("permission_denied", "Application access is not authorized")
+				: { status: "failed", output: "Application target is not authorized" };
+		call = { ...call, target: this.#options.target };
+		if (app && !validAppInput(app.id, call.args)) return appFailure("invalid_request", "Invalid application arguments");
+		if (management && !validManagementInput(management.id, call.args))
+			return appFailure("invalid_request", "Invalid application arguments");
 		const definition = toolDefinition(call.tool);
 		if (definition === undefined) return { status: "failed", output: `Unknown tool: ${call.tool}` };
 		const decision = await this.#options.policy.decide(call, definition);
-		if (decision.kind === "deny") return app ? appFailure("permission_denied", "Application access is not authorized") : { status: "failed", output: `Not allowed: ${decision.reason}` };
+		if (decision.kind === "deny")
+			return app || management
+				? appFailure("permission_denied", "Application access is not authorized")
+				: { status: "failed", output: `Not allowed: ${decision.reason}` };
 
 		let approvedOnce = false;
 		if (decision.kind === "ask") {
@@ -128,12 +169,15 @@ export class ToolRouter {
 					target: this.#options.target,
 					reason: decision.reason,
 					createdAt: now(),
+					...(call.executionDeadline === undefined ? {} : { deadline: call.executionDeadline }),
 					...(decision.alwaysAllowOptions === undefined ? {} : { alwaysAllowOptions: decision.alwaysAllowOptions }),
 				},
 				call.signal,
 			);
 			if (verdict === "deny") {
-				return { status: "failed", output: "The user denied this action. Do not retry it unchanged; ask or try another way." };
+				return management
+					? appFailure("permission_denied", "The user denied this management action. Do not retry it.")
+					: { status: "failed", output: "The user denied this action. Do not retry it unchanged; ask or try another way." };
 			}
 			approvedOnce = true;
 		}
@@ -143,6 +187,26 @@ export class ToolRouter {
 		if (definition.destination === "host") {
 			const handler = this.#options.hostTools[definition.name];
 			if (handler === undefined) return { status: "failed", output: `No handler for ${definition.name}` };
+			if (management) {
+				const current = await this.#options.policy.decide(call, definition);
+				if (current.kind === "deny") return appFailure("permission_denied", "Application management is not authorized");
+				const outcome = await handler(call.args, call.signal, call);
+				if (outcome.status !== "succeeded")
+					return appFailure(
+						outcome.status === "unknown" ? "outcome_unknown" : "conflict",
+						"Management operation failed. Inspect current state before a new proposal.",
+					);
+				let value;
+				try {
+					value = { ok: true as const, value: JSON.parse(outcome.output) };
+				} catch {
+					return appFailure("outcome_unknown", "Management outcome needs attention");
+				}
+				if (Buffer.byteLength(JSON.stringify(value)) > management.maxResultBytes)
+					return appFailure("resource_limit", "Management result exceeds the size limit. The committed change is retained.");
+				if (!validManagementOutput(management.id, value)) return appFailure("outcome_unknown", "Management outcome needs attention");
+				return { ...outcome, output: JSON.stringify(value), value };
+			}
 			return handler(call.args, call.signal, call);
 		}
 		const grants = await this.#options.policy.grants(call, approvedOnce);
@@ -164,8 +228,8 @@ export class ToolRouter {
 }
 
 function appFailure(code: import("@openbot/protocol").AppErrorCode, message: string): ToolOutcome {
-	const value = {ok: false as const, error: {code, message}};
-	return {status: code === "cancelled" ? "cancelled" : "failed", output: JSON.stringify(value), value};
+	const value = { ok: false as const, error: { code, message } };
+	return { status: code === "cancelled" ? "cancelled" : "failed", output: JSON.stringify(value), value };
 }
 
 /** SHA-256 of canonical JSON (sorted keys), shared by router and executor to detect a reused ID with other arguments. */

@@ -61,7 +61,7 @@ Product design (not an implementation task): [D1: Core Bot, Specialist Bots, and
 
 Interaction research: [D2: Grok Bot UI](d2-grok-ui-research.md), **research complete**. Official documentation, the supplied screenshot and installed-client inspection inform [B21](b21-conversation-experience.md), the conversation-experience spec merged in PR #17, and [B22](b22-conversation-list.md), the conversation-list increment. D2 remains the research record.
 
-Architecture design: [D3: Application Capabilities and Local Code Mode](d3-app-capabilities.md), **accepted direction**. Defines a shared authorized Host capability surface and reuse of vendored Pi Code Mode. B24 is implemented and in review; B25 implements bounded read-only Code Mode after its admission/limit spike. B26 remains draft behind its recovery acceptance gate.
+Architecture design: [D3: Application Capabilities and Local Code Mode](d3-app-capabilities.md), **accepted direction**. Defines a shared authorized Host capability surface and reuse of vendored Pi Code Mode. B24 and B25 are merged into `main`; B26 implements exact-approved management composition with its recovery acceptance matrix.
 
 Phase 1 (MVP). Every batch is implemented on `feat/mvp` and in review until the owner's acceptance run.
 
@@ -102,4 +102,4 @@ Current increment: B13a channel contexts and B13b group lifecycle follow merged 
 | --- | --- |
 | [B24: Authorized application API](b24-app-capability-api.md) | in review (PR #23) |
 | [B25: Local app Code Mode](b25-local-app-code-mode.md) | implemented, in review |
-| [B26: Code Mode management](b26-code-mode-management.md) | draft: B25 recovery acceptance required |
+| [B26: Code Mode management](b26-code-mode-management.md) | implemented; acceptance verification in progress |

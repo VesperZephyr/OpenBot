@@ -14,7 +14,7 @@ type StoredApproval = Omit<ApprovalRecord, "args" | "alwaysAllowOptions"> & {
 	readonly alwaysAllowOptions?: AlwaysAllowOption[];
 };
 
-const ApprovalsDoc = defineDoc<{ approvals: Record<string, StoredApproval> }>({
+export const ApprovalsDoc = defineDoc<{ approvals: Record<string, StoredApproval> }>({
 	kind: "openbot.approvals",
 	version: 1,
 	scope: "session",

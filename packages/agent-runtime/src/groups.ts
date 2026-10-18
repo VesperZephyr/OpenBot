@@ -1,3 +1,4 @@
+import { validateAppMutation } from "./app-executions.ts";
 /** Authoritative local group records. Mutations and publication commit with their replay receipts. */
 import { defineDoc, type Harness, type Tx } from "@earendil-works/pi-durable";
 import type { ConversationSearchIndex } from "./conversation-search.ts";
@@ -15,6 +16,7 @@ import {
 
 type Mutable<T> = T extends readonly (infer U)[] ? Mutable<U>[] : T extends object ? { -readonly [K in keyof T]: Mutable<T[K]> } : T;
 export type GroupIntent = {
+	appBinding?: import("@openbot/protocol").AppMutationBinding;
 	fingerprint: string;
 	change: GroupChange;
 	approvalId: string;
@@ -188,6 +190,7 @@ export function groupStore(harness: Harness, context: Context, bots: (tx: Tx) =>
 				if (intentId) {
 					const intent = doc.intents[intentId];
 					if (!intent || canonicalGroup(intent.change) !== canonicalGroup(change) || intent.outcome) fail("Management proposal mismatch");
+					await validateAppMutation(tx, intent!.appBinding, intent!.approvalId);
 					intent!.result = copy(group);
 					intent!.completedAt = at;
 				}

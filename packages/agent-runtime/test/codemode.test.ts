@@ -19,7 +19,7 @@ it("rejects changed versions, catalogs, identities and expired absolute deadline
 	};
 	expect(canResume(record, expected, 100)).toBe(true);
 	for (const patch of [
-		{ version: 2 },
+		{ version: APP_CODE_VERSION + 1 },
 		{ catalogDigest: "other" },
 		{ sourceDigest: "changed" },
 		{ targetId: "other" },
