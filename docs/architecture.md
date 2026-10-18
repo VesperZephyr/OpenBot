@@ -519,7 +519,8 @@ The transport is private IPC with versioned request, response, and event envelop
 | --- | --- |
 | `bots.create`, `bots.update`, `bots.list`, `bots.duplicate`, `bots.delete`, `bots.export`, `bots.import` | Manage Bot profiles and templates; Duplicate copies profile and Prompt with empty memory and history; Delete cancels the Bot's Run and keeps its conversation on disk |
 | `bots.memory.get`, `bots.memory.update`, `bots.memory.restore` | Inspect current memory and bounded history; edit/restore with expected-revision checks |
-| `conversations.list`, `conversations.snapshot`, `conversations.subscribe`, `conversations.reset` | List Bot, group, and routine-run conversations; deliver the current view followed by ordered updates for the subscribed conversation; start a new topic |
+| `conversations.list`, `conversations.markRead` | Bounded local Bot/group latest-message summaries and durable read cursors; acknowledge a rendered snapshot through its incoming-message ordinal |
+| `conversations.snapshot`, `conversations.subscribe`, `conversations.reset` | Deliver the current direct-chat view and subscribed updates; start a new topic |
 | `groups.create`, `groups.update`, `groups.delete` | Manage group chats and membership |
 | `messages.submit` | Accept `requestId`, conversation, content, mentions, skill and connector attachments, and artifact references; return `runId`, state, and whether the message steered an active Run, after durable receipt |
 | `runs.cancel`, `runs.pause`, `runs.resume` | Persist an idempotent cancellation or pause request and report its outcome separately |
@@ -626,6 +627,8 @@ References: [goose `ui/desktop`](https://github.com/aaif-goose/goose/tree/main/u
 The desktop interface follows Grok Bot's layout and vocabulary so that users and contributors can rely on a known product.
 
 B21 implements a shared private/group conversation shell, name/role filtering, unified New, responsive contextual details, structured group mentions and scroll anchoring. Private chats remain direct; ordinary group messages go to Core. The renderer stores versioned drafts and immutable send attempts locally, persists before dispatch and retries uncertain delivery only on explicit request using the same Host request ID. Newer edits survive late acknowledgements. Drafts are not model context and are not synchronized. The broader target interface below includes future surfaces tracked by separate task specs.
+
+[B22](tasks/b22-conversation-list.md) stores a bounded latest-message preview and monotonic incoming/read ordinals per private or group conversation in the Host-owned `openbot.conversation-index` session document. It is local presentation metadata, excluded from model context and diagnostics. Group publication updates the index atomically; direct projections catch up from retained history before publishing snapshots. Missing legacy records seed existing history as read. `conversations.list` reads this index without loading transcripts; `conversations.markRead` validates `{ conversationKey, through }` against the current incoming count. Snapshots supply the rendered read cursor, so a delayed acknowledgement cannot clear newer replies. Auto-read requires native-window and document focus/visibility, an unobstructed timeline and 400 ms at the bottom; explicit Mark as read uses the same snapshot cursor. Activity and drafts preserve independent unread counts. Core/pinned sections stay protected while rows within each section follow latest committed message time.
 
 | Area | Content |
 | --- | --- |

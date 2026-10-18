@@ -1,6 +1,6 @@
 # OpenBot Technical Plan
 
-Last updated: 2026-10-17.
+Last updated: 2026-10-18.
 
 This plan turns [the architecture](architecture.md) into an ordered sequence of work. The architecture defines contracts and boundaries; this document records what exists, what each milestone builds, how each step is verified, and which decisions are still open. When the two disagree, fix the architecture first, then update this plan.
 
@@ -28,6 +28,7 @@ Each section marks state explicitly: **Implemented** means code in the repositor
 | Prompt and memory controls (B19) | Implemented, in review: profile revision binding and conflict protection; per-Bot memory revisions, source/time, 20-version restore history and replay receipts; fresh duplication and bilingual editor | 200 unit tests; 40 background e2e; isolated real-model learn, Prompt, correction, new-topic, restart and clear checks |
 | Desktop experience (B20) | English / Simplified Chinese UI with local preference, refreshed roster/conversation/settings, native status translations; Pi mechanisms unchanged | 189 unit tests; 31 background e2e; screenshots at default/minimum sizes; isolated real-model desktop spot checks |
 | Conversation experience (B21) | Shared private/group layout, contextual details, local conversation filtering/New, versioned local drafts and immutable send recovery, keyboard mentions, scroll anchors and compact task activity; English/Chinese | 229 unit tests; 54 background e2e; inspected light/dark and minimum-width screenshots; isolated real-model private, Core delegation/result and explicit @ flows |
+| Conversation list (B22) | Local bounded private/group previews, monotonic snapshot-bound read cursors, native-aware automatic reading, explicit read, independent counts with draft/activity precedence, recency within Core/pinned sections; English/Chinese | 234 unit tests; 59 background e2e and inspected screenshots; isolated real-model replies, delegation, explicit @ and complete desktop/Host restart |
 | Bounded collaboration (B13c) | Core-default group routing, explicit @ recipients, task-scoped delegation/transfer, durable results and budgets, scoped tree stop, bilingual activity | 223 unit tests; 49 background e2e; isolated real-model delegation, transfer, Chinese synthesis, English @ and restart |
 | Group lifecycle (B13b) | Local revisioned groups, Core-only exact approvals, user-selected recipients, durable delivery/publication, removal/dissolution recovery, English/Chinese UI | 211 unit tests; 45 background e2e; isolated real-model lifecycle, member tasks and restart |
 | Channel contexts (B13a) | Additional Bot/channel conversations, shared profile/memory, same-channel steering, per-Bot admission, aging priority and channel-scoped cancellation/receipts | 204 unit tests; 40 background e2e |
@@ -40,7 +41,7 @@ Phase 1 (MVP, backlog B1–B8) is implemented on `feat/mvp`; each batch's design
 
 [D1: Core Bot, Specialist Bots, and Model Sources](tasks/d1-bot-product-design.md) is a design proposal for the next product increment. Current code has per-Bot instructions and memory, and a protected Core identity, with Core-only model-facing Specialist management. B13b adds Core-only group management and user-directed group tasks. All duplicated Bots start with empty memory and conversation history. B19 provides revisioned memory and Prompt controls; Pi continues to own agent execution and compaction. B13a isolates group contexts from direct chat; B13c implements bounded group delegation and ownership transfer. Cross-group dispatch and direct-chat peer collaboration remain out of scope. Memory history is bounded in the active document, but complete erasure from the journal, backups and prior provider requests is not implemented.
 
-B21 keeps unsent drafts and send recovery in the desktop renderer partition. Host receipts remain authoritative; uncertain sends require explicit retry with the original request ID. Search currently filters names/roles only; durable group unread/latest-message projections, full-text search, transcript virtualization and artifact previews remain separate UI work.
+B21 keeps unsent drafts and send recovery in the desktop renderer partition. Host receipts remain authoritative; uncertain sends require explicit retry with the original request ID. B22 adds local durable latest-message/read projections for private chats and groups; automatic reading requires a visible focused native window and a rendered timeline at its end. Search currently filters names/roles only; full-text search, group pin/hide, manual mark-unread, transcript virtualization and artifact previews remain separate UI work.
 
 These are deliberate shortcuts or missing pieces in implemented code. Each one is assigned to a milestone below.
 

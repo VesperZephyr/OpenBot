@@ -37,7 +37,7 @@ function snapshotOf(name: string): Promise<Snapshot> {
 
 async function openBot(name: string): Promise<void> {
 	const page = h.page();
-	await page.locator(".bot-row", { hasText: name }).click();
+	await page.locator(".bot-row").filter({ has: page.getByText(name, { exact: true }) }).click();
 	await page.getByRole("textbox", { name: `Message ${name}` }).waitFor();
 }
 
@@ -55,19 +55,19 @@ describe("Runs", () => {
 
 		await createBot(h, "Bea");
 		await h.send("Run the second job");
-		await expect.poll(() => page.locator(".bot-row", { hasText: "Bea" }).textContent()).toContain("Queued");
-		await page.getByText("Waiting for a free slot").waitFor();
+		await expect.poll(() => page.locator(".bot-row").filter({ has: page.getByText("Bea", { exact: true }) }).textContent()).toContain("Queued");
+		await page.locator(".transcript").getByText("Waiting for a free slot").waitFor();
 		await page.getByRole("button", { name: "Stop" }).waitFor();
 		expect(h.model.requests).toHaveLength(1);
 		await h.shot("01-queued");
 
 		await openBot("Ada");
 		await page.getByRole("group", { name: "Approval request" }).getByRole("button", { name: "Allow once" }).click();
-		await page.getByText("Ada is done.").waitFor();
+		await page.locator(".transcript").getByText("Ada is done.").waitFor();
 
 		await openBot("Bea");
-		await page.getByText("Bea is done.").waitFor();
-		await expect.poll(() => page.locator(".bot-row", { hasText: "Bea" }).textContent()).not.toContain("Queued");
+		await page.locator(".transcript").getByText("Bea is done.").waitFor();
+		await expect.poll(() => page.locator(".bot-row").filter({ has: page.getByText("Bea", { exact: true }) }).textContent()).not.toContain("Queued");
 		await expect.poll(async () => (await snapshotOf("Bea")).run).toBeUndefined();
 		await h.shot("02-both-done");
 	});
@@ -92,7 +92,7 @@ describe("Runs", () => {
 		await h.shot("03-steer-pending");
 
 		await card.getByRole("button", { name: "Allow once" }).click();
-		await page.getByText("Switched to the other file.").waitFor();
+		await page.locator(".transcript").getByText("Switched to the other file.").waitFor();
 		// The next model request after the tool round already carries the steer, and nothing else ran in between.
 		expect(h.model.requests).toHaveLength(requestsBefore + 1);
 		expect(JSON.stringify(h.model.requests.at(-1)?.messages)).toContain("Use a different file");
@@ -125,7 +125,7 @@ describe("Runs", () => {
 		expect(next?.runId).not.toBe(runId);
 		expect(next?.requestIds).toHaveLength(1);
 		await page.getByRole("group", { name: "Approval request" }).getByRole("button", { name: "Allow once" }).click();
-		await page.getByText("Fresh start.").waitFor();
+		await page.locator(".transcript").getByText("Fresh start.").waitFor();
 		await h.shot("06-new-run");
 	});
 });

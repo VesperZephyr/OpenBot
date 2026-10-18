@@ -156,7 +156,7 @@ it("group approval survives restart, stop is scoped, removal cancels queued work
 	await api("runs.cancel", { runId: direct.run.runId });
 });
 it("Core creates and edits through exact approval; group Core has no management tools", async () => {
-	await h.page().locator(".bot-row", { hasText: "OpenBot" }).click();
+	await h.page().locator(".bot-row").filter({ has: h.page().getByText("OpenBot", { exact: true }) }).click();
 	h.model.script(
 		{ tool: "group_create", args: { name: "Core room", objective: "A second group", memberIds: [alpha, beta], leadBotId: alpha } },
 		{ text: "Core room created" },
@@ -196,7 +196,7 @@ it("Core creates and edits through exact approval; group Core has no management 
 	expect(JSON.stringify(h.model.requests[first]?.tools)).not.toContain("group_dissolve");
 	expect((await snapshot()).group.status).toBe("active");
 	// Core direct can dissolve the other room, but the user can deny the proposal.
-	await h.page().locator(".bot-row", { hasText: "OpenBot" }).click();
+	await h.page().locator(".bot-row").filter({ has: h.page().getByText("OpenBot", { exact: true }) }).click();
 	h.model.script({ tool: "group_dissolve", args: { groupId: room.groupId, expectedRevision: 2 } }, { text: "Dissolution denied" });
 	await h.send("Dissolve Core room.");
 	await h.page().getByRole("group", { name: "Approval request" }).getByRole("button", { name: "Deny", exact: true }).click();

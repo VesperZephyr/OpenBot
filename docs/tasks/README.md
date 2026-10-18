@@ -59,7 +59,7 @@ Dated entries added during execution. Empty when ready.
 
 Product design (not an implementation task): [D1: Core Bot, Specialist Bots, and Model Sources](d1-bot-product-design.md), **accepted direction**. Research and task contracts for the product foundation. Agent mechanisms continue to reuse Pi.
 
-Interaction research: [D2: Grok Bot UI](d2-grok-ui-research.md), **research complete**. Official documentation, the supplied screenshot and installed-client inspection inform [B21](b21-conversation-experience.md), the implemented conversation-experience spec, now in review. D2 remains the research record.
+Interaction research: [D2: Grok Bot UI](d2-grok-ui-research.md), **research complete**. Official documentation, the supplied screenshot and installed-client inspection inform [B21](b21-conversation-experience.md), the conversation-experience spec merged in PR #17, and [B22](b22-conversation-list.md), the conversation-list increment. D2 remains the research record.
 
 Phase 1 (MVP). Every batch is implemented on `feat/mvp` and in review until the owner's acceptance run.
 
@@ -91,4 +91,4 @@ Current increment: B13a channel contexts and B13b group lifecycle follow merged 
 | [B13B](b13b-group-lifecycle.md) | in review |
 | [B13C](b13c-collaboration.md) | in review |
 | [B21](b21-conversation-experience.md) | done (PR #17) |
-| [B22](b22-conversation-list.md) | in progress |
+| [B22](b22-conversation-list.md) | in review |

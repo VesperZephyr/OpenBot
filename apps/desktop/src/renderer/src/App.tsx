@@ -1,6 +1,6 @@
 import { ChatComposer } from "./ChatComposer";
 import { ConversationShell, DetailsPanel, Timeline, useDialogFocus } from "./ConversationUI";
-import { useComposer } from "./useComposer";
+import { MarkReadButton, RosterPreview, recentTime } from "./RosterPreview";
 import { ManagementHistory } from "./BotManagement";
 import { t } from "./i18n";
 import type {
@@ -138,17 +138,23 @@ export function App() {
 	);
 }
 
-/** Sidebar order: pinned first, then by creation time; hidden Bots only in their own section. */
+/** Core and pinned sections stay first; each section follows committed message recency. */
 function visibleBots(bots: readonly BotSummary[]): BotSummary[] {
+	const summaries = useStore.getState().summaries;
 	return bots
 		.filter((bot) => bot.status === "active")
 		.toSorted(
-			(a, b) => Number(b.kind === "core") - Number(a.kind === "core") || Number(b.pinned) - Number(a.pinned) || a.createdAt - b.createdAt,
+			(a, b) =>
+				Number(b.kind === "core") - Number(a.kind === "core") ||
+				Number(b.pinned) - Number(a.pinned) ||
+				recentTime(`bot:${b.botId}`, summaries, b.createdAt) - recentTime(`bot:${a.botId}`, summaries, a.createdAt) ||
+				a.botId.localeCompare(b.botId),
 		);
 }
 
 function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; onQuery: (v: string) => void }) {
 	const bots = useStore((state) => state.bots);
+	useStore((state) => state.summaries);
 	const view = useStore((state) => state.view);
 	const showHidden = useStore((state) => state.showHidden);
 	const visible = visibleBots(bots).filter((b) => `${b.name} ${b.role}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
@@ -234,8 +240,7 @@ const ACTIVITY_LABEL: Record<BotSummary["activity"], string | undefined> = {
 };
 
 function BotRow({ bot, selected }: { readonly bot: BotSummary; readonly selected: boolean }) {
-	const label = ACTIVITY_LABEL[bot.activity];
-	const { draft } = useComposer(`bot:${bot.botId}`);
+	const label = bot.activity === "unread" ? undefined : ACTIVITY_LABEL[bot.activity];
 	return (
 		<button
 			type="button"
@@ -244,16 +249,7 @@ function BotRow({ bot, selected }: { readonly bot: BotSummary; readonly selected
 			aria-current={selected ? "page" : undefined}
 		>
 			<Avatar core={bot.kind === "core"} name={bot.name} />
-			<span className="bot-row-text">
-				<span className="bot-row-name">
-					{bot.name}
-					{bot.kind === "core" && <span className="core-badge">{t("Core")}</span>}
-				</span>
-				<span className="bot-row-role">{label ? t(label) : draft.text ? t("Draft: {text}", { text: draft.text }) : bot.role}</span>
-			</span>
-			{label !== undefined && (
-				<span className={`activity activity-${bot.activity}`} aria-label={label === undefined ? undefined : t(label)} />
-			)}
+			<RosterPreview conversationKey={`bot:${bot.botId}`} name={bot.name} core={bot.kind === "core"} fallback={bot.role} activity={label} />
 		</button>
 	);
 }
@@ -371,12 +367,17 @@ function Conversation({ botId }: { readonly botId: string }) {
 					<div className="conversation-name">{bot.name}</div>
 					<div className="conversation-role">{bot.role || t("No label")}</div>
 				</div>
+				<MarkReadButton conversationKey={`bot:${botId}`} cursor={snapshot?.readCursor} />
 				<button className="icon-button details-toggle" aria-label={t("Conversation details")} onClick={() => setEditing(!editing)}>
 					ⓘ
 				</button>
 				<BotMenu bot={bot} onEdit={() => setEditing(true)} />
 			</header>
-			<Timeline conversationKey={`bot:${botId}`} activity={`${snapshot?.items.length}:${JSON.stringify(snapshot?.live ?? null)}`}>
+			<Timeline
+				readCursor={snapshot?.readCursor}
+				conversationKey={`bot:${botId}`}
+				activity={`${snapshot?.items.length}:${JSON.stringify(snapshot?.live ?? null)}`}
+			>
 				{snapshot === undefined || (snapshot.items.length === 0 && !running) ? (
 					<EmptyConversation bot={bot} />
 				) : (

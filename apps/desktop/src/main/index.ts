@@ -126,6 +126,13 @@ function createWindow(): BrowserWindow {
 		},
 	});
 
+	const publishActive = () => created.webContents.send(CHANNELS.windowActive, created.isVisible() && created.isFocused() && !created.isMinimized());
+	created.on("show", publishActive);
+	created.on("hide", publishActive);
+	created.on("focus", publishActive);
+	created.on("blur", publishActive);
+	created.on("minimize", publishActive);
+	created.on("restore", publishActive);
 	if (!backgroundTest) created.once("ready-to-show", () => created.show());
 	// Closing the window keeps the app and its Bots running in the menu bar (architecture §8.1).
 	created.on("close", (event) => {

@@ -1,6 +1,6 @@
 # B22: Conversation List Previews and Unread State
 
-Status: in progress
+Status: in review
 Branch: task/b22-conversation-list
 Depends on: B21, B13c
 Architecture: Sections 5.1, 6.5, 7.1, 8
@@ -55,7 +55,7 @@ New conversations initialize an empty record. On first upgrade, histories withou
 
 A snapshot's readCursor counts only incoming messages represented by that snapshot, never a separately fetched newer list. Mark-read validates the conversation and a safe nonnegative integer no greater than the current incoming count, then advances readThrough monotonically. Older/repeated acknowledgements are harmless; a delayed acknowledgement cannot clear a newer reply. An arbitrary future cursor is rejected.
 
-Opening/subscribing/fetching a conversation does not mark it read. Auto-read requires the selected rendered conversation, a visible focused document, no blocking modal, and a timeline following within 80 CSS px of the bottom for 400 ms. Scroll/focus/visibility changes cancel or reevaluate the timer. Recheck these conditions at dispatch and use the rendered snapshot's cursor. Reading older history, background/hidden windows, Settings, and roster filtering never clear unread. Jump to latest can resume automatic reading. A header Mark as read button explicitly acknowledges the displayed snapshot even if the user has not scrolled to its end; it does not acknowledge future replies.
+Opening/subscribing/fetching a conversation does not mark it read. Auto-read requires the selected rendered conversation, a visible focused native window confirmed by Desktop main, a visible focused document, no blocking modal, and a timeline following within 80 CSS px of the bottom for 400 ms. Scroll/focus/visibility changes cancel or reevaluate the timer. Recheck these conditions at dispatch and use the rendered snapshot's cursor. Reading older history, background/hidden windows, Settings, and roster filtering never clear unread. Jump to latest can resume automatic reading. A header Mark as read button explicitly acknowledges the displayed snapshot even if the user has not scrolled to its end; it does not acknowledge future replies.
 
 ## Steps
 
@@ -71,7 +71,7 @@ Opening/subscribing/fetching a conversation does not mark it read. Auto-read req
 2. Runtime/Host tests: read cursor survives reopen, old acknowledgement leaves newer messages unread, future/invalid cursors and deleted identities are rejected, reset/compaction preserve counts, legacy backfill does not mark old history unread.
 3. Performance regression: list reads no conversation snapshots/posts; unchanged/stream-only projection causes no new index writes or roster invalidation. Bounded row payload independent of history length.
 4. Background e2e: private/group latest previews and unread badges survive desktop restart; drafts/activity do not erase counts; localized You/deleted sender, timestamps, long names and 99+ badge remain usable without horizontal overflow. Core/pinned ordering remains protected; reads/drafts do not change recency.
-5. Background e2e: merely opening hidden desktop does not clear unread; simulated document visibility/focus in the isolated renderer verifies bottom auto-read, history preservation, Jump to latest, explicit Mark as read and snapshot-bound acknowledgement. No OS window is shown or focused for this simulation.
+5. Background e2e: merely opening hidden desktop does not clear unread; simulated document visibility/focus in the isolated renderer verifies bottom auto-read, history preservation, blocking-modal protection, Jump to latest, explicit Mark as read and snapshot-bound acknowledgement. The fixture supplies a synthetic main-process activity event as well as document state; no OS window is shown or focused.
 6. Full `pnpm run check` and background `pnpm run e2e`; inspect screenshots; record actual-model private and group reply/preview/unread/restart observations separately from scripted tests. Do not claim all-provider or packaged OS-permission coverage.
 
 ## Risks
@@ -80,4 +80,18 @@ A renderer read based on list state could acknowledge a message it has not rende
 
 ## Open questions
 
-None. Scope and verification are authorized by the owner on 2026-10-18.
+Scope and verification are authorized by the owner on 2026-10-18.
+
+Resolved during verification (2026-10-18): Electron can report a focused/visible document in a hidden background window. The reading contract therefore also requires a trusted native-window activity signal from Desktop main. A narrow preload getter/event carries visible, focused and non-minimized state; this does not change Host authority or native attention effects.
+
+
+## Implementation and verification notes
+
+Implemented on `task/b22-conversation-list` without changes to Pi vendor code or agent tools. The Host owns the versioned conversation index; Desktop uses shared previews and native/document-aware snapshot receipts. Preview normalization preserves file-name underscores. Existing e2e selectors now distinguish exact roster names and transcript text from repeated preview content.
+
+- `pnpm run check`: boundaries/type checking and 234 tests across 38 files passed.
+- `pnpm run e2e`: 59 tests across 19 files passed in background mode. This covers five new conversation-list scenarios alongside existing agent, lifecycle, approval and conversation flows. Foreground reading uses synthetic activity signals while actual windows stay hidden/non-focusable; the suite does not exercise a visibly focused OS window.
+- Inspected English light and Chinese dark screenshots, including small windows, long names, drafts, dissolved history and the accessible 99+ badge. An activity-style collision found in screenshots was corrected to retain the small status dot beside the label.
+- An isolated real-model desktop verified a private reply, Core delegation to a Specialist with result return, explicit Chinese @Reviewer, private/group unread isolation and explicit reading. Full Electron/Host restart preserved all summary fields exactly (private unread 0; group unread 3). Agent-browser then marked the group read without changing the private cursor.
+- A final real-model reply verified `report_final.md` remained intact in the preview with unread 1 in the hidden window. The provider returned one request error; retry through the desktop succeeded. This spot check does not establish all-provider compatibility.
+- The isolated desktop was stopped and its copied model configuration removed. Acceptance data/screenshots remain outside tracked files; the owner's application data was not used. No new native-permission or signed-package claims.

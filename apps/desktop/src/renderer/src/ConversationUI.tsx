@@ -1,4 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useReadReceipt } from "./useReadReceipt";
+import type { ConversationKey } from "@openbot/protocol";
 import { t } from "./i18n";
 
 export function ConversationShell({
@@ -124,12 +126,14 @@ export function DetailsPanel({ title, onClose, children }: { title: string; onCl
 type Position = { top: number; following: boolean; id?: string; offset?: number };
 const positions = new Map<string, Position>();
 export function Timeline({
+	readCursor,
 	conversationKey,
 	activity,
 	children,
 	className = "",
 }: {
-	conversationKey: string;
+	readCursor?: number | undefined;
+	conversationKey: ConversationKey;
 	activity: string;
 	children: ReactNode;
 	className?: string;
@@ -138,6 +142,7 @@ export function Timeline({
 		inner = useRef<HTMLDivElement>(null);
 	const state = useRef<Position>(positions.get(conversationKey) ?? { top: 0, following: true });
 	const [unseen, setUnseen] = useState(false);
+	useReadReceipt(conversationKey, readCursor, ref, () => state.current.following);
 	const capture = () => {
 		const el = ref.current;
 		if (!el) return;

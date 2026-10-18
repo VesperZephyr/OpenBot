@@ -1,6 +1,6 @@
 # D2: Grok Bot Interaction Research
 
-Status: research complete; proposed implementation in [B21](b21-conversation-experience.md)
+Status: research complete; implementation in [B21](b21-conversation-experience.md) and [B22](b22-conversation-list.md)
 Reviewed: 2026-10-17
 
 ## Finding
@@ -90,7 +90,7 @@ A persistent task dashboard was considered and rejected for the main surface: it
 ## Delivery order
 
 1. **B21: conversation experience** — shared shell, compact roster/New flow, reliable drafts/send recovery, mention keyboard behavior, scroll preservation, contextual details and bilingual states. See the implementation spec.
-2. **Later design: summaries and navigation** — durable sidebar latest-message/unread projections for groups, full conversation search, pin/hide groups and transcript windowing. These need explicit Host projections and performance acceptance rather than opening every conversation to populate a sidebar.
+2. **B22: conversation list** — durable local latest-message previews and unread cursors for private chats and groups, lightweight Host projection, protected section ordering and bilingual row states. See the [implementation spec](b22-conversation-list.md). Full conversation search, pin/hide groups, manual mark-unread and transcript windowing remain later design work.
 3. **Later design: results** — attachment ingestion and secure artifact previews, keeping local path validation and executor authorization. Connectors, voice, routines and computer control remain separate backlog capabilities.
 
 Keep Core-only management, Core-default ordinary group messages, explicit @ routing, direct private chats, two-hop/twelve-delivery bounds, local persistence, English default and Simplified Chinese. Model inference still uses the user's configured endpoint. Do not copy Grok's cloud-computer or account assumptions into OpenBot.

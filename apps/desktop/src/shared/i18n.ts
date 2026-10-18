@@ -1,6 +1,10 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
+ "Mark as read": "标记已读",
+ "{count} unread messages": "{count} 条未读消息",
+ "Conversation is unavailable": "会话不可用",
+ "Invalid reading position": "阅读位置无效",
  "Completed": "已完成",
  "Needs approval": "需要审批",
  "Task details": "任务详情",

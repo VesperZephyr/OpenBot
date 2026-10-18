@@ -445,3 +445,57 @@
 .conversation-header > div:not(.menu) {
 	min-width: 0;
 }
+
+/* Previews and read progress share one quiet row for both channel kinds. */
+.bot-row .roster-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.bot-row time {
+	flex-shrink: 0;
+	margin-left: auto;
+	font-size: 10px;
+	font-weight: 400;
+	color: var(--muted);
+}
+.bot-row-text.has-unread .roster-name {
+	font-weight: 700;
+}
+.roster-preview-line {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	gap: 6px;
+}
+.roster-preview-line .bot-row-role {
+	flex: 1;
+	min-width: 0;
+}
+.unread-count {
+	flex-shrink: 0;
+	min-width: 17px;
+	padding: 1px 4px;
+	border-radius: 10px;
+	font-size: 10px;
+	font-weight: 600;
+	text-align: center;
+	background: #2563eb;
+	color: #fff;
+	line-height: 15px;
+}
+.conversation-header .mark-read {
+	flex-shrink: 0;
+	font-size: 12px;
+	padding: 5px 8px;
+	margin-left: auto;
+}
+.conversation-header .mark-read + .details-toggle {
+	margin-left: 0;
+}
+.bot-row .bot-row-name {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+}

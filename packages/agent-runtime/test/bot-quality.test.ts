@@ -151,6 +151,7 @@ describe("Bot quality", () => {
 			{ kind: "user", parts: [{ text: "New topic question" }] },
 			{ kind: "assistant", parts: [{ text: "Fresh answer." }] },
 		]);
+		expect((await runtime!.conversationIndex().list()).find((row) => row.conversationKey === "bot:scout")).toMatchObject({ incomingCount: 2, unreadCount: 2 });
 	});
 
 	it("projects a compaction divider and keeps earlier messages", async () => {
@@ -175,6 +176,11 @@ describe("Bot quality", () => {
 		const items = (await runtime!.snapshot("scout")).items;
 		const divider = items.findIndex((item) => item.kind === "divider");
 		expect(items[divider]).toMatchObject({ kind: "divider", reason: "compaction" });
+		const summary = (await runtime!.conversationIndex().list()).find((row) => row.conversationKey === "bot:scout")!;
+		expect(summary.incomingCount).toBe(items.filter((item) => item.kind === "assistant" && item.parts.some((part) => part.text.trim())).length);
+		await runtime!.conversationIndex().markRead("bot:scout", summary.incomingCount);
+		await runtime!.snapshot("scout");
+		expect((await runtime!.conversationIndex().list()).find((row) => row.conversationKey === "bot:scout")!.unreadCount).toBe(0);
 		const users = items.flatMap((item) => (item.kind === "user" ? [item.parts[0]?.text] : []));
 		expect(users).toEqual(Array.from({ length: 8 }, (_, index) => `Question ${index + 1}`));
 		expect(items.some((item) => item.kind === "other")).toBe(false);

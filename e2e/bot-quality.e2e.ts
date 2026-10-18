@@ -33,7 +33,7 @@ describe("Bot quality", () => {
 		);
 		await h.send("Always answer in Chinese.");
 		await page.locator(".tool-card.tool-succeeded", { hasText: "Updated memory" }).waitFor();
-		await page.getByText("好的,我记住了。").waitFor();
+		await page.locator(".transcript").getByText("好的,我记住了。").waitFor();
 		expect(systemText(h.model.requests.at(-1))).toContain("Always answer in Chinese.");
 
 		await page.getByRole("button", { name: "•••" }).click();
@@ -49,7 +49,7 @@ describe("Bot quality", () => {
 		await memory.waitFor({ state: "detached" });
 		h.model.script({ text: "短的。" });
 		await h.send("Hello");
-		await page.getByText("短的。").waitFor();
+		await page.locator(".transcript").getByText("短的。").waitFor();
 		expect(systemText(h.model.requests.at(-1))).toContain("Keep answers short.");
 	});
 
@@ -61,7 +61,7 @@ describe("Bot quality", () => {
 
 		h.model.script({ text: "新话题。" });
 		await h.send("Fresh question");
-		await page.getByText("新话题。").waitFor();
+		await page.locator(".transcript").getByText("新话题。").waitFor();
 		const request = h.model.requests.at(-1);
 		expect(userTexts(request)).toEqual([JSON.stringify("Fresh question")]);
 		expect(systemText(request)).toContain("Always answer in Chinese.");
@@ -78,7 +78,7 @@ describe("Bot quality", () => {
 		await failed.waitFor();
 		const before = h.model.requests.length;
 		await failed.getByRole("button", { name: "Retry" }).click();
-		await page.getByText("Second try worked.").waitFor();
+		await page.locator(".transcript").getByText("Second try worked.").waitFor();
 		expect(h.model.requests.length).toBe(before + 1);
 		expect(userTexts(h.model.requests.at(-1)).filter((text) => text === JSON.stringify("Try this"))).toHaveLength(2);
 		await expect.poll(() => page.getByRole("button", { name: "Retry" }).count()).toBe(0);

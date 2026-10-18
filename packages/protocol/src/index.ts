@@ -50,6 +50,16 @@ export class ProtocolError extends Error {
 // ---------------------------------------------------------------------------
 // Domain data
 
+export type ConversationKey = `bot:${string}` | `group:${string}`;
+export type ConversationPreview = { readonly id: string; readonly senderId: string; readonly text: string; readonly at: number };
+export type ConversationSummary = {
+	readonly conversationKey: ConversationKey;
+	readonly latest?: ConversationPreview;
+	readonly incomingCount: number;
+	readonly readThrough: number;
+	readonly unreadCount: number;
+};
+
 export type GroupFields = {
 	readonly name: string;
 	readonly objective: string;
@@ -116,7 +126,7 @@ export type GroupDelivery = {
 	readonly state: "pending" | "completed" | "failed" | "cancelled";
 	readonly runId?: string;
 };
-export type GroupSnapshot = CollaborationSnapshot & { readonly group: Group };
+export type GroupSnapshot = CollaborationSnapshot & { readonly group: Group; readonly readCursor?: number };
 
 export type BotId = string;
 export type RunId = string;
@@ -259,6 +269,8 @@ export type LiveRun = {
 };
 
 export type ConversationSnapshot = {
+	/** Incoming committed messages present in this snapshot; safe upper bound for a read acknowledgement. */
+	readonly readCursor?: number;
 	readonly conversationId?: string;
 	readonly channelId?: string;
 	readonly botId: BotId;
@@ -448,7 +460,8 @@ export type HostMethods = {
 		result: BotProfile;
 	};
 	"conversations.snapshot": { params: { readonly botId: BotId }; result: ConversationSnapshot };
-	"conversations.markRead": { params: { readonly botId: BotId }; result: null };
+	"conversations.list": { params: Record<string, never>; result: readonly ConversationSummary[] };
+	"conversations.markRead": { params: { readonly conversationKey: ConversationKey; readonly through: number }; result: null };
 	"messages.submit": {
 		params: { readonly botId: BotId; readonly requestId: string; readonly text: string };
 		/** `steered`: the message joined the Bot's running or queued Run instead of starting one. */
@@ -540,6 +553,7 @@ export const HOST_METHODS = [
 	"bots.create",
 	"bots.update",
 	"conversations.snapshot",
+	"conversations.list",
 	"conversations.markRead",
 	"messages.submit",
 	"runs.cancel",

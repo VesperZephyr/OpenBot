@@ -54,6 +54,7 @@ import { type PolicyStore, policyStore } from "./policy.ts";
 import { applyMemoryEdit, checkMemorySize, type MemoryEdit, MemoryDoc, MemoryReceiptDoc, memoryState } from "./memory.ts";
 import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
 import { botSections } from "./prompt.ts";
+import { conversationIndexStore, projectConversation } from "./conversation-index.ts";
 import { groupStore, detachGroupBot } from "./groups.ts";
 import { ManagementDoc, managementStore } from "./management.ts";
 import { type RunStore, runStore, RunsDoc } from "./runs.ts";
@@ -275,6 +276,10 @@ export class BotRuntime {
 		return approvalStore(this.#harness, this.#context);
 	}
 
+	conversationIndex() {
+		return conversationIndexStore(this.#harness, this.#context);
+	}
+
 	groups() {
 		return groupStore(this.#harness, this.#context, async (tx) => Object.values((await tx.doc(BotsDoc)).bots).map(toProfile));
 	}
@@ -421,6 +426,7 @@ export class BotRuntime {
 			};
 			doc.bots[input.botId] = record;
 			if (input.memory) (await tx.doc(MemoryDoc, input.botId, null)).content = input.memory;
+			await projectConversation(tx, `bot:${input.botId}`, { messageCount: 0, incomingCount: 0 });
 			const result = toProfile(record);
 			await completeManagement(tx, proposal, result);
 			return result;
@@ -807,10 +813,11 @@ export class BotRuntime {
 	async #project(record: BotRecord, view: ConversationView, channelId = "direct"): Promise<ConversationSnapshot> {
 		const marker = view.entries[0]?.head === undefined ? undefined : view.entries[0];
 		const earlier = marker === undefined ? [] : await this.#earlierEntries(record, marker);
+		const snapshot = projectView(record.botId, view, earlier);
 		return {
-			...projectView(record.botId, view, earlier),
+			...snapshot,
 			conversationId: String(record.conversationId),
-			...(channelId === "direct" ? {} : { channelId }),
+			...(channelId === "direct" ? { readCursor: await this.conversationIndex().projectDirect(snapshot) } : { channelId }),
 		};
 	}
 

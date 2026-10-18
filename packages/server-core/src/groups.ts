@@ -64,6 +64,7 @@ export class Groups {
 		);
 	}
 	async start(): Promise<void> {
+		await this.runtime.groups().backfillIndex();
 		for (const channel of await this.runtime.channels()) {
 			await this.#observe(channel.botId, channel.channelId);
 			const group = await this.runtime.groups().get(channel.channelId);
@@ -195,7 +196,7 @@ export class Groups {
 				};
 			}),
 		);
-		return { group, roots: await this.runtime.groups().roots(groupId), posts: await this.runtime.groups().posts(groupId), tasks };
+		return { group, roots: await this.runtime.groups().roots(groupId), ...await this.runtime.groups().history(groupId), tasks };
 	}
 	async stopTree(rootId: string): Promise<null> {
 		await this.runtime.groups().stop(rootId);

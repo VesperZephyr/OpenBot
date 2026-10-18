@@ -16,7 +16,7 @@ let h: AppHarness;
 const card = () => h.page().getByRole("group", { name: "Approval request" });
 
 async function openBot(name: string): Promise<void> {
-	await h.page().locator(".bot-row", { hasText: name }).click();
+	await h.page().locator(".bot-row").filter({ has: h.page().getByText(name, { exact: true }) }).click();
 	await h.page().getByRole("textbox", { name: `Message ${name}` }).waitFor();
 }
 
@@ -37,7 +37,7 @@ describe("always allow", () => {
 		h.model.script({ tool: "local_exec", args: { command: "grep -rn needle .", description: "Search notes" } }, { text: "Found it." });
 		await h.send("Find the needle");
 		await h.page().locator(".tool-card.tool-succeeded", { hasText: "Search notes" }).waitFor();
-		await h.page().getByText("Found it.").waitFor();
+		await h.page().locator(".transcript").getByText("Found it.").waitFor();
 		expect(await card().count()).toBe(0);
 		await h.shot("01-read-only-search");
 	});
@@ -59,12 +59,12 @@ describe("always allow", () => {
 		await expect.poll(() => scopes.locator("code").allTextContents()).toEqual(["git status", "git status *"]);
 		await h.shot("02-always-allow-scopes");
 		await scopes.getByRole("button", { name: "Save rule and allow" }).click();
-		await h.page().getByText("Status one.").waitFor();
+		await h.page().locator(".transcript").getByText("Status one.").waitFor();
 
 		h.model.script({ tool: "local_exec", args: { command: "git status", description: "Check again" } }, { text: "Status two." });
 		await h.send("Check it again");
 		await h.page().locator(".tool-card.tool-succeeded", { hasText: "Check again" }).waitFor();
-		await h.page().getByText("Status two.").waitFor();
+		await h.page().locator(".transcript").getByText("Status two.").waitFor();
 		expect(await card().count()).toBe(0);
 		await h.shot("03-ran-without-card");
 
@@ -81,6 +81,6 @@ describe("always allow", () => {
 		await card().waitFor();
 		await h.shot("05-card-back");
 		await card().getByRole("button", { name: "Allow once" }).click();
-		await h.page().getByText("Status three.").waitFor();
+		await h.page().locator(".transcript").getByText("Status three.").waitFor();
 	});
 });

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { BotRuntime } from "@openbot/agent-runtime";
 import { SCRIPTED_MODEL, scriptedModels } from "@openbot/agent-runtime/testing";
 import { type ConversationSnapshot, type HostEventType, PROTOCOL_VERSION } from "@openbot/protocol";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApprovalBook, HostService, MemorySecretStore, type ModelConfigFile } from "../src/index.ts";
 
 const status = { protocolVersion: PROTOCOL_VERSION, hostVersion: "test", nodeVersion: "test", targetId: "mac", startedAt: 0 };
@@ -104,9 +104,26 @@ describe("HostService", () => {
 
 		const list = await service.handle("bots.list", {});
 		expect(list.find((b) => b.botId === bot.botId)?.activity).toBe("unread");
-		await service.handle("conversations.markRead", { botId: bot.botId });
+		await service.handle("conversations.markRead", { conversationKey: `bot:${bot.botId}`, through: 1 });
 		expect((await service.handle("bots.list", {})).find((b) => b.botId === bot.botId)?.activity).toBe("idle");
 		expect(events).toContain("bots.changed");
+	});
+
+	it("lists bounded summaries without loading histories and rejects read receipts for deleted Bots", async () => {
+		const bot = await service.handle("bots.create", { requestId: "index", name: "Reader" });
+		const snap = vi.spyOn(runtime, "snapshot");
+		const originalGroups = runtime.groups();
+		const posts = vi.fn(originalGroups.posts);
+		const groups = vi.spyOn(runtime, "groups").mockReturnValue({ ...originalGroups, posts });
+		const rows = await service.handle("conversations.list", {});
+		expect(rows.find((r) => r.conversationKey === `bot:${bot.botId}`)?.unreadCount).toBe(0);
+		expect(snap).not.toHaveBeenCalled();
+		expect(posts).not.toHaveBeenCalled();
+		snap.mockRestore();
+		groups.mockRestore();
+		await service.handle("bots.delete", { botId: bot.botId });
+		expect((await service.handle("conversations.list", {})).some((r) => r.conversationKey === `bot:${bot.botId}`)).toBe(false);
+		await expect(service.handle("conversations.markRead", { conversationKey: `bot:${bot.botId}`, through: 0 })).rejects.toThrow("Unknown Bot");
 	});
 
 	it("creates one Bot per request ID", async () => {

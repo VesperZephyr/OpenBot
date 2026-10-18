@@ -1,6 +1,6 @@
 import { ChatComposer } from "./ChatComposer";
 import { ConversationShell, DetailsPanel, Timeline } from "./ConversationUI";
-import { useComposer } from "./useComposer";
+import { MarkReadButton, RosterPreview, recentTime } from "./RosterPreview";
 import { useEffect, useRef, useState } from "react";
 import type { Group, GroupSnapshot } from "@openbot/protocol";
 import { api, refreshGroups, report, useStore } from "./store";
@@ -11,11 +11,15 @@ import "./groups.css";
 
 export function GroupSidebar({ query = "" }: { query?: string }) {
 	const groups = useStore((s) => s.groups);
+	const summaries = useStore((s) => s.summaries);
 	return (
 		<div className="section group-sidebar">
 			<span className="section-title">{t("Groups")}</span>
 			{groups
 				.filter((g) => `${g.name} ${g.objective}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+				.toSorted((a, b) =>
+					recentTime(`group:${b.groupId}`, summaries, b.createdAt) - recentTime(`group:${a.groupId}`, summaries, a.createdAt) || a.groupId.localeCompare(b.groupId),
+				)
 				.map((g) => (
 					<GroupRow key={g.groupId} group={g} />
 				))}
@@ -24,7 +28,6 @@ export function GroupSidebar({ query = "" }: { query?: string }) {
 }
 function GroupRow({ group: g }: { group: Group }) {
 	const view = useStore((s) => s.view);
-	const { draft } = useComposer(`group:${g.groupId}`);
 	return (
 		<button
 			type="button"
@@ -34,14 +37,11 @@ function GroupRow({ group: g }: { group: Group }) {
 			<span className="avatar group-avatar" aria-hidden>
 				◈
 			</span>
-			<span className="bot-row-text">
-				<span className="bot-row-name">{g.name}</span>
-				<span className="bot-row-role">
-					{draft.text
-						? t("Draft: {text}", { text: draft.text })
-						: t(g.status === "dissolved" ? "Dissolved" : "{count} members", { count: g.memberIds.length })}
-				</span>
-			</span>
+			<RosterPreview
+				conversationKey={`group:${g.groupId}`}
+				name={g.name}
+				fallback={t(g.status === "dissolved" ? "Dissolved" : "{count} members", { count: g.memberIds.length })}
+			/>
 		</button>
 	);
 }
@@ -235,11 +235,13 @@ export function GroupView({ groupId }: { groupId: string }) {
 						{group.leadBotId ? ` · ${t("Lead")}: ${name(group.leadBotId)}` : ""}
 					</p>
 				</div>
+				<MarkReadButton conversationKey={`group:${groupId}`} cursor={snapshot.readCursor} />
 				<button className="icon-button details-toggle" aria-label={t("Conversation details")} onClick={() => setDetails(!details)}>
 					ⓘ
 				</button>
 			</header>
 			<Timeline
+				readCursor={snapshot.readCursor}
 				conversationKey={`group:${groupId}`}
 				activity={`${posts.length}:${JSON.stringify(tasks.map((d) => [d.state, d.conversation?.live]))}`}
 				className="group-timeline"

@@ -65,7 +65,7 @@ describe("Web search", () => {
 		await row.locator("summary").click();
 		await expect.poll(() => row.locator(".tool-output").textContent()).toContain("1. Tide tables 2026");
 		expect(await row.locator(".tool-output").textContent()).toContain("URL: https://tides.example/2026");
-		await page.getByText("Found the 2026 tide tables.").waitFor();
+		await page.locator(".transcript").getByText("Found the 2026 tide tables.").waitFor();
 		expect(authorizations).toEqual([`Bearer ${KEY}`]);
 		expect(JSON.stringify(h.model.requests.at(-1)?.messages.at(-1))).toContain("https://tides.example/2026");
 		await h.shot("02-web-search-row");
@@ -78,7 +78,7 @@ describe("Web search", () => {
 		await section.getByRole("button", { name: "Remove" }).click();
 		await section.getByText("Not set up").waitFor();
 
-		await page.locator(".bot-row", { hasText: "Researcher" }).click();
+		await page.locator(".bot-row").filter({ has: page.getByText("Researcher", { exact: true }) }).click();
 		h.model.script({ tool: "web_search", args: { query: "tide pools" } }, { text: "Search is not set up yet." });
 		await h.send("Search again");
 		const failed = page.locator(".tool-card.tool-failed", { hasText: "Searched" });
