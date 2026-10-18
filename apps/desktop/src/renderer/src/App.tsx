@@ -1,4 +1,5 @@
 import { UsagePanel } from "./UsagePanel";
+import { ArtifactCard } from "./ArtifactCard";
 import { appManagementCapability, legacyManagementName, type AppExecution } from "@openbot/protocol";
 import { ConversationSearch } from "./ConversationSearch";
 import { ChatComposer } from "./ChatComposer";
@@ -162,12 +163,17 @@ function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; 
 	const eligible = (key: string) => !unreadOnly || (summaries[key]?.unreadCount ?? 0) > 0;
 	const view = useStore((state) => state.view);
 	const showHidden = useStore((state) => state.showHidden);
-	const visible = visibleBots(bots).filter((b) => eligible(`bot:${b.botId}`) && `${b.name} ${b.role}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+	const visible = visibleBots(bots).filter(
+		(b) => eligible(`bot:${b.botId}`) && `${b.name} ${b.role}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+	);
 	const core = visible.filter((bot) => bot.kind === "core");
 	const pinned = visible.filter((bot) => bot.pinned && bot.kind !== "core");
 	const others = visible.filter((bot) => !bot.pinned && bot.kind !== "core");
 	const hidden = bots.filter(
-		(bot) => bot.status === "hidden" && eligible(`bot:${bot.botId}`) && `${bot.name} ${bot.role}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+		(bot) =>
+			bot.status === "hidden" &&
+			eligible(`bot:${bot.botId}`) &&
+			`${bot.name} ${bot.role}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
 	);
 	const selected = view.kind === "bot" ? view.botId : undefined;
 
@@ -183,21 +189,35 @@ function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; 
 					value={query}
 					maxLength={200}
 					onChange={(e) => onQuery(e.target.value)}
-					onKeyDown={(e) => { if (e.key === "Escape" && !e.nativeEvent.isComposing) onQuery(""); }}
+					onKeyDown={(e) => {
+						if (e.key === "Escape" && !e.nativeEvent.isComposing) onQuery("");
+					}}
 				/>
-				{query && <button className="clear-search" aria-label={t("Clear search")} onClick={() => onQuery("")}>×</button>}
+				{query && (
+					<button className="clear-search" aria-label={t("Clear search")} onClick={() => onQuery("")}>
+						×
+					</button>
+				)}
 				<button type="button" className="new-button" aria-label={t("New")} title={t("New")} onClick={onNew}>
 					<span aria-hidden>＋</span>
 				</button>
 			</div>
 			<div className="conversation-filters" role="group" aria-label={t("Conversation filter")}>
-				<button aria-pressed={!unreadOnly} onClick={() => setUnreadOnly(false)}>{t("All")}</button>
-				<button aria-pressed={unreadOnly} onClick={() => setUnreadOnly(true)}>{t("Unread")}</button>
+				<button aria-pressed={!unreadOnly} onClick={() => setUnreadOnly(false)}>
+					{t("All")}
+				</button>
+				<button aria-pressed={unreadOnly} onClick={() => setUnreadOnly(true)}>
+					{t("Unread")}
+				</button>
 			</div>
-			{unreadOnly && !Object.values(summaries).some((r) => r.unreadCount > 0) && <p className="search-status">{t("No unread conversations")}</p>}
+			{unreadOnly && !Object.values(summaries).some((r) => r.unreadCount > 0) && (
+				<p className="search-status">{t("No unread conversations")}</p>
+			)}
 			{core.length > 0 && <BotSection title={t("Your assistant")} bots={core} selected={selected} />}
 			{pinned.length > 0 && <BotSection title={t("Pinned")} bots={pinned} selected={selected} />}
-			{(others.length > 0 || (!query.trim() && !unreadOnly)) && <BotSection title={t("Bots")} bots={others} selected={selected} empty={t("Create a Bot for a specific job")} />}
+			{(others.length > 0 || (!query.trim() && !unreadOnly)) && (
+				<BotSection title={t("Bots")} bots={others} selected={selected} empty={t("Create a Bot for a specific job")} />
+			)}
 			{hidden.length > 0 && (
 				<div className="section">
 					<button
@@ -443,7 +463,15 @@ function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 		) : entry.kind === "divider" ? (
 			<Divider key={entry.id} item={entry} />
 		) : (
-			<Message key={entry.id} item={entry} retry={retry?.id === entry.id ? { botId: snapshot.botId, text: retry.text } : undefined} />
+			<Message
+				key={entry.id}
+				item={entry}
+				retry={
+					retry?.id === entry.id
+						? { botId: snapshot.botId, text: retry.text, ...(retry.artifactIds ? { artifactIds: retry.artifactIds } : {}) }
+						: undefined
+				}
+			/>
 		);
 	return (
 		<ol className="messages">
@@ -478,7 +506,7 @@ function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 
 function Message(props: {
 	readonly item: Exclude<TranscriptItem, { kind: "tool" | "divider" }>;
-	readonly retry: { readonly botId: string; readonly text: string } | undefined;
+	readonly retry: { readonly botId: string; readonly text: string; readonly artifactIds?: readonly string[] } | undefined;
 }) {
 	const { item, retry } = props;
 	if (item.kind === "other") return null;
@@ -488,10 +516,14 @@ function Message(props: {
 			<MessageTime at={item.at} />
 			{item.kind === "assistant" && item.thinking !== undefined && <Thinking text={item.thinking} />}
 			<MessageText parts={item.parts} markdown={item.kind === "assistant"} />
+			{item.kind === "user" && item.attachments?.map((ref) => <ArtifactCard key={ref.artifactId} artifact={ref} />)}
+			{item.kind === "user" && item.error && <p className="message-error">{t(item.error)}</p>}
 			{item.kind === "assistant" && item.error !== undefined && (
 				<div className="message-error">
 					{item.error}
-					{retry !== undefined && <RetryButton botId={retry.botId} text={retry.text} />}
+					{retry !== undefined && (
+						<RetryButton botId={retry.botId} text={retry.text} {...(retry.artifactIds ? { artifactIds: retry.artifactIds } : {})} />
+					)}
 				</div>
 			)}
 		</li>
@@ -512,6 +544,7 @@ function MessageText({ parts, markdown = false }: { readonly parts: readonly { r
 }
 
 const TOOL_VERBS: Record<string, readonly [running: string, done: string, action?: string]> = {
+	artifact_publish: ["Publish result file", "Published result file"],
 	codemode: ["Reading application data", "Read application data"],
 	app_conversations_search: ["Searching chat history", "Searched chat history", "Search chat history"],
 	app_conversations_read: ["Reading chat context", "Read chat context", "Read chat context"],
@@ -617,6 +650,7 @@ function ToolCard({
 				{item.tool === "local_exec" && typeof args.command === "string" && <pre className="tool-command">$ {args.command}</pre>}
 				{output !== undefined && output !== "" && <pre className="tool-output">{output}</pre>}
 			</details>
+			{item.artifact && item.status === "succeeded" && <ArtifactCard artifact={item.artifact} />}
 			{approval !== undefined && <ApprovalCard approval={approval} />}
 			{childApprovals.map((child) => (
 				<ApprovalCard key={child.approvalId} approval={child} />

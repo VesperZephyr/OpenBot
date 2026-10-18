@@ -1,0 +1,88 @@
+.artifact-card {
+	border: 1px solid var(--border);
+	border-radius: 14px;
+	padding: 12px 14px;
+	margin: 10px 0;
+	background: var(--surface);
+	color: var(--text);
+	max-width: 100%;
+	min-width: 0;
+}
+.artifact-heading {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+}
+.artifact-heading > div {
+	min-width: 0;
+}
+.artifact-heading strong {
+	display: block;
+	overflow-wrap: anywhere;
+	font-size: 13px;
+}
+.artifact-icon {
+	font-size: 22px;
+	color: var(--muted);
+}
+.artifact-meta {
+	display: block;
+	margin-top: 3px;
+	color: var(--muted);
+	font-size: 11px;
+}
+.artifact-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 10px;
+}
+.artifact-actions button,
+.artifact-confirm button,
+.artifact-preview > button {
+	font-size: 11px;
+	padding: 4px 8px;
+}
+.artifact-card p {
+	font-size: 12px;
+	overflow-wrap: anywhere;
+}
+.artifact-preview {
+	margin-top: 12px;
+	border-top: 1px solid var(--border);
+	padding-top: 10px;
+}
+.artifact-preview pre {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	max-height: 360px;
+	overflow: auto;
+	font-size: 12px;
+	user-select: text;
+}
+.artifact-preview img {
+	display: block;
+	max-width: 100%;
+	max-height: 360px;
+	object-fit: contain;
+	margin-top: 8px;
+}
+.attachment-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 8px 12px 0;
+	max-height: 260px;
+	overflow: auto;
+}
+.attachment-chips .artifact-card {
+	flex: 1 1 180px;
+	margin: 0;
+}
+.attachment-chip {
+	display: inline-block;
+	margin: 4px;
+	font-size: 12px;
+	overflow-wrap: anywhere;
+}

@@ -148,6 +148,15 @@ export class ReceiptLedger {
 			.run(outcome.status, JSON.stringify(outcome), this.#now(), invocationId);
 	}
 
+	/** Only a committed artifact-store receipt can resolve an interrupted publication. No external operation is repeated. */
+	reconcileArtifact(invocationId: string, argsDigest: string, outcome: ToolOutcome): void {
+		this.#db
+			.prepare(
+				"update receipts set status=?,outcome=?,finished_at=? where invocation_id=? and args_digest=? and tool='artifact_publish' and status='unknown'",
+			)
+			.run(outcome.status, JSON.stringify(outcome), this.#now(), invocationId, argsDigest);
+	}
+
 	/** The Host committed the outcome; the row is pruned after the retention period. */
 	ack(invocationId: string): void {
 		this.#db
@@ -193,9 +202,7 @@ export class ReceiptLedger {
 			pgid: number | null;
 			leader_started: string | null;
 		}[];
-		const markUnknown = this.#db.prepare(
-			"update receipts set status = 'unknown', outcome = ?, finished_at = ? where invocation_id = ?",
-		);
+		const markUnknown = this.#db.prepare("update receipts set status = 'unknown', outcome = ?, finished_at = ? where invocation_id = ?");
 		for (const row of stale) {
 			markUnknown.run(JSON.stringify(INTERRUPTED_OUTCOME), this.#now(), row.invocation_id);
 			if (row.pgid !== null && row.leader_started !== null) killOrphanGroup(row.pgid, row.leader_started);

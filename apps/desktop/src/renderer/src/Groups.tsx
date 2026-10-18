@@ -1,3 +1,4 @@
+import { ArtifactCard } from "./ArtifactCard";
 import { ChatComposer } from "./ChatComposer";
 import { ConversationShell, DetailsPanel, Timeline } from "./ConversationUI";
 import { MarkReadButton, RosterPreview, recentTime } from "./RosterPreview";
@@ -12,12 +13,23 @@ import "./groups.css";
 export function GroupSidebar({ query = "", unreadOnly = false }: { query?: string; unreadOnly?: boolean }) {
 	const groups = useStore((s) => s.groups);
 	const summaries = useStore((s) => s.summaries);
-	const visible = groups.filter((g) => (!unreadOnly || (summaries[`group:${g.groupId}`]?.unreadCount ?? 0) > 0) && `${g.name} ${g.objective}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
-		.toSorted((a, b) => recentTime(`group:${b.groupId}`, summaries, b.createdAt) - recentTime(`group:${a.groupId}`, summaries, a.createdAt) || a.groupId.localeCompare(b.groupId));
+	const visible = groups
+		.filter(
+			(g) =>
+				(!unreadOnly || (summaries[`group:${g.groupId}`]?.unreadCount ?? 0) > 0) &&
+				`${g.name} ${g.objective}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+		)
+		.toSorted(
+			(a, b) =>
+				recentTime(`group:${b.groupId}`, summaries, b.createdAt) - recentTime(`group:${a.groupId}`, summaries, a.createdAt) ||
+				a.groupId.localeCompare(b.groupId),
+		);
 	return visible.length > 0 ? (
 		<div className="section group-sidebar">
 			<span className="section-title">{t("Groups")}</span>
-			{visible.map((g) => <GroupRow key={g.groupId} group={g} />)}
+			{visible.map((g) => (
+				<GroupRow key={g.groupId} group={g} />
+			))}
 		</div>
 	) : null;
 }
@@ -264,6 +276,9 @@ export function GroupView({ groupId }: { groupId: string }) {
 								</small>
 							)}
 							<Markdown text={post.text} />
+							{post.attachments?.map((artifact) => (
+								<ArtifactCard key={artifact.artifactId} artifact={artifact} />
+							))}
 						</article>
 					))}
 				{roots

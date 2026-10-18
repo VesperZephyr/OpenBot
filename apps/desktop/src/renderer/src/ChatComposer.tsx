@@ -1,3 +1,4 @@
+import { ArtifactCard } from "./ArtifactCard";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { api, report, sendMessage } from "./store";
 import { t } from "./i18n";
@@ -19,6 +20,7 @@ export function ChatComposer({
 }) {
 	const { draft, attempt } = useComposer(conversationKey);
 	const input = useRef<HTMLTextAreaElement>(null);
+	const [attaching, setAttaching] = useState(false);
 	const [picker, setPicker] = useState(false),
 		[active, setActive] = useState(0),
 		[dismissed, setDismissed] = useState<string>();
@@ -50,7 +52,12 @@ export function ChatComposer({
 	};
 	const dispatch = (a: SendAttempt) =>
 		conversationKey.startsWith("bot:")
-			? sendMessage(conversationKey.slice(4), a.text, a.requestId)
+			? sendMessage(
+					conversationKey.slice(4),
+					a.text,
+					a.requestId,
+					a.attachments?.map((ref) => ref.artifactId),
+				)
 			: api["groups.send"]({
 					groupId: conversationKey.slice(6),
 					requestId: a.requestId,
@@ -87,6 +94,11 @@ export function ChatComposer({
 						{t("It may already be sent. Retry checks the same request. Dismiss only removes this recovery record; it does not stop work.")}
 					</p>
 					<pre>{attempt.text}</pre>
+					{attempt.attachments?.map((ref) => (
+						<span key={ref.artifactId} className="attachment-chip">
+							{ref.name}
+						</span>
+					))}
 					<div className="recovery-actions">
 						<button type="button" disabled={readOnly} onClick={() => void send(true)}>
 							{t("Retry send")}
@@ -106,6 +118,19 @@ export function ChatComposer({
 				</p>
 			)}
 			<div className="composer">
+				{!!draft.attachments?.length && (
+					<div className="attachment-chips">
+						{draft.attachments.map((ref) => (
+							<ArtifactCard
+								key={ref.artifactId}
+								artifact={ref}
+								detach={() =>
+									composers.edit(conversationKey, { attachments: draft.attachments?.filter((a) => a.artifactId !== ref.artifactId) ?? [] })
+								}
+							/>
+						))}
+					</div>
+				)}
 				{members && (
 					<div className="group-recipients">
 						<button
@@ -223,12 +248,40 @@ export function ChatComposer({
 									@
 								</button>
 							)}
+							{!members && (
+								<button
+									type="button"
+									className="icon-button"
+									aria-label={t("Attach files")}
+									disabled={attaching || (draft.attachments?.length ?? 0) >= 4}
+									onClick={() => {
+										setAttaching(true);
+										const key = conversationKey;
+										void window.openbot
+											.attachFiles()
+											.then((result) => {
+												const current = composers.get(key).draft;
+												const attachments = [...(current.attachments ?? []), ...result.attachments];
+												if (attachments.length > 4) {
+													report(new Error("Choose at most four attachments"));
+													return;
+												}
+												composers.edit(key, { attachments });
+												if (result.errors.length) report(new Error(result.errors[0]));
+											})
+											.catch(report)
+											.finally(() => setAttaching(false));
+									}}
+								>
+									<span aria-hidden>＋</span>
+								</button>
+							)}
 							{controls}
 							<button
 								type="button"
 								aria-label={t("Send")}
 								className="primary send"
-								disabled={!draft.text.trim() || !!attempt || !!stale}
+								disabled={(!draft.text.trim() && !draft.attachments?.length) || !!attempt || !!stale || attaching}
 								onClick={() => void send()}
 							>
 								<span aria-hidden>↑</span>

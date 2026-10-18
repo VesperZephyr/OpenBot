@@ -1,20 +1,32 @@
 /**
  * The one output limiter every executor tool uses. The model sees at most `OUTPUT_LIMITS` of a result: a head and a
- * tail cut at line ends, with a marker between them. Whatever is cut is saved in full to
+ * tail cut at line ends, with a marker between them. Output beyond the display limits is saved, within the spill quotas, to
  * `<data>/artifacts/<invocationId>.txt` (mode 0600), and the marker names that file and the line to continue from with
  * `local_read offset`. The artifacts directory is an implicit read grant for `local_read` only.
  *
  * An `OutputLog` is also a command's capture buffer. It keeps everything in memory until the output outgrows the
- * limits or the command moves to the background; from then on every chunk is appended to the artifact file and only
+ * limits or the command moves to the background; later chunks append until the disk quota is reached, and only
  * roughly the last `MEMORY_TAIL_BYTES` stay in memory, older ranges are read back from the file.
  */
-import { closeSync, mkdirSync, openSync, readdirSync, readSync, rmSync, statSync, writeSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readSync, rmSync, statSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 /** What one result shows the model. */
 export const OUTPUT_LIMITS = { lines: 500, bytes: 24 * 1024 } as const;
 /** Recent output a running command keeps in memory once its full output goes to the artifact file. */
 const MEMORY_TAIL_BYTES = 1024 * 1024;
+export const SPILL_LIMITS = { fileBytes: 10 * 1024 * 1024, totalBytes: 64 * 1024 * 1024, files: 4096 } as const;
+type Budget = { bytes: number; files: number };
+const budgets = new Map<string, Budget>();
+function budget(directory: string): Budget {
+	let value = budgets.get(directory);
+	if (!value) {
+		const files = existsSync(directory) ? readdirSync(directory).filter((name) => name.endsWith(".txt")) : [];
+		value = { bytes: files.reduce((sum, name) => sum + statSync(join(directory, name)).size, 0), files: files.length };
+		budgets.set(directory, value);
+	}
+	return value;
+}
 /** Share of the limits given to the head; the tail gets the rest, because errors usually come last. */
 const HEAD_SHARE = 0.4;
 /** Artifacts older than this are deleted when the executor starts. */
@@ -42,6 +54,7 @@ export class OutputLog {
 	#lastByte: number | undefined;
 	#fd: number | undefined;
 	#spilled = false;
+	#written = 0;
 	#writeError: string | undefined;
 
 	constructor(path: string) {
@@ -61,15 +74,25 @@ export class OutputLog {
 		this.#newlines += countNewlines(chunk);
 		this.#lastByte = chunk[chunk.length - 1];
 		if (!this.#spilled) {
-			// Past the limits the result is cut anyway, so the full output must be saved.
-			if (this.#total > OUTPUT_LIMITS.bytes || this.#newlines >= OUTPUT_LIMITS.lines) this.spill();
+			// Past the display limits, retain bounded output on disk.
+			if (this.#total > OUTPUT_LIMITS.bytes || this.#newlines >= OUTPUT_LIMITS.lines) {
+				this.spill();
+				this.#trim();
+			}
 			return;
 		}
 		this.#write(chunk);
-		while (this.#tail.length > 1 && this.#tailBytes - this.#tail[0]!.length >= MEMORY_TAIL_BYTES) {
-			const dropped = this.#tail.shift()!;
-			this.#tailBytes -= dropped.length;
-			this.#tailStart += dropped.length;
+		this.#trim();
+	}
+
+	#trim(): void {
+		while (this.#tailBytes > MEMORY_TAIL_BYTES) {
+			const first = this.#tail[0]!,
+				drop = Math.min(first.length, this.#tailBytes - MEMORY_TAIL_BYTES);
+			if (drop === first.length) this.#tail.shift();
+			else this.#tail[0] = Buffer.from(first.subarray(drop));
+			this.#tailBytes -= drop;
+			this.#tailStart += drop;
 		}
 	}
 
@@ -79,7 +102,13 @@ export class OutputLog {
 		this.#spilled = true;
 		try {
 			mkdirSync(dirname(this.path), { recursive: true, mode: 0o700 });
+			const quota = budget(dirname(this.path)),
+				old = existsSync(this.path) ? statSync(this.path).size : undefined;
+			if (quota.bytes >= SPILL_LIMITS.totalBytes || (old === undefined && quota.files >= SPILL_LIMITS.files))
+				throw new Error("Output storage limit reached; full output was not saved");
 			this.#fd = openSync(this.path, "w", 0o600);
+			quota.bytes -= old ?? 0;
+			if (old === undefined) quota.files++;
 		} catch (error) {
 			this.#writeError = errorText(error);
 			return;
@@ -149,7 +178,17 @@ export class OutputLog {
 	#write(chunk: Buffer): void {
 		if (this.#fd === undefined) return;
 		try {
-			writeSync(this.#fd, chunk);
+			const quota = budget(dirname(this.path));
+			const allowed = Math.max(0, Math.min(chunk.length, SPILL_LIMITS.fileBytes - this.#written, SPILL_LIMITS.totalBytes - quota.bytes));
+			let written = 0;
+			while (written < allowed) {
+				const n = writeSync(this.#fd, chunk, written, allowed - written);
+				if (n === 0) throw new Error("Could not save full output");
+				written += n;
+				this.#written += n;
+				quota.bytes += n;
+			}
+			if (allowed < chunk.length) this.#writeError = "Output storage limit reached; full output was not saved";
 		} catch (error) {
 			// A full disk must not take the executor down; the marker says the file is incomplete.
 			this.#writeError = errorText(error);
@@ -178,6 +217,7 @@ export function headWithin(text: string, maxBytes: number): { readonly text: str
 
 /** Delete artifacts older than the retention period; the executor runs this when it starts. */
 export function pruneArtifacts(artifactsDirectory: string, now: number = Date.now()): void {
+	budgets.delete(artifactsDirectory);
 	let names: string[];
 	try {
 		names = readdirSync(artifactsDirectory);
@@ -228,7 +268,10 @@ function keepLastLines(buffer: Buffer, maxLines: number, cut: boolean): Buffer {
 
 /** UTF-8 text of a cut buffer, without the replacement characters a cut through a character leaves at its ends. */
 function decode(buffer: Buffer): string {
-	return buffer.toString("utf8").replace(/^\uFFFD/, "").replace(/\uFFFD$/, "");
+	return buffer
+		.toString("utf8")
+		.replace(/^\uFFFD/, "")
+		.replace(/\uFFFD$/, "");
 }
 
 function errorText(error: unknown): string {

@@ -146,8 +146,13 @@ export async function createBot(name: string): Promise<void> {
 	await openBot(bot.botId);
 }
 
-export async function sendMessage(botId: string, text: string, requestId: string = crypto.randomUUID()): Promise<void> {
-	await api["messages.submit"]({ botId, requestId, text });
+export async function sendMessage(
+	botId: string,
+	text: string,
+	requestId: string = crypto.randomUUID(),
+	artifactIds?: readonly string[],
+): Promise<void> {
+	await api["messages.submit"]({ botId, requestId, text, ...(artifactIds?.length ? { artifactIds } : {}) });
 }
 
 export function connect(): () => void {

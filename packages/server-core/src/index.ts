@@ -1,4 +1,6 @@
 import { Observation } from "./observation.ts";
+import { ARTIFACT_LIMITS } from "@openbot/protocol";
+import type { ArtifactRef, ArtifactContent, ArtifactOperation, ArtifactOperationResult } from "@openbot/protocol";
 import { legacyManagementName } from "@openbot/protocol";
 /**
  * Transport-independent application methods for the Host Runtime. Process composition, credential storage, and IPC
@@ -63,7 +65,11 @@ export type OperationAudit = {
 	readonly outcome: "succeeded" | "failed";
 };
 
+export interface ArtifactPort {
+	request(requestId: string, operation: ArtifactOperation): Promise<ArtifactOperationResult>;
+}
 export type HostServiceOptions = {
+	readonly artifacts?: ArtifactPort;
 	/** Content-free diagnostics; authoritative action state stays in its own durable store. */
 	readonly audit?: (event: OperationAudit) => void;
 	readonly runtime: BotRuntime;
@@ -95,6 +101,7 @@ type Handlers = { [M in HostMethod]: (params: HostParams<M>) => Promise<HostResu
 
 export class HostService {
 	readonly capabilities: AppCapabilities;
+	readonly #artifacts: ArtifactPort | undefined;
 	readonly management: BotManagement;
 	readonly groups: Groups;
 	#botChanges: Promise<unknown> = Promise.resolve();
@@ -122,6 +129,7 @@ export class HostService {
 	#configStatus: ModelConfigStatus = { providers: [], errors: [] };
 
 	constructor(options: HostServiceOptions) {
+		this.#artifacts = options.artifacts;
 		this.#audit = options.audit ?? (() => {});
 		this.#runtime = options.runtime;
 		this.#secrets = options.secrets;
@@ -139,6 +147,22 @@ export class HostService {
 		this.#now = options.now ?? Date.now;
 		this.management = new BotManagement(this.#runtime, this.#status.targetId, this.#now);
 		this.#runs = new RunScheduler({
+			resolveAttachments: (botId, ids) => this.#resolveAttachments(botId, ids),
+			hydrateAttachments: async (botId, refs) => {
+				const current = await this.#resolveAttachments(
+					botId,
+					refs.map((ref) => ref.artifactId),
+				);
+				if (current.some((ref, i) => ref.sha256 !== refs[i]?.sha256))
+					throw new ProtocolError("invalid_request", "Attachment content changed");
+				const content: ArtifactContent[] = [];
+				for (const ref of refs) {
+					const item = (await this.#artifact(randomUUID(), { action: "content", artifactId: ref.artifactId })) as ArtifactContent;
+					if (item.artifact.availability !== "available") throw new ProtocolError("invalid_request", "Attachment content is unavailable");
+					content.push(item);
+				}
+				return content;
+			},
 			runtime: this.#runtime,
 			maxActiveRuns: options.maxActiveRuns ?? DEFAULT_MAX_ACTIVE_RUNS,
 			changed: (botId) => this.#republish(botId),
@@ -165,6 +189,12 @@ export class HostService {
 		});
 		this.#handlers = {
 			"observation.wait": ({ cursor, waitMs }) => this.#observation.wait(cursor, waitMs),
+			"artifacts.import": ({ requestId, path }) => this.#artifact(requestId, { action: "import", path }) as Promise<ArtifactRef>,
+			"artifacts.export": ({ requestId, artifactId, path }) =>
+				this.#artifact(requestId, { action: "export", artifactId, path }) as Promise<null>,
+			"artifacts.remove": ({ requestId, artifactId }) => this.#artifact(requestId, { action: "remove", artifactId }) as Promise<null>,
+			"artifacts.get": ({ artifactId }) => this.#artifact(randomUUID(), { action: "get", artifactId }) as Promise<ArtifactRef>,
+			"artifacts.preview": ({ artifactId }) => this.#artifact(randomUUID(), { action: "preview", artifactId }) as Promise<ArtifactContent>,
 			"collaboration.stop": ({ rootId }) => this.groups.stopTree(rootId),
 			"groups.list": () => this.#runtime.groups().list(),
 			"groups.snapshot": ({ groupId }) => this.groups.snapshot(groupId),
@@ -203,13 +233,13 @@ export class HostService {
 					this.#emit({ type: conversationKey.startsWith("bot:") ? "bots.changed" : "groups.changed", payload: {} });
 				return null;
 			},
-			"messages.submit": async ({ botId, requestId, text }) => {
-				if (text.trim() === "") throw new ProtocolError("invalid_request", "Message is empty");
+			"messages.submit": async ({ botId, requestId, text, artifactIds }) => {
+				if (text.trim() === "" && !artifactIds?.length) throw new ProtocolError("invalid_request", "Message is empty");
 				const bot = await this.#liveBot(botId);
 				if (bot.model === undefined && (await this.#runtime.defaultModel()) === undefined) {
 					throw new ProtocolError("invalid_request", "Choose a model in Settings before messaging a Bot");
 				}
-				return this.#runs.submit(botId, requestId, text);
+				return this.#runs.submit(botId, requestId, text, artifactIds ? { artifactIds } : {});
 			},
 			"runs.cancel": async ({ runId }) => ({ state: await this.#runs.cancel(runId) }),
 			"approvals.decide": async ({ approvalId, decision }) => {
@@ -316,6 +346,35 @@ export class HostService {
 		};
 	}
 
+	async #resolveAttachments(botId: string, ids: readonly string[]): Promise<ArtifactRef[]> {
+		if (ids.length > ARTIFACT_LIMITS.count || new Set(ids).size !== ids.length)
+			throw new ProtocolError("invalid_request", "Too many or duplicate attachments");
+		const refs: ArtifactRef[] = [];
+		for (const artifactId of ids) {
+			const ref = (await this.#artifact(randomUUID(), { action: "get", artifactId })) as ArtifactRef;
+			if (ref.availability !== "available") throw new ProtocolError("invalid_request", "Attachment content is unavailable");
+			refs.push(ref);
+		}
+		if (
+			refs.some((ref) => ref.mediaType === "text/html") ||
+			refs.reduce((n, ref) => n + ref.bytes, 0) > ARTIFACT_LIMITS.messageBytes ||
+			refs.filter((ref) => ref.mediaType.startsWith("text/")).reduce((n, ref) => n + ref.bytes, 0) > ARTIFACT_LIMITS.textBytes
+		)
+			throw new ProtocolError("invalid_request", "Attachments exceed the message limits");
+		if (refs.some((ref) => ref.mediaType.startsWith("image/"))) {
+			const bot = await this.#liveBot(botId),
+				model = bot.model ?? (await this.#runtime.defaultModel());
+			if (!model || !this.#runtime.listChatModels().find((m) => m.provider === model.provider && m.modelId === model.modelId)?.images)
+				throw new ProtocolError("invalid_request", "This model does not support image attachments");
+		}
+		return refs;
+	}
+
+	#artifact(requestId: string, operation: ArtifactOperation): Promise<ArtifactOperationResult> {
+		if (!this.#artifacts) throw new ProtocolError("invalid_request", "Artifact storage is unavailable");
+		return this.#artifacts.request(requestId, operation);
+	}
+
 	/**
 	 * Load the model configuration and pending approvals, attach observers to every existing Bot, then sweep Runs left
 	 * by the last shutdown. Call once after the runtime opened and before it resumes, so approvals from before a
@@ -374,6 +433,7 @@ export class HostService {
 				!method.endsWith(".history") &&
 				![
 					"observation.wait",
+					"artifacts.preview",
 					"host.status",
 					"groups.snapshot",
 					"conversations.snapshot",
@@ -566,7 +626,11 @@ export class HostService {
 		if (stored === undefined) return snapshot;
 		const { messages, inputs: _inputs, ...run } = stored;
 		if (run.state !== "queued") return { ...snapshot, run };
-		const queued = messages.map(({ requestId, text }) => ({ id: requestId, parts: [{ type: "text" as const, text }] }));
+		const queued = messages.map(({ requestId, text, attachments }) => ({
+			id: requestId,
+			parts: [{ type: "text" as const, text }],
+			...(attachments ? { attachments } : {}),
+		}));
 		return { ...snapshot, run, pending: [...(snapshot.pending ?? []), ...queued] };
 	}
 

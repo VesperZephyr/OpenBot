@@ -2,6 +2,8 @@
  * The Host's connection to the local executor process: starts it, checks its handshake against the bound target, and
  * correlates invocations with results. Implements Tool Router's `ExecutorTransport`.
  */
+import { randomUUID } from "node:crypto";
+import type { ArtifactOperation, ArtifactOperationResult } from "@openbot/protocol";
 import { type ChildProcess, spawn } from "node:child_process";
 import type { ExecutorMessage, ExecutorRequest, ToolInvocation, ToolOutcome } from "@openbot/protocol";
 import type { ExecutorTransport } from "@openbot/tool-router";
@@ -13,6 +15,10 @@ export class ExecutorProcess implements ExecutorTransport {
 	readonly #entry: string;
 	readonly #env: NodeJS.ProcessEnv;
 	readonly #targetId: string;
+	readonly #artifactWaiters = new Map<
+		string,
+		{ resolve: (result: ArtifactOperationResult) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
+	>();
 	readonly #pending = new Map<string, Pending>();
 	readonly #statusWaiters = new Map<string, ((reply: StatusReply) => void)[]>();
 	#child: ChildProcess | undefined;
@@ -56,6 +62,20 @@ export class ExecutorProcess implements ExecutorTransport {
 		}
 	}
 
+	async artifactRequest(requestId: string, operation: ArtifactOperation): Promise<ArtifactOperationResult> {
+		await this.#start();
+		if (this.#artifactWaiters.size >= 4) throw new Error("Too many attachment requests");
+		const messageId = randomUUID(),
+			waiting = Promise.withResolvers<ArtifactOperationResult>();
+		const timer = setTimeout(() => {
+			this.#artifactWaiters.delete(messageId);
+			waiting.reject(new Error("Attachment operation timed out; its outcome may need reconciliation"));
+		}, 10000);
+		this.#artifactWaiters.set(messageId, { resolve: waiting.resolve, reject: waiting.reject, timer });
+		this.#send({ kind: "artifact.request", messageId, requestId, targetId: this.#targetId, operation });
+		return waiting.promise;
+	}
+
 	/** The Host committed the invocation's outcome; the executor may prune its receipt later. */
 	ack(invocationId: string): void {
 		this.#send({ kind: "result.ack", invocationId });
@@ -94,7 +114,17 @@ export class ExecutorProcess implements ExecutorTransport {
 		this.#child = child;
 		const { promise, resolve, reject } = Promise.withResolvers<void>();
 		child.on("message", (message: ExecutorMessage) => {
+			if (this.#child !== child) return;
 			switch (message.kind) {
+				case "artifact.response": {
+					const pending = this.#artifactWaiters.get(message.messageId);
+					if (!pending) return;
+					this.#artifactWaiters.delete(message.messageId);
+					clearTimeout(pending.timer);
+					if (message.error !== undefined) pending.reject(new Error(message.error));
+					else pending.resolve(message.result);
+					return;
+				}
 				case "executor.hello":
 					if (message.targetId !== this.#targetId) reject(new Error(`Executor bound to ${message.targetId}, expected ${this.#targetId}`));
 					else resolve();
@@ -116,6 +146,12 @@ export class ExecutorProcess implements ExecutorTransport {
 			}
 		});
 		child.on("exit", (code, signal) => {
+			if (this.#child !== child) return;
+			for (const pending of this.#artifactWaiters.values()) {
+				clearTimeout(pending.timer);
+				pending.reject(new Error("Attachment operation was interrupted; its outcome may need reconciliation"));
+			}
+			this.#artifactWaiters.clear();
 			reject(new Error(`The local executor exited (${signal ?? code})`));
 			// An invocation the executor accepted but did not answer may have had an effect.
 			for (const [invocationId, pending] of this.#pending) {

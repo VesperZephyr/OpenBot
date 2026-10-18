@@ -16,6 +16,8 @@ function subscribe<T>(channel: string, listener: (value: T) => void): () => void
 }
 
 const api: OpenBotApi = {
+	attachFiles: () => ipcRenderer.invoke(CHANNELS.attachFiles),
+	exportArtifact: (params) => ipcRenderer.invoke(CHANNELS.exportArtifact, params),
 	// Each entry forwards exactly one allowlisted method; types come from the shared method map.
 	methods: methods as OpenBotApi["methods"],
 	onHostState: (listener) => subscribe<HostState>(CHANNELS.hostState, listener),

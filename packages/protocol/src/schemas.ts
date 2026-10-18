@@ -38,6 +38,8 @@ const GroupFields = strict({
 	memberIds: Type.Array(Id, { minItems: 2, maxItems: 6, uniqueItems: true }),
 	leadBotId: Id,
 });
+const ArtifactId = Type.String({ pattern: "^artifact_[a-f0-9]{32}$" });
+const ArtifactPath = Type.String({ minLength: 1, maxLength: 4096 });
 export const HOST_PARAM_SCHEMAS = {
 	"observation.wait": strict({
 		cursor: Type.Optional(strict({
@@ -46,6 +48,11 @@ export const HOST_PARAM_SCHEMAS = {
 		})),
 		waitMs: Type.Optional(Type.Integer({ minimum: 0, maximum: 5000 })),
 	}),
+	"artifacts.import": strict({ requestId: Id, path: ArtifactPath }),
+	"artifacts.export": strict({ requestId: Id, artifactId: ArtifactId, path: ArtifactPath }),
+	"artifacts.get": strict({ artifactId: ArtifactId }),
+	"artifacts.preview": strict({ artifactId: ArtifactId }),
+	"artifacts.remove": strict({ requestId: Id, artifactId: ArtifactId }),
 	"collaboration.stop": strict({ rootId: Type.String({ minLength: 1, maxLength: 2048 }) }),
 	"groups.list": NoParams,
 	"groups.snapshot": strict({ groupId: GroupId }),
@@ -88,13 +95,18 @@ export const HOST_PARAM_SCHEMAS = {
 	"conversations.list": NoParams,
 	"conversations.search": APP_SEARCH_INPUT,
 	"conversations.markRead": strict({
-		conversationKey: Type.TemplateLiteral(
-			[Type.Union([Type.Literal("bot:"), Type.Literal("group:")]), Type.String()],
-			{ pattern: "^(bot|group):.+$", maxLength: 262 },
-		),
+		conversationKey: Type.TemplateLiteral([Type.Union([Type.Literal("bot:"), Type.Literal("group:")]), Type.String()], {
+			pattern: "^(bot|group):.+$",
+			maxLength: 262,
+		}),
 		through: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
 	}),
-	"messages.submit": strict({ botId: Id, requestId: Id, text: Type.String() }),
+	"messages.submit": strict({
+		botId: Id,
+		requestId: Id,
+		text: Type.String(),
+		artifactIds: Type.Optional(Type.Array(ArtifactId, { maxItems: 4, uniqueItems: true })),
+	}),
 	"runs.cancel": strict({ runId: Id }),
 	"approvals.decide": strict({
 		approvalId: Id,
@@ -189,3 +201,18 @@ function names(params: object, key: string): string[] {
 	const value: unknown = key in params ? Reflect.get(params, key) : undefined;
 	return Array.isArray(value) ? value.filter((name): name is string => typeof name === "string") : [];
 }
+
+const artifactRequest = Compile(
+	strict({
+		kind: Type.Literal("artifact.request"),
+		messageId: Id,
+		requestId: Id,
+		targetId: Id,
+		operation: Type.Union([
+			strict({ action: Type.Literal("import"), path: ArtifactPath }),
+			strict({ action: Type.Enum(["get", "preview", "content", "remove"]), artifactId: ArtifactId }),
+			strict({ action: Type.Literal("export"), artifactId: ArtifactId, path: ArtifactPath }),
+		]),
+	}),
+);
+export const validArtifactRequest = (value: unknown): boolean => artifactRequest.Check(value);

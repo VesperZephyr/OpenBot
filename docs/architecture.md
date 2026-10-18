@@ -355,6 +355,7 @@ Tool Router dispatches every model-selected tool to one of two destinations. **E
 | Tool | Destination | Behavior | Authorization |
 | --- | --- | --- | --- |
 | `local_read`, `local_list` | Executor | Read files and list directories; results end with the file's SHA-256 | Read or read-write grant for the canonical path; the shared workspace is always read-write; `local_read` may also read spilled output under `<data>/artifacts` |
+| `artifact_publish` | Executor | Freeze a granted file into an immutable bounded local result; return a structured artifact receipt | Ordinary canonical read grant, target and invocation identity; no export/delete authority |
 | `local_write`, `local_edit` | Executor | Create, write, or apply targeted edits; edit takes an optional `expected_sha256` and refuses when the file changed | Read-write grant |
 | `local_exec` | Executor | Run a command in a working directory, stream bounded output, record exit status; a command still running after 60 seconds, or started with `background: true`, continues in the background with a `taskId` | Read-only commands inside grants are allowed by default; otherwise the command setting (ask every time by default, always allow, or never) and command rules |
 | `task_output`, `task_stop` | Executor | Read new output of a background command (optionally waiting), or stop it | Allowed: the command was already authorized |
@@ -549,10 +550,13 @@ The transport is private IPC with versioned request, response, and event envelop
 | `computer.status`, `computer.control` | Report OS permission, session, and lease state; pause or hand back control |
 | `secrets.provide`, `secrets.cancel` | Answer a secret request; the value travels only from main to Host |
 | `inputs.provide` | Answer a structured question or form step |
-| `artifacts.import`, `artifacts.export` | Copy selected inputs or generated outputs through authorized local paths |
+| `artifacts.import`, `artifacts.export` | Main-only selected-path copy operations; named preload pickers never accept renderer paths |
+| `artifacts.get`, `artifacts.preview`, `artifacts.remove` | Bounded immutable metadata/content and explicit local-copy removal; removal retains a tombstone |
 | `settings.get`, `settings.update`, `usage.get` | Read redacted settings, update configuration (including local `language: en \| zh-CN`, default English), and read per-Bot usage |
 
-A request carries `protocolVersion`, `messageId`, `method`, and `params`. Electron main and the Host both validate `params` against the method's TypeBox schema (`@openbot/protocol/schemas`) and answer `invalid_request` otherwise. Mutating operations include a stable application request identity where retries could otherwise create duplicate work. `messages.submit` returns the same Run for the same request ID and content; different content under that ID is a conflict. Durable receipt does not mean model generation has started. A Bot's queued Run collects messages sent while it waits and submits them as one input when it starts.
+A request carries `protocolVersion`, `messageId`, `method`, and `params`. Electron main and the Host both validate `params` against the method's TypeBox schema (`@openbot/protocol/schemas`) and answer `invalid_request` otherwise. Mutating operations include a stable application request identity where retries could otherwise create duplicate work. `messages.submit` returns the same Run for the same request ID and content; different content under that ID is a conflict. Durable receipt does not mean model generation has started. A Bot's queued Run collects messages sent while it waits. Text-only messages combine into one input; when attachments are present, original messages remain separate bounded inputs with immutable ordered refs. Pi admission replays its stable request ID before hydrating files.
+
+B15a private-chat file input supports bounded UTF-8 text and PNG/JPEG. The executor copies selected files into `attachments/`, validates size/signature/dimensions and hashes, and owns metadata and operation receipts in `attachments/metadata.sqlite`. The Host uses a target-bound private `artifact.request` / `artifact.response` port (four outstanding requests, ten-second timeout). Pi gets content parts through `agent-runtime`; Desktop/search project original user text and filenames, never injected bodies or base64. HTML results preview only as escaped text. Group posts may show artifacts published by that exact delivery; group file inputs remain deferred. See [B15a](tasks/b15a-bounded-artifacts.md) for quotas, recovery and removal semantics.
 
 Desktop observation uses `observation.wait({cursor?: {streamId, seq}, waitMs?})`. A response carries only the current stream identity, revision and a topic bitmask: roster/summaries (1), groups/summaries (2), selected direct conversation (4), settings/models (8). The Host retains four last-change revisions; no event payload queue crosses IPC. Each consumer refreshes affected snapshots before requesting the next observation, at a minimum 100 ms cadence. Missing, changed-stream or ahead cursors request every snapshot; equal cursors wait at most five seconds. Sequence gaps represent coalesced current state, not lost durable records. Four pending waits bound abandoned renderer requests; excess requests are rejected. Main has its own observer and coalesced roster reads for native attention when the window is closed.
 
@@ -671,7 +675,8 @@ B21 implements a shared private/group conversation shell, name/role filtering, u
 | Command lifetimes, invocation acceptance, final execution receipts, and retransmission | The executor's separate persistent ledger |
 | Unsent drafts and immutable send attempts | Versioned local storage in the desktop renderer partition; Host receipts remain authoritative for accepted messages |
 | Skill library | Files in the application data directory |
-| Artifact contents | The application-owned artifact directory; metadata in OpenBot documents |
+| Durable artifact contents | Executor-owned `attachments/` blobs and SQLite operation/metadata ledger; immutable refs in Run/Pi/group documents; 256 MiB / 4096 records, explicit removal |
+| Disposable command output | `artifacts/`, 10 MiB/file, 64 MiB total, 4096 files, seven-day startup expiry; bounded head/tail and honest loss markers |
 | Managed-browser profile, cookies, and logins | The browser's user-data directory owned by OpenBot |
 | User files | The shared workspace and user-selected directories |
 | Credentials and stored secrets | The macOS Keychain; transient use by the Host |
@@ -764,7 +769,7 @@ Cancellation is a persisted request followed by an observed outcome. Enter `canc
 
 ### 8.3 Data and Backups
 
-The application data directory, normally `~/Library/Application Support/OpenBot/`, holds the conversation database (`openbot.sqlite`), spilled tool output (`artifacts/`, kept 7 days), executor receipts (`executor/receipts.sqlite`), the skill library, the managed-browser profile, and bounded operational logs (`logs/host.log`, rotated at 5 MB). The shared workspace defaults to `~/OpenBot` so the user can see and edit Bot files. Other user files stay in explicitly selected directories.
+The application data directory, normally `~/Library/Application Support/OpenBot/`, holds the conversation database (`openbot.sqlite`), spilled tool output (`artifacts/`, kept 7 days), immutable selected/published files (`attachments/`, explicitly removed), executor receipts (`executor/receipts.sqlite`), the skill library, the managed-browser profile, and bounded operational logs (`logs/host.log`, rotated at 5 MB). The shared workspace defaults to `~/OpenBot` so the user can see and edit Bot files. Other user files stay in explicitly selected directories.
 
 The Pi SQLite adapter uses WAL with `synchronous = NORMAL` at the reviewed baseline. Commits survive process crashes; the newest commits may be lost on power or host failure. Validate the storage behavior before making stronger durability guarantees.
 

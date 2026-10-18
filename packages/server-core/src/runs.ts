@@ -1,3 +1,4 @@
+import type { ArtifactRef, ArtifactContent } from "@openbot/protocol";
 /**
  * Runs and admission (Section 7.2). Pi runs every conversation with input at once; OpenBot caps how many Bots work at
  * the same time. A message becomes a Run: it starts at once while a slot is free, else it waits in OpenBot's queue and
@@ -18,6 +19,8 @@ export const DEFAULT_MAX_ACTIVE_RUNS = 3;
 
 export type RunSchedulerOptions = {
 	readonly runtime: BotRuntime;
+	readonly resolveAttachments?: (botId: string, ids: readonly string[]) => Promise<readonly ArtifactRef[]>;
+	readonly hydrateAttachments?: (botId: string, refs: readonly ArtifactRef[]) => Promise<readonly ArtifactContent[]>;
 	/** Most Runs that may be running at once, across all Bots. */
 	readonly maxActiveRuns: number;
 	/** Runs whenever a Bot's Runs changed, so its conversation can be republished. */
@@ -33,6 +36,8 @@ export type SubmitOutcome = { readonly runId: RunId; readonly state: RunRecord["
 type Mode = "start" | "steer";
 
 export class RunScheduler {
+	readonly #resolveAttachments: NonNullable<RunSchedulerOptions["resolveAttachments"]>;
+	readonly #hydrateAttachments: NonNullable<RunSchedulerOptions["hydrateAttachments"]>;
 	readonly #runtime: BotRuntime;
 	readonly #store: RunStore;
 	readonly #cap: number;
@@ -54,6 +59,8 @@ export class RunScheduler {
 
 	constructor(options: RunSchedulerOptions) {
 		this.#runtime = options.runtime;
+		this.#resolveAttachments = options.resolveAttachments ?? (async () => []);
+		this.#hydrateAttachments = options.hydrateAttachments ?? (async () => []);
 		this.#store = options.runtime.runsStore();
 		if (!Number.isInteger(options.maxActiveRuns) || options.maxActiveRuns < 1) {
 			throw new Error(`The active-Run cap must be a positive integer, got ${options.maxActiveRuns}`);
@@ -112,7 +119,7 @@ export class RunScheduler {
 		botId: BotId,
 		requestId: string,
 		text: string,
-		options: { channelId?: string; origin?: "user" | "peer"; separate?: boolean } = {},
+		options: { channelId?: string; origin?: "user" | "peer"; separate?: boolean; artifactIds?: readonly string[] } = {},
 	): Promise<SubmitOutcome> {
 		const channelId = options.channelId ?? "direct";
 		return this.#serial(async () => {
@@ -121,6 +128,7 @@ export class RunScheduler {
 				const message = existing.messages.find((candidate) => candidate.requestId === requestId);
 				if (
 					message?.text !== text ||
+					JSON.stringify(message?.attachments?.map((a) => a.artifactId) ?? []) !== JSON.stringify(options.artifactIds ?? []) ||
 					(existing.channelId ?? "direct") !== channelId ||
 					(existing.origin ?? "user") !== (options.origin ?? "user")
 				) {
@@ -128,9 +136,11 @@ export class RunScheduler {
 				}
 				return { runId: existing.runId, state: existing.state, steered: existing.messages[0]?.requestId !== requestId };
 			}
+			const attachments = options.artifactIds?.length ? await this.#resolveAttachments(botId, options.artifactIds) : [];
+			const message = { requestId, text, ...(attachments.length ? { attachments } : {}) };
 			const current = options.separate ? undefined : this.active(botId, channelId);
 			if (current?.state === "queued") {
-				const joined = { ...current, requestIds: [...current.requestIds, requestId], messages: [...current.messages, { requestId, text }] };
+				const joined = { ...current, requestIds: [...current.requestIds, requestId], messages: [...current.messages, message] };
 				await this.#put(joined);
 				return { runId: joined.runId, state: joined.state, steered: true };
 			}
@@ -139,8 +149,8 @@ export class RunScheduler {
 				const steered = {
 					...current,
 					requestIds: [...current.requestIds, requestId],
-					messages: [...current.messages, { requestId, text }],
-					inputs: [...current.inputs, { requestId, text }],
+					messages: [...current.messages, message],
+					inputs: [...current.inputs, message],
 				};
 				await this.#put(steered);
 				await this.#submitInputs(steered);
@@ -154,7 +164,7 @@ export class RunScheduler {
 				state: "queued",
 				requestIds: [requestId],
 				createdAt: this.#now(),
-				messages: [{ requestId, text }],
+				messages: [message],
 				inputs: [],
 			};
 			await this.#put(run);
@@ -232,7 +242,9 @@ export class RunScheduler {
 				...next,
 				state: "running",
 				startedAt: this.#now(),
-				inputs: [{ requestId: next.requestIds[0]!, text: next.messages.map((message) => message.text).join("\n\n") }],
+				inputs: next.messages.some((message) => message.attachments?.length)
+					? next.messages.map((message) => ({ ...message }))
+					: [{ requestId: next.requestIds[0]!, text: next.messages.map((message) => message.text).join("\n\n") }],
 			};
 			// Written before Pi admits the first input, so a crash in between resubmits it on start.
 			await this.#put(started);
@@ -247,9 +259,38 @@ export class RunScheduler {
 	async #submitInputs(run: StoredRun): Promise<void> {
 		let current = run;
 		for (const [index, input] of run.inputs.entries()) {
-			if (input.submissionId !== undefined) continue;
+			if (input.submissionId !== undefined || input.outcome !== undefined) continue;
 			const mode: Mode = index === 0 ? "start" : "steer";
-			const { submissionId } = await this.#runtime.submit(run.botId, input.requestId, input.text, mode, run.channelId);
+			let submissionId = input.attachments?.length
+				? await this.#runtime.findSubmission(run.botId, input.requestId, run.channelId)
+				: undefined;
+			if (!submissionId) {
+				let attachments: readonly ArtifactContent[] = [];
+				try {
+					if (input.attachments?.length) attachments = await this.#hydrateAttachments(run.botId, input.attachments);
+				} catch (error) {
+					const reason = error instanceof Error ? error.message : "Attachment content is unavailable";
+					for (const candidate of current.inputs)
+						if (candidate.submissionId === undefined)
+							await this.#runtime.recordInputFailure(
+								run.botId,
+								candidate.requestId,
+								candidate.text,
+								candidate.attachments ?? [],
+								reason,
+								run.channelId,
+							);
+					current = {
+						...current,
+						inputs: current.inputs.map((candidate) =>
+							candidate.submissionId === undefined ? { ...candidate, outcome: { status: "unanswered" as const, reason } } : candidate,
+						),
+					};
+					await this.#put(current);
+					break;
+				}
+				submissionId = (await this.#runtime.submit(run.botId, input.requestId, input.text, mode, run.channelId, attachments)).submissionId;
+			}
 			current = withInput(current, input.requestId, { submissionId });
 			await this.#put(current);
 		}

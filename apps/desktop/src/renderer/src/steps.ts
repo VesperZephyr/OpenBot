@@ -21,7 +21,7 @@ export function transcriptRows(items: readonly TranscriptItem[], awaitingApprova
 		run = [];
 	};
 	for (const item of items) {
-		if (item.kind === "tool" && item.status === "succeeded" && !awaitingApproval.has(item.id)) {
+		if (item.kind === "tool" && item.status === "succeeded" && !item.artifact && !awaitingApproval.has(item.id)) {
 			run.push(item);
 			continue;
 		}

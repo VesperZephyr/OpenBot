@@ -117,3 +117,9 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Task | Status |
 | --- | --- |
 | [B14a: Reliable, bounded observation](b14a-reliable-observation.md) | implemented, in review |
+
+## Post-B26 delivery
+
+| Task | Status |
+| --- | --- |
+| [B15a: Bounded file inputs and result artifacts](b15a-bounded-artifacts.md) | in review ([PR #30](https://github.com/VesperZephyr/OpenBot/pull/30)); acceptance recorded in the spec |

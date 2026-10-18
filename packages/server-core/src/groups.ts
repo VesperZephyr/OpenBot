@@ -167,7 +167,9 @@ export class Groups {
 				if (!run || !isTerminal(run.state)) continue;
 				const submissionId = run.inputs[0]?.submissionId;
 				const text = run.state === "completed" && submissionId ? await this.runtime.submissionAnswer(d.botId, submissionId, d.groupId) : "";
-				await store.finish(d.deliveryId, run.state as "completed" | "failed" | "cancelled", text, Date.now());
+				const artifacts =
+					run.state === "completed" && submissionId ? await this.runtime.submissionArtifacts(d.botId, submissionId, d.groupId) : [];
+				await store.finish(d.deliveryId, run.state as "completed" | "failed" | "cancelled", text, Date.now(), artifacts);
 				this.#changed();
 			}
 		});
@@ -374,14 +376,12 @@ export class Groups {
 				expectedRevision: action === "create" ? 0 : (expectedRevision as number),
 				...(action === "dissolve" ? {} : { fields: fields as GroupFields }),
 			};
-			await this.runtime
-				.groups()
-				.propose(id, {
-					...(await this.authority.binding(call)),
-					fingerprint: this.authority.fingerprint(call),
-					change,
-					approvalId: `approval:${id}`,
-				});
+			await this.runtime.groups().propose(id, {
+				...(await this.authority.binding(call)),
+				fingerprint: this.authority.fingerprint(call),
+				change,
+				approvalId: `approval:${id}`,
+			});
 			return { kind: "ask", reason: "Review this group change" };
 		} catch (error) {
 			if (call.signal.aborted) throw error;

@@ -6,6 +6,9 @@ import type { GrantAccess, HostMethod, HostParams, HostResult } from "@openbot/p
 
 export const RENDERER_METHODS = [
 	"observation.wait",
+	"artifacts.get",
+	"artifacts.preview",
+	"artifacts.remove",
 	"collaboration.stop",
 	"groups.list",
 	"groups.snapshot",
@@ -62,6 +65,8 @@ export type HostState = { readonly status: "starting" | "ready" | "stopped"; rea
 export type FolderSelection = { readonly selection: string; readonly path: string };
 
 export type OpenBotApi = {
+	readonly attachFiles: () => Promise<{ attachments: readonly import("@openbot/protocol").ArtifactRef[]; errors: readonly string[] }>;
+	readonly exportArtifact: (params: { artifactId: string; requestId: string }) => Promise<boolean>;
 	readonly methods: { readonly [M in RendererMethod]: (params: RendererParams<M>) => Promise<HostResult<M>> };
 	/** Host connection state, so the UI can show a starting or stopped notice. */
 	readonly onHostState: (listener: (state: HostState) => void) => () => void;
@@ -81,6 +86,8 @@ export type OpenBotApi = {
 
 /** IPC channel names between preload and main. */
 export const CHANNELS = {
+	attachFiles: "openbot:attach-files",
+	exportArtifact: "openbot:export-artifact",
 	call: "openbot:call",
 	hostState: "openbot:host-state",
 	getHostState: "openbot:get-host-state",

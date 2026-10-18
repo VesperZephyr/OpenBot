@@ -7,12 +7,14 @@
  * which `local_read` may read as an implicit grant. Commands that run long move to the background (`tasks.ts`).
  */
 import { assertLocalTarget, type ExecutorToolName, type ToolInvocation, type ToolOutcome } from "@openbot/protocol";
+import { ArtifactStore, selectedPath } from "./artifacts.ts";
 import { editText, type FileContext, listDirectory, readText, writeText } from "./files.ts";
-import type { ReceiptLedger } from "./ledger.ts";
+import type { Receipt, ReceiptLedger } from "./ledger.ts";
 import { artifactPath, limitText } from "./output.ts";
 import { AccessDenied, absolutePath, grantedPath } from "./paths.ts";
 import { CommandTasks, DEFAULT_YIELD_MS } from "./tasks.ts";
 
+export { ArtifactStore } from "./artifacts.ts";
 export { commandEnvironment } from "./command.ts";
 export { INTERRUPTED_OUTCOME, type Receipt, ReceiptLedger, type ReceiptStatus, type TaskRecord, type TaskStatus } from "./ledger.ts";
 export { OUTPUT_LIMITS, pruneArtifacts } from "./output.ts";
@@ -20,6 +22,7 @@ export { canonicalPath } from "./paths.ts";
 export { DEFAULT_YIELD_MS } from "./tasks.ts";
 
 export const EXECUTOR_TOOLS: readonly ExecutorToolName[] = [
+	"artifact_publish",
 	"local_read",
 	"local_list",
 	"local_write",
@@ -30,7 +33,10 @@ export const EXECUTOR_TOOLS: readonly ExecutorToolName[] = [
 ];
 
 /** The ledger operations the executor needs; tests wrap a real ledger to simulate a crash between steps. */
-export type ExecutorLedger = Pick<ReceiptLedger, "get" | "accept" | "recordGroup" | "finish" | "ack" | "recordTask" | "finishTask" | "task">;
+export type ExecutorLedger = Pick<
+	ReceiptLedger,
+	"get" | "accept" | "recordGroup" | "finish" | "ack" | "recordTask" | "finishTask" | "task"
+> & { reconcileArtifact?: ReceiptLedger["reconcileArtifact"] };
 
 export type ExecutorOptions = {
 	readonly targetId: string;
@@ -41,6 +47,7 @@ export type ExecutorOptions = {
 	readonly artifactsDirectory: string;
 	/** How long a foreground command runs before it moves to the background. */
 	readonly yieldMs?: number;
+	readonly artifactStore?: ArtifactStore;
 };
 
 type Running = { readonly argsDigest: string; outcome: Promise<ToolOutcome>; readonly abort: AbortController };
@@ -58,11 +65,27 @@ export class LocalExecutor {
 		this.#tasks = new CommandTasks(options.ledger, options.yieldMs ?? DEFAULT_YIELD_MS);
 	}
 
+	/** Reconcile only executor-owned immutable publication; never repeat an uncertain external side effect. */
+	receipt(invocationId: string): Receipt | undefined {
+		const { ledger, artifactStore } = this.#options,
+			receipt = ledger.get(invocationId);
+		if (receipt?.status !== "unknown" || receipt.tool !== "artifact_publish" || !ledger.reconcileArtifact) return receipt;
+		const artifact = artifactStore?.published(invocationId);
+		if (!artifact) return receipt;
+		ledger.reconcileArtifact(invocationId, receipt.argsDigest, { status: "succeeded", output: JSON.stringify(artifact), artifact });
+		return ledger.get(invocationId);
+	}
+
 	/**
 	 * Run an invocation at most once. Repeating its ID returns the recorded outcome, or `unknown` when an earlier
 	 * executor accepted it and died before recording one; a different digest is refused.
 	 */
 	invoke(invocation: ToolInvocation, onProgress: (output: string) => void): Promise<ToolOutcome> {
+		try {
+			assertLocalTarget(invocation.target, this.#options.targetId);
+		} catch {
+			return Promise.resolve({ status: "failed", output: "Refused: wrong execution target" });
+		}
 		const running = this.#running.get(invocation.invocationId);
 		if (running !== undefined) return running.argsDigest === invocation.argsDigest ? running.outcome : Promise.resolve(DIGEST_MISMATCH);
 		const { ledger } = this.#options;
@@ -76,6 +99,9 @@ export class LocalExecutor {
 		}
 		if (receipt !== undefined) {
 			if (receipt.argsDigest !== invocation.argsDigest) return Promise.resolve(DIGEST_MISMATCH);
+			if (receipt.status === "unknown" && invocation.tool === "artifact_publish")
+				receipt = this.receipt(invocation.invocationId) ?? receipt;
+
 			// `accepted` without a run in this process cannot happen after open, which turns such rows `unknown`.
 			return Promise.resolve(receipt.outcome ?? { status: "unknown", output: "This action's outcome was not recorded" });
 		}
@@ -84,10 +110,12 @@ export class LocalExecutor {
 		const entry: Running = { argsDigest: invocation.argsDigest, outcome: Promise.resolve(DIGEST_MISMATCH), abort: new AbortController() };
 		this.#running.set(invocation.invocationId, entry);
 		const outcome = this.#run(invocation, entry.abort.signal, onProgress)
-			.catch((error: unknown): ToolOutcome => ({
-				status: "failed",
-				output: error instanceof AccessDenied ? `Access denied: ${errorText(error)}` : errorText(error),
-			}))
+			.catch(
+				(error: unknown): ToolOutcome => ({
+					status: "failed",
+					output: error instanceof AccessDenied ? `Access denied: ${errorText(error)}` : errorText(error),
+				}),
+			)
 			.then((result) => {
 				this.#running.delete(invocation.invocationId);
 				ledger.finish(invocation.invocationId, result);
@@ -134,6 +162,16 @@ export class LocalExecutor {
 		// Pi validated the arguments against the catalog schema before the call reached the router.
 		const args = invocation.args as never;
 		switch (invocation.tool) {
+			case "artifact_publish": {
+				const input = invocation.args as { path: string; name?: string };
+				const original = selectedPath(absolutePath(input.path, context.workspace));
+				const path = await grantedPath(original, context.workspace, [...context.grants, ...context.readGrants]);
+				signal.throwIfAborted();
+				const store = this.#options.artifactStore;
+				if (!store) throw new Error("Artifact storage is unavailable");
+				const artifact = store.capture(invocation.invocationId, path, "result", input.name);
+				return { status: "succeeded", output: JSON.stringify(artifact), artifact };
+			}
 			case "local_read": {
 				// Spilled output is the executor's own; reading it back needs no grant, and only `local_read` gets it.
 				const readContext = { ...context, readGrants: [...context.readGrants, this.#options.artifactsDirectory] };
