@@ -1,7 +1,7 @@
 # B21: Conversation Experience
 
-Status: draft
-Branch: task/b21-conversation-design (design only)
+Status: in progress
+Branch: task/b21-conversation-design
 Depends on: B13c, B19, B20
 Architecture: Sections 5.7, 8
 Research: [D2: Grok Bot Interaction Research](d2-grok-ui-research.md)
@@ -56,6 +56,15 @@ type SendAttempt = {
 - Explicit recipient selection is scoped to the group. Remove stale recipients visibly before sending and require the user to reselect or choose Core; never silently redirect a task that was addressed to a removed Bot. A successful send resets recipients for the next empty draft to Core.
 - No private draft is sent to a model until the user sends it. Do not include draft text in diagnostics.
 
+### Recovery decisions
+
+- Store one unresolved send attempt per conversation in `openbot.composers.v1`. New typing remains editable but sending waits until the prior attempt resolves or the user explicitly dismisses its recovery record. Dismiss does not cancel accepted work; show that distinction beside the action.
+- Persist the immutable attempt before calling Host. If persistence fails, do not dispatch. On renderer restart, pending attempts become uncertain and wait for explicit Retry. Treat transport errors conservatively as uncertain; never mint a replacement request ID automatically.
+- Keep the submitted draft visible until acknowledgement. Clear it only if its revision still matches the captured revision. On retry success, clear only that revision. Retain newer text and recipients unchanged.
+- An unresolved retry preserves the original recipients, even if membership changes; Host performs its existing validation or receipt replay. The new draft blocks sending when a selected recipient disappears, until explicit removal or Core selection.
+- Store presentation layout and scroll anchors in renderer memory only. Drafts and send recovery survive restart; scroll restoration is per window session. Host snapshots remain the sole transcript source.
+- Details use a shared responsive panel; existing profile/memory forms and group editor remain the mutation surfaces. Existing Bot menu actions stay available. Native dialog semantics or an equivalent focus trap cover modal editors.
+
 ## Keyboard and scrolling contracts
 
 - Enter sends, Shift+Enter inserts a newline; IME composition never sends or chooses a mention. Send is disabled while the same attempt is pending. A later separate instruction may still steer work using existing Host semantics.
@@ -89,4 +98,4 @@ Drafts contain user text and must stay in the local desktop partition. Storage q
 
 ## Open questions
 
-None for this research batch. The proposed implementation includes persistent send-attempt recovery because a visually polished composer that loses or duplicates a request is still a product defect. B21 remains a draft; this design task does not change product code.
+None. The owner authorized implementation on 2026-10-18. Persistent draft and send-attempt recovery are part of this batch.
