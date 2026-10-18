@@ -108,4 +108,4 @@ Current increment: B13a channel contexts and B13b group lifecycle follow merged 
 
 | Task | Status |
 | --- | --- |
-| [B15a: Bounded file inputs and result artifacts](b15a-bounded-artifacts.md) | in progress; acceptance under execution |
+| [B15a: Bounded file inputs and result artifacts](b15a-bounded-artifacts.md) | in review ([PR #30](https://github.com/VesperZephyr/OpenBot/pull/30)); acceptance recorded in the spec |

@@ -99,5 +99,5 @@ Attention-state mutation, UI navigation, cross-Bot memory operations, new dispat
 
 ## Post-B26 artifact delivery
 
-- [B15a: Bounded file inputs and result artifacts](tasks/b15a-bounded-artifacts.md): implemented, acceptance in progress on `task/b15a-bounded-artifacts`; PR target `main`. Private text/image input, durable local copies, result cards, exact group result publication, safe preview/export/removal and spill quotas. B14a PR #29 remains independent.
+- [B15a: Bounded file inputs and result artifacts](tasks/b15a-bounded-artifacts.md): implemented, in review in [PR #30](https://github.com/VesperZephyr/OpenBot/pull/30), targeting `main`. 293 unit/Host tests, 79 full background e2e tests, six final artifact scenarios and isolated real-model text/image/publication/export/restart acceptance. Private text/image input, durable local copies, result cards, exact group result publication, safe preview/export/removal and spill quotas. B14a PR #29 remains independent.
 - Next serial batch: B14b lifecycle gates, followed by B12a deterministic policy. Native packaged evidence remains a release gate; validation stays in isolated background apps.

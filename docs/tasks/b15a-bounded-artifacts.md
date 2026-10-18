@@ -1,7 +1,7 @@
 # B15a: Bounded File Inputs and Result Artifacts
 
-Status: in progress
-Branch: task/b15a-bounded-artifacts; pull request target: main
+Status: in review
+Branch: task/b15a-bounded-artifacts; pull request: [#30](https://github.com/VesperZephyr/OpenBot/pull/30), target: main
 Depends on: G0, existing B3/B7/B21/B26 contracts
 Architecture: Sections 4.2, 5.1, 6.1–6.2 and 8.2
 
@@ -94,3 +94,20 @@ Record operation/request identity, target, artifact ID, MIME, size, duration and
 ## Open questions
 
 None. Private-chat input is deliberate first scope; collaboration attachment propagation, Office/PDF extraction, global artifact browsing and complete journal erasure remain separate tasks. Native signed-picker acceptance is release evidence and does not authorize foreground validation here.
+
+## Acceptance evidence
+
+Implementation revision: `0412cc3` (2026-10-18). No vendor change or package dependency was required.
+
+| Acceptance | Evidence |
+| --- | --- |
+| Store and authority invariants | `packages/local-executor/test/artifacts.test.ts`, `executor.test.ts`, protocol schema tests: source-independent copy, path/symlink/format/UTF-8/size/quota checks, operation-history bound, corrupt/missing/removed states, non-overwrite, lost import/export/tool receipt reconciliation, wrong target and ungranted publication denial |
+| Bounded output | `output-limits.test.ts`: 10 MiB per file, 64 MiB aggregate, 4096 files, bounded rendered head/tail with loss marker; startup spill cleanup leaves durable attachments intact |
+| Durable admission | Scheduler tests cover separate queued/steered file inputs, visible failed hydration, and recovery after Pi admission without rereading a missing copy. Composer tests preserve attachment-only attempts and newer drafts. Legacy tests remain unchanged in behavior |
+| Desktop flows | `e2e/artifacts.e2e.ts`: six scenarios, stubbed native pickers only; source deletion, image decode, renderer path rejection, navigation-expired picker, immutable plaintext HTML result, export conflict, removal/restart, uncertain-send deduplication, exact group result files, model capability rejection and Chinese minimum-width dark layout |
+| Automated checks | `pnpm run check`: 293 tests / 46 files. Full `pnpm run e2e`: 79 tests / 23 files. Final native-picker lifetime/error-copy changes: rebuilt artifact suite, six tests passed. `git diff --check` passed |
+| Visual inspection | Input, safe-result, group-result and Chinese dark screenshots in `e2e/.run/artifacts/`; theme transitions disabled in the Chinese screenshot fixture so the image records the settled state |
+| Real model | Isolated hidden Electron + existing `mafia / gpt-6.1-sol`; synthetic text plus 256×128 PNG, originals deleted after import. Actual published text contained total 12 and correctly identified left red / right blue, English and Chinese summaries. Exported bytes matched the preview; complete app restart preserved the same result reference and Chinese preview. Successful write/publication receipts, inactive window and content-free metadata audit were checked |
+| Cleanup and limits | Real-model copies of `models.json` removed after each run; synthetic evidence stays outside Git. Native dialogs were stubbed, not opened. Packaged signed-picker/permission acceptance is not claimed. Removing a local copy does not erase historical Pi/model data |
+
+A first real request used a one-pixel image and did not establish meaningful visual recognition. The final two-color fixture above supplied the verified image evidence; the first attempt is not counted as an image-understanding pass.
