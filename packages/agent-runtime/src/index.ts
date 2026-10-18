@@ -2,6 +2,7 @@
  * The only OpenBot package that imports Pi. It maps Bots to Pi Durable conversations and exposes OpenBot-shaped
  * operations and snapshots; callers never see Pi types.
  */
+import { createHash, randomUUID } from "node:crypto";
 import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import type { CredentialStore, Provider, ToolCall } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
@@ -11,6 +12,9 @@ import {
 	type ConversationRecord,
 	type ConversationView,
 	createRegistry,
+	configure,
+	type Tx,
+	type Extension,
 	defineDoc,
 	defineExtension,
 	defineTool,
@@ -25,6 +29,11 @@ import {
 } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import {
+	type MemoryState,
+	type MemorySnapshot,
+	MEMORY_HISTORY_LIMIT,
+	type BotManagementProposal,
+	type ManagementAuthority,
 	type BotId,
 	type BotProfile,
 	type ConversationSnapshot,
@@ -40,15 +49,22 @@ import {
 	type TranscriptItem,
 } from "@openbot/protocol";
 
+import { AppExecutionsDoc } from "./app-executions.ts";
+import { appCodemode, invokeAppChild, stopAppExecution, type OrchestrationAdmission } from "./codemode.ts";
 import { type ApprovalStore, approvalStore } from "./approvals.ts";
 import { type PolicyStore, policyStore } from "./policy.ts";
-import { applyMemoryEdit, checkMemorySize, type MemoryEdit, MemoryDoc } from "./memory.ts";
+import { applyMemoryEdit, checkMemorySize, type MemoryEdit, MemoryDoc, MemoryReceiptDoc, memoryState } from "./memory.ts";
 import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
 import { botSections } from "./prompt.ts";
-import { type RunStore, runStore } from "./runs.ts";
+import { ConversationSearchIndex, normalizeQuery } from "./conversation-search.ts";
+import { conversationIndexStore, projectConversation, directMessages } from "./conversation-index.ts";
+import { groupStore, detachGroupBot } from "./groups.ts";
+import { ManagementDoc, managementStore } from "./management.ts";
+import { type RunStore, runStore, RunsDoc } from "./runs.ts";
 
 /** The OpenBot extension every conversation selects: prompt sections, and routed tools when the Host passes them. */
 const BOT_EXTENSION = "openbot.bot";
+const CORE_EXTENSION = "openbot.core-management";
 /** Display-only transcript entry written when the user stops a Run. */
 const STOPPED_ENTRY = "openbot.stopped";
 /** How long a model test may take before it counts as failed. */
@@ -65,7 +81,11 @@ export { isTerminal, KEPT_TERMINAL_RUNS, type RunInput, type RunMessage, type Ru
 type PiConversationId = ConversationRecord["id"];
 
 /** Pi IDs are branded numbers; the record keeps the Pi conversation ID in that form. */
-type BotRecord = BotProfile & { readonly conversationId: number };
+type BotRecord = Omit<BotProfile, "kind" | "revision"> & {
+	readonly revision?: number;
+	readonly kind?: BotProfile["kind"];
+	readonly conversationId: number;
+};
 
 /** Session-scoped Bot index stored next to Pi's own documents. */
 const BotsDoc = defineDoc<{ bots: Record<string, BotRecord> }>({
@@ -75,9 +95,25 @@ const BotsDoc = defineDoc<{ bots: Record<string, BotRecord> }>({
 	initial: () => ({ bots: {} }),
 });
 
+const ChannelsDoc = defineDoc<{ channels: Record<string, { botId: string; channelId: string; conversationId: number }> }>({
+	kind: "openbot.channels",
+	version: 1,
+	scope: "session",
+	initial: () => ({ channels: {} }),
+});
+const channelKey = (botId: string, channelId: string): string => JSON.stringify([botId, channelId]);
+
 /** Application settings that live with the conversation store. */
-const SettingsDoc = defineDoc<{ defaultModel?: ModelRef }>({
+const SettingsDoc = defineDoc<{ defaultModel?: ModelRef; setupComplete?: boolean; language?: "en" | "zh-CN" }>({
 	kind: "openbot.settings",
+	version: 1,
+	scope: "session",
+	initial: () => ({}),
+});
+
+/** Allocate identity before its conversation: restart reconciles the same Core rather than allocating another. */
+const CoreDoc = defineDoc<{ coreBotId?: string }>({
+	kind: "openbot.core",
 	version: 1,
 	scope: "session",
 	initial: () => ({}),
@@ -89,6 +125,11 @@ const SettingsDoc = defineDoc<{ defaultModel?: ModelRef }>({
  * same call and never becomes a second invocation.
  */
 export type ToolInvoker = (call: {
+	readonly runId?: string;
+	readonly collaboration?: { readonly runId: string };
+	readonly authority?: ManagementAuthority;
+	readonly appExecutionId?: string;
+	readonly appAuthority?: import("@openbot/protocol").AppReadAuthority;
 	readonly botId: BotId;
 	readonly conversationId: string;
 	readonly callId: string;
@@ -96,7 +137,7 @@ export type ToolInvoker = (call: {
 	readonly args: Readonly<Record<string, unknown>>;
 	readonly signal: AbortSignal;
 	readonly onProgress: (output: string) => void;
-}) => Promise<{ readonly status: string; readonly output: string; readonly taskId?: string }>;
+}) => Promise<{ readonly status: string; readonly output: string; readonly value?: import("@openbot/protocol").JsonValue; readonly taskId?: string }>;
 
 export type BotRuntimeOptions = {
 	/** SQLite file owned exclusively by this Host process. */
@@ -109,7 +150,8 @@ export type BotRuntimeOptions = {
 	/** Credential store for the default model collection; the Host passes a Keychain-backed store. */
 	readonly credentials?: CredentialStore;
 	/** Without an invoker, Bots get no tools and can only answer in text. */
-	readonly tools?: { readonly invoke: ToolInvoker; readonly definitions: readonly ToolDefinition[] };
+	readonly tools?: { readonly invoke: ToolInvoker; readonly definitions: readonly ToolDefinition[]; readonly admitOrchestration?: OrchestrationAdmission };
+	readonly codemodeAssets?: {workerUrl:string;wasmPath:string};
 	readonly context?: Context;
 };
 
@@ -120,12 +162,13 @@ export type CreateBotInput = {
 	readonly instructions?: string;
 	readonly model?: ModelRef;
 	readonly thinkingLevel?: ThinkingLevel;
-	/** Initial memory, written in the same commit that registers the Bot (Duplicate). */
+	/** Optional initial memory, written in the same commit that registers the Bot. */
 	readonly memory?: string;
 	readonly createdAt: number;
 };
 
 export type UpdateBotInput = {
+	readonly expectedRevision?: number;
 	readonly name?: string;
 	readonly role?: string;
 	readonly instructions?: string;
@@ -136,20 +179,28 @@ export type UpdateBotInput = {
 };
 
 export type SubmitResult =
-	| { readonly status: "answered"; readonly answer: readonly MessagePart[] }
-	| { readonly status: "unanswered"; readonly reason: string };
+	{ readonly status: "answered"; readonly answer: readonly MessagePart[] } | { readonly status: "unanswered"; readonly reason: string };
 
 export class BotRuntime {
 	readonly #harness: Harness;
+	readonly #extensions: { bot: Extension; core: Extension; group: Extension; app: Extension };
 	readonly #models: MutableModels;
 	readonly #context: Context;
 	/** Built-in providers as registered at open, so a removed overlay restores the original. */
 	readonly #builtins: ReadonlyMap<string, Provider>;
 	#configuredIds: readonly string[] = [];
+	readonly #search = new ConversationSearchIndex();
+	#coreBootstrap: Promise<BotProfile> | undefined;
 	/** Stored entries before each conversation's current head marker; entries are immutable, so one read per head. */
 	readonly #history = new Map<number, { readonly head: number; readonly entries: readonly EntryRecord[] }>();
 
-	private constructor(harness: Harness, models: MutableModels, context: Context) {
+	private constructor(
+		harness: Harness,
+		models: MutableModels,
+		context: Context,
+		extensions: { bot: Extension; core: Extension; group: Extension; app: Extension },
+	) {
+		this.#extensions = extensions;
 		this.#harness = harness;
 		this.#models = models;
 		this.#context = context;
@@ -158,33 +209,81 @@ export class BotRuntime {
 
 	static async open(options: BotRuntimeOptions): Promise<BotRuntime> {
 		const context = options.context ?? BACKGROUND_CONTEXT;
-		const models =
-			options.models ?? builtinModels(options.credentials === undefined ? {} : { credentials: options.credentials });
+		const models = options.models ?? builtinModels(options.credentials === undefined ? {} : { credentials: options.credentials });
 		const registry = createRegistry();
-		registry.install(
-			defineExtension({
-				name: BOT_EXTENSION,
-				tools:
-					options.tools === undefined
-						? []
-						: options.tools.definitions.map((definition) => routedTool(definition, options.tools!.invoke)),
-				sections: botSections(async (input, context) => {
-					const bots = (await input.read.snapshot(BotsDoc, context))?.bots ?? {};
-					return Object.values(bots).find((bot) => bot.conversationId === Number(input.conversationId));
-				}),
+		const bot = defineExtension({
+			name: BOT_EXTENSION,
+			tools:
+				options.tools === undefined
+					? []
+					: options.tools.definitions
+							.filter((d) => !d.capability.endsWith(".management") && d.capability !== "collaboration" && d.capability !== "app.read" && d.capability !== "app.orchestrate")
+							.map((definition) => routedTool(definition, options.tools!.invoke)),
+			sections: botSections(async (input, context) => {
+				const bots = (await input.read.snapshot(BotsDoc, context))?.bots ?? {};
+				const direct = Object.values(bots).find((bot) => bot.conversationId === Number(input.conversationId));
+				const channel = Object.values((await input.read.snapshot(ChannelsDoc, context))?.channels ?? {}).find(
+					(item) => item.conversationId === Number(input.conversationId),
+				);
+				return direct ?? (channel ? bots[channel.botId] : undefined);
 			}),
-		);
+		});
+		const core = defineExtension({
+			name: CORE_EXTENSION,
+			tools: (options.tools?.definitions ?? [])
+				.filter((d) => d.capability.endsWith(".management"))
+				.map((d) => routedTool(d, options.tools!.invoke)),
+		});
+		const group = defineExtension({
+			name: "openbot.group-collaboration",
+			tools: (options.tools?.definitions ?? [])
+				.filter((d) => d.capability === "collaboration")
+				.map((d) => routedTool(d, options.tools!.invoke)),
+		});
+		const code = options.tools?.admitOrchestration ? appCodemode(options.tools.admitOrchestration, async (api, context) => {
+			const saved = await api.memo<import("./codemode.ts").CodeIdentity>("openbot.code-identity", context);
+			if (saved) return saved;
+			const bots = (await api.snapshot(BotsDoc, context))?.bots ?? {};
+			const direct = Object.values(bots).find(b => b.conversationId === Number(api.conversationId));
+			const channel = Object.values((await api.snapshot(ChannelsDoc, context))?.channels ?? {}).find(c => c.conversationId === Number(api.conversationId));
+			const botId = direct?.botId ?? channel?.botId;
+			const run = Object.values((await api.snapshot(RunsDoc, context))?.runs ?? {}).find(r => r.botId === botId && (r.channelId ?? "direct") === (channel?.channelId ?? "direct") && r.state === "running");
+			if (!botId || !run?.origin || !run.requestIds[0]) throw Error("Code Mode is not authorized");
+			return api.memo("openbot.code-identity", {botId, authority:{runId:run.runId,channelId:run.channelId??"direct",origin:run.origin,rootRequestId:run.requestIds[0]}}, context);
+		}, options.codemodeAssets) : undefined;
+		const app = defineExtension({...code, name: "openbot.app-read", tools: [
+			...(code?.tools ?? []),
+			...(options.tools?.definitions ?? []).filter(d => d.capability === "app.read").map(d => routedTool(d, options.tools!.invoke, !!code)),
+		]});
+		registry.install(app);
+		registry.install(group);
+		registry.install(bot);
+		registry.install(core);
 		const harness = await Harness.open(
 			await openNodeSqliteStorage(options.databasePath),
 			{
 				models,
 				registry,
 				// No `env` and no CodingTools: every side effect must go through Tool Router and the executor.
-				settings: { toolExecution: "sequential" },
+				settings: { toolExecution: "sequential", extensions: [bot] },
 			},
 			context,
 		);
-		return new BotRuntime(harness, models, context);
+		await harness.commit(async (tx) => {
+			const profiles = await tx.doc(BotsDoc);
+			for (const record of Object.values(profiles.bots)) {
+				await configure(tx, record.conversationId as PiConversationId, {
+					instructions: revisionedInstructions(record.instructions, record.revision ?? 1),
+				});
+			}
+		}, context);
+		await harness.commit(async (tx) => {
+			const channels = await tx.doc(ChannelsDoc);
+			const bots = (await tx.doc(BotsDoc)).bots;
+			for (const channel of Object.values(channels.channels))
+				await configure(tx, channel.conversationId as PiConversationId, { extensions: [bot, group, ...(bots[channel.botId]?.kind === "core" ? [app] : [])] });
+		}, context);
+		return new BotRuntime(harness, models, context, { bot, core, group, app });
 	}
 
 	/** Start the scheduler so work interrupted by the last shutdown continues. Call after recovery checks pass. */
@@ -201,6 +300,31 @@ export class BotRuntime {
 		return approvalStore(this.#harness, this.#context);
 	}
 
+	conversationIndex() {
+		return conversationIndexStore(this.#harness, this.#context);
+	}
+
+	searchConversations(query: string, eligible: ReadonlySet<string>, unreadOnly = false, includeHidden = false, cursor?: string, scope = "legacy") {
+		if (query.length > 200) throw new ProtocolError("invalid_request", "Search is limited to 200 characters");
+		const normalized = normalizeQuery(query);
+		return this.#search.search(normalized, eligible, JSON.stringify([normalized, unreadOnly, includeHidden, scope]), cursor);
+	}
+
+	async committedMessages(key: import("@openbot/protocol").ConversationKey) {
+		const bot = key.startsWith("bot:") ? await this.getBot(key.slice(4)) : undefined;
+		const exists = key.startsWith("bot:") ? !!bot && bot.status !== "deleted" : !!await this.groups().get(key.slice(6));
+		if (!exists) throw new ProtocolError("not_found", "Conversation is unavailable");
+		return this.#search.read(key);
+	}
+
+	groups() {
+		return groupStore(this.#harness, this.#context, async (tx) => Object.values((await tx.doc(BotsDoc)).bots).map(toProfile), this.#search);
+	}
+
+	management() {
+		return managementStore(this.#harness, this.#context);
+	}
+
 	/** Command policy and folder grants; Host code is their only writer. */
 	policy(): PolicyStore {
 		return policyStore(this.#harness, this.#context);
@@ -210,8 +334,41 @@ export class BotRuntime {
 	 * The conversation ID routed tool calls of this Bot carry (`ToolInvoker` `conversationId`), from which the Tool
 	 * Router derives approval and invocation IDs.
 	 */
-	async conversationKey(botId: BotId): Promise<string> {
-		return String((await this.#requireRecord(botId)).conversationId);
+	async conversationKey(botId: BotId, channelId = "direct"): Promise<string> {
+		return String((await this.#contextRecord(botId, channelId)).conversationId);
+	}
+
+	async channels(): Promise<readonly { botId: string; channelId: string; conversationId: number }[]> {
+		return Object.values((await this.#harness.snapshot(ChannelsDoc, this.#context))?.channels ?? {});
+	}
+
+	async ensureChannel(botId: BotId, channelId: string): Promise<string> {
+		if (channelId === "direct") return this.conversationKey(botId);
+		if (!channelId.trim()) throw new ProtocolError("invalid_request", "Channel ID is empty");
+		const defaultModel = await this.defaultModel();
+		return this.#harness.commit(async (tx) => {
+			const bot = (await tx.doc(BotsDoc)).bots[botId];
+			if (!bot || bot.status === "deleted") throw new ProtocolError("not_found", "Unknown or deleted Bot");
+			const channels = await tx.doc(ChannelsDoc);
+			const key = channelKey(botId, channelId);
+			if (channels.channels[key]) return String(channels.channels[key].conversationId);
+			const conversation = await tx.createConversation({ ownership: { kind: "ownerless" } });
+			await configure(tx, conversation.id, {
+				...agentChange({ ...bot, ...((bot.model ?? defaultModel) ? { model: (bot.model ?? defaultModel)! } : {}) }),
+				instructions: revisionedInstructions(bot.instructions, bot.revision ?? 1),
+				extensions: [this.#extensions.bot, this.#extensions.group, ...(bot.kind === "core" ? [this.#extensions.app] : [])],
+			});
+			channels.channels[key] = { botId, channelId, conversationId: conversation.id };
+			return String(conversation.id);
+		}, this.#context);
+	}
+
+	async #contextRecord(botId: BotId, channelId = "direct"): Promise<BotRecord> {
+		const bot = await this.#requireRecord(botId);
+		if (channelId === "direct") return bot;
+		const channel = (await this.#harness.snapshot(ChannelsDoc, this.#context))?.channels[channelKey(botId, channelId)];
+		if (!channel) throw new ProtocolError("not_found", "Unknown Bot channel");
+		return { ...bot, conversationId: channel.conversationId };
 	}
 
 	async listBots(): Promise<BotProfile[]> {
@@ -224,71 +381,136 @@ export class BotRuntime {
 		return record === undefined ? undefined : toProfile(record);
 	}
 
-	/** Idempotent for the same `botId`: returns the existing Bot instead of creating a second conversation. */
-	async createBot(input: CreateBotInput): Promise<BotProfile> {
-		const existing = await this.#record(input.botId);
-		if (existing !== undefined) return toProfile(existing);
-
-		if (input.memory !== undefined) checkMemorySize(input.memory);
-		const model = input.model ?? (await this.defaultModel());
-		const conversation = await this.#harness.createConversation(
-			{ ownership: { kind: "ownerless" }, agent: agentChange({ ...input, ...(model === undefined ? {} : { model }) }) },
-			this.#context,
-		);
-		const record: BotRecord = {
-			botId: input.botId,
-			name: input.name,
-			role: input.role ?? "",
-			instructions: input.instructions ?? "",
-			...(input.model === undefined ? {} : { model: input.model }),
-			...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
-			pinned: false,
-			status: "active",
-			createdAt: input.createdAt,
-			conversationId: conversation.id,
-		};
-		// A crash between the two commits leaves an orphan conversation but no half-registered Bot.
-		const stored = await this.#harness.commit(async (tx) => {
-			const doc = await tx.doc(BotsDoc);
-			if (doc.bots[input.botId] === undefined) {
-				doc.bots[input.botId] = record;
-				if (input.memory !== undefined && input.memory !== "") (await tx.doc(MemoryDoc, input.botId, null)).content = input.memory;
-			}
-			// Drafts are only valid inside the commit callback, so return a plain copy.
-			return JSON.parse(JSON.stringify(doc.bots[input.botId])) as BotRecord;
-		}, this.#context);
-		return toProfile(stored);
+	async ensureCoreBot(now: number): Promise<BotProfile> {
+		const pending = (this.#coreBootstrap ??= this.#bootstrapCore(now));
+		try {
+			return await pending;
+		} finally {
+			if (this.#coreBootstrap === pending) this.#coreBootstrap = undefined;
+		}
 	}
 
-	async updateBot(botId: BotId, change: UpdateBotInput): Promise<BotProfile> {
-		const record = await this.#record(botId);
-		if (record === undefined) throw new ProtocolError("not_found", `Unknown Bot: ${botId}`);
-		const { model: currentModel, ...rest } = record;
-		const model = change.model === undefined ? currentModel : (change.model ?? undefined);
-		const updated: BotRecord = {
-			...rest,
-			...(change.name === undefined ? {} : { name: change.name }),
-			...(change.role === undefined ? {} : { role: change.role }),
-			...(change.instructions === undefined ? {} : { instructions: change.instructions }),
-			...(change.thinkingLevel === undefined ? {} : { thinkingLevel: change.thinkingLevel }),
-			...(change.pinned === undefined ? {} : { pinned: change.pinned }),
-			...(change.status === undefined ? {} : { status: change.status }),
-			...(model === undefined ? {} : { model }),
-		};
-
-		// A Bot without a model of its own runs on the application default.
-		const effectiveModel = change.model === null ? ((await this.defaultModel()) ?? null) : change.model;
-		const agent: AgentChange = {
-			...(change.instructions === undefined ? {} : { instructions: change.instructions || null }),
-			...(effectiveModel === undefined ? {} : { model: effectiveModel }),
-			...(change.thinkingLevel === undefined ? {} : { thinkingLevel: change.thinkingLevel }),
-		};
-		const conversation = await this.#conversation(record);
-		if (Object.keys(agent).length > 0) await conversation.configure(agent, this.#context);
-		await this.#harness.commit(async (tx) => {
-			(await tx.doc(BotsDoc)).bots[botId] = updated;
+	async #bootstrapCore(now: number): Promise<BotProfile> {
+		const botId = await this.#harness.commit(async (tx) => {
+			const doc = await tx.doc(CoreDoc);
+			doc.coreBotId ??= `core_${randomUUID()}`;
+			return doc.coreBotId;
 		}, this.#context);
-		return toProfile(updated);
+		await this.createBot({
+			botId,
+			name: "OpenBot",
+			role: "Personal assistant",
+			instructions:
+				"You are the user's personal assistant. Help with everyday tasks, keep useful preferences in your own memory, and use only the tools actually available to you. Reply in the user's language.",
+			createdAt: now,
+		});
+		return this.#harness.commit(async (tx) => {
+			const doc = await tx.doc(BotsDoc);
+			const existing = doc.bots[botId]!;
+			doc.bots[botId] = { ...existing, kind: "core", status: "active", pinned: true };
+			await configure(tx, existing.conversationId as PiConversationId, { extensions: [this.#extensions.bot, this.#extensions.core, this.#extensions.app] });
+			return toProfile(JSON.parse(JSON.stringify(doc.bots[botId])) as BotRecord);
+		}, this.#context);
+	}
+
+	async language(): Promise<"en" | "zh-CN"> {
+		return (await this.#harness.snapshot(SettingsDoc, this.#context))?.language ?? "en";
+	}
+	async setLanguage(language: "en" | "zh-CN"): Promise<void> {
+		await this.#harness.commit(async (tx) => {
+			(await tx.doc(SettingsDoc)).language = language;
+		}, this.#context);
+	}
+
+	async setupComplete(): Promise<boolean> {
+		return (await this.#harness.snapshot(SettingsDoc, this.#context))?.setupComplete === true;
+	}
+	async setSetupComplete(value: boolean): Promise<void> {
+		await this.#harness.commit(async (tx) => {
+			(await tx.doc(SettingsDoc)).setupComplete = value;
+		}, this.#context);
+	}
+
+	/** Idempotent for the same `botId`: returns the existing Bot instead of creating a second conversation. */
+	async createBot(input: CreateBotInput, proposal?: BotManagementProposal): Promise<BotProfile> {
+		if (input.memory !== undefined) checkMemorySize(input.memory);
+		const model = input.model ?? (await this.defaultModel());
+		return this.#harness.commit(async (tx) => {
+			const receipt = await committedManagement(tx, proposal);
+			if (receipt) return receipt;
+			const doc = await tx.doc(BotsDoc);
+			if (doc.bots[input.botId] && proposal) throw new ProtocolError("request_conflict", "Bot identity already exists");
+			if (doc.bots[input.botId]) return toProfile(JSON.parse(JSON.stringify(doc.bots[input.botId])) as BotRecord);
+			const conversation = await tx.createConversation({ ownership: { kind: "ownerless" } });
+			await configure(tx, conversation.id, {
+				...agentChange({ ...input, ...(model === undefined ? {} : { model }) }),
+				instructions: revisionedInstructions(input.instructions ?? "", 1),
+				extensions: [this.#extensions.bot],
+			});
+			const record: BotRecord = {
+				botId: input.botId,
+				revision: 1,
+				kind: "specialist",
+				name: input.name,
+				role: input.role ?? "",
+				instructions: input.instructions ?? "",
+				...(input.model === undefined ? {} : { model: input.model }),
+				...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
+				pinned: false,
+				status: "active",
+				createdAt: input.createdAt,
+				conversationId: conversation.id,
+			};
+			doc.bots[input.botId] = record;
+			if (input.memory) (await tx.doc(MemoryDoc, input.botId, null)).content = input.memory;
+			await projectConversation(tx, `bot:${input.botId}`, { messageCount: 0, incomingCount: 0 });
+			const result = toProfile(record);
+			await completeManagement(tx, proposal, result);
+			return result;
+		}, this.#context);
+	}
+
+	async updateBot(botId: BotId, change: UpdateBotInput, proposal?: BotManagementProposal): Promise<BotProfile> {
+		const defaultModel = await this.defaultModel();
+		return this.#harness.commit(async (tx) => {
+			const receipt = await committedManagement(tx, proposal);
+			if (receipt) return receipt;
+			const doc = await tx.doc(BotsDoc);
+			const record = doc.bots[botId];
+			if (!record) throw new ProtocolError("not_found", "Unknown Bot");
+			const coreId = (await tx.doc(CoreDoc)).coreBotId;
+			if (
+				(record.kind === "core" || botId === coreId) &&
+				(proposal || change.pinned === false || (change.status !== undefined && change.status !== "active"))
+			) {
+				throw new ProtocolError("invalid_request", "The Core Bot cannot be deleted, hidden or unpinned");
+			}
+			if (proposal && (record.status === "deleted" || (record.revision ?? 1) !== proposal.expectedRevision))
+				throw new ProtocolError("request_conflict", "Bot changed. Inspect it again before proposing another change.");
+			const { model: currentModel, ...rest } = JSON.parse(JSON.stringify(record)) as BotRecord;
+			const model = change.model === undefined ? currentModel : (change.model ?? undefined);
+			if (change.expectedRevision !== undefined && change.expectedRevision !== (record.revision ?? 1))
+				throw new ProtocolError("request_conflict", "Profile changed. Reload before saving your draft.");
+			const { model: _model, expectedRevision: _expectedRevision, ...fields } = change;
+			const updated: BotRecord = { ...rest, ...fields, revision: (record.revision ?? 1) + 1, ...(model === undefined ? {} : { model }) };
+			const effectiveModel = change.model === null ? (defaultModel ?? null) : change.model;
+			const agent: AgentChange = {
+				instructions: revisionedInstructions(updated.instructions, updated.revision ?? 1),
+				...(effectiveModel === undefined ? {} : { model: effectiveModel }),
+				...(change.thinkingLevel === undefined ? {} : { thinkingLevel: change.thinkingLevel }),
+			};
+			if (Object.keys(agent).length) {
+				await configure(tx, record.conversationId as PiConversationId, agent);
+				for (const channel of Object.values((await tx.doc(ChannelsDoc)).channels)) {
+					if (channel.botId === botId) await configure(tx, channel.conversationId as PiConversationId, agent);
+				}
+			}
+			doc.bots[botId] = updated;
+			if (updated.status === "deleted") await detachGroupBot(tx, botId);
+			const result = toProfile(updated);
+			await completeManagement(tx, proposal, result);
+			return result;
+		}, this.#context);
 	}
 
 	/**
@@ -297,8 +519,14 @@ export class BotRuntime {
 	 * a run when the conversation went idle meanwhile. The same `requestId` returns the existing submission, so a retried
 	 * call never admits the message twice.
 	 */
-	async submit(botId: BotId, requestId: string, text: string, mode: "start" | "steer"): Promise<{ submissionId: string }> {
-		const conversation = await this.#conversation(await this.#requireRecord(botId));
+	async submit(
+		botId: BotId,
+		requestId: string,
+		text: string,
+		mode: "start" | "steer",
+		channelId = "direct",
+	): Promise<{ submissionId: string }> {
+		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		const submission = await conversation.submit(
 			{ type: "input", content: text, requestId, ...(mode === "steer" ? { whenBusy: "steer" as const } : {}) },
 			this.#context,
@@ -310,13 +538,18 @@ export class BotRuntime {
 	async submissionState(
 		botId: BotId,
 		submissionId: string,
+		channelId = "direct",
 	): Promise<"queued" | "placed" | "done" | "unanswered" | "absent"> {
-		return (await this.#ownedSubmission(botId, submissionId))?.status.status ?? "absent";
+		return (await this.#ownedSubmission(botId, submissionId, channelId))?.status.status ?? "absent";
 	}
 
 	/** Resolve once Pi settled the submission; also after a reopen, from the stored record. */
-	async waitSubmission(botId: BotId, submissionId: string): Promise<{ status: "done" | "unanswered"; reason?: string }> {
-		const owned = await this.#ownedSubmission(botId, submissionId);
+	async waitSubmission(
+		botId: BotId,
+		submissionId: string,
+		channelId = "direct",
+	): Promise<{ status: "done" | "unanswered"; reason?: string }> {
+		const owned = await this.#ownedSubmission(botId, submissionId, channelId);
 		if (owned === undefined) throw new ProtocolError("not_found", `Unknown submission ${submissionId} for Bot ${botId}`);
 		const settled = await owned.submission.wait(this.#context);
 		return settled.status === "done" ? { status: "done" } : { status: "unanswered", reason: settled.reason };
@@ -326,13 +559,9 @@ export class BotRuntime {
 	 * Withdraw a submission that still waits in Pi's queue; one already placed stays with its run. Used when a run ended
 	 * without an answer, because Pi keeps queued inputs until the next input arrives.
 	 */
-	async withdraw(botId: BotId, submissionId: string): Promise<void> {
-		const record = await this.#requireRecord(botId);
-		await this.#harness.abortSubmission(
-			Number(submissionId) as SubmissionId,
-			this.#context,
-			record.conversationId as PiConversationId,
-		);
+	async withdraw(botId: BotId, submissionId: string, channelId = "direct"): Promise<void> {
+		const record = await this.#contextRecord(botId, channelId);
+		await this.#harness.abortSubmission(Number(submissionId) as SubmissionId, this.#context, record.conversationId as PiConversationId);
 	}
 
 	/** Durable Run records; scheduling is the Host's job. */
@@ -340,8 +569,8 @@ export class BotRuntime {
 		return runStore(this.#harness, this.#context);
 	}
 
-	async #ownedSubmission(botId: BotId, submissionId: string) {
-		const record = await this.#requireRecord(botId);
+	async #ownedSubmission(botId: BotId, submissionId: string, channelId = "direct") {
+		const record = await this.#contextRecord(botId, channelId);
 		const submission = await this.#harness.submission(Number(submissionId) as SubmissionId, this.#context);
 		if (submission === undefined) return undefined;
 		const status = await submission.status(this.#context);
@@ -349,34 +578,54 @@ export class BotRuntime {
 	}
 
 	/** Submit and wait for the answer; for harnesses and tests. */
-	async submitAndWait(botId: BotId, requestId: string, text: string): Promise<SubmitResult> {
-		const conversation = await this.#conversation(await this.#requireRecord(botId));
+	async submitAndWait(botId: BotId, requestId: string, text: string, channelId = "direct"): Promise<SubmitResult> {
+		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		const submission = await conversation.submit({ type: "input", content: text, requestId }, this.#context);
 		const settled = await submission.wait(this.#context);
 		if (settled.type !== "input") throw new ProtocolError("invalid_request", "Expected an input submission");
 		if (settled.status !== "done") return { status: "unanswered", reason: settled.reason ?? "unknown" };
-		const page = await conversation.entries(
-			{ minEntryId: settled.answer, maxEntryId: settled.answer },
-			1,
-			undefined,
-			this.#context,
-		);
+		const page = await conversation.entries({ minEntryId: settled.answer, maxEntryId: settled.answer }, 1, undefined, this.#context);
 		const answer = page.items[0];
 		return { status: "answered", answer: answer === undefined ? [] : textParts(answer) };
 	}
 
-	/** Abort the Bot's work: withdraw queued inputs and abort the active run; resolves once the conversation is idle. */
-	async cancel(botId: BotId): Promise<void> {
-		const conversation = await this.#conversation(await this.#requireRecord(botId));
-		await conversation.abort(this.#context);
+	/** Read the exact answer of a settled delivery, even after later channel tasks have run. */
+	async submissionAnswer(botId: string, submissionId: string, channelId: string): Promise<string> {
+		const owned = await this.#ownedSubmission(botId, submissionId, channelId);
+		if (!owned) return "";
+		const settled = await owned.submission.wait(this.#context);
+		if (settled.type !== "input" || settled.status !== "done") return "";
+		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
+		const page = await conversation.entries({ minEntryId: settled.answer, maxEntryId: settled.answer }, 1, undefined, this.#context);
+		return page.items[0]
+			? textParts(page.items[0])
+					.map((p) => p.text)
+					.join("\n")
+			: "";
+	}
+
+	/** Abort channel work. Startup uses background mode to mark cancellation before the scheduler resumes. */
+	async cancel(botId: BotId, channelId = "direct", background = false): Promise<void> {
+		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
+		await conversation.abort(this.#context, { background });
+		const conversationId = await this.conversationKey(botId,channelId);
+		await stopAppExecution(conversationId);
+		await this.#harness.commit(async tx => {
+			for(const record of Object.values((await tx.doc(AppExecutionsDoc)).executions)) {
+				if(record.conversationId === conversationId && ["admitted","running"].includes(record.state)) {
+					record.state="cancelled";record.endedAt=Date.now();
+					for(const child of record.children)if(child.state==="running")child.state="cancelled";
+				}
+			}
+		},this.#context);
 	}
 
 	/**
 	 * New topic: the next request starts from an empty context. Older entries stay in storage and in the transcript;
 	 * memory is a document, so it carries over. Pi queues the reset while the conversation is busy.
 	 */
-	async reset(botId: BotId): Promise<void> {
-		const conversation = await this.#conversation(await this.#requireRecord(botId));
+	async reset(botId: BotId, channelId = "direct"): Promise<void> {
+		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		await conversation.reset(undefined, this.#context);
 	}
 
@@ -385,41 +634,101 @@ export class BotRuntime {
 		return (await this.#harness.snapshot(MemoryDoc, botId, this.#context))?.content ?? "";
 	}
 
-	/** Replace the whole memory, as the user's editor does. Rejects content above the limit. */
-	async setMemory(botId: BotId, content: string): Promise<string> {
+	async memoryState(botId: BotId): Promise<MemoryState> {
 		await this.#requireRecord(botId);
-		checkMemorySize(content);
+		return memoryState(await this.#harness.snapshot(MemoryDoc, botId, this.#context));
+	}
+
+	async setMemory(botId: BotId, content: string, expectedRevision: number): Promise<MemoryState> {
+		return this.#changeMemory(botId, expectedRevision, () => content, "user");
+	}
+
+	async restoreMemory(botId: BotId, revision: number, expectedRevision: number): Promise<MemoryState> {
+		return this.#changeMemory(
+			botId,
+			expectedRevision,
+			(state) => {
+				const previous = state.history.find((item) => item.revision === revision);
+				if (!previous) throw new ProtocolError("not_found", "Memory version is no longer available");
+				return previous.content;
+			},
+			"restore",
+			revision,
+		);
+	}
+
+	async #changeMemory(
+		botId: BotId,
+		expectedRevision: number,
+		next: (state: MemoryState) => string,
+		source: MemorySnapshot["source"],
+		restoredFrom?: number,
+	): Promise<MemoryState> {
 		return this.#harness.commit(async (tx) => {
+			const record = (await tx.doc(BotsDoc)).bots[botId];
+			if (!record || record.status === "deleted") throw new ProtocolError("not_found", "Unknown or deleted Bot");
 			const doc = await tx.doc(MemoryDoc, botId, null);
+			const state = memoryState(doc);
+			if (state.revision !== expectedRevision)
+				throw new ProtocolError("request_conflict", "Memory changed. Reload before saving your draft.");
+			const content = next(state);
+			checkMemorySize(content);
+			const { history, ...previous } = state;
+			doc.history = [...history, previous].slice(-MEMORY_HISTORY_LIMIT);
 			doc.content = content;
-			return content;
+			doc.revision = state.revision + 1;
+			doc.source = source;
+			doc.updatedAt = Date.now();
+			delete doc.restoredFrom;
+			if (restoredFrom !== undefined) doc.restoredFrom = restoredFrom;
+			return JSON.parse(JSON.stringify(memoryState(doc))) as MemoryState;
 		}, this.#context);
 	}
 
-	/** Edit one memory section in a single commit, as `memory_update` does. Rejects a result above the limit. */
-	async editMemory(botId: BotId, edit: MemoryEdit): Promise<string> {
-		await this.#requireRecord(botId);
+	/** Receipt and edit commit together; replay cannot overwrite a later user correction. */
+	async editMemory(botId: BotId, edit: MemoryEdit, invocationId: string): Promise<number> {
+		const fingerprint = createHash("sha256")
+			.update(JSON.stringify([botId, edit.action, edit.section, edit.content, edit.expectedRevision]))
+			.digest("hex");
 		return this.#harness.commit(async (tx) => {
+			const receipt = await tx.doc(MemoryReceiptDoc, invocationId, null);
+			if (receipt.fingerprint) {
+				if (receipt.fingerprint !== fingerprint) throw new ProtocolError("request_conflict", "Memory invocation arguments changed");
+				return receipt.revision!;
+			}
+			const record = (await tx.doc(BotsDoc)).bots[botId];
+			if (!record || record.status === "deleted") throw new ProtocolError("not_found", "Unknown or deleted Bot");
 			const doc = await tx.doc(MemoryDoc, botId, null);
-			const next = applyMemoryEdit(doc.content, edit);
-			checkMemorySize(next);
-			doc.content = next;
-			return next;
+			const state = memoryState(doc);
+			if (state.revision !== edit.expectedRevision)
+				throw new ProtocolError("request_conflict", "Memory changed. Review the refreshed memory system section before trying again.");
+			const content = applyMemoryEdit(state.content, edit);
+			checkMemorySize(content);
+			const { history, ...previous } = state;
+			doc.history = [...history, previous].slice(-MEMORY_HISTORY_LIMIT);
+			doc.content = content;
+			doc.revision = state.revision + 1;
+			doc.source = "model";
+			doc.updatedAt = Date.now();
+			delete doc.restoredFrom;
+			receipt.fingerprint = fingerprint;
+			receipt.revision = doc.revision;
+			return doc.revision;
 		}, this.#context);
 	}
 
 	/** Leave a "stopped" note in the transcript, after the user cancelled a Run. */
-	async markStopped(botId: BotId): Promise<void> {
-		const conversation = await this.#conversation(await this.#requireRecord(botId));
+	async markStopped(botId: BotId, channelId = "direct"): Promise<void> {
+		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		await conversation.submit({ type: "write", entry: { kind: STOPPED_ENTRY } }, this.#context);
 	}
 
 	/** The Bot's conversation without pending approvals; the Host adds those (`approvals` is empty here). */
-	async snapshot(botId: BotId): Promise<ConversationSnapshot> {
-		const record = await this.#requireRecord(botId);
+	async snapshot(botId: BotId, channelId = "direct"): Promise<ConversationSnapshot> {
+		const record = await this.#contextRecord(botId, channelId);
 		const view = await (await this.#conversation(record)).viewState(this.#context);
 		try {
-			return await this.#project(record, view.value);
+			return await this.#project(record, view.value, channelId);
 		} finally {
 			view.dispose();
 		}
@@ -429,17 +738,17 @@ export class BotRuntime {
 	 * Observe a Bot's conversation. The listener receives a projected snapshot after every commit that changes the
 	 * view, starting with the current one, in commit order. Returns a function that stops observation.
 	 */
-	async observe(botId: BotId, listener: (snapshot: ConversationSnapshot) => void): Promise<() => void> {
-		const record = await this.#requireRecord(botId);
+	async observe(botId: BotId, listener: (snapshot: ConversationSnapshot) => void, channelId = "direct"): Promise<() => void> {
+		const record = await this.#contextRecord(botId, channelId);
 		const view = await (await this.#conversation(record)).viewState(this.#context);
-		listener(await this.#project(record, view.value));
+		listener(await this.#project(record, view.value, channelId));
 		// Projection may read older entries, so updates are serialized to keep snapshots in commit order.
 		let queue = Promise.resolve();
 		let stopped = false;
 		const unsubscribe = view.subscribe((value) => {
 			queue = queue
 				.then(async () => {
-					const snapshot = await this.#project(record, value);
+					const snapshot = await this.#project(record, value, channelId);
 					if (!stopped) listener(snapshot);
 				})
 				.catch((error: unknown) => console.error(`Projecting the conversation of ${botId} failed`, error));
@@ -456,6 +765,9 @@ export class BotRuntime {
 			provider: model.provider,
 			modelId: model.id,
 			name: model.name,
+			source: this.#builtins.has(model.provider) ? "builtin" : "custom",
+			overridden: this.#builtins.has(model.provider) && this.#configuredIds.includes(model.provider),
+			endpoint: safeEndpoint(model.baseUrl),
 			reasoning: model.reasoning,
 			images: model.input.includes("image"),
 		}));
@@ -471,7 +783,7 @@ export class BotRuntime {
 	 */
 	async testModel(ref: ModelRef, timeoutMs = MODEL_TEST_TIMEOUT_MS): Promise<{ readonly ok: boolean; readonly error?: string }> {
 		const model = this.#models.getModel(ref.provider, ref.modelId);
-		if (model === undefined) return { ok: false, error: `Unknown model ${ref.provider}/${ref.modelId}` };
+		if (model === undefined) return { ok: false, error: "Unknown model. Reload configuration or choose an available model." };
 		try {
 			const answer = await this.#models.completeSimple(
 				model,
@@ -479,11 +791,11 @@ export class BotRuntime {
 				{ maxTokens: 16, signal: AbortSignal.timeout(timeoutMs) },
 			);
 			if (answer.stopReason === "error" || answer.stopReason === "aborted") {
-				return { ok: false, error: answer.errorMessage ?? (answer.stopReason === "aborted" ? "Timed out" : "The request failed") };
+				return { ok: false, error: modelTestError(answer.errorMessage ?? answer.stopReason) };
 			}
 			return { ok: true };
 		} catch (error) {
-			return { ok: false, error: error instanceof Error ? error.message : String(error) };
+			return { ok: false, error: modelTestError(error instanceof Error ? error.message : String(error)) };
 		}
 	}
 
@@ -521,6 +833,9 @@ export class BotRuntime {
 		for (const record of Object.values((await this.#harness.snapshot(BotsDoc, this.#context))?.bots ?? {})) {
 			if (record.model !== undefined) continue;
 			await (await this.#conversation(record)).configure({ model }, this.#context);
+			for (const channel of await this.channels())
+				if (channel.botId === record.botId)
+					await (await this.#conversation({ ...record, conversationId: channel.conversationId })).configure({ model }, this.#context);
 		}
 	}
 
@@ -541,11 +856,30 @@ export class BotRuntime {
 		return conversation;
 	}
 
+	async appExecution(id: string) {
+		return (await this.#harness.snapshot(AppExecutionsDoc, this.#context))?.executions[id];
+	}
+
 	/** Pi's view holds only the active context; prepend the stored entries before its head so history stays visible. */
-	async #project(record: BotRecord, view: ConversationView): Promise<ConversationSnapshot> {
+	async #project(record: BotRecord, view: ConversationView, channelId = "direct"): Promise<ConversationSnapshot> {
 		const marker = view.entries[0]?.head === undefined ? undefined : view.entries[0];
 		const earlier = marker === undefined ? [] : await this.#earlierEntries(record, marker);
-		return projectView(record.botId, view, earlier);
+		const projected = projectView(record.botId, view, earlier);
+		const executions = new Map(Object.values((await this.#harness.snapshot(AppExecutionsDoc, this.#context))?.executions ?? {})
+			.filter(e => e.conversationId === String(record.conversationId)).map(e => [e.parentCallId,e]));
+		const snapshot = {
+			...projected,
+			items: projected.items.map(item => {
+				const execution = executions.get(item.id);
+				return item.kind === "tool" && item.tool === "codemode" && execution ? {...item, execution} : item;
+			}),
+		};
+		if (channelId === "direct") this.#search.project(`bot:${record.botId}`, directMessages(snapshot));
+		return {
+			...snapshot,
+			conversationId: String(record.conversationId),
+			...(channelId === "direct" ? { readCursor: await this.conversationIndex().projectDirect(snapshot) } : { channelId }),
+		};
 	}
 
 	async #earlierEntries(record: BotRecord, marker: EntryRecord): Promise<readonly EntryRecord[]> {
@@ -555,12 +889,7 @@ export class BotRuntime {
 		const entries: EntryRecord[] = [];
 		let cursor: Parameters<typeof conversation.entries>[2];
 		do {
-			const page = await conversation.entries(
-				{ maxEntryId: marker.id, order: "ascending" },
-				500,
-				cursor,
-				this.#context,
-			);
+			const page = await conversation.entries({ maxEntryId: marker.id, order: "ascending" }, 500, cursor, this.#context);
 			entries.push(...page.items);
 			cursor = page.next;
 		} while (cursor !== undefined);
@@ -583,16 +912,14 @@ function agentChange(input: {
 
 function toProfile(record: BotRecord): BotProfile {
 	const { conversationId: _conversationId, ...profile } = record;
-	return profile;
+	return { ...profile, revision: profile.revision ?? 1, kind: profile.kind ?? "specialist" };
 }
 
 /** Text blocks of a user or assistant message; images are not projected yet. */
 function partsOf(content: string | readonly { readonly type: string }[]): MessagePart[] {
 	if (typeof content === "string") return content === "" ? [] : [{ type: "text", text: content }];
 	return content.flatMap((block) =>
-		block.type === "text" && "text" in block && typeof block.text === "string"
-			? [{ type: "text" as const, text: block.text }]
-			: [],
+		block.type === "text" && "text" in block && typeof block.text === "string" ? [{ type: "text" as const, text: block.text }] : [],
 	);
 }
 
@@ -613,7 +940,9 @@ function thinkingOf(entry: EntryRecord): string | undefined {
 	const message = entry.model?.[0];
 	if (message?.role !== "assistant") return undefined;
 	const text = message.content
-		.flatMap((block) => (block.type === "thinking" && block.redacted !== true && block.thinking.trim() !== "" ? [block.thinking.trim()] : []))
+		.flatMap((block) =>
+			block.type === "thinking" && block.redacted !== true && block.thinking.trim() !== "" ? [block.thinking.trim()] : [],
+		)
 		.join("\n\n");
 	return text === "" ? undefined : text;
 }
@@ -621,8 +950,7 @@ function thinkingOf(entry: EntryRecord): string | undefined {
 type MutableToolItem = { kind: "tool"; id: string; tool: string; args: unknown; status: ToolCallStatus; output?: string; taskId?: string };
 
 /** What the model receives for an `unknown` outcome, instead of the executor's text (Section 5.1). */
-export const UNKNOWN_OUTCOME_TEXT =
-	"This action was interrupted and may have partly run. Check its effect before doing anything else.";
+export const UNKNOWN_OUTCOME_TEXT = "This action was interrupted and may have partly run. Check its effect before doing anything else.";
 
 /** When the entry's first user or assistant message was created; Pi stamps every message. */
 function timestampOf(entry: EntryRecord): number | undefined {
@@ -683,7 +1011,9 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 					(message.details as { status?: string } | undefined)?.status === "unknown" ||
 					diagnostics.some((diagnostic) => diagnostic.code === "interrupted");
 				item.status = unknown ? "interrupted" : !message.isError ? "succeeded" : wasAborted(entry) ? "cancelled" : "failed";
-				item.output = partsOf(message.content).map((part) => part.text).join("\n");
+				item.output = partsOf(message.content)
+					.map((part) => part.text)
+					.join("\n");
 				const details: unknown = message.details;
 				if (typeof details === "object" && details !== null && "taskId" in details && typeof details.taskId === "string") {
 					item.taskId = details.taskId;
@@ -748,8 +1078,7 @@ function projectView(botId: BotId, view: ConversationView, earlier: readonly Ent
 	// Running tool slots carry live status and output until their result entry exists.
 	for (const slot of liveDoc?.tools ?? []) {
 		const item = items.find((entry): entry is MutableToolItem => entry.kind === "tool" && entry.id === slot.callId) as
-			| MutableToolItem
-			| undefined;
+			MutableToolItem | undefined;
 		if (
 			item === undefined ||
 			item.status === "succeeded" ||
@@ -773,23 +1102,85 @@ function projectView(botId: BotId, view: ConversationView, earlier: readonly Ent
 }
 
 /** A catalog tool registered with Pi. Replay-safe because the router and executor own idempotency (Section 5.1). */
-function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegistration {
+function routedTool(definition: ToolDefinition, invoke: ToolInvoker, codeOnly = false): ToolRegistration {
 	return defineTool({
 		name: definition.name,
+		callers: codeOnly ? ["tools"] : ["model"],
 		description: definition.description,
 		// Plain JSON Schema from the protocol catalog; Pi validates arguments against it before `execute`.
 		parameters: definition.parameters as never,
+		...(definition.resultSchema ? { structuredOutputSchema: definition.resultSchema as never } : {}),
 		replay: "safe",
 		executionMode: "sequential",
 		async execute(args, api, context) {
-			const botId = await botOfConversation(api, String(api.conversationId), context);
+			if (codeOnly) return invokeAppChild(definition, invoke, args, api, context);
+			const bots = (await api.snapshot(BotsDoc, context))?.bots ?? {};
+			const direct = Object.values(bots).find((bot) => bot.conversationId === Number(api.conversationId));
+			const channel = Object.values((await api.snapshot(ChannelsDoc, context))?.channels ?? {}).find(
+				(item) => item.conversationId === Number(api.conversationId),
+			);
+			const botId = direct?.botId ?? channel?.botId;
+			if (!botId) throw new Error("No Bot owns this conversation");
 			const signal = context.abortSignal ?? new AbortController().signal;
+			let authority: ManagementAuthority | undefined;
+			if (definition.capability.endsWith(".management")) {
+				const saved = await api.memo<{ origin: "user"; runId: string } | null>("openbot.management-authority", context);
+				if (saved !== undefined) authority = saved ?? undefined;
+				else {
+					const runs = Object.values((await api.snapshot(RunsDoc, context))?.runs ?? {});
+					const run = runs.find(
+						(r) => r.botId === botId && (r.channelId ?? "direct") === "direct" && !!direct && r.state === "running" && r.origin === "user",
+					);
+					authority =
+						(await api.memo("openbot.management-authority", run ? { origin: "user" as const, runId: run.runId } : null, context)) ??
+						undefined;
+				}
+			}
+			let collaboration: { runId: string } | undefined;
+			if (definition.capability === "collaboration") {
+				const saved = await api.memo<{ runId: string } | null>("openbot.collaboration-authority", context);
+				if (saved !== undefined) collaboration = saved ?? undefined;
+				else {
+					const runs = Object.values((await api.snapshot(RunsDoc, context))?.runs ?? {});
+					const run = runs.find(
+						(r) => r.botId === botId && (r.channelId ?? "direct") === (channel?.channelId ?? "direct") && r.state === "running",
+					);
+					collaboration = (await api.memo("openbot.collaboration-authority", run ? { runId: run.runId } : null, context)) ?? undefined;
+				}
+			}
+			let runId = await api.memo<string | null>("openbot.run-id", context);
+			if (runId === undefined) {
+				const runs = Object.values((await api.snapshot(RunsDoc, context))?.runs ?? {});
+				const run = runs.find(
+					(r) => r.botId === botId && (r.channelId ?? "direct") === (channel?.channelId ?? "direct") && r.state === "running",
+				);
+				runId = await api.memo("openbot.run-id", run?.runId ?? null, context);
+			}
+			let appAuthority: import("@openbot/protocol").AppReadAuthority | undefined;
+			if (definition.capability === "app.read") {
+				const saved = await api.memo<import("@openbot/protocol").AppReadAuthority | null>("openbot.app-authority", context);
+				if (saved !== undefined) appAuthority = saved ?? undefined;
+				else {
+					const run = runId ? (await api.snapshot(RunsDoc, context))?.runs[runId] : undefined;
+					appAuthority = (await api.memo("openbot.app-authority", run?.origin && run.requestIds[0] ? {
+						runId: run.runId, channelId: run.channelId ?? "direct", origin: run.origin, rootRequestId: run.requestIds[0],
+					} : null, context)) ?? undefined;
+				}
+			}
+			const required = new Set((definition.parameters.required as string[] | undefined) ?? []);
+			const input = definition.capability === "app.read"
+				? Object.fromEntries(Object.entries(args as Record<string, unknown>).filter(([key, value]) => value !== null || required.has(key) || !Object.hasOwn(definition.parameters.properties as object, key)))
+				: args;
 			const outcome = await invoke({
+				...(runId ? { runId } : {}),
+				...(collaboration ? { collaboration } : {}),
+				...(authority === undefined ? {} : { authority }),
+				...(appAuthority ? {appAuthority} : {}),
 				botId,
 				conversationId: String(api.conversationId),
 				callId: api.callId,
 				tool: definition.name,
-				args: args as Record<string, unknown>,
+				args: input as Record<string, unknown>,
 				signal,
 				onProgress: (output) => api.output(output),
 			});
@@ -799,6 +1190,7 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 			const text = outcome.status === "unknown" ? UNKNOWN_OUTCOME_TEXT : outcome.output === "" ? "(no output)" : outcome.output;
 			return {
 				output: [{ type: "text", text }],
+				...(outcome.value === undefined ? {} : { structuredOutput: outcome.value }),
 				isError: outcome.status !== "succeeded",
 				details: { status: outcome.status, ...(outcome.taskId === undefined ? {} : { taskId: outcome.taskId }) },
 			};
@@ -806,13 +1198,31 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 	});
 }
 
-async function botOfConversation(
-	api: { snapshot: (token: typeof BotsDoc, context: Context) => Promise<Readonly<{ bots: Record<string, BotRecord> }> | undefined> },
-	conversationId: string,
-	context: Context,
-): Promise<BotId> {
-	const bots = (await api.snapshot(BotsDoc, context))?.bots ?? {};
-	const record = Object.values(bots).find((bot) => String(bot.conversationId) === conversationId);
-	if (record === undefined) throw new Error(`No Bot owns conversation ${conversationId}`);
-	return record.botId;
+/** Metadata and test failures can contain provider-controlled secrets; return only safe, fixed diagnostics. */
+export function safeEndpoint(value: string): string {
+	const url = URL.parse(value);
+	return url !== null && (url.protocol === "http:" || url.protocol === "https:") ? url.origin : "Custom endpoint";
+}
+
+export function modelTestError(message: string): string {
+	if (/401|403|api.key|auth|credential/i.test(message)) return "Authentication failed. Check the provider key and access.";
+	if (/timeout|timed out|abort/i.test(message)) return "The request timed out. Check the endpoint and try again.";
+	if (/404|not found|unknown model/i.test(message)) return "Model or endpoint not found. Check the model ID and base URL.";
+	if (/429|rate.limit/i.test(message)) return "The provider is rate limiting requests. Try again later.";
+	return "The model request failed. Check the endpoint, protocol and model ID.";
+}
+
+async function committedManagement(tx: Tx, proposal?: BotManagementProposal): Promise<BotProfile | undefined> {
+	if (!proposal) return undefined;
+	const record = (await tx.doc(ManagementDoc)).operations[proposal.invocationId];
+	if (!record || record.fingerprint !== proposal.fingerprint) throw new ProtocolError("request_conflict", "Management proposal mismatch");
+	if (record.outcome) throw new ProtocolError("request_conflict", "Management request already ended");
+	return record.result ? (JSON.parse(JSON.stringify(record.result)) as BotProfile) : undefined;
+}
+async function completeManagement(tx: Tx, proposal: BotManagementProposal | undefined, result: BotProfile): Promise<void> {
+	if (proposal) (await tx.doc(ManagementDoc)).operations[proposal.invocationId] = { ...proposal, result, completedAt: Date.now() };
+}
+
+function revisionedInstructions(instructions: string, revision: number): string {
+	return `OpenBot profile revision: ${revision}.\n${instructions}`;
 }

@@ -1,8 +1,22 @@
+import { CODEMODE_DEFINITION } from "./app-execution.ts";
+export * from "./app-execution.ts";
+import { APP_TOOL_DEFINITIONS } from "./app-capabilities.ts";
+export * from "./app-capabilities.ts";
 /**
  * Versioned OpenBot data contracts shared by Desktop, the Host Runtime, and executors.
  * This package contains types, parameter schemas, and pure helpers only: no Pi, Electron, or Node dependencies. Its one
  * dependency is TypeBox, for the runtime schemas in `schemas.ts`.
  */
+
+export type MemorySnapshot = {
+	readonly content: string;
+	readonly revision: number;
+	readonly source: "legacy" | "user" | "model" | "restore";
+	readonly updatedAt: number | null;
+	readonly restoredFrom?: number;
+};
+export type MemoryState = MemorySnapshot & { readonly history: readonly MemorySnapshot[] };
+export const MEMORY_HISTORY_LIMIT = 20;
 
 export const PROTOCOL_VERSION = 1 as const;
 
@@ -40,6 +54,95 @@ export class ProtocolError extends Error {
 // ---------------------------------------------------------------------------
 // Domain data
 
+export type ConversationKey = `bot:${string}` | `group:${string}`;
+export type ConversationPreview = { readonly id: string; readonly senderId: string; readonly text: string; readonly at: number };
+export type ConversationSummary = {
+	readonly conversationKey: ConversationKey;
+	readonly latest?: ConversationPreview;
+	readonly incomingCount: number;
+	readonly readThrough: number;
+	readonly unreadCount: number;
+};
+
+export type ConversationSearchHit = {
+	readonly conversationKey: ConversationKey;
+	readonly messageId: string;
+	readonly senderId: string;
+	readonly at: number;
+	readonly snippet: string;
+	readonly matchStart: number;
+	readonly matchEnd: number;
+};
+export type ConversationSearchResult = { readonly items: readonly ConversationSearchHit[]; readonly nextCursor?: string };
+
+export type GroupFields = {
+	readonly name: string;
+	readonly objective: string;
+	readonly memberIds: readonly string[];
+	readonly leadBotId: string;
+};
+export type Group = Omit<GroupFields, "leadBotId"> & {
+	readonly leadBotId: string | null;
+	readonly groupId: string;
+	readonly revision: number;
+	readonly status: "active" | "dissolved";
+	readonly createdAt: number;
+};
+export type GroupChange = {
+	readonly requestId: string;
+	readonly action: "create" | "update" | "dissolve";
+	readonly groupId: string;
+	readonly expectedRevision: number;
+	readonly fields?: GroupFields;
+};
+export type CollaborationRoot = {
+	readonly rootId: string;
+	readonly groupId: string;
+	readonly coreBotId: string;
+	readonly postId: string;
+	readonly allowedBotIds: readonly string[];
+	readonly initialIds: readonly string[];
+	readonly automaticDeliveries: number;
+	readonly state: "running" | "completed" | "paused" | "cancelled";
+	readonly reason?: string;
+};
+export type CollaborationSnapshot = {
+	readonly roots: readonly CollaborationRoot[];
+	readonly posts: readonly GroupPost[];
+	readonly tasks: readonly (GroupDelivery & { readonly conversation?: ConversationSnapshot })[];
+};
+export type GroupPost = {
+	readonly rootId?: string;
+	readonly kind?: "delegation" | "handoff" | "result";
+
+	readonly postId: string;
+	readonly senderId: string;
+	readonly text: string;
+	readonly at: number;
+	readonly recipientIds: readonly string[];
+	readonly replyTo?: string;
+};
+export type GroupDelivery = {
+	readonly rootId?: string;
+	readonly parentId?: string;
+	readonly origin?: "user" | "peer" | "result";
+	readonly depth?: number;
+	readonly ancestry?: readonly string[];
+	readonly expectedResult?: string;
+	readonly transferId?: string;
+	readonly continuationId?: string;
+	readonly closed?: boolean;
+
+	readonly deliveryId: string;
+	readonly groupId: string;
+	readonly postId: string;
+	readonly botId: string;
+	readonly input: string;
+	readonly state: "pending" | "completed" | "failed" | "cancelled";
+	readonly runId?: string;
+};
+export type GroupSnapshot = CollaborationSnapshot & { readonly group: Group; readonly readCursor?: number };
+
 export type BotId = string;
 export type RunId = string;
 
@@ -53,6 +156,9 @@ export type ModelApi = (typeof MODEL_APIS)[number];
 export type ThinkingLevel = "off" | "low" | "medium" | "high";
 
 export type BotProfile = {
+	/** Increments on every profile mutation; legacy profiles start at 1. */
+	readonly revision: number;
+	readonly kind: "core" | "specialist";
 	readonly botId: BotId;
 	readonly name: string;
 	/** Short job label shown under the name, such as "Research". */
@@ -66,6 +172,42 @@ export type BotProfile = {
 	/** `deleted` Bots are hidden everywhere; their conversation stays on disk (Section 8.3). */
 	readonly status: "active" | "hidden" | "deleted";
 	readonly createdAt: number;
+};
+
+/** Immutable authority supplied by the Host adapter, never model arguments. */
+export type ManagementAuthority = { readonly origin: "user"; readonly runId: string };
+export type BotManagementAction = "create" | "update" | "delete";
+export type BotManagementChange = {
+	readonly name?: string;
+	readonly role?: string;
+	readonly instructions?: string;
+	readonly model?: ModelRef | null;
+	readonly thinkingLevel?: ThinkingLevel;
+};
+export type BotManagementProposal = {
+	readonly invocationId: string;
+	readonly approvalId: string;
+	readonly actorId: string;
+	readonly conversationId: string;
+	readonly runId: string;
+	readonly origin: "user";
+	readonly targetId: string;
+	readonly botId: string;
+	readonly action: BotManagementAction;
+	readonly expectedRevision: number;
+	readonly change: BotManagementChange;
+	readonly createdAt: number;
+	readonly fingerprint: string;
+};
+export type BotManagementReceipt = BotManagementProposal & {
+	readonly result?: BotProfile;
+	readonly completedAt?: number;
+	readonly outcome?: "denied" | "cancelled" | "failed";
+};
+export type BotManagementActivity = Omit<BotManagementProposal, "change" | "fingerprint" | "approvalId"> & {
+	readonly outcome: "pending" | "succeeded" | "denied" | "cancelled" | "failed";
+	readonly resultRevision?: number;
+	readonly completedAt?: number;
 };
 
 /** Largest Bot memory, in UTF-8 bytes of Markdown. */
@@ -114,6 +256,7 @@ export type TranscriptItem =
 			readonly output?: string;
 			/** Set when a `local_exec` call moved its command to the background. */
 			readonly taskId?: string;
+			readonly execution?: import("./app-execution.ts").AppExecution;
 	  }
 	/** Where earlier messages left the model's context: a compaction summary or a new topic. */
 	| { readonly kind: "divider"; readonly id: string; readonly reason: "compaction" | "reset" }
@@ -142,6 +285,10 @@ export type LiveRun = {
 };
 
 export type ConversationSnapshot = {
+	/** Incoming committed messages present in this snapshot; safe upper bound for a read acknowledgement. */
+	readonly readCursor?: number;
+	readonly conversationId?: string;
+	readonly channelId?: string;
 	readonly botId: BotId;
 	readonly items: readonly TranscriptItem[];
 	readonly live?: LiveRun;
@@ -163,6 +310,7 @@ export type PendingMessage = { readonly id: string; readonly parts: readonly Mes
  * against the active-Run cap from `running` until it is terminal; waiting for approval counts as running.
  */
 export type RunRecord = {
+	readonly channelId?: string;
 	readonly runId: RunId;
 	readonly botId: BotId;
 	readonly state: "queued" | "running" | "completed" | "failed" | "cancelled";
@@ -176,6 +324,7 @@ export type RunRecord = {
 
 /** A tool call stopped before dispatch until the user decides (Section 5.3). */
 export type PendingApproval = {
+	readonly conversationId?: string;
 	readonly approvalId: string;
 	readonly botId: BotId;
 	/** The Pi tool call this approval is for; matches the transcript `tool` item's `id`. */
@@ -253,6 +402,8 @@ export type ProviderSummary = {
 	readonly name: string;
 	/** `builtin` providers ship with OpenBot; `config` providers come from the user's model configuration file. */
 	readonly source: "builtin" | "config";
+	/** The local file overrides a bundled provider. */
+	readonly overlay?: boolean;
 	/** A key is available: stored in the Keychain, or (config providers) resolvable from the configuration. */
 	readonly configured: boolean;
 	/** A key is stored in the Keychain for this provider. */
@@ -261,6 +412,8 @@ export type ProviderSummary = {
 
 /** Settings as returned to renderers: credentials are never included, only whether one is stored. */
 export type RedactedSettings = {
+	readonly setupComplete?: boolean;
+	readonly language?: "en" | "zh-CN";
 	readonly defaultModel?: ModelRef;
 	readonly providers: readonly ProviderSummary[];
 	readonly dataDirectory: string;
@@ -273,6 +426,10 @@ export type RedactedSettings = {
 };
 
 export type ModelSummary = {
+	readonly source?: "builtin" | "custom";
+	readonly overridden?: boolean;
+	/** Origin only: never credentials, URL paths, query strings or headers. */
+	readonly endpoint?: string;
 	readonly provider: string;
 	readonly modelId: string;
 	readonly name: string;
@@ -284,7 +441,14 @@ export type ModelSummary = {
 // Desktop-to-Host methods (Section 6.1). Each entry maps a method name to its params and result.
 
 export type HostMethods = {
+	"collaboration.stop": { params: { rootId: string }; result: null };
+	"groups.list": { params: Record<string, never>; result: readonly Group[] };
+	"groups.snapshot": { params: { groupId: string }; result: GroupSnapshot };
+	"groups.change": { params: GroupChange; result: Group };
+	"groups.send": { params: { groupId: string; requestId: string; text: string; recipientIds?: readonly string[] }; result: GroupPost };
+
 	"host.status": { params: Record<string, never>; result: HostStatus };
+	"bots.management.history": { params: Record<string, never>; result: readonly BotManagementActivity[] };
 	"bots.list": { params: Record<string, never>; result: readonly BotSummary[] };
 	"bots.create": {
 		params: {
@@ -299,6 +463,7 @@ export type HostMethods = {
 	"bots.update": {
 		params: {
 			readonly botId: BotId;
+			readonly expectedRevision?: number;
 			readonly name?: string;
 			readonly role?: string;
 			readonly instructions?: string;
@@ -311,7 +476,12 @@ export type HostMethods = {
 		result: BotProfile;
 	};
 	"conversations.snapshot": { params: { readonly botId: BotId }; result: ConversationSnapshot };
-	"conversations.markRead": { params: { readonly botId: BotId }; result: null };
+	"conversations.search": {
+		params: { readonly query: string; readonly unreadOnly?: boolean; readonly includeHidden?: boolean; readonly conversationKey?: ConversationKey; readonly cursor?: string };
+		result: ConversationSearchResult;
+	};
+	"conversations.list": { params: Record<string, never>; result: readonly ConversationSummary[] };
+	"conversations.markRead": { params: { readonly conversationKey: ConversationKey; readonly through: number }; result: null };
 	"messages.submit": {
 		params: { readonly botId: BotId; readonly requestId: string; readonly text: string };
 		/** `steered`: the message joined the Bot's running or queued Run instead of starting one. */
@@ -320,17 +490,24 @@ export type HostMethods = {
 	"runs.cancel": { params: { readonly runId: RunId }; result: { readonly state: RunRecord["state"] } };
 	"approvals.decide": { params: { readonly approvalId: string; readonly decision: ApprovalDecision }; result: null };
 	"settings.get": { params: Record<string, never>; result: RedactedSettings };
-	"settings.update": { params: { readonly defaultModel?: ModelRef | null }; result: RedactedSettings };
+	"settings.update": {
+		params: { readonly defaultModel?: ModelRef | null; readonly setupComplete?: boolean; readonly language?: "en" | "zh-CN" };
+		result: RedactedSettings;
+	};
 	"models.list": { params: Record<string, never>; result: readonly ModelSummary[] };
 	"credentials.set": {
 		params: { readonly providerId: string; readonly apiKey: string };
 		result: RedactedSettings;
 	};
 	"credentials.delete": { params: { readonly providerId: string }; result: RedactedSettings };
-	"bots.memory.get": { params: { readonly botId: BotId }; result: { readonly content: string } };
+	"bots.memory.get": { params: { readonly botId: BotId }; result: MemoryState };
 	"bots.memory.update": {
-		params: { readonly botId: BotId; readonly content: string };
-		result: { readonly content: string };
+		params: { readonly botId: BotId; readonly content: string; readonly expectedRevision: number };
+		result: MemoryState;
+	};
+	"bots.memory.restore": {
+		params: { readonly botId: BotId; readonly revision: number; readonly expectedRevision: number };
+		result: MemoryState;
 	};
 	/** New topic: the Bot's next request starts from an empty context; memory and stored history stay. */
 	"conversations.reset": { params: { readonly botId: BotId }; result: null };
@@ -385,11 +562,19 @@ export type HostParams<M extends HostMethod> = HostMethods[M]["params"];
 export type HostResult<M extends HostMethod> = HostMethods[M]["result"];
 
 export const HOST_METHODS = [
+	"collaboration.stop",
+	"groups.list",
+	"groups.snapshot",
+	"groups.change",
+	"groups.send",
 	"host.status",
 	"bots.list",
+	"bots.management.history",
 	"bots.create",
 	"bots.update",
 	"conversations.snapshot",
+	"conversations.list",
+	"conversations.search",
 	"conversations.markRead",
 	"messages.submit",
 	"runs.cancel",
@@ -401,6 +586,7 @@ export const HOST_METHODS = [
 	"credentials.delete",
 	"bots.memory.get",
 	"bots.memory.update",
+	"bots.memory.restore",
 	"conversations.reset",
 	"policy.get",
 	"policy.update",
@@ -432,6 +618,7 @@ export type HostStatus = {
 // Host-to-Desktop events
 
 export type HostEvents = {
+	"groups.changed": Record<string, never>;
 	/** The roster or a Bot's sidebar state changed; fetch `bots.list` again. */
 	"bots.changed": Record<string, never>;
 	/** A conversation's view changed; the payload is the new snapshot. */
@@ -514,6 +701,7 @@ export function isRequestEnvelope(
 
 /** Executor-protocol invocation, identical for the local executor and any future target. */
 export type ToolInvocation = {
+	readonly runId?: string;
 	readonly invocationId: string;
 	readonly botId: BotId;
 	readonly conversationId: string;
@@ -534,6 +722,8 @@ export type ToolOutcome = {
 	readonly status: InvocationStatus;
 	/** Bounded text for the model. */
 	readonly output: string;
+	/** Validated JSON for programmatic callers; absent for existing text-only work tools. */
+	readonly value?: import("./app-capabilities.ts").JsonValue;
 	/** Command exit details, separate from whether the invocation itself succeeded. */
 	readonly exit?: { readonly code: number | null; readonly signal: string | null };
 	readonly truncated?: boolean;
@@ -550,7 +740,7 @@ export type ExecutorRequest =
 	/** The Host committed the outcome; the receipt may be pruned after the retention period. */
 	| { readonly kind: "result.ack"; readonly invocationId: string }
 	/** The conversation's work was stopped: stop its background tasks too. */
-	| { readonly kind: "tasks.stop"; readonly conversationId: string };
+	| { readonly kind: "tasks.stop"; readonly conversationId: string; readonly runId?: string };
 
 /** Executor to Host. */
 export type ExecutorMessage =
@@ -574,12 +764,14 @@ export type ExecutorMessage =
 // ---------------------------------------------------------------------------
 // Tool catalog: what the model is offered. Schemas are plain JSON Schema, which Pi validates tool arguments against.
 
-export type ToolCapability = "files.read" | "files.write" | "commands" | "tasks" | "web" | "memory";
+export type ToolCapability =
+	"app.orchestrate" | "app.read" | "files.read" | "files.write" | "commands" | "tasks" | "web" | "memory" | "bot.management" | "group.management" | "collaboration";
 
 export type ToolDefinition = {
 	readonly name: string;
 	readonly description: string;
 	readonly parameters: Readonly<Record<string, unknown>>;
+	readonly resultSchema?: Readonly<Record<string, unknown>>;
 	readonly capability: ToolCapability;
 	readonly destination: "executor" | "host";
 };
@@ -593,7 +785,122 @@ const object = (properties: Record<string, unknown>, required: readonly string[]
 	additionalProperties: false,
 });
 
+const nullable = (schema: Record<string, unknown>) => ({ anyOf: [schema, { type: "null" }] });
+const botFields = {
+	name: nullable({ type: "string", minLength: 1, maxLength: 100 }),
+	role: nullable({ type: "string", maxLength: 500 }),
+	instructions: nullable({ type: "string", maxLength: 32000 }),
+	model: nullable(
+		object({ provider: string("Configured provider ID."), modelId: string("Configured model ID.") }, ["provider", "modelId"]),
+	),
+	thinkingLevel: nullable({ type: "string", enum: ["off", "low", "medium", "high"] }),
+};
+const groupFields = {
+	name: { type: "string", minLength: 1, maxLength: 100 },
+	objective: { type: "string", maxLength: 4000 },
+	memberIds: { type: "array", items: string("Existing Bot ID"), minItems: 2, maxItems: 6, uniqueItems: true },
+	leadBotId: string("Member with the lead role; ordinary messages always go to Core"),
+};
 export const TOOL_CATALOG = [
+	...APP_TOOL_DEFINITIONS,
+	CODEMODE_DEFINITION,
+	...(["bot_delegate", "bot_handoff"] as const).map((name) => ({
+		name,
+		capability: "collaboration" as const,
+		destination: "host" as const,
+		description:
+			name === "bot_delegate"
+				? "Assign a bounded subtask to an existing Bot. Only an assigned group task Run can dispatch. Retain ownership: finish this turn after assignments; results return in a separate task continuation. Do not poll or send acknowledgements. Use IDs from the task roster. Two forward hops and twelve automatic deliveries maximum; no self or ancestor dispatch."
+				: "Transfer this task to an existing Bot in the assigned scope. Ownership moves to the recipient: finish your turn and do not perform or dispatch more work. The recipient's result completes this stage. No self/ancestor dispatch or management authority transfer.",
+		parameters: object(
+			{
+				botId: string("Recipient Bot ID from the task roster"),
+				task: { type: "string", minLength: 1, maxLength: 8000 },
+				expectedResult: { type: "string", minLength: 1, maxLength: 2000 },
+			},
+			["botId", "task", "expectedResult"],
+		),
+	})),
+	{
+		name: "group_inspect",
+		capability: "group.management",
+		destination: "host",
+		description:
+			"Core direct chat only. List local groups and revisions, or inspect one group. Does not read private Bot conversations. Use bot_inspect to find existing members.",
+		parameters: object({ groupId: nullable(string("Group ID, or null to list")) }, []),
+	},
+	{
+		name: "group_create",
+		capability: "group.management",
+		destination: "host",
+		description:
+			"Core direct chat only. Create a group of 2–6 existing Bots at the user's explicit request. Requires exact user approval. Never create Bots automatically. Do not retry a denied change.",
+		parameters: object(groupFields, Object.keys(groupFields)),
+	},
+	{
+		name: "group_update",
+		capability: "group.management",
+		destination: "host",
+		description:
+			"Core direct chat only. Replace group details, members and lead at the user's request. Inspect first, supply current revision and complete fields. Removing a member stops its group tasks. Requires exact approval.",
+		parameters: object({ ...groupFields, groupId: string("Group ID"), expectedRevision: integer("Current revision") }, [
+			...Object.keys(groupFields),
+			"groupId",
+			"expectedRevision",
+		]),
+	},
+	{
+		name: "group_dissolve",
+		capability: "group.management",
+		destination: "host",
+		description:
+			"Core direct chat only. Dissolve a group at the user's request after inspecting its revision. Requires approval, stops group work and retains read-only local history. Does not delete Bots.",
+		parameters: object({ groupId: string("Group ID"), expectedRevision: integer("Current revision") }, ["groupId", "expectedRevision"]),
+	},
+
+	{
+		name: "bot_inspect",
+		capability: "bot.management",
+		destination: "host",
+		description:
+			"Core only. Inspect the user's Bots and current revisions. Listing omits instructions; select a Bot ID to read its full profile. Omit botId or pass null to list live Bots. Inspect before updating or deleting a Specialist.",
+		parameters: object({ botId: nullable(string("Bot ID to inspect, or null to list.")) }, []),
+	},
+	{
+		name: "bot_create",
+		capability: "bot.management",
+		destination: "host",
+		description:
+			"Core only. Create one Specialist when the user explicitly requests it. Waits for user approval. Never create Bots proactively. Name is required; null or omitted fields use defaults: empty role/instructions, default model/thinking. Starts with empty memory. Do not retry a denied request.",
+		parameters: object({ ...botFields, name: { type: "string", minLength: 1, maxLength: 100 } }, ["name"]),
+	},
+	{
+		name: "bot_update",
+		capability: "bot.management",
+		destination: "host",
+		description:
+			"Core only. Update a Specialist at the user's request, with approval. Inspect first and supply the current revision. Null or omitted fields are UNCHANGED; empty role/instructions clears that text. model selects an override; useDefaultModel=true removes the override. Cannot edit Core, memory, identity or permissions. Do not retry a denied request.",
+		parameters: object(
+			{
+				...botFields,
+				botId: string("Specialist ID from bot_inspect."),
+				expectedRevision: integer("Current revision from bot_inspect."),
+				useDefaultModel: nullable({ type: "boolean", description: "True removes the model override; false/null leaves it unchanged." }),
+			},
+			["botId", "expectedRevision"],
+		),
+	},
+	{
+		name: "bot_delete",
+		capability: "bot.management",
+		destination: "host",
+		description:
+			"Core only. Delete a Specialist at the user's request, with approval. Inspect first. Stops its work and background commands, removes it from the roster and retains local history. Cannot delete Core. Do not retry a denied request.",
+		parameters: object(
+			{ botId: string("Specialist ID from bot_inspect."), expectedRevision: integer("Current revision from bot_inspect.") },
+			["botId", "expectedRevision"],
+		),
+	},
 	{
 		name: "local_read",
 		capability: "files.read",
@@ -621,10 +928,10 @@ export const TOOL_CATALOG = [
 		capability: "files.write",
 		destination: "executor",
 		description: "Create or overwrite a text file on this Mac. Missing parent directories are created.",
-		parameters: object(
-			{ path: string("Absolute path, or relative to the workspace."), content: string("The complete file content.") },
-			["path", "content"],
-		),
+		parameters: object({ path: string("Absolute path, or relative to the workspace."), content: string("The complete file content.") }, [
+			"path",
+			"content",
+		]),
 	},
 	{
 		name: "local_edit",
@@ -731,8 +1038,14 @@ export const TOOL_CATALOG = [
 				},
 				section: string("Section heading without the ## prefix, such as Preferences."),
 				content: string("Markdown to add, or the complete new section text."),
+				expectedRevision: {
+					type: "integer",
+					minimum: 0,
+					description:
+						"Current revision from your latest memory system section. On conflict, review that refreshed section before retrying.",
+				},
 			},
-			["action", "section", "content"],
+			["action", "section", "content", "expectedRevision"],
 		),
 	},
 ] as const satisfies readonly ToolDefinition[];

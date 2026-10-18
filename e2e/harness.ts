@@ -33,6 +33,8 @@ export type AppHarness = {
 };
 
 export type HarnessOptions = {
+	/** Create launch fixtures after the suite directory is reset; return environment overrides for every relaunch. */
+	readonly prepare?: (run: string) => Promise<Readonly<Record<string, string>>>;
 	/** Extra environment for the app, for example `OPENBOT_MAX_ACTIVE_RUNS`. */
 	readonly env?: Readonly<Record<string, string>>;
 	/**
@@ -61,6 +63,7 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 		);
 	}
 
+	const preparedEnvironment = await options.prepare?.(run);
 	let app: ElectronApplication | undefined;
 	let page: Page | undefined;
 	const start = async (): Promise<void> => {
@@ -74,12 +77,20 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 				OPENBOT_WORKSPACE: workspace,
 				OPENBOT_KEYCHAIN_SERVICE: keychainService,
 				...options.env,
+				...preparedEnvironment,
+				OPENBOT_E2E_MODE: process.env.OPENBOT_E2E_HEADED === "1" ? "headed" : "background",
 			},
 		});
 		page = await app.firstWindow();
 		await page.locator(".sidebar").waitFor();
 	};
-	await start();
+	try {
+		await start();
+	} catch (error) {
+		await app?.close().catch(() => {});
+		await model.stop();
+		throw error;
+	}
 
 	const requirePage = (): Page => {
 		if (page === undefined) throw new Error("The app is not running");
@@ -126,6 +137,7 @@ export async function createBot(harness: AppHarness, name: string): Promise<void
 		() => (document.querySelector(".settings-group select") as HTMLSelectElement | null)?.value === "scripted/scripted",
 	);
 	await page.getByRole("button", { name: /^New/ }).click();
+ await page.getByRole("button", { name: /^Create new Bot/ }).click();
 	await page.getByPlaceholder("Piper").fill(name);
 	await page.getByPlaceholder("Piper").press("Enter");
 	await page.getByRole("textbox", { name: `Message ${name}` }).waitFor();

@@ -1,53 +1,63 @@
+import { ConversationSearch } from "./ConversationSearch";
+import { ChatComposer } from "./ChatComposer";
+import { ConversationShell, DetailsPanel, Timeline, useDialogFocus } from "./ConversationUI";
+import { MarkReadButton, RosterPreview, recentTime } from "./RosterPreview";
+import { ManagementHistory } from "./BotManagement";
+import { t } from "./i18n";
 import type {
-	ApprovalDecision,
 	BotSummary,
+	PendingApproval,
 	ConversationSnapshot,
 	ModelRef,
 	ModelSummary,
-	PendingApproval,
 	RunRecord,
 	ThinkingLevel,
 	TranscriptItem,
 } from "@openbot/protocol";
-import { type FormEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Markdown } from "./markdown";
 import { WebSearchSettings } from "./WebSearchSettings";
 import { ProfileMemory } from "./ProfileMemory";
 import { Divider, RetryButton, retryTarget, Thinking } from "./TranscriptExtras";
 import { PendingMessages, StopButton, StoppedNote } from "./runs";
-import { AlwaysAllow } from "./AlwaysAllow";
+import { ApprovalCard } from "./ApprovalCard";
+import { GroupView, GroupSidebar, GroupEditor } from "./Groups";
 import { CommandSettings, FolderSettings } from "./PolicySettings";
 import { ConfirmDeleteBot, DeleteBotItem, DuplicateBotItem } from "./BotLifecycle";
+import { ModelSetup } from "./ModelSetup";
 import { Onboarding } from "./Onboarding";
 import { transcriptRows } from "./steps";
 import { MessageTime, RevealButton, StepsRow } from "./TranscriptDetails";
-import {
-	api,
-	connect,
-	createBot,
-	openBot,
-	refreshBots,
-	refreshSettings,
-	report,
-	sendMessage,
-	useStore,
-} from "./store";
+import { api, connect, createBot, openBot, refreshBots, refreshSettings, report, errorMessage, sendMessage, useStore } from "./store";
 
 export function App() {
+	useDialogFocus();
+	const language = useStore((state) => state.settings?.language ?? "en");
+	useEffect(() => {
+		document.documentElement.lang = language;
+	}, [language]);
 	const host = useStore((state) => state.host);
 	const view = useStore((state) => state.view);
 	const notice = useStore((state) => state.notice);
 	const onboarding = useStore((state) => state.onboarding);
 	const [creating, setCreating] = useState(false);
+	const [newMenu, setNewMenu] = useState(false);
+	const [creatingGroup, setCreatingGroup] = useState(false);
+	const [query, setQuery] = useState("");
 
 	useEffect(() => connect(), []);
 
 	useEffect(() => {
 		const onKey = (event: globalThis.KeyboardEvent): void => {
-			if (!event.metaKey) return;
+			if ((!event.metaKey && !event.ctrlKey) || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+			if (event.key === "k") {
+				event.preventDefault();
+				document.querySelector<HTMLInputElement>(".conversation-search")?.focus();
+				return;
+			}
 			if (event.key === "n") {
 				event.preventDefault();
-				setCreating(true);
+				setNewMenu(true);
 			} else if (event.key === ",") {
 				event.preventDefault();
 				useStore.setState({ view: { kind: "settings" } });
@@ -65,29 +75,63 @@ export function App() {
 
 	return (
 		<div className="app">
-			{onboarding !== true && <Sidebar onNew={() => setCreating(true)} />}
+			<Sidebar query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />
 			<main className="main">
 				{host.status !== "ready" && (
 					<div className={`banner banner-${host.status}`}>
-						{host.status === "starting" ? "Starting OpenBot…" : `OpenBot stopped. ${host.detail ?? ""}`}
+						{host.status === "starting" ? t("Starting OpenBot…") : t("OpenBot stopped. {detail}", { detail: host.detail ?? "" })}
 					</div>
 				)}
 				{onboarding === true ? (
 					<Onboarding />
 				) : (
 					<>
-						{view.kind === "bot" && <Conversation botId={view.botId} />}
+						{view.kind === "bot" && <Conversation key={view.botId} botId={view.botId} />}
 						{view.kind === "settings" && <Settings />}
+						{view.kind === "group" && <GroupView key={view.groupId} groupId={view.groupId} />}
 						{view.kind === "home" && <Home onNew={() => setCreating(true)} />}
 					</>
 				)}
 			</main>
+			{newMenu && (
+				<div className="dialog-backdrop">
+					<div className="dialog new-conversation" role="dialog" aria-label={t("New conversation")}>
+						<div className="details-heading">
+							<h2>{t("New conversation")}</h2>
+							<button data-dialog-close aria-label={t("Close")} onClick={() => setNewMenu(false)}>
+								×
+							</button>
+						</div>
+						<button
+							onClick={() => {
+								setNewMenu(false);
+								setQuery("");
+								setCreating(true);
+							}}
+						>
+							{t("Create new Bot")}
+							<small>{t("A teammate with a specific job")}</small>
+						</button>
+						<button
+							onClick={() => {
+								setNewMenu(false);
+								setQuery("");
+								setCreatingGroup(true);
+							}}
+						>
+							{t("Create group")}
+							<small>{t("Bring your Bots together for a task")}</small>
+						</button>
+					</div>
+				</div>
+			)}
+			{creatingGroup && <GroupEditor onClose={() => setCreatingGroup(false)} />}
 			{creating && <NewBotDialog onClose={() => setCreating(false)} />}
 			{notice !== undefined && (
 				<div className="toast" role="status">
-					<span>{notice}</span>
+					<span>{t(notice)}</span>
 					<button type="button" className="toast-close" onClick={() => useStore.setState({ notice: undefined })}>
-						Dismiss
+						{t("Dismiss")}
 					</button>
 				</div>
 			)}
@@ -95,31 +139,63 @@ export function App() {
 	);
 }
 
-/** Sidebar order: pinned first, then by creation time; hidden Bots only in their own section. */
+/** Core and pinned sections stay first; each section follows committed message recency. */
 function visibleBots(bots: readonly BotSummary[]): BotSummary[] {
+	const summaries = useStore.getState().summaries;
 	return bots
 		.filter((bot) => bot.status === "active")
-		.toSorted((a, b) => Number(b.pinned) - Number(a.pinned) || a.createdAt - b.createdAt);
+		.toSorted(
+			(a, b) =>
+				Number(b.kind === "core") - Number(a.kind === "core") ||
+				Number(b.pinned) - Number(a.pinned) ||
+				recentTime(`bot:${b.botId}`, summaries, b.createdAt) - recentTime(`bot:${a.botId}`, summaries, a.createdAt) ||
+				a.botId.localeCompare(b.botId),
+		);
 }
 
-function Sidebar({ onNew }: { onNew: () => void }) {
+function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; onQuery: (v: string) => void }) {
 	const bots = useStore((state) => state.bots);
+	const summaries = useStore((state) => state.summaries);
+	const [unreadOnly, setUnreadOnly] = useState(false);
+	const eligible = (key: string) => !unreadOnly || (summaries[key]?.unreadCount ?? 0) > 0;
 	const view = useStore((state) => state.view);
 	const showHidden = useStore((state) => state.showHidden);
-	const visible = visibleBots(bots);
-	const pinned = visible.filter((bot) => bot.pinned);
-	const others = visible.filter((bot) => !bot.pinned);
-	const hidden = bots.filter((bot) => bot.status === "hidden");
+	const visible = visibleBots(bots).filter((b) => eligible(`bot:${b.botId}`) && `${b.name} ${b.role}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+	const core = visible.filter((bot) => bot.kind === "core");
+	const pinned = visible.filter((bot) => bot.pinned && bot.kind !== "core");
+	const others = visible.filter((bot) => !bot.pinned && bot.kind !== "core");
+	const hidden = bots.filter(
+		(bot) => bot.status === "hidden" && eligible(`bot:${bot.botId}`) && `${bot.name} ${bot.role}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+	);
 	const selected = view.kind === "bot" ? view.botId : undefined;
 
 	return (
-		<nav className="sidebar" aria-label="Bots">
+		<nav className="sidebar" aria-label={t("Bots")}>
 			<div className="sidebar-titlebar" />
-			<button type="button" className="new-button" onClick={onNew}>
-				<span aria-hidden>＋</span> New <kbd>⌘N</kbd>
-			</button>
-			{pinned.length > 0 && <BotSection title="Pinned" bots={pinned} selected={selected} />}
-			<BotSection title="Bots" bots={others} selected={selected} empty="No Bots yet" />
+			<div className="sidebar-actions">
+				<input
+					className="conversation-search"
+					type="search"
+					aria-label={t("Search conversations")}
+					placeholder={t("Search conversations")}
+					value={query}
+					maxLength={200}
+					onChange={(e) => onQuery(e.target.value)}
+					onKeyDown={(e) => { if (e.key === "Escape" && !e.nativeEvent.isComposing) onQuery(""); }}
+				/>
+				{query && <button className="clear-search" aria-label={t("Clear search")} onClick={() => onQuery("")}>×</button>}
+				<button type="button" className="new-button" aria-label={t("New")} title={t("New")} onClick={onNew}>
+					<span aria-hidden>＋</span>
+				</button>
+			</div>
+			<div className="conversation-filters" role="group" aria-label={t("Conversation filter")}>
+				<button aria-pressed={!unreadOnly} onClick={() => setUnreadOnly(false)}>{t("All")}</button>
+				<button aria-pressed={unreadOnly} onClick={() => setUnreadOnly(true)}>{t("Unread")}</button>
+			</div>
+			{unreadOnly && !Object.values(summaries).some((r) => r.unreadCount > 0) && <p className="search-status">{t("No unread conversations")}</p>}
+			{core.length > 0 && <BotSection title={t("Your assistant")} bots={core} selected={selected} />}
+			{pinned.length > 0 && <BotSection title={t("Pinned")} bots={pinned} selected={selected} />}
+			{(others.length > 0 || (!query.trim() && !unreadOnly)) && <BotSection title={t("Bots")} bots={others} selected={selected} empty={t("Create a Bot for a specific job")} />}
 			{hidden.length > 0 && (
 				<div className="section">
 					<button
@@ -128,18 +204,22 @@ function Sidebar({ onNew }: { onNew: () => void }) {
 						aria-expanded={showHidden}
 						onClick={() => useStore.setState({ showHidden: !showHidden })}
 					>
-						Hidden Bots · {hidden.length}
+						{t("Hidden Bots · ")}
+						{hidden.length}
 					</button>
-					{showHidden && hidden.map((bot) => <BotRow key={bot.botId} bot={bot} selected={bot.botId === selected} />)}
+					{(showHidden || query.trim()) && hidden.map((bot) => <BotRow key={bot.botId} bot={bot} selected={bot.botId === selected} />)}
 				</div>
 			)}
+			<GroupSidebar query={query} unreadOnly={unreadOnly} />
+			<ConversationSearch query={query} unreadOnly={unreadOnly} />
 			<div className="sidebar-footer">
 				<button
 					type="button"
 					className={`nav-item ${view.kind === "settings" ? "is-selected" : ""}`}
 					onClick={() => useStore.setState({ view: { kind: "settings" } })}
 				>
-					Settings <kbd>⌘,</kbd>
+					{t("Settings")}
+					<kbd>⌘,</kbd>
 				</button>
 			</div>
 		</nav>
@@ -154,8 +234,8 @@ function BotSection(props: {
 }) {
 	return (
 		<div className="section">
-			<div className="section-title">{props.title}</div>
-			{props.bots.length === 0 && props.empty !== undefined && <div className="section-empty">{props.empty}</div>}
+			<div className="section-title">{t(props.title)}</div>
+			{props.bots.length === 0 && props.empty !== undefined && <div className="section-empty">{t(props.empty)}</div>}
 			{props.bots.map((bot) => (
 				<BotRow key={bot.botId} bot={bot} selected={bot.botId === props.selected} />
 			))}
@@ -172,7 +252,7 @@ const ACTIVITY_LABEL: Record<BotSummary["activity"], string | undefined> = {
 };
 
 function BotRow({ bot, selected }: { readonly bot: BotSummary; readonly selected: boolean }) {
-	const label = ACTIVITY_LABEL[bot.activity];
+	const label = bot.activity === "unread" ? undefined : ACTIVITY_LABEL[bot.activity];
 	return (
 		<button
 			type="button"
@@ -180,18 +260,14 @@ function BotRow({ bot, selected }: { readonly bot: BotSummary; readonly selected
 			onClick={() => void openBot(bot.botId).catch(report)}
 			aria-current={selected ? "page" : undefined}
 		>
-			<Avatar name={bot.name} />
-			<span className="bot-row-text">
-				<span className="bot-row-name">{bot.name}</span>
-				<span className="bot-row-role">{label ?? bot.role}</span>
-			</span>
-			{label !== undefined && <span className={`activity activity-${bot.activity}`} aria-label={label} />}
+			<Avatar core={bot.kind === "core"} name={bot.name} />
+			<RosterPreview conversationKey={`bot:${bot.botId}`} name={bot.name} core={bot.kind === "core"} fallback={bot.role} activity={label} />
 		</button>
 	);
 }
 
 /** Stable hue per name so a Bot keeps its color across sessions. */
-function Avatar({ name, size = 28 }: { readonly name: string; readonly size?: number }) {
+function Avatar({ name, size = 34, core = false }: { readonly name: string; readonly size?: number; readonly core?: boolean }) {
 	let hash = 0;
 	for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
 	const initials = name
@@ -201,8 +277,19 @@ function Avatar({ name, size = 28 }: { readonly name: string; readonly size?: nu
 		.map((word) => word[0]?.toUpperCase())
 		.join("");
 	return (
-		<span className="avatar" style={{ width: size, height: size, background: `hsl(${hash % 360} 45% 38%)` }} aria-hidden>
-			{initials || "?"}
+		<span
+			className={`avatar ${core ? "avatar-core" : ""}`}
+			style={{ width: size, height: size, background: core ? "#202329" : `hsl(${hash % 360} 45% 38%)` }}
+			aria-hidden
+		>
+			{core ? (
+				<svg viewBox="0 0 32 32" width="72%" height="72%" fill="none">
+					<ellipse cx="16" cy="16" rx="7" ry="12" stroke="currentColor" strokeWidth="2.5" transform="rotate(35 16 16)" />
+					<circle cx="23" cy="9" r="3" fill="currentColor" />
+				</svg>
+			) : (
+				initials || "?"
+			)}
 		</span>
 	);
 }
@@ -211,13 +298,14 @@ function Home({ onNew }: { onNew: () => void }) {
 	const bots = useStore((state) => state.bots);
 	return (
 		<div className="home">
-			<h1>Meet your teammates</h1>
+			<h1>{t("Meet your teammates")}</h1>
 			<p>
-				A Bot is a long-lived teammate with one job. Give it a name and a role, then message it like a colleague. Every Bot
-				works on this Mac.
+				{t(
+					"A Bot is a long-lived teammate with one job. Give it a name and a role, then message it like a colleague. Every Bot works on this Mac.",
+				)}
 			</p>
 			<button type="button" className="primary" onClick={onNew}>
-				{bots.length === 0 ? "Create your first Bot" : "Create a Bot"}
+				{t(bots.length === 0 ? "Create your first Bot" : "Create a Bot")}
 			</button>
 		</div>
 	);
@@ -241,9 +329,9 @@ function NewBotDialog({ onClose }: { onClose: () => void }) {
 	return (
 		<div className="dialog-backdrop" onMouseDown={onClose}>
 			<form className="dialog" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
-				<h2>New chat</h2>
+				<h2>{t("Create a Bot")}</h2>
 				<label className="field">
-					<span>Bot name</span>
+					<span>{t("Bot name")}</span>
 					<input
 						autoFocus
 						value={name}
@@ -253,11 +341,11 @@ function NewBotDialog({ onClose }: { onClose: () => void }) {
 					/>
 				</label>
 				<div className="dialog-actions">
-					<button type="button" onClick={onClose}>
-						Cancel
+					<button type="button" data-dialog-close onClick={onClose}>
+						{t("Cancel")}
 					</button>
 					<button type="submit" className="primary" disabled={name.trim() === "" || busy}>
-						{name.trim() === "" ? "Create new Bot" : `Create “${name.trim()}” Bot`}
+						{name.trim() === "" ? t("Create new Bot") : t("Create “{name}” Bot", { name: name.trim() })}
 					</button>
 				</div>
 			</form>
@@ -269,48 +357,71 @@ function Conversation({ botId }: { readonly botId: string }) {
 	const bot = useStore((state) => state.bots.find((candidate) => candidate.botId === botId));
 	const snapshot = useStore((state) => state.conversations[botId]);
 	const [editing, setEditing] = useState(false);
-	const transcriptEnd = useRef<HTMLDivElement>(null);
-
-	useEffect(() => {
-		transcriptEnd.current?.scrollIntoView({ block: "end" });
-	}, [snapshot]);
 
 	if (bot === undefined) return null;
 	const running = snapshot?.live !== undefined || snapshot?.run !== undefined || (snapshot?.pending?.length ?? 0) > 0;
 
 	return (
-		<section className="conversation" aria-label={`Conversation with ${bot.name}`}>
+		<ConversationShell
+			className="conversation"
+			label={t("Conversation with {name}", { name: bot.name })}
+			details={
+				editing && (
+					<DetailsPanel title={t("Conversation details")} onClose={() => setEditing(false)}>
+						<EditProfile bot={bot} onClose={() => setEditing(false)} />
+					</DetailsPanel>
+				)
+			}
+		>
 			<header className="conversation-header">
-				<Avatar name={bot.name} size={32} />
+				<Avatar core={bot.kind === "core"} name={bot.name} size={32} />
 				<div className="conversation-title">
 					<div className="conversation-name">{bot.name}</div>
-					<div className="conversation-role">{bot.role || "No label"}</div>
+					<div className="conversation-role">{bot.role || t("No label")}</div>
 				</div>
+				<MarkReadButton conversationKey={`bot:${botId}`} cursor={snapshot?.readCursor} />
+				<button className="icon-button details-toggle" aria-label={t("Conversation details")} onClick={() => setEditing(!editing)}>
+					ⓘ
+				</button>
 				<BotMenu bot={bot} onEdit={() => setEditing(true)} />
 			</header>
-			{editing && <EditProfile bot={bot} onClose={() => setEditing(false)} />}
-			<div className="transcript">
+			<Timeline
+				readCursor={snapshot?.readCursor}
+				conversationKey={`bot:${botId}`}
+				activity={`${snapshot?.items.length}:${JSON.stringify(snapshot?.live ?? null)}`}
+			>
 				{snapshot === undefined || (snapshot.items.length === 0 && !running) ? (
 					<EmptyConversation bot={bot} />
 				) : (
 					<Transcript snapshot={snapshot} />
 				)}
-				<div ref={transcriptEnd} />
-			</div>
-			<Composer bot={bot} run={snapshot?.run} />
-		</section>
+			</Timeline>
+			<ChatComposer
+				conversationKey={`bot:${botId}`}
+				label={t("Message {name}", { name: bot.name })}
+				controls={<StopButton run={snapshot?.run} />}
+			/>
+		</ConversationShell>
 	);
 }
 
 function EmptyConversation({ bot }: { readonly bot: BotSummary }) {
+	const hasModel = useStore((state) => bot.model !== undefined || state.settings?.defaultModel !== undefined);
 	return (
 		<div className="empty-conversation">
-			<Avatar name={bot.name} size={56} />
-			<h2>{bot.name}</h2>
-			<p>
-				Lead with the result you need, the sources that matter, what {bot.name} must not do without asking, and what
-				finished work looks like.
-			</p>
+			<Avatar core={bot.kind === "core"} name={bot.name} size={56} />
+			<h2>{bot.kind === "core" ? t("What can we work on?") : bot.name}</h2>
+			<p>{t("A question, an idea, a task. Start here.")}</p>
+			<div className="capability-strip">
+				<span>{t("Think it through")}</span>
+				<span>{t("Work with files")}</span>
+				<span>{t("Remember what matters")}</span>
+			</div>
+			{!hasModel && (
+				<button type="button" onClick={() => useStore.setState({ view: { kind: "settings" } })}>
+					{t("Connect a model")}
+				</button>
+			)}
 		</div>
 	);
 }
@@ -341,12 +452,15 @@ function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 			{snapshot.live !== undefined && snapshot.live.state !== "waiting_approval" && (
 				<li className="message message-assistant is-live">
 					{snapshot.live.partial === undefined ? (
-						<span className="thinking">Working</span>
+						<span className="thinking">{t("Working")}</span>
 					) : (
 						<MessageText parts={snapshot.live.partial} markdown />
 					)}
 					{snapshot.live.retry !== undefined && (
-						<div className="message-error">Retrying after an error: {snapshot.live.retry.error}</div>
+						<div className="message-error">
+							{t("Retrying after an error: ")}
+							{snapshot.live.retry.error}
+						</div>
 					)}
 				</li>
 			)}
@@ -362,7 +476,7 @@ function Message(props: {
 	if (item.kind === "other") return null;
 	if (item.kind === "stopped") return <StoppedNote />;
 	return (
-		<li className={`message message-${item.kind}`}>
+		<li data-message-id={item.id} className={`message message-${item.kind}`}>
 			<MessageTime at={item.at} />
 			{item.kind === "assistant" && item.thinking !== undefined && <Thinking text={item.thinking} />}
 			<MessageText parts={item.parts} markdown={item.kind === "assistant"} />
@@ -390,6 +504,20 @@ function MessageText({ parts, markdown = false }: { readonly parts: readonly { r
 }
 
 const TOOL_VERBS: Record<string, readonly [running: string, done: string]> = {
+	codemode: ["Reading application data", "Read application data"],
+	app_conversations_search: ["Searching chat history", "Searched chat history"],
+	app_conversations_read: ["Reading chat context", "Read chat context"],
+	app_conversations_list: ["Listing conversations", "Listed conversations"],
+	app_bots_list: ["Inspecting Bots", "Inspected Bots"],
+	app_groups_list: ["Inspecting groups", "Inspected groups"],
+	group_inspect: ["Inspecting groups", "Inspected groups"],
+	group_create: ["Creating group", "Created group"],
+	group_update: ["Updating group", "Updated group"],
+	group_dissolve: ["Dissolving group", "Dissolved group"],
+	bot_inspect: ["Inspecting Bots", "Inspected Bots"],
+	bot_create: ["Creating Bot", "Created Bot"],
+	bot_update: ["Updating Bot", "Updated Bot"],
+	bot_delete: ["Deleting Bot", "Deleted Bot"],
 	local_read: ["Reading", "Read"],
 	local_list: ["Listing", "Listed"],
 	local_write: ["Writing", "Wrote"],
@@ -403,22 +531,52 @@ const TOOL_VERBS: Record<string, readonly [running: string, done: string]> = {
 };
 
 /** One row per tool call: a verb and subject, expandable to the arguments and output; failures open by default. */
-function ToolCard({ item, approval }: { readonly item: Extract<TranscriptItem, { kind: "tool" }>; readonly approval: PendingApproval | undefined }) {
+function ToolCard({
+	item,
+	approval,
+}: {
+	readonly item: Extract<TranscriptItem, { kind: "tool" }>;
+	readonly approval: PendingApproval | undefined;
+}) {
 	const args = (item.args ?? {}) as Record<string, unknown>;
+	let output = item.output;
+	if(item.tool === "codemode" && item.execution?.error) output=t(item.execution.error);
+	if (item.tool.startsWith("app_") && output) {
+		try {
+			const result = JSON.parse(output);
+			if (result.ok === false && typeof result.error?.message === "string") output = t(result.error.message);
+		} catch { /* Interrupted tools may not have a complete result envelope. */ }
+	}
+	const managedName = useStore(
+		(state) =>
+			state.bots.find((bot) => bot.botId === args.botId)?.name ?? state.groups.find((group) => group.groupId === args.groupId)?.name,
+	);
 	const [running, done] = TOOL_VERBS[item.tool] ?? [item.tool, item.tool];
-	const subject = String(args.description ?? args.path ?? args.url ?? args.command ?? args.query ?? args.section ?? args.taskId ?? "");
+	const subject = String(
+		args.name ??
+			managedName ??
+			args.botId ??
+			args.description ??
+			args.path ??
+			args.url ??
+			args.command ??
+			args.query ??
+			args.section ??
+			args.taskId ??
+			"",
+	);
 	const waiting = approval !== undefined;
 	const label = waiting
-		? "Waiting for approval"
+		? t("Waiting for approval")
 		: item.status === "running" || item.status === "pending"
-			? running
+			? t(running)
 			: item.status === "failed"
-				? `${done} · failed`
+				? t("{action} · failed", { action: t(done) })
 				: item.status === "interrupted"
-					? "Interrupted"
+					? t("Interrupted")
 					: item.status === "cancelled"
-						? `${running} · stopped`
-						: done;
+						? t("{action} · stopped", { action: t(running) })
+						: t(done);
 	const open = waiting || item.status === "failed" || item.status === "interrupted";
 	return (
 		<li className={`tool-card tool-${waiting ? "waiting" : item.status}`}>
@@ -427,45 +585,40 @@ function ToolCard({ item, approval }: { readonly item: Extract<TranscriptItem, {
 					<span className="tool-status" aria-hidden />
 					<span className="tool-verb">{label}</span>
 					<span className="tool-subject">{subject}</span>
-					{item.tool === "local_exec" && item.taskId !== undefined && <span className="tool-task">background · {item.taskId}</span>}
+					{item.tool === "local_exec" && item.taskId !== undefined && (
+						<span className="tool-task">
+							{t("background · ")}
+							{item.taskId}
+						</span>
+					)}
 					<RevealButton item={item} />
 				</summary>
+				{item.execution ? <ul className="code-activity" aria-label={t("Application read steps")}>{item.execution.children.map(child => {
+					const verb = TOOL_VERBS[child.capability];
+					return <li key={child.callId} data-state={child.state}><span>{t(verb?.[child.state === "running" ? 0 : 1] ?? child.capability)}</span><span>{t(child.state === "running" ? "Running" : child.state === "succeeded" ? "Completed" : child.state === "cancelled" ? "Stopped" : "Failed")}</span></li>;
+				})}</ul> : null}
+				{item.tool === "codemode" && typeof args.code === "string" ? <details className="code-source"><summary>{t("View script")}</summary><pre className="tool-output">{args.code}</pre></details> : null}
 				{item.tool === "local_exec" && typeof args.command === "string" && <pre className="tool-command">$ {args.command}</pre>}
-				{item.output !== undefined && item.output !== "" && <pre className="tool-output">{item.output}</pre>}
+				{output !== undefined && output !== "" && <pre className="tool-output">{output}</pre>}
 			</details>
 			{approval !== undefined && <ApprovalCard approval={approval} />}
 		</li>
 	);
 }
 
-function ApprovalCard({ approval }: { readonly approval: PendingApproval }) {
-	const decide = (decision: ApprovalDecision): void =>
-		void api["approvals.decide"]({ approvalId: approval.approvalId, decision }).catch(report);
-	const args = (approval.args ?? {}) as Record<string, unknown>;
-	return (
-		<div className="approval" role="group" aria-label="Approval request">
-			<div className="approval-reason">{approval.reason}</div>
-			<pre className="approval-args">
-				{approval.tool === "local_exec"
-					? `${String(args.command ?? "")}${args.cwd === undefined ? "" : `\n# in ${String(args.cwd)}`}`
-					: JSON.stringify(approval.args, null, 2)}
-			</pre>
-			<div className="approval-actions">
-				<button type="button" onClick={() => decide("deny")}>
-					Deny
-				</button>
-				<button type="button" className="primary" onClick={() => decide("allow_once")} autoFocus>
-					Allow once
-				</button>
-			</div>
-			<AlwaysAllow approval={approval} />
-		</div>
-	);
-}
-
 function BotMenu({ bot, onEdit }: { readonly bot: BotSummary; readonly onEdit: () => void }) {
 	const [open, setOpen] = useState(false);
 	const [deleting, setDeleting] = useState(false);
+	const menu = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (!open) return;
+		menu.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+		const close = (event: PointerEvent) => {
+			if (!menu.current?.contains(event.target as Node)) setOpen(false);
+		};
+		document.addEventListener("pointerdown", close);
+		return () => document.removeEventListener("pointerdown", close);
+	}, [open]);
 	const update = async (change: { pinned?: boolean; status?: "active" | "hidden" }): Promise<void> => {
 		setOpen(false);
 		try {
@@ -484,30 +637,51 @@ function BotMenu({ bot, onEdit }: { readonly bot: BotSummary; readonly onEdit: (
 		}
 	};
 	return (
-		<div className="menu">
+		<div className="menu" ref={menu}>
 			<button type="button" className="icon-button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
 				•••
 			</button>
 			{open && (
-				<div className="menu-popover" role="menu" onMouseLeave={() => setOpen(false)}>
+				<div
+					className="menu-popover"
+					role="menu"
+					onKeyDown={(e) => {
+						if (e.key === "Escape") {
+							setOpen(false);
+							e.currentTarget.parentElement?.querySelector<HTMLElement>("button")?.focus();
+						}
+						if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+							e.preventDefault();
+							const items = [...e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+							const index = items.indexOf(document.activeElement as HTMLElement);
+							items[
+								e.key === "Home"
+									? 0
+									: e.key === "End"
+										? items.length - 1
+										: (index + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length
+							]?.focus();
+						}
+					}}
+				>
 					<button type="button" role="menuitem" onClick={() => (setOpen(false), onEdit())}>
-						Edit profile
+						{t("Edit profile")}
 					</button>
-					<button type="button" role="menuitem" onClick={() => void update({ pinned: !bot.pinned })}>
-						{bot.pinned ? "Unpin" : "Pin"}
-					</button>
-					<button
-						type="button"
-						role="menuitem"
-						onClick={() => void update({ status: bot.status === "hidden" ? "active" : "hidden" })}
-					>
-						{bot.status === "hidden" ? "Show in sidebar" : "Hide from sidebar"}
-					</button>
+					{bot.kind !== "core" && (
+						<>
+							<button type="button" role="menuitem" onClick={() => void update({ pinned: !bot.pinned })}>
+								{t(bot.pinned ? "Unpin" : "Pin")}
+							</button>
+							<button type="button" role="menuitem" onClick={() => void update({ status: bot.status === "hidden" ? "active" : "hidden" })}>
+								{t(bot.status === "hidden" ? "Show in sidebar" : "Hide from sidebar")}
+							</button>
+						</>
+					)}
 					<button type="button" role="menuitem" onClick={() => void newTopic()}>
-						New topic
+						{t("New topic")}
 					</button>
 					<DuplicateBotItem bot={bot} onDone={() => setOpen(false)} />
-					<DeleteBotItem onChoose={() => (setOpen(false), setDeleting(true))} />
+					{bot.kind !== "core" && <DeleteBotItem onChoose={() => (setOpen(false), setDeleting(true))} />}
 				</div>
 			)}
 			{deleting && <ConfirmDeleteBot bot={bot} onClose={() => setDeleting(false)} />}
@@ -521,10 +695,10 @@ function EditProfile({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 		<div className="profile">
 			<div className="profile-tabs" role="tablist">
 				<button type="button" role="tab" aria-selected={tab === "profile"} onClick={() => setTab("profile")}>
-					Profile
+					{t("Profile")}
 				</button>
 				<button type="button" role="tab" aria-selected={tab === "memory"} onClick={() => setTab("memory")}>
-					Memory
+					{t("Memory")}
 				</button>
 			</div>
 			{tab === "profile" ? <ProfileForm bot={bot} onClose={onClose} /> : <ProfileMemory botId={bot.botId} onClose={onClose} />}
@@ -535,6 +709,9 @@ function EditProfile({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 const THINKING_LABEL: Record<ThinkingLevel, string> = { off: "Off", low: "Low", medium: "Medium", high: "High" };
 
 function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
+	const [revision, setRevision] = useState(bot.revision);
+	const [saveError, setSaveError] = useState("");
+	const [saving, setSaving] = useState(false);
 	const [name, setName] = useState(bot.name);
 	const [role, setRole] = useState(bot.role);
 	const [instructions, setInstructions] = useState(bot.instructions);
@@ -548,9 +725,12 @@ function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 	);
 	const save = async (event: FormEvent): Promise<void> => {
 		event.preventDefault();
+		if (saving) return;
+		setSaving(true);
 		try {
 			await api["bots.update"]({
 				botId: bot.botId,
+				expectedRevision: revision,
 				name: name.trim() || bot.name,
 				role,
 				instructions,
@@ -560,42 +740,79 @@ function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 			await refreshBots();
 			onClose();
 		} catch (error) {
-			report(error);
+			setSaveError(errorMessage(error));
+		} finally {
+			setSaving(false);
 		}
 	};
 	return (
 		<form className="profile-form" onSubmit={save}>
+			<p className="field-hint">
+				{t(
+					"Prompt defines this Bot's role and behavior. Saved changes apply to the next model request; a reply already in progress uses its existing context.",
+				)}
+			</p>
+			<div className="memory-meta">
+				{t("Revision")} {revision}
+			</div>
+			{saveError && (
+				<div role="alert">
+					{t(saveError)}{" "}
+					<button
+						type="button"
+						disabled={saving}
+						onClick={() =>
+							void api["bots.list"]({})
+								.then((bots) => {
+									const fresh = bots.find((item) => item.botId === bot.botId);
+									if (!fresh) return;
+									setRevision(fresh.revision);
+									setName(fresh.name);
+									setRole(fresh.role);
+									setInstructions(fresh.instructions);
+									setModel(fresh.model);
+									setThinkingLevel(fresh.thinkingLevel ?? "off");
+									setSaveError("");
+								})
+								.catch(report)
+						}
+					>
+						{t("Reload profile")}
+					</button>
+				</div>
+			)}
 			<div className="profile-grid">
 				<label className="field">
-					<span>Name</span>
+					<span>{t("Name")}</span>
 					<input value={name} onChange={(event) => setName(event.target.value)} />
 				</label>
 				<label className="field">
-					<span>Label</span>
-					<input value={role} placeholder="Research" onChange={(event) => setRole(event.target.value)} />
+					<span>{t("Label")}</span>
+					<input value={role} placeholder={t("Research")} onChange={(event) => setRole(event.target.value)} />
 				</label>
 			</div>
 			<label className="field">
-				<span>Description</span>
+				<span>{t("Prompt")}</span>
 				<textarea
 					rows={4}
+					aria-label={t("Prompt")}
 					value={instructions}
-					placeholder="Own the weekly account review. Never send external messages without approval."
+					placeholder={t("Own the weekly account review. Never send external messages without approval.")}
 					onChange={(event) => setInstructions(event.target.value)}
 				/>
 			</label>
 			<div className="profile-grid">
 				<label className="field">
-					<span>Model</span>
-					<ModelSelect value={model} onChange={setModel} emptyLabel="Use the default model" />
+					<span>{t("Model")}</span>
+					<ModelSelect value={model} onChange={setModel} emptyLabel={t("Use the default model")} />
 				</label>
 				{reasoning && (
 					<label className="field">
-						<span>Thinking</span>
+						<span>{t("Thinking")}</span>
 						<select value={thinkingLevel} onChange={(event) => setThinkingLevel(event.target.value as ThinkingLevel)}>
 							{(Object.keys(THINKING_LABEL) as ThinkingLevel[]).map((level) => (
 								<option key={level} value={level}>
-									{THINKING_LABEL[level]}
+									{t(THINKING_LABEL[level])}
 								</option>
 							))}
 						</select>
@@ -604,58 +821,13 @@ function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 			</div>
 			<div className="dialog-actions">
 				<button type="button" onClick={onClose}>
-					Cancel
+					{t("Cancel")}
 				</button>
-				<button type="submit" className="primary">
-					Save profile
+				<button type="submit" className="primary" disabled={saving}>
+					{t("Save profile")}
 				</button>
 			</div>
 		</form>
-	);
-}
-
-function Composer({ bot, run }: { readonly bot: BotSummary; readonly run: RunRecord | undefined }) {
-	const [text, setText] = useState("");
-	const input = useRef<HTMLTextAreaElement>(null);
-
-	useEffect(() => input.current?.focus(), [bot.botId]);
-
-	const send = async (): Promise<void> => {
-		const message = text.trim();
-		if (message === "") return;
-		setText("");
-		try {
-			await sendMessage(bot.botId, message);
-		} catch (error) {
-			setText(message);
-			report(error);
-		}
-	};
-	const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
-		if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-			event.preventDefault();
-			void send();
-		}
-	};
-	return (
-		<div className="composer">
-			<textarea
-				ref={input}
-				rows={1}
-				value={text}
-				placeholder={`Message ${bot.name}`}
-				onChange={(event) => setText(event.target.value)}
-				onKeyDown={onKeyDown}
-				aria-label={`Message ${bot.name}`}
-			/>
-			<div className="composer-actions">
-				<span className="composer-hint">Enter to send · Shift+Enter for a new line</span>
-				<StopButton run={run} />
-				<button type="button" className="primary send" disabled={text.trim() === ""} onClick={() => void send()}>
-					Send
-				</button>
-			</div>
-		</div>
 	);
 }
 
@@ -689,11 +861,19 @@ function ModelSelect(props: {
 				);
 			}}
 		>
-			<option value="">{props.emptyLabel}</option>
+			<option value="">{t(props.emptyLabel)}</option>
 			{/* Keep a stored model selectable even when its provider key was removed. */}
-			{props.value !== undefined && !configured.has(props.value.provider) && <option value={selected}>{selected}</option>}
+			{props.value !== undefined && !groups.some(([, list]) => list.some((m) => `${m.provider}/${m.modelId}` === selected)) && (
+				<option value={selected}>
+					{selected}
+					{t(" · Unavailable")}
+				</option>
+			)}
 			{groups.map(([provider, list]) => (
-				<optgroup key={provider} label={provider}>
+				<optgroup
+					key={provider}
+					label={`${provider} · ${t(list[0]?.source === "custom" ? "Custom" : "Built-in")}${list[0]?.overridden ? t(" · Local override") : ""}`}
+				>
 					{list.map((model) => (
 						<option key={model.modelId} value={`${model.provider}/${model.modelId}`}>
 							{model.name}
@@ -706,6 +886,9 @@ function ModelSelect(props: {
 }
 
 function Settings() {
+	useEffect(() => {
+		void refreshSettings().catch(report);
+	}, []);
 	const settings = useStore((state) => state.settings);
 	const [providerId, setProviderId] = useState("openai");
 	const [apiKey, setApiKey] = useState("");
@@ -727,26 +910,67 @@ function Settings() {
 	};
 
 	return (
-		<section className="settings" aria-label="Settings">
-			<h1>Settings</h1>
+		<section className="settings" aria-label={t("Settings")}>
+			<header className="settings-heading">
+				<span className="eyebrow">{t("MAKE IT YOURS")}</span>
+				<h1>{t("Settings")}</h1>
+				<p className="muted">{t("Your models, preferences and permissions. On your Mac.")}</p>
+			</header>
+			<nav className="settings-jump" aria-label={t("Settings sections")}>
+				{[
+					["models", "Models"],
+					["language", "Language"],
+					["permissions", "Permissions"],
+					["data", "Data"],
+				].map(([id, label]) => (
+					<button type="button" key={id} onClick={() => document.getElementById(`settings-${id}`)?.scrollIntoView({ block: "start" })}>
+						{t(label!)}
+					</button>
+				))}
+			</nav>
 
-			<div className="settings-group">
-				<h2>Default model</h2>
-				<p className="muted">Bots without a model of their own use this one.</p>
+			<div className="settings-group" id="settings-models">
+				<h2>{t("Default model")}</h2>
+				<p className="muted">{t("Bots without a model of their own use this one.")}</p>
 				<ModelSelect
 					value={settings.defaultModel}
 					emptyLabel={configured.length === 0 ? "Add an API key below first" : "Choose a model"}
 					onChange={(model) =>
-						void api["settings.update"]({ defaultModel: model ?? null }).then(refreshSettings).catch(report)
+						void api["settings.update"]({ defaultModel: model ?? null })
+							.then(refreshSettings)
+							.catch(report)
 					}
 				/>
 			</div>
 
+			<div className="settings-group" id="settings-language">
+				<label className="field">
+					<span>{t("Language")}</span>
+					<select
+						aria-label={t("Language")}
+						value={settings.language ?? "en"}
+						onChange={(event) =>
+							void api["settings.update"]({ language: event.target.value as "en" | "zh-CN" })
+								.then(refreshSettings)
+								.catch(report)
+						}
+					>
+						<option value="en">English</option>
+						<option value="zh-CN">简体中文</option>
+					</select>
+				</label>
+				<p className="model-caption">{t("Changes the app interface. Your conversations and Bot instructions stay as written.")}</p>
+			</div>
 			<div className="settings-group">
-				<h2>Model providers</h2>
-				<p className="muted">Keys are stored in the macOS Keychain and never shown again.</p>
+				<h2>{t("Connect a model")}</h2>
+				<ModelSetup />
+			</div>
+
+			<div className="settings-group">
+				<h2>{t("Provider credentials")}</h2>
+				<p className="muted">{t("Keys are stored in the macOS Keychain and never shown again.")}</p>
 				<form className="key-form" onSubmit={saveKey}>
-					<select value={providerId} onChange={(event) => setProviderId(event.target.value)} aria-label="Provider">
+					<select value={providerId} onChange={(event) => setProviderId(event.target.value)} aria-label={t("Provider")}>
 						{settings.providers.map((provider) => (
 							<option key={provider.providerId} value={provider.providerId}>
 								{provider.name}
@@ -757,33 +981,29 @@ function Settings() {
 						type="password"
 						autoComplete="off"
 						value={apiKey}
-						placeholder="API key"
+						placeholder={t("API key")}
 						onChange={(event) => setApiKey(event.target.value)}
-						aria-label="API key"
+						aria-label={t("API key")}
 					/>
 					<button type="submit" className="primary" disabled={apiKey.trim() === ""}>
-						Save key
+						{t("Save key")}
 					</button>
 				</form>
 				<ul className="provider-list">
-					{configured.length === 0 && <li className="muted">No provider keys yet.</li>}
+					{configured.length === 0 && <li className="muted">{t("No provider keys yet.")}</li>}
 					{configured.map((provider) => (
 						<li key={provider.providerId}>
 							<span>{provider.name}</span>
 							<span className="muted">
-								{provider.keyStored ? "Key stored" : "Key from models.json"}
+								{t(provider.keyStored ? "Key stored" : "Key from models.json")}
 								{provider.source === "config" && " · models.json"}
 							</span>
 							{provider.keyStored && (
 								<button
 									type="button"
-									onClick={() =>
-										void api["credentials.delete"]({ providerId: provider.providerId })
-											.then(refreshSettings)
-											.catch(report)
-									}
+									onClick={() => void api["credentials.delete"]({ providerId: provider.providerId }).then(refreshSettings).catch(report)}
 								>
-									Remove
+									{t("Remove")}
 								</button>
 							)}
 						</li>
@@ -791,41 +1011,50 @@ function Settings() {
 				</ul>
 			</div>
 			<WebSearchSettings />
-			<CommandSettings />
+			<div id="settings-permissions">
+				<CommandSettings />
+			</div>
 			<FolderSettings workspace={settings.workspace} />
 
 			<div className="settings-group">
-				<h2>Your own providers</h2>
+				<h2>{t("Your own providers")}</h2>
 				<p className="muted">
-					Add OpenAI- or Anthropic-compatible endpoints in <code>{settings.modelConfig.path}</code>. Changes apply
-					when you open Settings or choose a model.
+					{t("Add OpenAI- or Anthropic-compatible endpoints in ")}
+					<code>{settings.modelConfig.path}</code>
+					{t(". Changes apply when you open Settings or choose a model.")}
 				</p>
 				{settings.providers.some((provider) => provider.source === "config" && !provider.configured) && (
 					<p className="muted">
-						Without a key:{" "}
+						{t("Without a key:")}{" "}
 						{settings.providers
 							.filter((provider) => provider.source === "config" && !provider.configured)
 							.map((provider) => provider.name)
 							.join(", ")}
-						. Save one above or fix its <code>apiKey</code>.
+						{t(". Save one above or fix its ")}
+						<code>apiKey</code>.
 					</p>
 				)}
 				{settings.modelConfig.errors.length > 0 && (
-					<ul className="config-errors" aria-label="Configuration problems">
+					<ul className="config-errors" aria-label={t("Configuration problems")}>
 						{settings.modelConfig.errors.map((error) => (
 							<li key={error}>{error}</li>
 						))}
 					</ul>
 				)}
 				<button type="button" onClick={() => void refreshSettings().catch(report)}>
-					Reload
+					{t("Reload")}
 				</button>
 			</div>
 
-			<div className="settings-group">
-				<h2>Data</h2>
+			<ManagementHistory />
+			<div className="settings-group" id="settings-data">
+				<h2>{t("Data")}</h2>
 				<p className="muted">
-					Conversations are stored on this Mac in <code>{settings.dataDirectory}</code>.
+					{t("Conversations, Bot memory and operation logs are stored on this Mac in ")}
+					<code>{settings.dataDirectory}</code>
+					{t(
+						". No automatic analytics or log uploads. Your selected model and search providers receive task-relevant input when you use them.",
+					)}
 				</p>
 			</div>
 		</section>

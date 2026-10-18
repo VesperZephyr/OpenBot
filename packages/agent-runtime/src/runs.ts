@@ -6,7 +6,7 @@ import type { Context } from "@earendil-works/chord/context";
 import { defineDoc, type Harness } from "@earendil-works/pi-durable";
 import type { BotId, RunRecord } from "@openbot/protocol";
 
-/** Terminal Runs kept per Bot; older ones are pruned when another Run of that Bot ends. */
+/** Direct-chat terminal Runs kept per Bot. Group Runs retain identities for durable delivery replay. */
 export const KEPT_TERMINAL_RUNS = 50;
 
 /** One message of a Run as the user sent it; the text is kept to detect a reused request ID with other content. */
@@ -25,6 +25,7 @@ export type RunInput = {
 };
 
 export type StoredRun = RunRecord & {
+	readonly origin?: "user" | "peer";
 	readonly messages: readonly RunMessage[];
 	readonly inputs: readonly RunInput[];
 };
@@ -32,7 +33,7 @@ export type StoredRun = RunRecord & {
 /** The stored form: Pi documents take mutable JSON, so read-only arrays become plain ones. */
 type Stored<T> = T extends readonly (infer U)[] ? Stored<U>[] : T extends object ? { -readonly [K in keyof T]: Stored<T[K]> } : T;
 
-const RunsDoc = defineDoc<{ runs: Record<string, Stored<StoredRun>> }>({
+export const RunsDoc = defineDoc<{ runs: Record<string, Stored<StoredRun>> }>({
 	kind: "openbot.runs",
 	version: 1,
 	scope: "session",
@@ -81,7 +82,7 @@ export function runStore(harness: Harness, context: Context): RunStore {
 
 function prune(runs: Record<string, Stored<StoredRun>>, botId: BotId): void {
 	const ended = Object.values(runs)
-		.filter((run) => run.botId === botId && isTerminal(run.state))
+		.filter((run) => run.botId === botId && !run.channelId && isTerminal(run.state))
 		.sort((a, b) => b.createdAt - a.createdAt);
 	for (const run of ended.slice(KEPT_TERMINAL_RUNS)) delete runs[run.runId];
 }

@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import type { CommandRule, CommandSetting, FolderGrant, PolicySettings as Policy } from "@openbot/protocol";
 import { useEffect, useState } from "react";
 import { api, report } from "./store";
@@ -31,17 +32,17 @@ export function CommandSettings() {
 		void api["policy.update"](change).then(setPolicy).catch(report);
 
 	return (
-		<div className="settings-group" aria-label="Commands">
-			<h2>Commands</h2>
-			<p className="muted">How Bots may run shell commands on this Mac.</p>
+		<div className="settings-group" aria-label={t("Commands")}>
+			<h2>{t("Commands")}</h2>
+			<p className="muted">{t("How Bots may run shell commands on this Mac.")}</p>
 			<select
 				value={policy.commandSetting}
 				onChange={(event) => update({ commandSetting: event.target.value as CommandSetting })}
-				aria-label="Command setting"
+				aria-label={t("Command setting")}
 			>
 				{(Object.keys(SETTING_LABELS) as CommandSetting[]).map((setting) => (
 					<option key={setting} value={setting}>
-						{SETTING_LABELS[setting]}
+						{t(SETTING_LABELS[setting])}
 					</option>
 				))}
 			</select>
@@ -51,23 +52,20 @@ export function CommandSettings() {
 					checked={policy.readOnlyDefault}
 					onChange={(event) => update({ readOnlyDefault: event.target.checked })}
 				/>
-				<span>
-					Run read-only commands inside granted folders without asking (<code>rg</code>, <code>grep</code>, <code>ls</code>,{" "}
+				<span>{t("Run read-only commands inside granted folders without asking (")}<code>rg</code>, <code>grep</code>, <code>ls</code>,{" "}
 					<code>cat</code>, <code>git status</code>, …)
 				</span>
 			</label>
-			<ul className="provider-list" aria-label="Command rules">
-				{policy.rules.length === 0 && <li className="muted">No rules yet. Choose Always allow on a command to add one.</li>}
+			<ul className="provider-list" aria-label={t("Command rules")}>
+				{policy.rules.length === 0 && <li className="muted">{t("No rules yet. Choose Always allow on a command to add one.")}</li>}
 				{policy.rules.map((rule) => (
 					<li key={rule.id}>
 						<code>{ruleText(rule)}</code>
 						<button
 							type="button"
-							aria-label={`Delete rule ${ruleText(rule)}`}
+							aria-label={t("Delete rule {rule}", {rule: ruleText(rule)})}
 							onClick={() => void api["policy.rules.delete"]({ id: rule.id }).then(setPolicy).catch(report)}
-						>
-							Delete
-						</button>
+						>{t("Delete")}</button>
 					</li>
 				))}
 			</ul>
@@ -99,31 +97,27 @@ export function FolderSettings({ workspace }: { readonly workspace: string }) {
 	};
 
 	return (
-		<div className="settings-group" aria-label="Folders">
-			<h2>Folders</h2>
-			<p className="muted">Bots read and write these folders with file tools without asking.</p>
-			<ul className="provider-list" aria-label="Granted folders">
+		<div className="settings-group" aria-label={t("Folders")}>
+			<h2>{t("Folders")}</h2>
+			<p className="muted">{t("Bots read and write these folders with file tools without asking.")}</p>
+			<ul className="provider-list" aria-label={t("Granted folders")}>
 				<li>
 					<code>{workspace}</code>
-					<span className="muted">Workspace · read and write</span>
+					<span className="muted">{t("Workspace · read and write")}</span>
 				</li>
 				{grants?.map((grant) => (
 					<li key={grant.id}>
 						<code>{grant.path}</code>
-						<span className="muted">{grant.access === "read" ? "Read" : "Read and write"}</span>
+						<span className="muted">{t(grant.access === "read" ? "Read" : "Read and write")}</span>
 						<button
 							type="button"
-							aria-label={`Revoke ${grant.path}`}
+							aria-label={t("Revoke {path}", {path: grant.path})}
 							onClick={() => void api["grants.revoke"]({ id: grant.id }).then(setGrants).catch(report)}
-						>
-							Revoke
-						</button>
+						>{t("Revoke")}</button>
 					</li>
 				))}
 			</ul>
-			<button type="button" onClick={() => void add()}>
-				Add folder
-			</button>
+			<button type="button" onClick={() => void add()}>{t("Add folder")}</button>
 		</div>
 	);
 }

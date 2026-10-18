@@ -84,7 +84,7 @@ The reviewed upstream is [earendil-works/pi](https://github.com/earendil-works/p
 | `packages/durable` | `@earendil-works/pi-durable` | Persistent conversations, model generation, tool tasks, compaction, documents, state observation, and recovery |
 | `packages/ai` | `@earendil-works/pi-ai` | Providers, credential resolution, model requests, streaming responses, and message/tool formats |
 | `packages/chord` | `@earendil-works/chord` | Context, cancellation, state, and document infrastructure used by Durable |
-| `packages/codemode` | `@earendil-works/pi-codemode` | A declared Durable dependency; retained without registering Code Mode for the model in the first release |
+| `packages/codemode` | `@earendil-works/pi-codemode` | Core-only local read orchestration through the agent-runtime adapter (B25) |
 | `packages/telemetry` | `@earendil-works/pi-telemetry` | Telemetry contracts required by `pi-ai` |
 
 The dependency graph is `durable -> ai / chord / codemode`, with `ai -> telemetry`. The initial import excludes `pi-agent-core`, `pi-coding-agent`, and the TUI. All five packages declare `engines.node >= 22.19.0`. See the [Durable manifest](https://github.com/earendil-works/pi/blob/b45e0ebcc5ae2fc42a6f2f23104d10e656e6bedb/packages/durable/package.json) and [AI manifest](https://github.com/earendil-works/pi/blob/b45e0ebcc5ae2fc42a6f2f23104d10e656e6bedb/packages/ai/package.json).
@@ -317,7 +317,7 @@ Pi runs inside the Host. One Pi `Harness` opens the store and runs every Bot's c
 
 | OpenBot concept | Pi integration point | Contract |
 | --- | --- | --- |
-| Bot thread | `harness.createConversation({ ownership: { kind: "ownerless" } })` | One main conversation per Bot; record `botId`, workspace, and local-target binding in OpenBot documents |
+| Bot thread | `harness.createConversation({ ownership: { kind: "ownerless" } })` | One direct conversation per Bot; additional conversations are mapped by `(botId, channelId)`; record workspace and local-target binding in OpenBot documents |
 | Bot profile | `conversation.configure({ model, thinkingLevel, instructions, extensions, tools, modelTools, cwd })` | Applied when the profile changes; takes effect from the next model request |
 | Start work | `conversation.submit({ type: "input", content, requestId, entry })` | Stable Pi request ID derived from the OpenBot request ID; OpenBot entry kinds use the `openbot.` prefix |
 | Steer a running Bot | `submit({ ..., whenBusy: "steer" })` | A user message to a Bot with an active Run joins that Run at the next tool boundary; routine and handoff input waits in the OpenBot queue instead |
@@ -369,7 +369,7 @@ Tool Router dispatches every model-selected tool to one of two destinations. **E
 | `web_search`, `web_fetch` | Host | Query the configured search provider (Tavily, key in the Keychain); fetch a public URL as Markdown with a `retrieval_outcome` label | Allowed; private and loopback addresses blocked, including after redirects |
 | `memory_update` | Host | Replace or append one section of the Bot's memory (8 KB of Markdown, session document `openbot.memory` keyed by Bot) | Allowed; visible and editable in the Bot's memory panel |
 | `skill_load`, `skill_save` | Host | Load a saved skill; save or revise a draft skill | Loading allowed; saving requires confirmation |
-| `bot_message`, `bot_handoff` | Host | Message another Bot or a group, or transfer a task with context | Allowed; recorded in both transcripts |
+| `bot_delegate`, `bot_handoff` | Host | Delegate a subtask or transfer ownership within the accepted group task | Active assigned Run, current membership, ancestry and root budget; local receipt and public handoff |
 | `routine_propose` | Host | Propose a new or changed routine for the user to confirm | Confirmation in the conversation |
 | `request_user_input` | Host | Ask the user a structured question or present a form step | Always allowed; the Run waits for the user |
 
@@ -442,17 +442,35 @@ Prefer a connector over browser automation when one exists.
 
 ### 5.7 Bots, Memory, Group Chats, and Handoff
 
+The accepted [D1 product design](tasks/d1-bot-product-design.md) is delivered through separate specs. [B17](tasks/b17-core-bot.md) establishes exactly one protected Core per local store, created before inference. Specialists are created only at the user's request, never seeded. Core identity is Host-owned and independent of name, Prompt and model; hide/delete/unpin are rejected before side effects. Existing Bots are preserved during migration. [B18](tasks/b18-core-management.md) adds Core-only `bot_inspect`, `bot_create`, `bot_update` and `bot_delete` Host tools. [B13a](tasks/b13a-channel-contexts.md) supplies independent channel contexts and [B13b](tasks/b13b-group-lifecycle.md) adds group lifecycle and user-directed group tasks.
+
+Management authority comes from the persisted Core identity and its conversation, never its name or instructions. The Pi adapter memoizes the originating user Run on the invocation; the Host verifies that provenance and binds the local target. Every mutation is a durable, exact proposal requiring Allow once; command rules and folder grants cannot approve it. Specialists neither receive the extension nor pass dispatch checks. Nullable update fields mean unchanged; removing a model override requires `useDefaultModel: true`. Management tools cannot mutate the Core, memory or policy.
+
+Bot profiles have monotonic revisions (legacy records read as revision 1). UI and management mutations share lifecycle guards and increment revisions. The desktop profile editor supplies its loaded revision and preserves drafts on conflict. Pi configured instructions include the profile revision, so persisted request sections identify the Prompt used; raw profile instructions are unchanged. A stale proposal fails before mutation; Host serialization prevents message admission or UI edits from interleaving with deletion. Deletion cancels active work and requests background-command termination before soft deletion. Pi conversation creation/configuration, profile registration/change and the successful management receipt commit together. Stable invocation identity and argument binding make replay return the committed result. Pending approval survives restart; denied/cancelled/failed receipts remain local. Settings projects recent metadata only, excluding prompts, memory and messages. These are application authorization guarantees, not isolation from other Bots' granted shell access.
+
 A Bot profile is an OpenBot session document containing `botId`, name, avatar, role description, instructions, model selection, enabled tool families, default working directory, and status (active, hidden, deleted). Creating a Bot creates its main Pi conversation and applies the profile through `configure()`.
 
-**Memory.** Each Bot has a memory: up to 8 KB of Markdown with stable preferences, role context, and summaries of prior work, kept in the session document `openbot.memory` keyed by `botId`, so it belongs to the Bot and survives new topics. A `memory` prompt section renders it; `memory_update` replaces or appends one section; the user can view and edit it. Memory is guidance, not a source of truth: for consequential decisions the Bot checks the current source.
+**Memory.** Each Bot has a memory: up to 8 KB of Markdown with stable preferences, role context, and summaries of prior work, kept in the session document `openbot.memory` keyed by `botId`, so it belongs to the Bot and survives new topics. A `memory` prompt section renders it; `memory_update` replaces or appends one section; the user can view and edit it. [B19](tasks/b19-memory-controls.md) adds monotonic revisions, source/time metadata, atomic expected-revision checks, and the latest 20 previous snapshots for preview/restore. Content-only documents read as revision 0 without losing text. Restore creates a new revision; clear changes the current document only. Model calls use Host-bound receipt identities, preventing replay from overwriting later corrections. Memory history belongs to its Bot; the Core has no cross-Bot memory tool. The UI supports English and Chinese. Memory is guidance, not a source of truth: for consequential decisions the Bot checks the current source.
 
 **Parallel work.** Bots run in parallel up to the active-Run cap (Section 7.2). Each conversation has at most one active Run. Bots share files, the browser profile, and connectors; concurrent writes to the same file are serialized by the executor and checked by the edit tool's expected-content check.
 
-**Group chats.** A group is an OpenBot document listing member Bots and backed by an ownerless Pi conversation used as a write-only transcript. A user message in a group is written to the group transcript. Each mentioned Bot, or a designated lead Bot when none is mentioned, receives it as an input to its own conversation with an `openbot.group-message` entry. A Bot's reply is written back to the group transcript as a write entry. Bots in a group can mention each other through `bot_message`.
+B13a retains existing direct conversation IDs and stores additional channel mappings locally. Profile/model changes reach all channels, while memory remains per Bot. Core management tools are available only in its direct conversation. Submissions, reset, abort, approvals and executor receipt acknowledgement bind the actual conversation; group task traffic cannot enter the direct subscription feed.
 
-**Handoff.** `bot_handoff` submits a task to another Bot's conversation with the request ID `handoff:<invocationId>`, which deduplicates retransmission after a crash. Both transcripts record the handoff. Work started by a handoff is unattended for approval-expiry purposes unless the user is in that conversation.
+**Group chats (B13b).** The local `openbot.groups` document stores group configuration, append-only public posts, immutable delivery inputs, management intents and replay receipts. Groups contain two to six existing Bots and a lead. IDs use the `group_` namespace and cannot alias the direct channel. The desktop user manages groups through `groups.change`; the persisted Core in its direct conversation has `group_inspect`, `group_create`, `group_update` and `group_dissolve`. Model-selected mutations require the exact Allow once approval, current revision and user-origin Run. Group contexts never receive management tools, including when their participant is Core.
 
-**Templates.** A Bot can be exported as a template containing its profile, instructions, and referenced skill names, excluding memory, conversation history, credentials, and grants. Importing a template creates a new Bot.
+A user post selects member IDs explicitly, or defaults to the persisted Core. Core is an implicit coordinator even when it is not a selected member. The lead is role metadata and does not route ordinary messages. Bot private chats retain direct routing. The Host records each recipient delivery before admitting a separate Run with request ID `delivery:<deliveryId>`. Input includes the objective and the latest twelve public posts, each capped at 2,000 characters, plus the current request. It excludes private chat history. Each Bot/group conversation shares the Bot's Prompt, model and memory. The exact Pi submission answer is published once, atomically with delivery completion, to its originating group and user post. A Bot reply does not start another Bot. Group Run identities remain durable for delivery replay; the direct-chat terminal Run retention limit does not prune them.
+
+Removing a member invalidates its pending deliveries; dissolution invalidates all pending deliveries and keeps read-only history. Cancellation is reconciled at startup before model resumption. Existing channel observers acknowledge tool receipts with the actual conversation ID. Deleting a Bot removes it from active groups in the profile transaction, clears its lead role and pauses new routing when a group has fewer than two selected members. UI snapshots expose channel-scoped approvals and stop controls. All records remain local; inference sends the selected task context to the user's configured provider. Groups and Bots share the Mac and are not filesystem security boundaries.
+
+**Bounded collaboration (B13c).** A dedicated channel extension exposes `bot_delegate` and `bot_handoff`; direct conversations do not receive these tools. The adapter memoizes the actual Run identity separately from management authority. Host validates the actor, channel and active Run; the store atomically validates ownership, current membership, captured roster and root limits before recording a child delivery, public handoff and fingerprinted invocation receipt. Children start only after the sender settles successfully. Delegation creates one result continuation after all children close; handoff transfers ownership without an acknowledgement wakeup. Further side effects from the transferring delivery are denied through Tool Router.
+
+Each user group post starts a durable root. Forward depth is limited to two, and every automatic delivery, including result continuations, consumes one of twelve slots. Self/ancestor targeting and exhausted limits pause the root and invalidate pending deliveries. Normal posts never wake peers. Results stay in the group context with peer-origin Runs, never Core's management-capable direct context. `collaboration.stop` invalidates one root before cancelling its Runs. Every routed tool carries a memoized Run ID; `tasks.stop` optionally filters by that ID, so tree cancellation also stops background commands from settled Runs without touching another root in the same conversation. Executor restart retains its existing orphan-process cleanup. Dissolution also stops implicit Core group work; removal invalidates affected descendants. Stable Run request IDs and atomic answer publication reconcile restart windows without duplicating logical deliveries. Existing B13b deliveries retain their accepted recipient and input.
+
+The desktop offers an explicit recipient picker and @ search, visible assignment/transfer/result labels, scoped approvals, root counters and bilingual pause/stop controls. An arbitrary @ string in model or user text is not a dispatch instruction unless the user selects a recipient. [B13c](tasks/b13c-collaboration.md) records the public Grok research, OpenBot-specific decisions and acceptance evidence.
+
+**Handoff (planned).** `bot_handoff` submits a task to another Bot's conversation with the request ID `handoff:<invocationId>`, which deduplicates retransmission after a crash. Both transcripts record the handoff. Work started by a handoff is unattended for approval-expiry purposes unless the user is in that conversation.
+
+**Templates (planned).** A Bot can be exported as a template containing its profile, instructions, and referenced skill names, excluding memory, conversation history, credentials, and grants. Importing a template creates a new Bot.
 
 ### 5.8 Skills and Routines
 
@@ -469,6 +487,8 @@ A Bot profile is an OpenBot session document containing `botId`, name, avatar, r
 - Triggers are time-based in the first release. Event triggers require a local event source, such as a connector that supports polling or a file-system watch; there is no inbound webhook endpoint.
 
 ### 5.9 Credentials and Secrets
+
+[B16](tasks/b16-model-sources.md) presents built-in and custom setup over one registry, with override metadata and explicit connection tests. UI authentication is API-key-only; OAuth is not implied by catalog support. Custom creation preserves JSONC and refuses existing IDs. Display endpoints expose origins only; provider test failures use safe fixed messages. Credential precedence is unchanged.
 
 Model, search, and connector credentials are stored in the macOS Keychain and loaded by the Host as needed. Renderers receive redacted settings.
 
@@ -489,6 +509,19 @@ Credential handling:
 - For form steps that are not secrets, `request_user_input` presents one form per step and the Bot fills the answers into the page.
 - Users should not paste passwords or one-time codes into chat; the UI warns when a message looks like one.
 
+### 5.10 Application Capabilities and Local Code Mode
+
+[D3](tasks/d3-app-capabilities.md) specifies an authorized application capability gateway in `server-core`, pure input/output descriptors in `protocol`, and separate desktop/Pi adapters over shared domain services. [B24](tasks/b24-app-capability-api.md) implements `conversations.list/search/read`, `bots.list` and `groups.list`. Desktop search uses the same gateway services; Core reads use routed tools with structured results. The Host binds active original Run, channel, origin, root request and local target before dispatch and rechecks authority before returning. Results are limited to 32 KiB; context keeps the exact anchor and original public text, with Unicode-safe clipping. Reads do not acknowledge unread state or mutate memory. Credentials, Prompt/memory bodies, tools and reasoning are excluded from these read projections. [B25](tasks/b25-local-app-code-mode.md) composes these reads locally; management integration remains separate in [B26](tasks/b26-code-mode-management.md).
+
+The Code Mode adapter uses the vendored Pi QuickJS implementation through `agent-runtime`; no remote code execution, unrestricted `env`, extra `models.*` calls or generic Host-method dispatcher is exposed. Caller identity, originating Run, scope, target and nested invocation ancestry are bound by the Host. Core direct user Runs may search retained nondeleted application history; Core group Runs are limited to that group's public content. Specialist management remains prohibited. Credentials, grants, approval decisions and Core self-modification stay outside the model surface.
+
+The model sees `codemode` and the existing direct work/management tools. Only the five application reads are callable inside scripts. Tool Router admits the parent without holding its leaf mutex; each child re-enters the router and Host gateway with Pi task ancestry and the persisted original Run. AppExecution documents retain IDs, scope, version/catalog/source digests, absolute deadline and child statuses; Pi owns the only replay/result journal. Intermediate results stay local unless the script selects them for output. Stop invalidates the parent and pending reads; scheduler recovery remains authoritative.
+
+QuickJS runs in a Node worker with a 64 MiB heap, at most two physical workers globally and one per conversation until actual exit. The VM bridge enforces 128 total/64 tool calls, eight outstanding calls, 32 KiB arguments/returns and 64 KiB aggregate output before crossing into the Host. Source is limited to 32 KiB and execution to an original 60-second deadline. Output defaults to 2,000 estimated tokens, at most 4,000. Pi scratch bounds remain unchanged. The worker entry, QuickJS WASM and license are staged outside app.asar beside the Host and use bundled Node. No spill environment is installed.
+
+
+Under B25, the parent script enters Tool Router orchestration admission without retaining a leaf sequencing lock. Every nested application call enters ordinary router validation/policy and the capability gateway, with current authorization checked again before dispatch. Typed result schemas, bounded discovery/output/worker lifetimes and stable child identities are required. Pi journals provide deterministic replay, while existing domain receipts and exact-change approvals remain authoritative for mutations. Partial script success never implies rollback. D3 specifies resource limits, privacy, UI projection and gates; B25/B26 remain draft until their integration evidence is available.
+
 ## 6. Local Interfaces
 
 ### 6.1 Desktop Application Protocol
@@ -497,9 +530,10 @@ The transport is private IPC with versioned request, response, and event envelop
 
 | Method | Semantics |
 | --- | --- |
-| `bots.create`, `bots.update`, `bots.list`, `bots.duplicate`, `bots.delete`, `bots.export`, `bots.import` | Manage Bot profiles and templates; Duplicate copies profile and memory, not history; Delete cancels the Bot's Run and keeps its conversation on disk |
-| `bots.memory.get`, `bots.memory.update` | View and edit a Bot's memory |
-| `conversations.list`, `conversations.snapshot`, `conversations.subscribe`, `conversations.reset` | List Bot, group, and routine-run conversations; deliver the current view followed by ordered updates for the subscribed conversation; start a new topic |
+| `bots.create`, `bots.update`, `bots.list`, `bots.duplicate`, `bots.delete`, `bots.export`, `bots.import` | Manage Bot profiles and templates; Duplicate copies profile and Prompt with empty memory and history; Delete cancels the Bot's Run and keeps its conversation on disk |
+| `bots.memory.get`, `bots.memory.update`, `bots.memory.restore` | Inspect current memory and bounded history; edit/restore with expected-revision checks |
+| `conversations.list`, `conversations.markRead` | Bounded local Bot/group latest-message summaries and durable read cursors; acknowledge a rendered snapshot through its incoming-message ordinal |
+| `conversations.snapshot`, `conversations.subscribe`, `conversations.reset` | Deliver the current direct-chat view and subscribed updates; start a new topic |
 | `groups.create`, `groups.update`, `groups.delete` | Manage group chats and membership |
 | `messages.submit` | Accept `requestId`, conversation, content, mentions, skill and connector attachments, and artifact references; return `runId`, state, and whether the message steered an active Run, after durable receipt |
 | `runs.cancel`, `runs.pause`, `runs.resume` | Persist an idempotent cancellation or pause request and report its outcome separately |
@@ -515,7 +549,7 @@ The transport is private IPC with versioned request, response, and event envelop
 | `secrets.provide`, `secrets.cancel` | Answer a secret request; the value travels only from main to Host |
 | `inputs.provide` | Answer a structured question or form step |
 | `artifacts.import`, `artifacts.export` | Copy selected inputs or generated outputs through authorized local paths |
-| `settings.get`, `settings.update`, `usage.get` | Read redacted settings, update configuration, and read per-Bot usage |
+| `settings.get`, `settings.update`, `usage.get` | Read redacted settings, update configuration (including local `language: en \| zh-CN`, default English), and read per-Bot usage |
 
 A request carries `protocolVersion`, `messageId`, `method`, and `params`. Electron main and the Host both validate `params` against the method's TypeBox schema (`@openbot/protocol/schemas`) and answer `invalid_request` otherwise. Mutating operations include a stable application request identity where retries could otherwise create duplicate work. `messages.submit` returns the same Run for the same request ID and content; different content under that ID is a conflict. Durable receipt does not mean model generation has started. A Bot's queued Run collects messages sent while it waits and submits them as one input when it starts.
 
@@ -605,6 +639,12 @@ References: [goose `ui/desktop`](https://github.com/aaif-goose/goose/tree/main/u
 
 The desktop interface follows Grok Bot's layout and vocabulary so that users and contributors can rely on a known product.
 
+B21 implements a shared private/group conversation shell, name/role filtering, unified New, responsive contextual details, structured group mentions and scroll anchoring. Private chats remain direct; ordinary group messages go to Core. The renderer stores versioned drafts and immutable send attempts locally, persists before dispatch and retries uncertain delivery only on explicit request using the same Host request ID. Newer edits survive late acknowledgements. Drafts are not model context and are not synchronized. The broader target interface below includes future surfaces tracked by separate task specs.
+
+[B22](tasks/b22-conversation-list.md) stores a bounded latest-message preview and monotonic incoming/read ordinals per private or group conversation in the Host-owned `openbot.conversation-index` session document. It is local presentation metadata, excluded from model context and diagnostics. Group publication updates the index atomically; direct projections catch up from retained history before publishing snapshots. Missing legacy records seed existing history as read. `conversations.list` reads this index without loading transcripts; `conversations.markRead` validates `{ conversationKey, through }` against the current incoming count. Snapshots supply the rendered read cursor, so a delayed acknowledgement cannot clear newer replies. Auto-read requires native-window and document focus/visibility, an unobstructed timeline and 400 ms at the bottom; explicit Mark as read uses the same snapshot cursor. Activity and drafts preserve independent unread counts. Core/pinned sections stay protected while rows within each section follow latest committed message time.
+
+[B23](tasks/b23-conversation-search.md) adds `conversations.search` with a literal query, unread/hidden filters and a bounded continuation cursor. `agent-runtime` owns a derived in-memory corpus of committed user/assistant and public group text, reconstructed from Host-owned durable history before readiness; projections update it before publication and only after successful commits. The Host resolves current Bot/group and unread eligibility. Searches do not load histories, mutate read state, invoke models, or emit search content to diagnostics. Results contain at most 30 stable message references and 180-code-point snippets. Renderer queries and targets are transient; exact-message navigation suppresses automatic read acknowledgement until ordinary navigation or Jump to latest. Memory and startup cost scale with retained text; persistent indexing is future work.
+
 | Area | Content |
 | --- | --- |
 | Sidebar | **New** (`Cmd+N`), search (`Cmd+K`), pinned Bots, Bots, groups, **Hidden Bots**, and entries for Routines, Skills, Connect apps, and Settings. Each Bot row shows its avatar, name, and state: Needs attention, Working, or Unread, in that priority |
@@ -626,6 +666,7 @@ The desktop interface follows Grok Bot's layout and vocabulary so that users and
 | Conversations, model context, generation tasks, tool tasks, and compaction | Pi Durable in the Host |
 | Bots, memory, groups, message queues, Runs, policy rules, grants, approvals, invocation records, routines, connector definitions, and settings | Versioned OpenBot documents in the Pi store, accessed through the runtime adapter |
 | Command lifetimes, invocation acceptance, final execution receipts, and retransmission | The executor's separate persistent ledger |
+| Unsent drafts and immutable send attempts | Versioned local storage in the desktop renderer partition; Host receipts remain authoritative for accepted messages |
 | Skill library | Files in the application data directory |
 | Artifact contents | The application-owned artifact directory; metadata in OpenBot documents |
 | Managed-browser profile, cookies, and logins | The browser's user-data directory owned by OpenBot |
@@ -635,7 +676,7 @@ The desktop interface follows Grok Bot's layout and vocabulary so that users and
 
 ### 7.2 Scheduling
 
-OpenBot keeps a durable Run queue. A Run starts when its conversation is idle and the number of active Runs is below the configurable cap (default 3); queued Runs are admitted oldest first across Bots. Routine occurrences wait for a slot like user work but run in their own conversations. A user message to a Bot with an active Run steers that Run (`whenBusy: "steer"`) instead of starting a new one; a message to a Bot whose Run is still queued joins that queued Run. Pi's submission ID is associated with the OpenBot Run; the stable request ID reconciles a crash between Pi admission and recording that association.
+OpenBot keeps a durable Run queue. A Run starts when its conversation is idle and the number of active Runs is below the configurable cap (default 3); queued Runs are admitted oldest first across Bots. Routine occurrences wait for a slot like user work but run in their own conversations. One Run may execute per Bot. Direct queued work has priority; non-direct work aged 30 seconds joins the oldest-first tier. A user message to a Bot with an active Run in the same channel steers that Run (`whenBusy: "steer"`) instead of starting a new one; a message to a Bot whose Run is still queued joins that queued Run. Pi's submission ID is associated with the OpenBot Run; the stable request ID reconciles a crash between Pi admission and recording that association.
 
 Within a Run, tools are sequential. Across Runs, the executor accepts concurrent invocations; it serializes writes to the same file, and desktop input waits for the single control lease.
 
@@ -724,6 +765,8 @@ The application data directory, normally `~/Library/Application Support/OpenBot/
 
 The Pi SQLite adapter uses WAL with `synchronous = NORMAL` at the reviewed baseline. Commits survive process crashes; the newest commits may be lost on power or host failure. Validate the storage behavior before making stronger durability guarantees.
 
+Clearing current memory is not data erasure. Retained memory versions, Pi journal entries, conversation context, backups and prior provider requests may still contain old facts. New topic excludes earlier conversation context from subsequent requests while retaining the current memory document.
+
 A backup includes consistent snapshots of application and executor state, artifact contents, the skill library, and version records. Pause writes or use verified backup APIs; copying a live SQLite file alone is insufficient. The browser profile and user project files require their own chosen backup scope. Credentials remain in the Keychain.
 
 Record application, Pi, protocol, and data-format versions for diagnosis and upgrades. Use `botId`, `runId`, and `invocationId` to correlate logs. Operational logs exclude credentials and secret values and avoid collecting full file content, page content, or screenshots by default. Verify migrations against a backup before advancing the data format.
@@ -789,3 +832,7 @@ Permissions, policy, and execution records are part of M1 from the start. Use Pi
 13. **State restores from backup:** Conversation state, Bot profiles and memory, routines, artifact references, skills, and execution records recover consistently, with application, Pi, and data-format versions recorded.
 
 The Pi source baseline and interfaces above were checked against upstream revision `b45e0ebcc` in a local checkout on 2026-10-14. Tool permissions, browser and macOS integration, crash recovery, real-model behavior, and packaged distribution remain implementation and acceptance work.
+
+### Local privacy and operation diagnostics
+
+Product stores, transcripts, memory, configuration and diagnostics stay on the Mac. There is no automatic analytics or log upload. Configured model and search services receive task-relevant inputs; local storage does not imply offline inference. Credentials stay in Keychain or explicitly configured local credential sources. B16 adds allowlisted operation diagnostics (generated ID, method, time, duration, outcome) to the bounded local Host log, excluding inputs, outputs, Prompt, memory and credential material. Authoritative Runs, approvals and execution receipts remain separate durable records.

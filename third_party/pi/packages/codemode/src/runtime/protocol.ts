@@ -1,4 +1,4 @@
-import type { CodemodeDuring, CodemodeOutputItem } from "../types.ts";
+import type { CodemodeBridgeLimits, CodemodeDuring, CodemodeOutputItem } from "../types.ts";
 import type { CodemodeWasmModule } from "../wasm.ts";
 
 /**
@@ -12,6 +12,7 @@ import type { CodemodeWasmModule } from "../wasm.ts";
  * cross a `postMessage` or a Workers RPC call unchanged.
  */
 export interface VmStartData {
+	bridgeLimits?: CodemodeBridgeLimits;
 	code: string;
 	/** `jsName` is the identifier the script uses; `description` is listed in `ALL_TOOLS`. */
 	tools: { name: string; jsName: string; description: string }[];

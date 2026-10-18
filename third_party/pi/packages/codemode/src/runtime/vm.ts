@@ -158,7 +158,24 @@ function crashMessage(error: unknown): WorkerToHostMessage {
 }
 
 export async function startVm(options: StartVmOptions): Promise<VmSession> {
-	const { data, post } = options;
+	const { data } = options;
+	let limited = false, toolCalls = 0, outputBytes = 2, outputItems = 0;
+	const pending = new Set<number>();
+	const limits = data.bridgeLimits;
+	const post = (message: WorkerToHostMessage) => { if (!limited) options.post(message); };
+	const violate = (): never => {
+		if (!limited) { limited = true; options.post({type:"crash",message:"Code Mode execution limit exceeded"}); }
+		throw new Error("Code Mode execution limit exceeded");
+	};
+	const bytes = (text: string) => new TextEncoder().encode(text).length;
+	const bounded = (handle: JSValueHandle | undefined, max: number): string | undefined => {
+		if (handle === undefined || handle.isUndefined) return undefined;
+		const length = handle.getProp("length");
+		try { if (length.toNumber() > max) violate(); } finally { length.dispose(); }
+		const text = handle.toString();
+		if (bytes(text) > max) violate();
+		return text;
+	};
 	const maxStackSize = options.maxStackSize ?? MAX_STACK_SIZE;
 	const deterministic = data.deterministic;
 	const clock: VirtualClock | undefined = deterministic && {
@@ -173,7 +190,7 @@ export async function startVm(options: StartVmOptions): Promise<VmSession> {
 		// Without a guard, deep recursion overflows the wasm stack and traps instead of throwing a
 		// catchable RangeError.
 		maxStackSize,
-		interruptHandler: options.shouldInterrupt,
+		interruptHandler: () => limited || options.shouldInterrupt(),
 		wasi: clock ? deterministicWasi(clock) : discardOutput,
 		...(clock ? { timezoneOffset: 0, intrinsics: Intrinsics.ALL & ~Intrinsics.WEAK_REF } : {}),
 	});
@@ -187,6 +204,7 @@ export async function startVm(options: StartVmOptions): Promise<VmSession> {
 	let current = 0;
 	const early = new Map<number, HostToWorkerMessage>();
 	const apply = (message: HostToWorkerMessage): void => {
+		pending.delete(message.id);
 		vm.withScope(() => {
 			vm.callFunction(
 				settle,
@@ -244,7 +262,7 @@ export async function startVm(options: StartVmOptions): Promise<VmSession> {
 		while (exports.qjs_is_job_pending()) {
 			// A job only fails for uncatchable errors, such as an interrupt.
 			if (exports.qjs_execute_pending_job() < 0) throw new Error("Promise job failed");
-			if (++jobs % JOBS_PER_POLL === 0 && options.shouldInterrupt()) throw new Error("Execution interrupted");
+			if (++jobs % JOBS_PER_POLL === 0 && (limited || options.shouldInterrupt())) throw new Error("Execution interrupted");
 		}
 		vm.callFunction(stalled, api).dispose();
 	};
@@ -252,29 +270,41 @@ export async function startVm(options: StartVmOptions): Promise<VmSession> {
 	try {
 		// Called from the prelude with primitives only.
 		const bridge = vm.newFunction("bridge", (kind, a, b, c) => {
-			switch (kind.toString()) {
+			if (limited) return vm.undefined;
+		switch (kind.toString()) {
 				case "call":
 				case "global":
+					if (limits && (issued >= limits.maxCalls || pending.size >= limits.maxPendingCalls || (kind.toString() === "call" && toolCalls >= limits.maxToolCalls))) violate();
 					issued++;
+					if (kind.toString() === "call") toolCalls++;
+					pending.add(a.toNumber());
 					post({
 						type: "call",
 						id: a.toNumber(),
 						target: kind.toString() === "call" ? "tool" : "global",
-						name: b.toString(),
-						args: c === undefined || c.isUndefined ? undefined : c.toString(),
+						name: limits ? bounded(b, limits.maxArgumentBytes)! : b.toString(),
+						args: limits ? bounded(c, limits.maxArgumentBytes) : c === undefined || c.isUndefined ? undefined : c.toString(),
 					});
 					break;
-				case "output":
+				case "output": {
+					const text = limits ? bounded(b, limits.maxOutputBytes)! : b.toString();
+					const mime = a.toString() === "image" ? (limits ? bounded(c, 128)! : c.toString()) : undefined;
+					if (limits) {
+						outputItems++;
+						outputBytes += bytes(JSON.stringify({type:a.toString(),text,...(mime ? {mime} : {})})) + 32;
+						if (outputItems > limits.maxOutputItems || outputBytes > limits.maxOutputBytes) violate();
+					}
 					post({
 						type: "output",
 						item:
 							a.toString() === "image"
-								? { type: "image", data: b.toString(), mimeType: c.toString() }
+								? { type: "image", data: text, mimeType: mime! }
 								: a.toString() === "console"
-									? { type: "text", text: b.toString(), console: true }
-									: { type: "text", text: b.toString() },
+									? { type: "text", text, console: true }
+									: { type: "text", text },
 					});
 					break;
+				}
 				case "done": {
 					// The host stops the VM on `done`, so the `idle` of this drain never arrives: report its numbers here.
 					const during = clock ? { during: { seq: current, issued } } : {};
@@ -282,12 +312,12 @@ export async function startVm(options: StartVmOptions): Promise<VmSession> {
 						post({
 							type: "done",
 							ok: true,
-							value: b === undefined || b.isUndefined ? undefined : b.toString(),
-							writes: c.toString(),
+							value: limits ? bounded(b, Math.min(limits.maxReturnBytes, limits.maxOutputBytes - outputBytes)) : b === undefined || b.isUndefined ? undefined : b.toString(),
+							writes: limits ? bounded(c, limits.maxStoreWriteBytes)! : c.toString(),
 							...during,
 						});
 					} else {
-						post({ type: "done", ok: false, error: b.toString(), ...during });
+						post({ type: "done", ok: false, error: limits ? bounded(b, limits.maxReturnBytes)! : b.toString(), ...during });
 					}
 					break;
 				}
@@ -316,7 +346,7 @@ export async function startVm(options: StartVmOptions): Promise<VmSession> {
 			const budget = options.interruptBudget ?? "none";
 			post({
 				type: "started",
-				fingerprint: `quickjs-wasi ${versions["quickjs-wasi"]}, quickjs ${versions.quickjs}, prelude ${PRELUDE_HASH}, deterministic ${DETERMINISTIC_VERSION}, stack ${maxStackSize}, heap ${data.memoryLimitBytes ?? "none"}, budget ${budget}`,
+				fingerprint: `quickjs-wasi ${versions["quickjs-wasi"]}, quickjs ${versions.quickjs}, prelude ${PRELUDE_HASH}, deterministic ${DETERMINISTIC_VERSION}, stack ${maxStackSize}, heap ${data.memoryLimitBytes ?? "none"}, budget ${budget}${limits ? `, bridge ${JSON.stringify(limits)}` : ""}`,
 			});
 		}
 

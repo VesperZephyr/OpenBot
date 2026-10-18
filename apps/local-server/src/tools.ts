@@ -2,10 +2,11 @@
  * Composes Tool Router for the Host: the policy port over the user's command policy and folder grants, the approval
  * book, the executor process, and Host tools. The executor re-checks every path against the grants it receives.
  */
-import { type ExecutionTarget, TOOL_CATALOG } from "@openbot/protocol";
+import { APP_TOOL_DEFINITIONS, type ExecutionTarget, TOOL_CATALOG } from "@openbot/protocol";
 import type { MemoryEdit, PolicyStore } from "@openbot/agent-runtime";
 import {
 	type ApprovalBook,
+	type HostService,
 	canonicalPath,
 	createWebFetch,
 	createWebSearch,
@@ -20,6 +21,7 @@ import type { ExecutorProcess } from "./executor.ts";
 
 export function createToolRouter(options: {
 	readonly target: ExecutionTarget;
+	readonly service: () => HostService;
 	readonly workspace: string;
 	readonly approvals: ApprovalBook;
 	readonly executor: ExecutorProcess;
@@ -27,7 +29,7 @@ export function createToolRouter(options: {
 	/** Tavily endpoint override (`OPENBOT_TAVILY_BASE_URL`), for tests against a local fake. */
 	readonly tavilyBaseUrl: string | undefined;
 	/** `BotRuntime.editMemory`; called only once tool calls flow, after the runtime opened. */
-	readonly editMemory: (botId: string, edit: MemoryEdit) => Promise<string>;
+	readonly editMemory: (botId: string, edit: MemoryEdit, invocationId: string) => Promise<number>;
 	/** `BotRuntime.policy`; like `editMemory`, read only once tool calls flow. */
 	readonly policy: () => PolicyStore;
 	/** `<data>/artifacts`, where the executor saves cut output; `local_read` may read it without asking. */
@@ -52,6 +54,17 @@ export function createToolRouter(options: {
 		approvals: options.approvals,
 		executor: options.executor,
 		hostTools: {
+			...Object.fromEntries(APP_TOOL_DEFINITIONS.map(d => [d.name, ((_args, _signal, call) => options.service().capabilities.invokeTool(call)) as import("@openbot/tool-router").HostToolHandler])),
+			bot_delegate: (_args, _signal, call) => options.service().groups.collaborate(call),
+			bot_handoff: (_args, _signal, call) => options.service().groups.collaborate(call),
+			group_inspect: (_args, _signal, call) => options.service().manageGroups(call),
+			group_create: (_args, _signal, call) => options.service().manageGroups(call),
+			group_update: (_args, _signal, call) => options.service().manageGroups(call),
+			group_dissolve: (_args, _signal, call) => options.service().manageGroups(call),
+			bot_inspect: (_args, _signal, call) => options.service().manageBots(call),
+			bot_create: (_args, _signal, call) => options.service().manageBots(call),
+			bot_update: (_args, _signal, call) => options.service().manageBots(call),
+			bot_delete: (_args, _signal, call) => options.service().manageBots(call),
 			web_fetch: createWebFetch(),
 			web_search: createWebSearch({
 				secrets: options.secrets,
@@ -61,7 +74,15 @@ export function createToolRouter(options: {
 		},
 		policy: {
 			// Policy is read fresh for every call, so a rule or grant change applies to the next call (Section 5.3).
-			decide: async (call, definition) => decide(call, definition, await policyFor(call.tool)),
+			decide: async (call, definition) =>
+				(await options.service().groups.executionGate(call)) ??
+				((definition.capability === "app.read" || definition.capability === "app.orchestrate") ? options.service().capabilities.authorize(call) : definition.capability === "collaboration"
+					? options.service().groups.prepareCollaboration(call)
+					: definition.capability === "group.management"
+						? options.service().groups.prepare(call)
+						: definition.capability === "bot.management"
+							? options.service().management.prepare(call)
+							: decide(call, definition, await policyFor(call.tool))),
 			// The current grants; an approved call outside them may touch exactly the path the user saw on the card.
 			grants: async (call, approvedOnce) => {
 				const { grants } = await policyFor(call.tool);

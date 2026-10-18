@@ -22,10 +22,10 @@ afterAll(async () => {
 describe("Desktop MVP", () => {
 	it("sets up a custom OpenAI-compatible provider, tests it, and meets a first Bot", async () => {
 		const page = h.page();
-		await page.getByRole("heading", { name: "Welcome to OpenBot" }).waitFor();
+		await page.getByRole("heading", { name: "Meet OpenBot" }).waitFor();
 		await h.shot("01-onboarding");
 
-		await page.getByRole("radio", { name: /^Other/ }).click();
+		await page.getByRole("radio", { name: /^Custom provider/ }).click();
 		await page.getByLabel("Name").fill("Scripted");
 		await page.getByLabel("Base URL").fill(h.modelBaseUrl);
 		await page.getByLabel("Model ID").fill("scripted");
@@ -33,7 +33,7 @@ describe("Desktop MVP", () => {
 		// The test request consumes one scripted turn.
 		h.model.script({ text: "OK" });
 		await page.getByRole("button", { name: "Test and continue" }).click();
-		await page.getByRole("heading", { name: "Meet your first Bot" }).waitFor();
+		await page.getByRole("textbox", { name: "Message OpenBot" }).waitFor();
 		expect(h.model.requests).toHaveLength(1);
 
 		// The endpoint is in models.json, the key is not: it went to the Keychain under the provider ID.
@@ -42,13 +42,12 @@ describe("Desktop MVP", () => {
 		expect(config).not.toContain("sk-e2e-key");
 		await h.shot("02-first-bot");
 
-		await page.getByRole("button", { name: /^Forge · Coding/ }).click();
-		await page.getByRole("textbox", { name: "Message Forge" }).waitFor();
-		h.model.script({ text: "Hello from Forge." });
+		await page.getByRole("textbox", { name: "Message OpenBot" }).waitFor();
+		h.model.script({ text: "Hello from OpenBot." });
 		await h.send("Hi");
 		// The suggested role's instructions reach the model.
-		await expect.poll(() => JSON.stringify(h.model.requests.at(-1)?.messages)).toContain("run the tests after every change");
-		expect(JSON.stringify(h.model.requests.at(-1)?.messages)).toContain("Forge");
+		await expect.poll(() => JSON.stringify(h.model.requests.at(-1)?.messages)).toContain("personal assistant");
+		expect(JSON.stringify(h.model.requests.at(-1)?.messages)).toContain("OpenBot");
 	});
 
 	it("collapses consecutive successful tool calls and reveals written files", async () => {
@@ -62,7 +61,7 @@ describe("Desktop MVP", () => {
 		await h.send("Write two notes");
 		const steps = page.locator(".steps-row", { hasText: "Ran 3 steps" });
 		await steps.waitFor();
-		await page.getByText("Wrote two notes:").waitFor();
+		await page.locator(".transcript").getByText("Wrote two notes:").waitFor();
 		expect(await page.locator(".messages > .tool-card").count()).toBe(0);
 		await h.shot("03-steps-collapsed");
 
@@ -99,26 +98,26 @@ describe("Desktop MVP", () => {
 		const page = h.page();
 		await page.getByRole("button", { name: "•••" }).click();
 		await page.getByRole("menuitem", { name: "Duplicate" }).click();
-		await page.getByRole("textbox", { name: "Message Forge (copy)" }).waitFor();
-		expect(await page.locator(".conversation-role").textContent()).toBe("Coding");
+		await page.getByRole("textbox", { name: "Message OpenBot (copy)" }).waitFor();
+		expect(await page.locator(".conversation-role").textContent()).toBe("Personal assistant");
 		// No history comes along.
-		expect(await page.getByText("Hello from Forge.").count()).toBe(0);
+		expect(await page.getByText("Hello from OpenBot.").count()).toBe(0);
 		await expect.poll(() => page.locator(".bot-row").count()).toBe(2);
 		await h.shot("05-duplicated");
 
 		await page.getByRole("button", { name: "•••" }).click();
 		await page.getByRole("menuitem", { name: "Delete…" }).click();
-		const dialog = page.getByRole("alertdialog", { name: "Delete Forge (copy)?" });
+		const dialog = page.getByRole("alertdialog", { name: "Delete OpenBot (copy)?" });
 		await dialog.waitFor();
 		await h.shot("06-confirm-delete");
 		await dialog.getByRole("button", { name: "Delete Bot" }).click();
 		await dialog.waitFor({ state: "detached" });
 		await expect.poll(() => page.locator(".bot-row").count()).toBe(1);
-		expect(await page.locator(".bot-row", { hasText: "Forge (copy)" }).count()).toBe(0);
+		expect(await page.locator(".bot-row").filter({ has: page.getByText("OpenBot (copy)", { exact: true }) }).count()).toBe(0);
 
 		// Deleted stays deleted after a restart.
 		await h.relaunch();
-		await h.page().locator(".bot-row", { hasText: "Forge" }).waitFor();
+		await h.page().locator(".bot-row").filter({ has: h.page().getByText("OpenBot", { exact: true }) }).waitFor();
 		expect(await h.page().locator(".bot-row").count()).toBe(1);
 	});
 });

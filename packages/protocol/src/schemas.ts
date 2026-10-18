@@ -6,6 +6,7 @@
 import { type Static, type TSchema, Type } from "typebox";
 import { Compile, type Validator } from "typebox/compile";
 import type { TLocalizedValidationError } from "typebox/error";
+import { APP_SEARCH_INPUT } from "./app-capabilities.ts";
 import { type HostMethod, type HostParams, MODEL_APIS } from "./index.ts";
 
 const Id = Type.String({ minLength: 1, maxLength: 256 });
@@ -30,9 +31,34 @@ const AlwaysAllowScope = Type.Union([
 /** Provider IDs declared from the app: lower-case, file- and Keychain-friendly, never a `search:` key. */
 export const PROVIDER_ID_PATTERN = "^[a-z0-9][a-z0-9._-]{0,63}$";
 
+const GroupId = Type.String({ pattern: "^group_[a-zA-Z0-9_-]{1,128}$" });
+const GroupFields = strict({
+	name: Type.String({ minLength: 1, maxLength: 100 }),
+	objective: Type.String({ maxLength: 4000 }),
+	memberIds: Type.Array(Id, { minItems: 2, maxItems: 6, uniqueItems: true }),
+	leadBotId: Id,
+});
 export const HOST_PARAM_SCHEMAS = {
+ "collaboration.stop": strict({ rootId: Type.String({ minLength: 1, maxLength: 2048 }) }),
+	"groups.list": NoParams,
+	"groups.snapshot": strict({ groupId: GroupId }),
+	"groups.change": strict({
+		requestId: Id,
+		action: Type.Enum(["create", "update", "dissolve"]),
+		groupId: GroupId,
+		expectedRevision: Type.Integer({ minimum: 0 }),
+		fields: Type.Optional(GroupFields),
+	}),
+	"groups.send": strict({
+		groupId: GroupId,
+		requestId: Id,
+		text: Type.String({ minLength: 1, maxLength: 32000 }),
+		recipientIds: Type.Optional(Type.Array(Id, { minItems: 1, maxItems: 6, uniqueItems: true })),
+	}),
+
 	"host.status": NoParams,
 	"bots.list": NoParams,
+	"bots.management.history": NoParams,
 	"bots.create": strict({
 		requestId: Id,
 		name: Type.String({ minLength: 1, maxLength: 200 }),
@@ -42,6 +68,7 @@ export const HOST_PARAM_SCHEMAS = {
 	}),
 	"bots.update": strict({
 		botId: Id,
+		expectedRevision: Type.Optional(Type.Integer({ minimum: 1 })),
 		name: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
 		role: Type.Optional(Type.String({ maxLength: 200 })),
 		instructions: Type.Optional(Type.String()),
@@ -51,7 +78,15 @@ export const HOST_PARAM_SCHEMAS = {
 		status: Type.Optional(Type.Enum(["active", "hidden"])),
 	}),
 	"conversations.snapshot": BotOnly,
-	"conversations.markRead": BotOnly,
+	"conversations.list": NoParams,
+	"conversations.search": APP_SEARCH_INPUT,
+	"conversations.markRead": strict({
+		conversationKey: Type.TemplateLiteral(
+			[Type.Union([Type.Literal("bot:"), Type.Literal("group:")]), Type.String()],
+			{ pattern: "^(bot|group):.+$", maxLength: 262 },
+		),
+		through: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+	}),
 	"messages.submit": strict({ botId: Id, requestId: Id, text: Type.String() }),
 	"runs.cancel": strict({ runId: Id }),
 	"approvals.decide": strict({
@@ -59,12 +94,17 @@ export const HOST_PARAM_SCHEMAS = {
 		decision: Type.Union([Type.Enum(["allow_once", "deny"]), strict({ kind: Type.Literal("always_allow"), scope: AlwaysAllowScope })]),
 	}),
 	"settings.get": NoParams,
-	"settings.update": strict({ defaultModel: Type.Optional(Type.Union([ModelRef, Type.Null()])) }),
+	"settings.update": strict({
+		language: Type.Optional(Type.Union([Type.Literal("en"), Type.Literal("zh-CN")])),
+		setupComplete: Type.Optional(Type.Boolean()),
+		defaultModel: Type.Optional(Type.Union([ModelRef, Type.Null()])),
+	}),
 	"models.list": NoParams,
 	"credentials.set": strict({ providerId: Id, apiKey: Type.String({ maxLength: 16_384 }) }),
 	"credentials.delete": strict({ providerId: Id }),
 	"bots.memory.get": BotOnly,
-	"bots.memory.update": strict({ botId: Id, content: Type.String() }),
+	"bots.memory.update": strict({ botId: Id, content: Type.String(), expectedRevision: Type.Integer({ minimum: 0 }) }),
+	"bots.memory.restore": strict({ botId: Id, revision: Type.Integer({ minimum: 0 }), expectedRevision: Type.Integer({ minimum: 0 }) }),
 	"conversations.reset": BotOnly,
 	"policy.get": NoParams,
 	"policy.update": strict({

@@ -1,3 +1,4 @@
+import { validAppInput } from "@openbot/protocol/app-validation";
 /**
  * Every model-selected tool call enters here. The router binds the call to the local target, asks the policy port for a
  * decision, waits for the user when policy asks, and dispatches to the executor or a host handler. It depends only on
@@ -5,6 +6,7 @@
  */
 import { createHash } from "node:crypto";
 import {
+	APP_CODE_LIMITS, CODEMODE_DEFINITION, appToolCapability,
 	type ApprovalDecision,
 	type ExecutionTarget,
 	type ExecutorToolName,
@@ -16,6 +18,12 @@ import {
 } from "@openbot/protocol";
 
 export type ToolCall = {
+	readonly runId?: string;
+	readonly collaboration?: { readonly runId: string };
+	readonly authority?: import("@openbot/protocol").ManagementAuthority;
+	readonly appExecutionId?: string;
+	readonly appAuthority?: import("@openbot/protocol").AppReadAuthority;
+	readonly target?: ExecutionTarget;
 	readonly botId: string;
 	readonly conversationId: string;
 	/** Stable across reruns of the same Pi tool task, so a rerun never becomes a second invocation. */
@@ -50,11 +58,7 @@ export interface ExecutorTransport {
 }
 
 /** `call` identifies the Bot and conversation, for handlers whose state is per Bot, such as memory. */
-export type HostToolHandler = (
-	args: Readonly<Record<string, unknown>>,
-	signal: AbortSignal,
-	call: ToolCall,
-) => Promise<ToolOutcome>;
+export type HostToolHandler = (args: Readonly<Record<string, unknown>>, signal: AbortSignal, call: ToolCall) => Promise<ToolOutcome>;
 
 export type ToolRouterOptions = {
 	readonly target: ExecutionTarget;
@@ -76,6 +80,16 @@ export class ToolRouter {
 		this.#options = options;
 	}
 
+	/** Parent admission deliberately does not take the leaf mutex. */
+	async admitOrchestration(call: ToolCall): Promise<ExecutionTarget> {
+		call.signal.throwIfAborted();
+		if (call.tool !== "codemode" || Object.keys(call.args).join() !== "code" || typeof call.args.code !== "string" || !call.args.code.trim() || Buffer.byteLength(call.args.code) > APP_CODE_LIMITS.sourceBytes || this.#options.target.kind !== "local" || (call.target && (call.target.kind !== "local" || call.target.targetId !== this.#options.target.targetId))) throw new Error("Code Mode is not authorized");
+		const decision = await this.#options.policy.decide({...call,target:this.#options.target}, CODEMODE_DEFINITION);
+		call.signal.throwIfAborted();
+		if (decision.kind !== "allow") throw new Error("Code Mode is not authorized");
+		return this.#options.target;
+	}
+
 	async invoke(call: ToolCall): Promise<ToolOutcome> {
 		const previous = this.#active.get(call.conversationId) ?? Promise.resolve();
 		const current = previous.catch(() => {}).then(() => this.#route(call));
@@ -88,10 +102,16 @@ export class ToolRouter {
 	}
 
 	async #route(call: ToolCall): Promise<ToolOutcome> {
+		const app = appToolCapability(call.tool);
+		if (app && call.signal.aborted) return appFailure("cancelled", "Application read was cancelled");
+		call.signal.throwIfAborted();
+		if (this.#options.target.kind !== "local" || (call.target && (call.target.kind !== "local" || call.target.targetId !== this.#options.target.targetId))) return app ? appFailure("permission_denied", "Application access is not authorized") : {status:"failed",output:"Application target is not authorized"};
+		call = {...call, target:this.#options.target};
+		if (app && !validAppInput(app.id,call.args)) return appFailure("invalid_request", "Invalid application arguments");
 		const definition = toolDefinition(call.tool);
 		if (definition === undefined) return { status: "failed", output: `Unknown tool: ${call.tool}` };
 		const decision = await this.#options.policy.decide(call, definition);
-		if (decision.kind === "deny") return { status: "failed", output: `Not allowed: ${decision.reason}` };
+		if (decision.kind === "deny") return app ? appFailure("permission_denied", "Application access is not authorized") : { status: "failed", output: `Not allowed: ${decision.reason}` };
 
 		let approvedOnce = false;
 		if (decision.kind === "ask") {
@@ -100,6 +120,7 @@ export class ToolRouter {
 				{
 					// The call ID makes the approval stable across reruns: a rerun waits on the same approval.
 					approvalId: `approval:${call.conversationId}:${call.callId}`,
+					conversationId: call.conversationId,
 					botId: call.botId,
 					callId: call.callId,
 					tool: call.tool,
@@ -116,6 +137,7 @@ export class ToolRouter {
 			}
 			approvedOnce = true;
 		}
+		if (app && call.signal.aborted) return appFailure("cancelled", "Application read was cancelled");
 		call.signal.throwIfAborted();
 
 		if (definition.destination === "host") {
@@ -125,6 +147,7 @@ export class ToolRouter {
 		}
 		const grants = await this.#options.policy.grants(call, approvedOnce);
 		const invocation: ToolInvocation = {
+			...(call.runId ? { runId: call.runId } : {}),
 			invocationId: `${call.conversationId}:${call.callId}`,
 			botId: call.botId,
 			conversationId: call.conversationId,
@@ -138,6 +161,11 @@ export class ToolRouter {
 		};
 		return this.#options.executor.invoke(invocation, call.onProgress, call.signal);
 	}
+}
+
+function appFailure(code: import("@openbot/protocol").AppErrorCode, message: string): ToolOutcome {
+	const value = {ok: false as const, error: {code, message}};
+	return {status: code === "cancelled" ? "cancelled" : "failed", output: JSON.stringify(value), value};
 }
 
 /** SHA-256 of canonical JSON (sorted keys), shared by router and executor to detect a reused ID with other arguments. */

@@ -35,7 +35,11 @@ All eight batches are implemented on `feat/mvp`. Each spec in [`tasks/`](tasks/R
 | B7 | Onboarding, one subscribed and coalesced conversation feed, collapsed steps, Copy, Reveal, notifications, Duplicate and Delete, TypeBox IPC validation | [b7](tasks/b7-desktop-mvp.md) |
 | B8 | Signed or ad-hoc arm64 DMG with bundled Node and Host, fuses, `app://`, release workflow, Host log | [b8](tasks/b8-installable-build.md) |
 
+Release follow-up: [B8a — Login shell command path](tasks/b8a-login-path.md) resolves the user's login PATH once before Host startup, with bounded fallback and no other shell environment import. Implemented on `task/b8a-login-path` (stacked on B7a), awaiting merge; 178 unit tests, 25 background e2e tests, ad-hoc packaging, and bundled Host/executor smoke pass.
+
 ### MVP acceptance
+
+Release follow-up: [B7a — Background desktop tests](tasks/b7a-background-e2e.md) makes automated verification quiet by default, with explicitly enabled visible windows for debugging. Implemented on `task/b7a-background-e2e`, awaiting merge; 163 unit tests and 24 background e2e tests pass.
 
 The MVP is done when all of these pass on a packaged build installed on a Mac that never ran the development setup:
 
@@ -52,14 +56,43 @@ The MVP is done when all of these pass on a packaged build installed on a Mac th
 
 Approach only; each becomes a spec when Phase 1 lands.
 
+Accepted product direction: [D1](tasks/d1-bot-product-design.md). B16/B17 establish model entry and permanent Core identity; B20 refines the desktop and adds English/Chinese. Core management (B18) adds chat-driven Specialist lifecycle with explicit approvals. Prompt and memory controls (B19) are merged. Channel contexts (B13a) are merged; group lifecycle (B13b) and bounded collaboration (B13c) are implemented and in review. Existing agent mechanisms continue to reuse Pi. Connectors, routines and computer control are not prerequisites for this foundation.
+
 - **B9. MCP connectors** (architecture M7). Executor-supervised stdio servers and HTTP sessions, credentials from the Keychain injected only into their own server, tools named `mcp__<server>__<tool>` through Tool Router with receipts, a Connect apps page. OAuth through the default browser comes after the first token-based connectors work.
 - **B10. Skills.** Library at `<data>/skills/<name>/SKILL.md`, a `skills` prompt section listing names and descriptions, `skill_load`, `skill_save` with user confirmation, `/` in the composer to attach one.
 - **B11. Routines** (after B2). Scheduler in `server-core` with occurrence request IDs `routine:<id>:<scheduledAt>`, a fresh conversation per occurrence admitted through B2's queue, test run, coalesced catch-up after sleep, Grok Bot limits (50 per Bot, 5-minute spacing, 20 runs of history), `routine_propose` with a confirmation card.
 - **B12. Full Auto Review.** Ask-first rules (always win), argument predicates for URL origins and connector tools, an optional model reviewer that can only escalate, 10-minute expiry for approvals raised by unattended work.
-- **B13. Bots together** (architecture M4). Group chats with mentions and a lead Bot, `bot_message`, `bot_handoff` with request ID `handoff:<invocationId>`, templates (export and import without memory, history, credentials, or grants), usage per Bot from `pi.usage`.
+- **B13. Bots together** (architecture M4). Core-coordinated group chats, explicit mentions, bounded delegation and ownership transfer (B13a–c); remaining work: templates (export and import without memory, history, credentials, or grants), usage per Bot from `pi.usage`.
 - **B14. Desktop completion** (architecture M2 rest). Subscriptions with `seq`, gap detection and backpressure, `Cmd+K` search, menu-bar app with running Bots and **Pause all**, Normal and Verbose tool detail, transcript virtualization, login item, Keychain moved out of the `security` CLI, auto-update with electron-updater.
 - **B15. Agent extras.** Image results from `local_read` for vision models, waking the Bot when a background task finishes, attachments in the composer, background subagents for parallel research within one Bot.
 
 ## Phase 3: Computer control
 
 Architecture M3 (managed browser, takeover, secret requests), M6 (desktop computer use with the signed Swift helper and control lease), and M8 (dictation, teach-a-task). These need packaging and signing from B8 for TCC attribution; start with spikes before specs: two Bots' browser windows not throttled in the background, and the disclaimed helper receiving Screen Recording and Accessibility grants.
+
+## Product foundation implementation
+
+- [B16: Model sources](tasks/b16-model-sources.md): implemented on `task/b16-model-sources`, awaiting review; 183 unit tests and 27 background e2e tests pass.
+- [B17: Core Bot](tasks/b17-core-bot.md): implemented on `task/b17-core-bot`, awaiting review; 186 unit tests and 29 background e2e tests pass. Only the Core is seeded; Specialists require user creation.
+- [B20: Desktop experience and English / Chinese](tasks/b20-desktop-experience.md): implemented on `task/b20-desktop-experience`; local language preference, refined UI and isolated real-model desktop verification.
+- [B18: Core management](tasks/b18-core-management.md): merged in PR #11; Core-only tools, durable exact approvals, revision checks, atomic receipts and bilingual local activity.
+- [B19: Prompt and memory controls](tasks/b19-memory-controls.md): merged in PR #12; revision conflicts, local bounded history/restore, replay safety and empty-memory duplication. 200 unit tests and 40 background e2e tests; isolated real-model verification.
+- [B13a: Channel contexts](tasks/b13a-channel-contexts.md): merged in PR #13; shared Bot identity with isolated channel context, scoped lifecycle and durable Run mapping. B13b supplies group UX.
+- [B13b: Group lifecycle](tasks/b13b-group-lifecycle.md): implemented, awaiting review; local group records, exact Core approvals, participant-only group contexts, durable delivery/recovery and bilingual desktop controls.
+- [B13c: Bounded collaboration](tasks/b13c-collaboration.md): implemented, awaiting review; Core-default group entry, explicit @, delegate/transfer/result receipts, two-hop/twelve-delivery limits, tree cancellation, local state and bilingual UI. 223 unit tests and 49 background e2e; isolated real-model collaboration and recovery.
+- Remaining B13 work: Bot templates and usage. Cross-group/direct-chat peer dispatch, selective memory transfer and full data purge require separate specs; agent execution continues to reuse Pi.
+- [D2: Grok UI research](tasks/d2-grok-ui-research.md): complete, including installed 0.71.2 client inspection.
+- [B21: Conversation experience](tasks/b21-conversation-experience.md): merged in PR #17; shared private/group shell, contextual details, local filtering/New, durable local drafts and send recovery, keyboard mentions, scroll preservation and compact task activity. English/Chinese; 229 unit tests and 54 background e2e; isolated real-model private chat, Core delegation/result return and explicit @.
+- [B22: Conversation list previews and unread state](tasks/b22-conversation-list.md): implemented, awaiting review; 234 unit tests and 59 background e2e; isolated real-model private/group replies and full restart verification; local Host index, snapshot-bound durable read cursors, bilingual previews/time/counts, draft/activity precedence and recency within protected Core/pinned sections.
+- [B23: Conversation search and unread filtering](tasks/b23-conversation-search.md): implemented, awaiting review in PR #20 (stacked on B22); 239 unit tests and 65 background e2e; isolated real-model private/group history search and full restart; local literal matching, bounded results, unread composition, bilingual exact-message navigation, stale-response guards and draft/read preservation.
+- Remaining UI work: group pin/hide, manual mark-unread, transcript virtualization, large-history search indexing and artifact previews require separate specs.
+
+## Application capability foundation (D3)
+
+Owner-requested architecture increment: expose selected current application capabilities to Core through an authorized shared Host layer, then local programmatic composition. [D3](tasks/d3-app-capabilities.md) records source research, authority, module boundaries, budgets, recovery and privacy. B24 implements the first authorized read slice.
+
+1. [B24: Authorized application API](tasks/b24-app-capability-api.md) — done, in review in PR #23; five shared typed read services, scoped search/history and Core routed tools. 246 unit tests, 68 background e2e and isolated real-model private/group/restart verification.
+2. [B25: Local app Code Mode](tasks/b25-local-app-code-mode.md) — done, in review in PR #24 (stacked on #23); bounded Pi QuickJS/discovery/replay adapter, original Run authorization, durable bilingual activity and packaged worker assets. 259 unit tests, 69 background e2e, ad-hoc package and isolated real-model private/group/restart acceptance.
+3. [B26: Code Mode management](tasks/b26-code-mode-management.md) — draft; adapt existing Core Bot/group operations after B25 acceptance, retaining exact child approvals and mutation receipts.
+
+Attention-state mutation, UI navigation, cross-Bot memory operations, new dispatch surfaces and external API transports remain separately specified follow-ups. Existing desktop method availability never automatically confers model authority.

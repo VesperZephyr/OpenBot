@@ -2,15 +2,26 @@
  * Renderer state. Every Host-owned value is a snapshot fetched through the preload API and replaced by events; the
  * renderer never keeps its own copy of the transcript or settings.
  */
-import type { BotSummary, ConversationSnapshot, ModelSummary, RedactedSettings } from "@openbot/protocol";
+import type { ConversationKey, ConversationSummary, Group, BotSummary, ConversationSnapshot, ModelSummary, RedactedSettings } from "@openbot/protocol";
 import { create } from "zustand";
+import { composers } from "./useComposer";
 import { ERROR_PREFIX, type HostState } from "../../shared/api";
 
-export type View = { readonly kind: "bot"; readonly botId: string } | { readonly kind: "settings" } | { readonly kind: "home" };
+export type View =
+	| { readonly kind: "group"; readonly groupId: string }
+	| { readonly kind: "bot"; readonly botId: string }
+	| { readonly kind: "settings" }
+	| { readonly kind: "home" };
+
+export type SearchTarget = { conversationKey: ConversationKey; messageId: string; nonce: string };
 
 type State = {
+	searchTarget: SearchTarget | undefined;
 	host: HostState;
+	windowActive: boolean;
 	bots: readonly BotSummary[];
+	groups: readonly Group[];
+	summaries: Readonly<Record<string, ConversationSummary>>;
 	conversations: Readonly<Record<string, ConversationSnapshot>>;
 	settings: RedactedSettings | undefined;
 	models: readonly ModelSummary[];
@@ -22,8 +33,12 @@ type State = {
 };
 
 export const useStore = create<State>(() => ({
+	searchTarget: undefined,
 	host: { status: "starting" },
+	windowActive: false,
 	bots: [],
+	groups: [],
+	summaries: {},
 	conversations: {},
 	settings: undefined,
 	models: [],
@@ -35,14 +50,46 @@ export const useStore = create<State>(() => ({
 
 const api = window.openbot.methods;
 
-/** Show a Host error as a notice, without the protocol code prefix. */
-export function report(error: unknown): void {
+/** Strip IPC and protocol envelopes so application errors can be translated at the display boundary. */
+export function errorMessage(error: unknown): string {
 	const message = error instanceof Error ? error.message : String(error);
-	useStore.setState({ notice: message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "").replace(ERROR_PREFIX, "") });
+	return message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "").replace(ERROR_PREFIX, "");
+}
+
+export function report(error: unknown): void {
+	useStore.setState({ notice: errorMessage(error) });
+}
+
+let summaryRefresh: Promise<void> | undefined;
+let summaryAgain = false;
+/** At most one list request in flight; an invalidation during it always schedules a newer read. */
+export function refreshSummaries(): Promise<void> {
+	summaryAgain = true;
+	if (summaryRefresh) return summaryRefresh;
+	summaryRefresh = (async () => {
+		while (summaryAgain) {
+			summaryAgain = false;
+			const rows = await api["conversations.list"]({});
+			if (!summaryAgain) useStore.setState({ summaries: Object.fromEntries(rows.map((row) => [row.conversationKey, row])) });
+		}
+	})().finally(() => { summaryRefresh = undefined; });
+	return summaryRefresh;
+}
+export async function markRead(conversationKey: ConversationKey, through: number): Promise<void> {
+	await api["conversations.markRead"]({ conversationKey, through });
+	await refreshSummaries();
+}
+
+export async function refreshGroups(): Promise<void> {
+	useStore.setState({ groups: await api["groups.list"]({}) });
 }
 
 export async function refreshBots(): Promise<void> {
-	useStore.setState({ bots: await api["bots.list"]({}) });
+	const bots = await api["bots.list"]({});
+	for (const key of Object.keys(composers.snapshot())) {
+		if (key.startsWith("bot:") && !bots.some((bot) => bot.botId === key.slice(4))) composers.remove(key as `bot:${string}`);
+	}
+	useStore.setState({ bots });
 }
 
 export async function refreshSettings(): Promise<void> {
@@ -51,12 +98,11 @@ export async function refreshSettings(): Promise<void> {
 }
 
 /** Select a Bot: its conversation becomes the one the Host streams to this window, then it is fetched fresh. */
-export async function openBot(botId: string): Promise<void> {
-	useStore.setState({ view: { kind: "bot", botId } });
+export async function openBot(botId: string, searchTarget?: SearchTarget): Promise<void> {
+	useStore.setState({ view: { kind: "bot", botId }, searchTarget });
 	await api["conversations.subscribe"]({ botId });
 	const snapshot = await api["conversations.snapshot"]({ botId });
 	useStore.setState((state) => ({ conversations: { ...state.conversations, [botId]: snapshot } }));
-	await api["conversations.markRead"]({ botId });
 }
 
 export async function createBot(name: string): Promise<void> {
@@ -65,23 +111,28 @@ export async function createBot(name: string): Promise<void> {
 	await openBot(bot.botId);
 }
 
-export async function sendMessage(botId: string, text: string): Promise<void> {
-	await api["messages.submit"]({ botId, requestId: crypto.randomUUID(), text });
+export async function sendMessage(botId: string, text: string, requestId: string = crypto.randomUUID()): Promise<void> {
+	await api["messages.submit"]({ botId, requestId, text });
 }
 
 export function connect(): () => void {
+	let activityEvent = false;
+	const stopActivity = window.openbot.onWindowActive((windowActive) => { activityEvent = true; useStore.setState({ windowActive }); });
+	void window.openbot.windowActive().then((windowActive) => { if (!activityEvent) useStore.setState({ windowActive }); }).catch(report);
 	const stopEvents = window.openbot.onEvent((event) => {
 		switch (event.type) {
+			case "groups.changed":
+				void refreshSummaries().catch(report);
+				void refreshGroups().catch(report);
+				return;
 			case "bots.changed":
+				void refreshSummaries().catch(report);
+				void refreshGroups().catch(report);
 				void refreshBots().catch(report);
 				return;
 			case "conversation.updated": {
 				const snapshot = event.payload;
 				useStore.setState((state) => ({ conversations: { ...state.conversations, [snapshot.botId]: snapshot } }));
-				const { view } = useStore.getState();
-				if (view.kind === "bot" && view.botId === snapshot.botId && snapshot.live === undefined && document.hasFocus()) {
-					void api["conversations.markRead"]({ botId: snapshot.botId }).catch(report);
-				}
 			}
 		}
 	});
@@ -97,6 +148,7 @@ export function connect(): () => void {
 	// A clicked notification: main showed the window, the renderer opens the Bot.
 	const stopOpenBot = window.openbot.onOpenBot((botId) => void openBot(botId).catch(report));
 	return () => {
+		stopActivity();
 		stopEvents();
 		stopHost();
 		stopOpenBot();
@@ -105,12 +157,16 @@ export function connect(): () => void {
 
 async function loadAll(): Promise<void> {
 	try {
-		await Promise.all([refreshBots(), refreshSettings()]);
+		await Promise.all([refreshBots(), refreshGroups(), refreshSettings(), refreshSummaries()]);
 		const { view, onboarding, settings, bots } = useStore.getState();
 		// Decided once per window: later Host restarts never interrupt or restart the flow.
 		if (onboarding === undefined && settings !== undefined) useStore.setState({ onboarding: needsOnboarding(settings, bots) });
 		// A restarted Host has no subscription; opening the Bot again subscribes and fetches it fresh.
 		if (view.kind === "bot") await openBot(view.botId);
+		else if (view.kind === "home") {
+			const core = bots.find((bot) => bot.kind === "core");
+			if (core !== undefined) await openBot(core.botId);
+		}
 	} catch (error) {
 		report(error);
 	}
@@ -121,7 +177,12 @@ async function loadAll(): Promise<void> {
  * configuration file with a provider (for example one the development setup wrote) skips the setup screen.
  */
 export function needsOnboarding(settings: RedactedSettings, bots: readonly BotSummary[]): boolean {
-	return settings.defaultModel === undefined && bots.length === 0 && !settings.providers.some((provider) => provider.configured);
+	return (
+		settings.setupComplete !== true &&
+		settings.defaultModel === undefined &&
+		bots.every((bot) => bot.kind === "core") &&
+		!settings.providers.some((provider) => provider.configured)
+	);
 }
 
 export { api };

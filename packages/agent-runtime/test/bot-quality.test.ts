@@ -75,8 +75,8 @@ describe("Bot quality", () => {
 	async function open(steps: FauxResponseStep[], options: { contextWindow?: number } = {}) {
 		const { models, requests } = recordingModels(steps, options);
 		const invoke: ToolInvoker = async (call) => {
-			const args = call.args as { action: "replace" | "append"; section: string; content: string };
-			await runtime!.editMemory(call.botId, args);
+			const args = call.args as { action: "replace" | "append"; section: string; content: string; expectedRevision: number };
+			await runtime!.editMemory(call.botId, args, `${call.conversationId}:${call.callId}`);
 			return { status: "succeeded", output: "Memory updated." };
 		};
 		runtime = await BotRuntime.open({ databasePath, models, tools: { invoke, definitions: [memoryTool] } });
@@ -85,7 +85,7 @@ describe("Bot quality", () => {
 
 	it("memory_update persists across reopen and reaches the next system prompt", async () => {
 		const requests = await open([
-			fauxAssistantMessage(fauxToolCall("memory_update", { action: "append", section: "Preferences", content: "- Answer in Chinese." }), {
+			fauxAssistantMessage(fauxToolCall("memory_update", { action: "append", section: "Preferences", content: "- Answer in Chinese.", expectedRevision: 0 }), {
 				stopReason: "toolUse",
 			}),
 			fauxAssistantMessage("好的。"),
@@ -108,15 +108,15 @@ describe("Bot quality", () => {
 	it("rejects memory above 8 KB and keeps the old content", async () => {
 		await open([]);
 		await runtime!.createBot(bot);
-		await runtime!.setMemory("scout", "## Notes\n- keep me");
-		await expect(runtime!.setMemory("scout", "x".repeat(MEMORY_LIMIT_BYTES + 1))).rejects.toThrow(/limited to 8 KB/);
+		await runtime!.setMemory("scout", "## Notes\n- keep me", 0);
+		await expect(runtime!.setMemory("scout", "x".repeat(MEMORY_LIMIT_BYTES + 1), 1)).rejects.toThrow(/limited to 8 KB/);
 		await expect(
-			runtime!.editMemory("scout", { action: "append", section: "Notes", content: "y".repeat(MEMORY_LIMIT_BYTES) }),
+			runtime!.editMemory("scout", { action: "append", section: "Notes", content: "y".repeat(MEMORY_LIMIT_BYTES), expectedRevision: 1 }, "limit"),
 		).rejects.toThrow(/limited to 8 KB/);
 		expect(await runtime!.memory("scout")).toBe("## Notes\n- keep me");
 		// Exactly at the limit is allowed; the limit counts UTF-8 bytes, not characters.
-		await runtime!.setMemory("scout", "x".repeat(MEMORY_LIMIT_BYTES));
-		await expect(runtime!.setMemory("scout", "é".repeat(MEMORY_LIMIT_BYTES / 2 + 1))).rejects.toThrow(/limited/);
+		await runtime!.setMemory("scout", "x".repeat(MEMORY_LIMIT_BYTES), 1);
+		await expect(runtime!.setMemory("scout", "é".repeat(MEMORY_LIMIT_BYTES / 2 + 1), 2)).rejects.toThrow(/limited/);
 	});
 
 	it("edits memory sections", () => {
@@ -135,8 +135,10 @@ describe("Bot quality", () => {
 	it("reset starts a new context that keeps memory", async () => {
 		const requests = await open([fauxAssistantMessage("First answer."), fauxAssistantMessage("Fresh answer.")]);
 		await runtime!.createBot({ ...bot, model: { provider: "faux", modelId: "faux-1" } });
-		await runtime!.setMemory("scout", "## Preferences\n- Be brief.");
+		await runtime!.setMemory("scout", "## Preferences\n- Be brief.", 0);
 		await runtime!.submitAndWait("scout", "req-1", "Old topic question");
+		await runtime!.updateBot("scout", { model: null });
+		await runtime!.setDefaultModel({ provider: "faux", modelId: "faux-1" });
 		await runtime!.reset("scout");
 		await runtime!.submitAndWait("scout", "req-2", "New topic question");
 
@@ -149,6 +151,8 @@ describe("Bot quality", () => {
 			{ kind: "user", parts: [{ text: "New topic question" }] },
 			{ kind: "assistant", parts: [{ text: "Fresh answer." }] },
 		]);
+		expect((await runtime!.conversationIndex().list()).find((row) => row.conversationKey === "bot:scout")).toMatchObject({ incomingCount: 2, unreadCount: 2 });
+		expect(runtime!.searchConversations("New topic question", new Set(["bot:scout"])).items).toHaveLength(1);
 	});
 
 	it("projects a compaction divider and keeps earlier messages", async () => {
@@ -163,15 +167,24 @@ describe("Bot quality", () => {
 			}
 			return fauxAssistantMessage(`Answer. ${long}`);
 		};
-		await open(Array.from({ length: 12 }, () => respond), { contextWindow: 40_000 });
+		const requests = await open(Array.from({ length: 12 }, () => respond), { contextWindow: 40_000 });
 		await runtime!.createBot({ ...bot, model: { provider: "faux", modelId: "faux-1" } });
+		await runtime!.setMemory("scout", "## Preferences\nRetain Cedar after compaction.", 0);
 		for (let turn = 1; turn <= 8; turn++) await runtime!.submitAndWait("scout", `req-${turn}`, `Question ${turn}`);
 
+		expect(systemText(requests.at(-1))).toContain("Retain Cedar after compaction.");
+		expect((await runtime!.memoryState("scout")).revision).toBe(1);
 		const items = (await runtime!.snapshot("scout")).items;
 		const divider = items.findIndex((item) => item.kind === "divider");
 		expect(items[divider]).toMatchObject({ kind: "divider", reason: "compaction" });
+		const summary = (await runtime!.conversationIndex().list()).find((row) => row.conversationKey === "bot:scout")!;
+		expect(summary.incomingCount).toBe(items.filter((item) => item.kind === "assistant" && item.parts.some((part) => part.text.trim())).length);
+		await runtime!.conversationIndex().markRead("bot:scout", summary.incomingCount);
+		await runtime!.snapshot("scout");
+		expect((await runtime!.conversationIndex().list()).find((row) => row.conversationKey === "bot:scout")!.unreadCount).toBe(0);
 		const users = items.flatMap((item) => (item.kind === "user" ? [item.parts[0]?.text] : []));
 		expect(users).toEqual(Array.from({ length: 8 }, (_, index) => `Question ${index + 1}`));
+		expect(runtime!.searchConversations("Question 1", new Set(["bot:scout"])).items).toHaveLength(1);
 		expect(items.some((item) => item.kind === "other")).toBe(false);
 	});
 

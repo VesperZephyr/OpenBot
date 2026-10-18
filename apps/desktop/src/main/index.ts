@@ -10,10 +10,19 @@ import { AttentionWatcher } from "./attention-watcher";
 import { RotatingLog } from "./host-log";
 import { HostProcess } from "./host";
 import { registerIpc } from "./ipc";
+import { resolveLoginPath } from "./login-path";
+import { translate, type Language } from "../shared/i18n";
+import { desktopTestMode } from "./test-mode";
 
 /** electron-vite's renderer dev server; every other run (built, packaged, e2e) serves the renderer over `app://`. */
 const devServerUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL;
 const HOST_LOG_LIMIT_BYTES = 5 * 1024 * 1024;
+const testMode = desktopTestMode(app.isPackaged, process.env);
+const backgroundTest = testMode === "background";
+if (backgroundTest && process.platform === "darwin") {
+	app.setActivationPolicy("prohibited");
+	app.dock?.hide();
+}
 
 // Packaged builds run the bundled Host and executor (outside app.asar, architecture §3) on the bundled, signed Node in
 // Contents/Resources; the environment cannot redirect them. In development the app path is apps/desktop and the
@@ -43,6 +52,7 @@ const hostLog = new RotatingLog(join(dataDirectory, "logs", "host.log"), HOST_LO
 let window: BrowserWindow | undefined;
 /** Held for the app's lifetime: a Tray that is garbage-collected disappears from the menu bar. */
 let tray: Tray | undefined;
+let language: Language = "en";
 let quitting = false;
 
 /** Development and test overrides; a packaged app ignores them, so the environment cannot redirect its keys or limits. */
@@ -56,19 +66,21 @@ const DEV_OVERRIDES = [
 const forwarded = (names: readonly string[]): Record<string, string> =>
 	Object.fromEntries(names.flatMap((name) => (process.env[name] === undefined ? [] : [[name, process.env[name]]])));
 
+const hostEnvironment: NodeJS.ProcessEnv = {
+	PATH: process.env.PATH ?? "",
+	HOME: process.env.HOME ?? "",
+	USER: process.env.USER ?? "",
+	TMPDIR: process.env.TMPDIR ?? "",
+	...(runtime.executorEntry === undefined ? {} : { OPENBOT_EXECUTOR_ENTRY: runtime.executorEntry }),
+	// Where data and the model configuration live may be moved in any build.
+	...forwarded(["OPENBOT_DATA_DIR", "OPENBOT_HOME"]),
+	...(app.isPackaged ? {} : forwarded(DEV_OVERRIDES)),
+};
+
 const host = new HostProcess({
 	node: runtime.node,
 	entry: runtime.hostEntry,
-	env: {
-		PATH: process.env.PATH ?? "",
-		HOME: process.env.HOME ?? "",
-		USER: process.env.USER ?? "",
-		TMPDIR: process.env.TMPDIR ?? "",
-		...(runtime.executorEntry === undefined ? {} : { OPENBOT_EXECUTOR_ENTRY: runtime.executorEntry }),
-		// Where data and the model configuration live may be moved in any build.
-		...forwarded(["OPENBOT_DATA_DIR", "OPENBOT_HOME"]),
-		...(app.isPackaged ? {} : forwarded(DEV_OVERRIDES)),
-	},
+	env: hostEnvironment,
 	onOutput: (chunk) => hostLog.write(chunk),
 	// Both callbacks first fire after `host.start()` below, when `attentionWatcher` exists.
 	onEvent: (event) => {
@@ -83,6 +95,8 @@ const host = new HostProcess({
 
 const attentionWatcher = new AttentionWatcher({
 	host,
+	nativeEffects: testMode === undefined,
+	language: () => language,
 	focused: () => BrowserWindow.getFocusedWindow() !== null,
 	openBot: (botId) => {
 		showWindow();
@@ -99,18 +113,27 @@ function createWindow(): BrowserWindow {
 		title: "OpenBot",
 		titleBarStyle: "hiddenInset",
 		trafficLightPosition: { x: 16, y: 16 },
-		backgroundColor: "#0e0e10",
+		backgroundColor: "#ffffff",
 		show: false,
+		focusable: !backgroundTest,
 		webPreferences: {
 			preload: join(__dirname, "../preload/index.cjs"),
 			contextIsolation: true,
 			sandbox: true,
 			nodeIntegration: false,
 			webSecurity: true,
+			...(backgroundTest ? { backgroundThrottling: false } : {}),
 		},
 	});
 
-	created.once("ready-to-show", () => created.show());
+	const publishActive = () => created.webContents.send(CHANNELS.windowActive, created.isVisible() && created.isFocused() && !created.isMinimized());
+	created.on("show", publishActive);
+	created.on("hide", publishActive);
+	created.on("focus", publishActive);
+	created.on("blur", publishActive);
+	created.on("minimize", publishActive);
+	created.on("restore", publishActive);
+	if (!backgroundTest) created.once("ready-to-show", () => created.show());
 	// Closing the window keeps the app and its Bots running in the menu bar (architecture §8.1).
 	created.on("close", (event) => {
 		if (quitting) return;
@@ -131,6 +154,7 @@ function createWindow(): BrowserWindow {
 
 function showWindow(): void {
 	if (window === undefined || window.isDestroyed()) window = createWindow();
+	if (backgroundTest) return;
 	window.show();
 	window.focus();
 }
@@ -142,9 +166,9 @@ function createTray(): Tray {
 	created.setToolTip("OpenBot");
 	created.setContextMenu(
 		Menu.buildFromTemplate([
-			{ label: "Open OpenBot", click: showWindow },
+			{ label: translate(language, "Open OpenBot"), click: showWindow },
 			{ type: "separator" },
-			{ label: "Quit OpenBot", role: "quit" },
+			{ label: translate(language, "Quit OpenBot"), role: "quit" },
 		]),
 	);
 	return created;
@@ -160,22 +184,29 @@ app.on("before-quit", (event) => {
 	void host.stop().finally(() => app.quit());
 });
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
 	// Deny every web permission (camera, notifications, geolocation, …) by default.
 	session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
 	session.defaultSession.setPermissionCheckHandler(() => false);
 
 	if (devServerUrl === undefined) serveAppScheme(join(__dirname, "../renderer"));
-	registerIpc({ host, isTrustedFrame: (url) => isTrustedRendererUrl(url) });
-	host.start();
+	registerIpc({ host, isTrustedFrame: (url) => isTrustedRendererUrl(url), language: () => language, onSettings: (settings) => {
+		const next = settings.language ?? "en";
+		if (next === language) return;
+		language = next;
+		if (tray) { tray.destroy(); tray = createTray(); }
+	} });
 	window = createWindow();
-	tray = createTray();
+	if (testMode === undefined) tray = createTray();
 
 	// Lifecycle events reach the Host in M1 to gate execution (architecture §8.1); logged for now.
 	powerMonitor.on("suspend", () => console.log("[openbot] power event: suspend"));
 	powerMonitor.on("resume", () => console.log("[openbot] power event: resume"));
 	powerMonitor.on("lock-screen", () => console.log("[openbot] power event: lock-screen"));
 	powerMonitor.on("unlock-screen", () => console.log("[openbot] power event: unlock-screen"));
+
+	hostEnvironment.PATH = await resolveLoginPath(process.env);
+	if (!quitting) host.start();
 });
 
 function isTrustedRendererUrl(url: string): boolean {

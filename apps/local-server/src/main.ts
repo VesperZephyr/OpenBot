@@ -75,13 +75,14 @@ const approvalListeners: { changed?: (botId: string) => void } = {};
 const approvals = new ApprovalBook((botId) => approvalListeners.changed?.(botId));
 // The router is built before the runtime; memory edits reach it once tool calls flow, after it opened.
 const router = createToolRouter({
+	service: () => service,
 	target,
 	workspace,
 	approvals,
 	executor,
 	secrets: credentials,
 	tavilyBaseUrl: process.env.OPENBOT_TAVILY_BASE_URL,
-	editMemory: (botId, edit) => runtime.editMemory(botId, edit),
+	editMemory: (botId, edit, invocationId) => runtime.editMemory(botId, edit, invocationId),
 	artifactsDirectory: join(dataDirectory, "artifacts"),
 	policy: () => runtime.policy(),
 });
@@ -89,7 +90,8 @@ const router = createToolRouter({
 const runtime = await BotRuntime.open({
 	databasePath: join(dataDirectory, "openbot.sqlite"),
 	credentials,
-	tools: { definitions: TOOL_DEFINITIONS, invoke: (call) => router.invoke(call) },
+	tools: { definitions: TOOL_DEFINITIONS, invoke: (call) => router.invoke(call), admitOrchestration: call => router.admitOrchestration(call) },
+	...(import.meta.url.endsWith(".mjs") ? {codemodeAssets:{workerUrl:new URL("./codemode-worker.mjs",import.meta.url).href,wasmPath:fileURLToPath(new URL("./quickjs.wasm",import.meta.url))}} : {}),
 });
 
 const status: HostStatus = {
@@ -107,6 +109,7 @@ const send = (message: HostToDesktop): void => {
 };
 
 const service = new HostService({
+	audit: (event) => console.info(JSON.stringify({ type: "operation", ...event })),
 	runtime,
 	secrets: credentials,
 	status,
@@ -118,17 +121,17 @@ const service = new HostService({
 	emit: (event) =>
 		send({ ...event, protocolVersion: PROTOCOL_VERSION, kind: "event", streamId, seq: ++seq }),
 	// Pi committed the call's result: the executor may prune its receipt, and the call's approval is used up.
-	toolSettled: (botId, callId) => {
+	toolSettled: (botId, callId, conversationId) => {
 		void (async () => {
-			executor.ack(`${await runtime.conversationKey(botId)}:${callId}`);
-			await approvals.settled(botId, callId);
+			executor.ack(`${conversationId ?? await runtime.conversationKey(botId)}:${callId}`);
+			await approvals.settled(botId, callId, conversationId);
 		})().catch((error: unknown) => console.error("Could not settle a tool call", error));
 	},
 	// Stop also ends the background commands the conversation started; they are no longer any Pi call's.
-	conversationStopped: (botId) => {
+	conversationStopped: (botId, channelId, runId) => {
 		void runtime
-			.conversationKey(botId)
-			.then((conversationId) => executor.stopTasks(conversationId))
+			.conversationKey(botId, channelId)
+			.then((conversationId) => executor.stopTasks(conversationId, runId))
 			.catch((error: unknown) => console.error("Could not stop background commands", error));
 	},
 });

@@ -40,7 +40,7 @@ async function orphanedSleeps(): Promise<number[]> {
 }
 
 async function openBot(name: string): Promise<void> {
-	await h.page().locator(".bot-row", { hasText: name }).click();
+	await h.page().locator(".bot-row").filter({ has: h.page().getByText(name, { exact: true }) }).click();
 	await h.page().getByRole("textbox", { name: `Message ${name}` }).waitFor();
 }
 
@@ -71,7 +71,7 @@ describe("recovery", () => {
 
 		await again.getByRole("button", { name: "Allow once" }).click();
 		await h.page().locator(".tool-card.tool-succeeded", { hasText: "Count run" }).waitFor();
-		await h.page().getByText("Counted.").waitFor();
+		await h.page().locator(".transcript").getByText("Counted.").waitFor();
 		expect(await countLines()).toEqual(["run"]);
 		await h.shot("03-allowed-once");
 	});
@@ -99,11 +99,11 @@ describe("recovery", () => {
 		const row = h.page().locator(".tool-card.tool-interrupted", { hasText: "Long job" });
 		await row.waitFor();
 		expect(await row.locator(".tool-verb").textContent()).toBe("Interrupted");
-		await expect.poll(() => h.page().locator(".bot-row", { hasText: "Keeper" }).textContent()).toContain("Needs attention");
+		await expect.poll(() => h.page().locator(".bot-row").filter({ has: h.page().getByText("Keeper", { exact: true }) }).textContent()).toContain("Needs attention");
 		expect(await countLines()).toEqual(["run", "start"]);
 		expect(await orphanedSleeps()).toEqual([]);
 		// The model was told the action may have partly run.
-		expect(JSON.stringify(h.model.requests.at(-1)?.messages.at(-1))).toContain("may have partly run");
+		await expect.poll(() => JSON.stringify(h.model.requests.at(-1)?.messages.at(-1))).toContain("may have partly run");
 		await h.shot("04-interrupted");
 	});
 });

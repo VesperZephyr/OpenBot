@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { BotRuntime } from "@openbot/agent-runtime";
 import { SCRIPTED_MODEL, scriptedModels } from "@openbot/agent-runtime/testing";
 import { type ConversationSnapshot, type HostEventType, PROTOCOL_VERSION } from "@openbot/protocol";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApprovalBook, HostService, MemorySecretStore, type ModelConfigFile } from "../src/index.ts";
 
 const status = { protocolVersion: PROTOCOL_VERSION, hostVersion: "test", nodeVersion: "test", targetId: "mac", startedAt: 0 };
@@ -40,6 +40,7 @@ describe("HostService", () => {
 	let configFile: MemoryConfigFile;
 	/** Bots whose background commands the service asked the Host to stop. */
 	let stoppedBots: string[];
+	let audit: unknown[];
 	/** Resolves with the first conversation snapshot that satisfies the predicate. */
 	let nextSnapshot: (predicate: (snapshot: ConversationSnapshot) => boolean) => Promise<ConversationSnapshot>;
 
@@ -47,6 +48,7 @@ describe("HostService", () => {
 		directory = await mkdtemp(join(tmpdir(), "openbot-host-"));
 		runtime = await BotRuntime.open({ databasePath: join(directory, "db.sqlite"), models: scriptedModels("Done.").models });
 		events = [];
+		audit = [];
 		stoppedBots = [];
 		updated = [];
 		secrets = new MemorySecretStore();
@@ -60,6 +62,7 @@ describe("HostService", () => {
 		};
 		service = new HostService({
 			runtime,
+			audit: (event) => audit.push(event),
 			secrets,
 			status,
 			dataDirectory: directory,
@@ -101,16 +104,60 @@ describe("HostService", () => {
 
 		const list = await service.handle("bots.list", {});
 		expect(list.find((b) => b.botId === bot.botId)?.activity).toBe("unread");
-		await service.handle("conversations.markRead", { botId: bot.botId });
+		await service.handle("conversations.markRead", { conversationKey: `bot:${bot.botId}`, through: 1 });
 		expect((await service.handle("bots.list", {})).find((b) => b.botId === bot.botId)?.activity).toBe("idle");
 		expect(events).toContain("bots.changed");
+	});
+
+	it("lists bounded summaries without loading histories and rejects read receipts for deleted Bots", async () => {
+		const bot = await service.handle("bots.create", { requestId: "index", name: "Reader" });
+		const snap = vi.spyOn(runtime, "snapshot");
+		const originalGroups = runtime.groups();
+		const posts = vi.fn(originalGroups.posts);
+		const groups = vi.spyOn(runtime, "groups").mockReturnValue({ ...originalGroups, posts });
+		const rows = await service.handle("conversations.list", {});
+		expect(rows.find((r) => r.conversationKey === `bot:${bot.botId}`)?.unreadCount).toBe(0);
+		expect(snap).not.toHaveBeenCalled();
+		expect(posts).not.toHaveBeenCalled();
+		snap.mockRestore();
+		groups.mockRestore();
+		await service.handle("bots.delete", { botId: bot.botId });
+		expect((await service.handle("conversations.list", {})).some((r) => r.conversationKey === `bot:${bot.botId}`)).toBe(false);
+		await expect(service.handle("conversations.markRead", { conversationKey: `bot:${bot.botId}`, through: 0 })).rejects.toThrow("Unknown Bot");
+	});
+
+	it("searches current eligible identities and unread conversations without history reads or content audit", async () => {
+		await service.handle("settings.update", { defaultModel: SCRIPTED_MODEL });
+		const bot = await service.handle("bots.create", { requestId: "search", name: "Reader" });
+		await service.handle("conversations.subscribe", { botId: bot.botId });
+		const answered = nextSnapshot((s) => s.botId === bot.botId && s.items.some((i) => i.kind === "assistant"));
+		await service.handle("messages.submit", { botId: bot.botId, requestId: "q", text: "SEARCH_PRIVATE_SENTINEL" });
+		await answered;
+		const snap = vi.spyOn(runtime, "snapshot");
+		const store = runtime.groups(), posts = vi.fn(store.posts), history = vi.fn(store.history);
+		const groups = vi.spyOn(runtime, "groups").mockReturnValue({ ...store, posts, history });
+		const before = await service.handle("conversations.list", {});
+		const calls = audit.length;
+		expect((await service.handle("conversations.search", { query: "search_private_sentinel", unreadOnly: true })).items).toHaveLength(1);
+		expect(await service.handle("conversations.list", {})).toEqual(before);
+		expect(snap).not.toHaveBeenCalled(); expect(posts).not.toHaveBeenCalled(); expect(history).not.toHaveBeenCalled();
+		expect(audit).toHaveLength(calls);
+		expect(JSON.stringify(audit)).not.toContain("SEARCH_PRIVATE_SENTINEL");
+		snap.mockRestore(); groups.mockRestore();
+		await service.handle("conversations.markRead", { conversationKey: `bot:${bot.botId}`, through: 1 });
+		expect((await service.handle("conversations.search", { query: "sentinel", unreadOnly: true })).items).toHaveLength(0);
+		await service.handle("bots.update", { botId: bot.botId, status: "hidden" });
+		expect((await service.handle("conversations.search", { query: "sentinel" })).items).toHaveLength(0);
+		expect((await service.handle("conversations.search", { query: "sentinel", includeHidden: true })).items).toHaveLength(1);
+		await service.handle("bots.delete", { botId: bot.botId });
+		expect((await service.handle("conversations.search", { query: "sentinel", includeHidden: true })).items).toHaveLength(0);
 	});
 
 	it("creates one Bot per request ID", async () => {
 		const first = await service.handle("bots.create", { requestId: "same", name: "Scout" });
 		const second = await service.handle("bots.create", { requestId: "same", name: "Other" });
 		expect(second.botId).toBe(first.botId);
-		expect(await service.handle("bots.list", {})).toHaveLength(1);
+		expect(await service.handle("bots.list", {})).toHaveLength(2);
 	});
 
 	it("never returns stored API keys in settings", async () => {
@@ -190,11 +237,24 @@ describe("HostService", () => {
 		await expect(service.handle("conversations.subscribe", { botId: "bot_missing" })).rejects.toThrow("Unknown Bot");
 	});
 
-	it("duplicates profile and memory without history, once per request ID", async () => {
+ it("keeps Prompt and memory content out of diagnostics while recording edit and restore outcomes", async () => {
+  const bot = await service.handle("bots.create", {requestId: "privacy", name: "Privacy", instructions: "PRIVATE_PROMPT_SENTINEL"});
+  await service.handle("bots.memory.update", {botId: bot.botId, content: "PRIVATE_MEMORY_SENTINEL", expectedRevision: 0});
+  await service.handle("bots.memory.restore", {botId: bot.botId, revision: 0, expectedRevision: 1});
+  await expect(service.handle("bots.memory.update", {botId: bot.botId, content: "PRIVATE_DRAFT_SENTINEL", expectedRevision: 0})).rejects.toThrow("Memory changed");
+  expect(JSON.stringify(audit)).not.toContain("SENTINEL");
+  expect(audit).toEqual(expect.arrayContaining([
+   expect.objectContaining({operation: "bots.memory.update", outcome: "succeeded"}),
+   expect.objectContaining({operation: "bots.memory.restore", outcome: "succeeded"}),
+   expect.objectContaining({operation: "bots.memory.update", outcome: "failed"}),
+  ]));
+ });
+
+	it("duplicates profile with empty memory and history, once per request ID", async () => {
 		await service.handle("settings.update", { defaultModel: SCRIPTED_MODEL });
 		const source = await service.handle("bots.create", { requestId: "s", name: "Ada", role: "Research", instructions: "Cite sources." });
 		await service.handle("bots.update", { botId: source.botId, thinkingLevel: "high" });
-		await service.handle("bots.memory.update", { botId: source.botId, content: "## Preferences\n- Short answers\n" });
+		await service.handle("bots.memory.update", { expectedRevision: 0, botId: source.botId, content: "## Preferences\n- Short answers\n" });
 		await service.handle("conversations.subscribe", { botId: source.botId });
 		const answered = nextSnapshot((s) => s.live === undefined && s.items.some((i) => i.kind === "assistant"));
 		await service.handle("messages.submit", { botId: source.botId, requestId: "m1", text: "Hi" });
@@ -203,19 +263,19 @@ describe("HostService", () => {
 		const copy = await service.handle("bots.duplicate", { botId: source.botId, requestId: "d1" });
 		expect(copy).toMatchObject({ name: "Ada (copy)", role: "Research", instructions: "Cite sources.", thinkingLevel: "high" });
 		expect(copy.botId).not.toBe(source.botId);
-		expect((await service.handle("bots.memory.get", { botId: copy.botId })).content).toBe("## Preferences\n- Short answers\n");
+		expect((await service.handle("bots.memory.get", { botId: copy.botId })).content).toBe("");
 		expect((await service.handle("conversations.snapshot", { botId: copy.botId })).items).toEqual([]);
 		expect((await service.handle("bots.duplicate", { botId: source.botId, requestId: "d1" })).botId).toBe(copy.botId);
-		expect(await service.handle("bots.list", {})).toHaveLength(2);
+		expect(await service.handle("bots.list", {})).toHaveLength(3);
 	});
 
 	it("deletes a Bot: hidden everywhere, its conversation kept", async () => {
 		const bot = await service.handle("bots.create", { requestId: "x", name: "Gone" });
-		await service.handle("bots.memory.update", { botId: bot.botId, content: "kept" });
+		await service.handle("bots.memory.update", { expectedRevision: 0, botId: bot.botId, content: "kept" });
 		await service.handle("bots.delete", { botId: bot.botId });
 		// No Run was active, but background commands it started earlier must still stop.
 		expect(stoppedBots).toEqual([bot.botId]);
-		expect(await service.handle("bots.list", {})).toEqual([]);
+		expect((await service.handle("bots.list", {})).filter((b) => b.kind !== "core")).toEqual([]);
 		await expect(service.handle("messages.submit", { botId: bot.botId, requestId: "m", text: "Hi" })).rejects.toThrow("Unknown Bot");
 		await expect(service.handle("bots.update", { botId: bot.botId, status: "active" })).rejects.toThrow("Unknown Bot");
 		await expect(service.handle("bots.duplicate", { botId: bot.botId, requestId: "d" })).rejects.toThrow("Unknown Bot");
@@ -255,9 +315,8 @@ describe("HostService", () => {
 			service.handle("models.addProvider", { id: "y", name: "Y", baseUrl: "file:///etc", api: "openai-completions", modelIds: ["m"] }),
 		).rejects.toThrow("http");
 		configFile.text = "{ // comment\n }";
-		await expect(
-			service.handle("models.addProvider", { id: "y", name: "Y", baseUrl: "http://x", api: "openai-completions", modelIds: ["m"] }),
-		).rejects.toThrow("by hand");
+		await service.handle("models.addProvider", { id: "y", name: "Y", baseUrl: "http://x", api: "openai-completions", modelIds: ["m"] });
+		expect(configFile.text).toContain("// comment");
 	});
 
 	it("tests a model with a real request and reports failures as results", async () => {
@@ -266,4 +325,33 @@ describe("HostService", () => {
 		expect(unknown.ok).toBe(false);
 		expect(unknown.error).toContain("Unknown model");
 	});
+	it("serializes provider additions and records content-free outcomes", async () => {
+		await Promise.all(["one", "two"].map((id) => service.handle("models.addProvider", { id, name: "private-name", baseUrl: "https://example.com/private", api: "openai-completions", modelIds: ["private-model"] })));
+		expect(Object.keys(JSON.parse(configFile.text!).providers)).toEqual(["one", "two"]);
+		await expect(service.handle("models.addProvider", { id: "one", name: "secret", baseUrl: "https://example.com", api: "openai-completions", modelIds: ["m"] })).rejects.toThrow("already exists");
+		await service.handle("credentials.set", { providerId: "one", apiKey: "private-key" });
+		expect(JSON.stringify(audit)).not.toMatch(/private|secret|example/);
+		expect(audit).toEqual(expect.arrayContaining([expect.objectContaining({ operation: "models.addProvider", outcome: "failed" }), expect.objectContaining({ operation: "credentials.set", outcome: "succeeded" })]));
+		const models = await service.handle("models.list", {});
+		expect(models.find((m) => m.provider === "one")).toMatchObject({ source: "custom", overridden: false, endpoint: "https://example.com" });
+		configFile.text = '{"providers":{"faux":{"baseUrl":"https://example.com/secret"}}}';
+		expect((await service.handle("models.list", {})).find((m) => m.provider === "faux")).toMatchObject({ source: "builtin", overridden: true });
+	});
+
+	it("protects the Core before cancellation and copies it only as a Specialist", async () => {
+		const [core] = await service.handle("bots.list", {});
+		expect(core).toMatchObject({ kind: "core", name: "OpenBot", status: "active", pinned: true });
+		await service.handle("bots.memory.update", { expectedRevision: 0, botId: core!.botId, content: "private core memory" });
+		for (const change of [{ pinned: false }, { status: "hidden" as const }]) {
+			await expect(service.handle("bots.update", { botId: core!.botId, ...change })).rejects.toThrow("Core Bot");
+		}
+		await expect(service.handle("bots.delete", { botId: core!.botId })).rejects.toThrow("Core Bot");
+		expect(stoppedBots).toEqual([]);
+		const copy = await service.handle("bots.duplicate", { botId: core!.botId, requestId: "copy-core" });
+		expect(copy.kind).toBe("specialist");
+		expect(await runtime.memory(copy.botId)).toBe("");
+		await service.handle("bots.update", { botId: core!.botId, name: "My assistant", instructions: "Use short answers" });
+		expect((await runtime.getBot(core!.botId))?.kind).toBe("core");
+	});
+
 });

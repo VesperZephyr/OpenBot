@@ -5,11 +5,19 @@
 import type { GrantAccess, HostEvent, HostMethod, HostParams, HostResult } from "@openbot/protocol";
 
 export const RENDERER_METHODS = [
+ "collaboration.stop",
+	"groups.list",
+	"groups.snapshot",
+	"groups.change",
+	"groups.send",
 	"host.status",
 	"bots.list",
+	"bots.management.history",
 	"bots.create",
 	"bots.update",
 	"conversations.snapshot",
+	"conversations.list",
+	"conversations.search",
 	"conversations.markRead",
 	"messages.submit",
 	"runs.cancel",
@@ -21,6 +29,7 @@ export const RENDERER_METHODS = [
 	"credentials.delete",
 	"bots.memory.get",
 	"bots.memory.update",
+	"bots.memory.restore",
 	"conversations.reset",
 	"policy.get",
 	"policy.update",
@@ -57,6 +66,9 @@ export type OpenBotApi = {
 	/** Host connection state, so the UI can show a starting or stopped notice. */
 	readonly onHostState: (listener: (state: HostState) => void) => () => void;
 	readonly hostState: () => Promise<HostState>;
+	/** Native visibility and focus, independent of Chromium document focus. */
+	readonly windowActive: () => Promise<boolean>;
+	readonly onWindowActive: (listener: (active: boolean) => void) => () => void;
 	/** Open the native folder picker; null when the user cancels. */
 	readonly pickFolder: () => Promise<FolderSelection | null>;
 	/** Put text on the system clipboard (web clipboard access is denied by the session). */
@@ -73,6 +85,8 @@ export const CHANNELS = {
 	event: "openbot:event",
 	hostState: "openbot:host-state",
 	getHostState: "openbot:get-host-state",
+	getWindowActive: "openbot:get-window-active",
+	windowActive: "openbot:window-active",
 	pickFolder: "openbot:dialog.pickFolder",
 	copyText: "openbot:copy-text",
 	revealPath: "openbot:reveal-path",

@@ -57,6 +57,12 @@ Dated entries added during execution. Empty when ready.
 
 ## Index
 
+Product design (not an implementation task): [D1: Core Bot, Specialist Bots, and Model Sources](d1-bot-product-design.md), **accepted direction**. Research and task contracts for the product foundation. Agent mechanisms continue to reuse Pi.
+
+Interaction research: [D2: Grok Bot UI](d2-grok-ui-research.md), **research complete**. Official documentation, the supplied screenshot and installed-client inspection inform [B21](b21-conversation-experience.md), the conversation-experience spec merged in PR #17, and [B22](b22-conversation-list.md), the conversation-list increment. D2 remains the research record.
+
+Architecture design: [D3: Application Capabilities and Local Code Mode](d3-app-capabilities.md), **accepted direction**. Defines a shared authorized Host capability surface and reuse of vendored Pi Code Mode. B24 is implemented and in review; B25 implements bounded read-only Code Mode after its admission/limit spike. B26 remains draft behind its recovery acceptance gate.
+
 Phase 1 (MVP). Every batch is implemented on `feat/mvp` and in review until the owner's acceptance run.
 
 | ID                            | Title                                   | Status        |
@@ -69,3 +75,31 @@ Phase 1 (MVP). Every batch is implemented on `feat/mvp` and in review until the 
 | [B6](b6-bot-quality.md)       | Bot quality and memory                  | in review     |
 | [B7](b7-desktop-mvp.md)       | Desktop MVP                             | in review     |
 | [B8](b8-installable-build.md) | Installable build                       | in review     |
+| [B7a](b7a-background-e2e.md) | Background desktop tests                | in review     |
+| [B8a](b8a-login-path.md) | Login shell command path | in review |
+
+## Product foundation
+
+Current increment: B13a channel contexts and B13b group lifecycle follow merged B18/B19. B13c bounded group collaboration is implemented and in review; agent mechanisms continue to reuse Pi. Only ready specs may start.
+
+| Task | Status |
+| --- | --- |
+| [B16](b16-model-sources.md) | in review |
+| [B17](b17-core-bot.md) | in review |
+| [B20](b20-desktop-experience.md) | in review |
+| [B18](b18-core-management.md) | done (PR #11) |
+| [B19](b19-memory-controls.md) | in review |
+| [B13A](b13a-channel-contexts.md) | done (PR #13) |
+| [B13B](b13b-group-lifecycle.md) | in review |
+| [B13C](b13c-collaboration.md) | in review |
+| [B21](b21-conversation-experience.md) | done (PR #17) |
+| [B22](b22-conversation-list.md) | in review |
+| [B23](b23-conversation-search.md) | in review |
+
+## Application capabilities
+
+| Task | Status |
+| --- | --- |
+| [B24: Authorized application API](b24-app-capability-api.md) | in review (PR #23) |
+| [B25: Local app Code Mode](b25-local-app-code-mode.md) | implemented, in review |
+| [B26: Code Mode management](b26-code-mode-management.md) | draft: B25 recovery acceptance required |

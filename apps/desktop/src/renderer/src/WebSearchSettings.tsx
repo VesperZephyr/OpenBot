@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { type FormEvent, useState } from "react";
 import { api, refreshSettings, report, useStore } from "./store";
 
@@ -24,39 +25,33 @@ export function WebSearchSettings() {
 
 	return (
 		<div className="settings-group">
-			<h2>Web search</h2>
-			<p className="muted">
-				Bots search the web through Tavily. Get a key at tavily.com; it is stored in the macOS Keychain.
-			</p>
+			<h2>{t("Web search")}</h2>
+			<p className="muted">{t("Bots search the web through Tavily. Get a key at tavily.com; it is stored in the macOS Keychain.")}</p>
 			<form className="key-form" onSubmit={save}>
 				<input
 					type="password"
 					autoComplete="off"
 					value={apiKey}
-					placeholder={configured ? "Replace Tavily API key" : "Tavily API key"}
+					placeholder={t(configured ? "Replace Tavily API key" : "Tavily API key")}
 					onChange={(event) => setApiKey(event.target.value)}
-					aria-label="Tavily API key"
+					aria-label={t("Tavily API key")}
 				/>
-				<button type="submit" className="primary" disabled={apiKey.trim() === ""}>
-					Save key
-				</button>
+				<button type="submit" className="primary" disabled={apiKey.trim() === ""}>{t("Save key")}</button>
 			</form>
 			<ul className="provider-list">
 				{configured ? (
 					<li>
 						<span>Tavily</span>
-						<span className="muted">Key stored</span>
+						<span className="muted">{t("Key stored")}</span>
 						<button
 							type="button"
 							onClick={() =>
 								void api["credentials.delete"]({ providerId: TAVILY_PROVIDER_ID }).then(refreshSettings).catch(report)
 							}
-						>
-							Remove
-						</button>
+						>{t("Remove")}</button>
 					</li>
 				) : (
-					<li className="muted">Not set up: Bots cannot search the web.</li>
+					<li className="muted">{t("Not set up: Bots cannot search the web.")}</li>
 				)}
 			</ul>
 		</div>

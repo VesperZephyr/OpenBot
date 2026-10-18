@@ -1,0 +1,227 @@
+.group-section-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding-right: 10px;
+}
+.group-section-heading button {
+	border: 0;
+	background: transparent;
+	font-size: 20px;
+}
+.group-nav {
+	display: flex;
+	gap: 10px;
+	text-align: left;
+	width: 100%;
+}
+.group-nav > span:last-child {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.group-nav small {
+	display: block;
+	font-size: 11px;
+	opacity: 0.6;
+	margin-top: 3px;
+}
+.group-view {
+	height: 100%;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+.group-view h1 {
+	margin: 0;
+	font-size: 18px;
+}
+.group-view .conversation-header {
+	justify-content: space-between;
+	gap: 12px;
+}
+.group-view .conversation-header p {
+	margin: 4px 0 0;
+	font-size: 12px;
+}
+.group-header-actions {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+.group-timeline {
+	flex: 1;
+	overflow: auto;
+	padding: 24px max(24px, calc((100% - 760px) / 2));
+}
+.group-intro {
+	text-align: center;
+	padding: 12px 16px 28px;
+}
+.group-symbol {
+	font-size: 36px;
+	color: var(--muted);
+}
+.group-intro h2 {
+	font-size: 21px;
+	font-weight: 500;
+	margin: 12px 0;
+}
+.group-intro p {
+	color: var(--muted);
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.group-members {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 6px;
+}
+.group-members span {
+	border: 1px solid var(--border);
+	border-radius: 20px;
+	padding: 5px 10px;
+	font-size: 12px;
+}
+.group-post {
+	padding: 16px 18px;
+	border-radius: 14px;
+	margin: 12px 0;
+	overflow-wrap: anywhere;
+}
+.group-post.from-user {
+	background: var(--surface-raised);
+	margin-left: 32px;
+}
+.group-post-meta {
+	font-size: 12px;
+	margin-bottom: 6px;
+	color: var(--muted);
+}
+.group-task {
+	border: 1px solid var(--border);
+	padding: 14px;
+	border-radius: 12px;
+	margin: 12px 0;
+}
+.group-task > span {
+	color: var(--muted);
+	margin-left: 10px;
+	font-size: 12px;
+}
+.group-task > button {
+	float: right;
+}
+.group-compose {
+	padding: 8px max(20px, calc((100% - 760px) / 2)) 20px;
+}
+.group-compose .composer {
+	margin: 0;
+}
+.group-recipients {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 5px;
+	margin-bottom: 8px;
+	font-size: 12px;
+}
+.group-recipients button {
+	font-size: 12px;
+	border-radius: 18px;
+	padding: 4px 10px;
+}
+.group-recipients button[aria-pressed="true"] {
+	background: var(--accent);
+	color: var(--bg);
+	border-color: var(--accent);
+}
+.group-readonly {
+	padding: 18px 24px;
+	text-align: center;
+	background: var(--surface-raised);
+	color: var(--muted);
+	font-size: 13px;
+}
+.group-editor {
+	max-height: 85vh;
+	overflow: auto;
+	width: min(480px, calc(100vw - 40px));
+}
+.group-editor label {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-bottom: 12px;
+}
+.group-editor input:not([type="checkbox"]),
+.group-editor textarea,
+.group-editor select {
+	width: 100%;
+}
+.group-editor fieldset {
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	margin: 8px 0 16px;
+}
+.group-member-options {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 14px;
+	padding-top: 8px;
+}
+.group-member-options label {
+	flex-direction: row;
+	align-items: center;
+	font-size: 13px;
+	margin: 0;
+}
+.group-member-options input {
+	width: auto;
+}
+@media (max-width: 800px) {
+	.group-view .conversation-header {
+		align-items: flex-start;
+		flex-direction: column;
+	}
+	.group-timeline {
+		padding: 16px;
+	}
+	.group-compose {
+		padding: 8px 16px 16px;
+	}
+}
+
+.collaboration-root {
+	display: flex;
+	align-items: flex-start;
+	gap: 16px;
+	justify-content: space-between;
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	padding: 16px;
+	margin-bottom: 16px;
+	background: var(--surface-raised);
+}
+.collaboration-root p {
+	margin: 6px 0;
+	font-size: 13px;
+	overflow-wrap: anywhere;
+}
+.collaboration-root small,
+.handoff-label {
+	color: var(--muted);
+	font-size: 12px;
+}
+.collaboration-root button {
+	flex-shrink: 0;
+}
+.mention-options {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+	padding: 10px;
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	margin-bottom: 8px;
+}

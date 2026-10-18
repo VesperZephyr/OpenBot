@@ -108,8 +108,21 @@ export type CodemodeResult =
 			during?: CodemodeDuring;
 	  };
 
+/** Optional transport budgets enforced in the VM worker before posting to the host. */
+export interface CodemodeBridgeLimits {
+ maxCalls: number;
+ maxToolCalls: number;
+ maxPendingCalls: number;
+ maxArgumentBytes: number;
+ maxOutputBytes: number;
+ maxOutputItems: number;
+ maxReturnBytes: number;
+ maxStoreWriteBytes: number;
+}
+
 /** Options every sandbox accepts, wherever its VM runs. */
 export interface CodemodeSandboxBaseOptions {
+	bridgeLimits?: CodemodeBridgeLimits;
 	tools?: CodemodeTool[];
 	/**
 	 * Functions exposed as top-level identifiers instead of on `tools`, for host helpers such as

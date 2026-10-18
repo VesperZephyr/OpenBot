@@ -174,18 +174,29 @@ export class ApprovalBook {
 	 * The call's result is committed: its decided approval is used up. Calls without a decided approval are ignored,
 	 * so the Host may report every settled call.
 	 */
-	async settled(botId: BotId, callId: string): Promise<void> {
+	async settled(botId: BotId, callId: string, conversationId?: string): Promise<void> {
 		for (const [approvalId, { record }] of this.#entries) {
-			if (record.botId !== botId || record.callId !== callId || record.decision === undefined) continue;
+			if (
+				record.botId !== botId ||
+				record.callId !== callId ||
+				(conversationId !== undefined && (record.conversationId ?? record.approvalId.split(":")[1]) !== conversationId) ||
+				record.decision === undefined
+			)
+				continue;
 			this.#entries.delete(approvalId);
 			if (!this.#closed) await this.#requireStore().put({ ...record, state: "consumed" });
 			return;
 		}
 	}
 
-	forBot(botId: BotId): PendingApproval[] {
+	forBot(botId: BotId, conversationId?: string): PendingApproval[] {
 		return [...this.#entries.values()]
-			.filter((entry) => entry.record.state === "pending" && entry.record.botId === botId)
+			.filter(
+				(entry) =>
+					entry.record.state === "pending" &&
+					entry.record.botId === botId &&
+					(conversationId === undefined || (entry.record.conversationId ?? entry.record.approvalId.split(":")[1]) === conversationId),
+			)
 			.map(({ record: { state: _state, decision: _decision, decidedAt: _decidedAt, ...approval } }) => approval)
 			.sort((a, b) => a.createdAt - b.createdAt);
 	}
@@ -257,6 +268,15 @@ export function decide(call: PolicyCall, definition: ToolDefinition, policy: Pol
 				alwaysAllowOptions: folderOptions(canonical, call.tool === "local_list", access),
 			};
 		}
+		case "app.orchestrate":
+		case "app.read":
+			return { kind: "deny", reason: "Application access requires Core authorization" };
+		case "collaboration":
+   return {kind:"deny",reason:"Collaboration requires assigned task authority"};
+		case "group.management":
+			return { kind: "deny", reason: "Group management requires Core authorization" };
+		case "bot.management":
+			return { kind: "ask", reason: "Review this Bot change" };
 		case "web":
 		case "memory":
 		// Reading or stopping a background command the user already approved.

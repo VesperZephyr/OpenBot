@@ -4,6 +4,8 @@
  * messages. Two desktop-only channels need main's privileges: writing the clipboard and revealing a file in Finder.
  */
 import { BrowserWindow, clipboard, ipcMain, type IpcMainInvokeEvent, shell } from "electron";
+import type { RedactedSettings } from "@openbot/protocol";
+import type { Language } from "../shared/i18n";
 import { ProtocolError } from "@openbot/protocol";
 import { paramsError } from "@openbot/protocol/schemas";
 import { CHANNELS, RENDERER_METHODS, type RendererMethod } from "../shared/api";
@@ -12,6 +14,8 @@ import type { HostProcess } from "./host";
 
 export type IpcOptions = {
 	readonly host: HostProcess;
+	readonly language?: () => Language;
+	readonly onSettings?: (settings: RedactedSettings) => void;
 	/** Accepts only the application's own renderer document. */
 	readonly isTrustedFrame: (url: string) => boolean;
 };
@@ -20,7 +24,7 @@ const allowed: ReadonlySet<string> = new Set(RENDERER_METHODS);
 /** Copy buttons carry code blocks; anything larger is not a copy the user meant. */
 const MAX_CLIPBOARD_CHARS = 1_000_000;
 
-export function registerIpc({ host, isTrustedFrame }: IpcOptions): void {
+export function registerIpc({ host, isTrustedFrame, language, onSettings }: IpcOptions): void {
 	const folders = new FolderSelections();
 	const checkFrame = (event: IpcMainInvokeEvent): void => {
 		if (!isTrustedFrame(event.senderFrame?.url ?? "")) throw new Error("[invalid_request] Call from an untrusted frame");
@@ -49,12 +53,20 @@ export function registerIpc({ host, isTrustedFrame }: IpcOptions): void {
 			const invalid = paramsError(rendererMethod, params);
 			if (invalid !== undefined) throw new Error(`[invalid_request] ${invalid}`);
 			// The schema check above proves `params` has the method's shape.
-			return await host.call(rendererMethod, params as never);
+			const result = await host.call(rendererMethod, params as never);
+			if (rendererMethod === "settings.get" || rendererMethod === "settings.update") onSettings?.(result as RedactedSettings);
+			return result;
 		} catch (error) {
 			// Electron serializes only the message across IPC, so the code travels as a prefix.
 			if (error instanceof ProtocolError) throw new Error(`[${error.code}] ${error.message}`);
 			throw error;
 		}
+	});
+
+	ipcMain.handle(CHANNELS.getWindowActive, (event) => {
+		checkFrame(event);
+		const window = BrowserWindow.fromWebContents(event.sender);
+		return !!window && window.isVisible() && window.isFocused() && !window.isMinimized();
 	});
 
 	ipcMain.handle(CHANNELS.getHostState, (event) => {
@@ -66,7 +78,7 @@ export function registerIpc({ host, isTrustedFrame }: IpcOptions): void {
 		checkFrame(event);
 		const window = BrowserWindow.fromWebContents(event.sender);
 		if (window === null) throw new Error("[invalid_request] No window to attach the dialog to");
-		return folders.pick(window, event.sender.id);
+		return folders.pick(window, event.sender.id, language?.());
 	});
 
 	// The session permission handler denies clipboard access to web content; copying goes through main instead.

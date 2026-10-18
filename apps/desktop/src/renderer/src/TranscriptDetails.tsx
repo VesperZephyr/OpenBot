@@ -1,10 +1,11 @@
+import { t } from "./i18n";
 /**
  * Transcript details from B7: the collapsed "Ran N steps" row, message times shown on hover, and Reveal in Finder for
  * files a Bot wrote.
  */
 import type { TranscriptItem } from "@openbot/protocol";
 import type { ReactNode } from "react";
-import { report } from "./store";
+import { report, useStore } from "./store";
 
 /** Consecutive successful tool calls, collapsed; expanding shows each call's own row. */
 export function StepsRow({ count, children }: { readonly count: number; readonly children: ReactNode }) {
@@ -13,7 +14,7 @@ export function StepsRow({ count, children }: { readonly count: number; readonly
 			<details>
 				<summary>
 					<span className="tool-status" aria-hidden />
-					<span className="tool-verb">Ran {count} steps</span>
+					<span className="tool-verb">{t("Ran {count} steps", {count})}</span>
 				</summary>
 				<ol className="steps-list">{children}</ol>
 			</details>
@@ -21,12 +22,14 @@ export function StepsRow({ count, children }: { readonly count: number; readonly
 	);
 }
 
-const TIME = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
-const DATE_TIME = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+
 
 /** When a message was sent or answered; visible while the pointer is over the message. */
 export function MessageTime({ at }: { readonly at: number | undefined }) {
 	if (at === undefined) return null;
+	const language = useStore.getState().settings?.language ?? "en";
+	const TIME = new Intl.DateTimeFormat(language, { hour: "numeric", minute: "2-digit" });
+	const DATE_TIME = new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "short" });
 	const date = new Date(at);
 	const today = date.toDateString() === new Date().toDateString();
 	return (
@@ -51,8 +54,6 @@ export function RevealButton({ item }: { readonly item: Extract<TranscriptItem, 
 				event.preventDefault();
 				void window.openbot.revealPath(path).catch(report);
 			}}
-		>
-			Reveal in Finder
-		</button>
+		>{t("Reveal in Finder")}</button>
 	);
 }

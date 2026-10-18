@@ -170,6 +170,7 @@ function checkGlobals(globals: readonly CodemodeDeclaredGlobal[]): void {
 type Control = Pick<CodemodeRunOptions, "onStarted" | "onCall" | "onIdle">;
 
 interface ExecutionOptions {
+	bridgeLimits?: CodemodeSandboxBaseOptions["bridgeLimits"];
 	code: string;
 	tools: readonly CodemodeDeclaredTool[];
 	globals: readonly CodemodeDeclaredGlobal[];
@@ -235,6 +236,7 @@ class Execution {
 			})),
 			globals: options.globals.map((global) => ({ name: global.name, spread: global.spread === true })),
 			memoryLimitBytes: options.memoryLimitBytes,
+			bridgeLimits: options.bridgeLimits,
 			store: options.store,
 			...(options.deterministic ? { deterministic: options.deterministic } : {}),
 		};
@@ -462,6 +464,7 @@ export class CodemodeSandboxBase {
 	private readonly globalsByName = new Map<string, CodemodeTool>();
 	private readonly timeoutMs: number;
 	private readonly memoryLimitBytes: number | undefined;
+	private readonly bridgeLimits: CodemodeSandboxBaseOptions["bridgeLimits"];
 	private readonly launch: VmLauncher;
 	private readonly running = new Set<Execution>();
 	private closed = false;
@@ -469,6 +472,8 @@ export class CodemodeSandboxBase {
 	constructor(options: CodemodeSandboxBaseOptions, launch: VmLauncher) {
 		this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 		this.memoryLimitBytes = options.memoryLimitBytes;
+		if (options.bridgeLimits && ["maxCalls","maxToolCalls","maxPendingCalls","maxArgumentBytes","maxOutputBytes","maxOutputItems","maxReturnBytes","maxStoreWriteBytes"].some(key => { const n=options.bridgeLimits![key as keyof NonNullable<typeof options.bridgeLimits>]; return !Number.isSafeInteger(n) || n <= 0; })) throw new Error("Bridge limits must be positive safe integers");
+		this.bridgeLimits = options.bridgeLimits && {...options.bridgeLimits};
 		this.launch = launch;
 		for (const tool of options.tools ?? []) this.registerTool(tool);
 		checkGlobals(options.globals ?? []);
@@ -509,6 +514,7 @@ export class CodemodeSandboxBase {
 			timeoutMs: options.timeoutMs ?? this.timeoutMs,
 			signal: options.signal,
 			memoryLimitBytes: this.memoryLimitBytes,
+			bridgeLimits: this.bridgeLimits,
 			store: serializeStore(options.store),
 			launch: this.launch,
 		});
@@ -549,6 +555,7 @@ export class CodemodeSandboxBase {
 			timeoutMs: options.timeoutMs ?? Number.POSITIVE_INFINITY,
 			signal: options.signal,
 			memoryLimitBytes: this.memoryLimitBytes,
+			bridgeLimits: this.bridgeLimits,
 			store: serializeStore(options.store),
 			deterministic: { startedAt: options.startedAt, seed: options.seed },
 			control: { onStarted: options.onStarted, onCall: options.onCall, onIdle: options.onIdle },

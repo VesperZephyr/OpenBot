@@ -11,3 +11,5 @@ createRoot(root).render(
 		<App />
 	</StrictMode>,
 );
+
+import "./conversation.css";

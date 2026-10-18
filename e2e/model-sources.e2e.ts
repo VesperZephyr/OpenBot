@@ -1,0 +1,51 @@
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { afterAll, beforeAll, expect, it } from "vitest";
+import { type AppHarness, launchApp } from "./harness.ts";
+let h: AppHarness;
+beforeAll(async () => { h = await launchApp("model-sources"); }, 90_000);
+afterAll(async () => { await h?.close(); });
+
+it("adds a custom provider from Settings without changing commented configuration", async () => {
+	const file = join(h.run, "home", "models.json");
+	await writeFile(file, `// Keep my configuration\n${await readFile(file, "utf8")}`);
+	const page = h.page();
+	await page.getByRole("button", { name: /^Settings/ }).click();
+	const form = page.getByRole("form", { name: "Model setup" });
+	await form.getByRole("radio", { name: /^Built-in models/ }).waitFor();
+	await h.shot("01-built-in");
+	await form.getByRole("radio", { name: /^Custom provider/ }).click();
+	await form.getByLabel("Name", { exact: true }).fill("Second");
+	await form.getByLabel("Protocol").selectOption("anthropic-messages");
+	expect(await form.getByLabel("Protocol").inputValue()).toBe("anthropic-messages");
+	await form.getByLabel("Protocol").selectOption("openai-completions");
+	await form.getByLabel("Base URL").fill(h.modelBaseUrl);
+	await form.getByLabel("Model ID").fill("scripted");
+	await form.getByLabel("API key").fill("test-secret");
+	h.model.script({ text: "OK" });
+	await form.getByRole("button", { name: "Test and use model" }).click();
+	await form.getByText("Connection tested. This is now your default model.").waitFor();
+	const config = await readFile(file, "utf8");
+	expect(config).toContain("// Keep my configuration");
+	expect(config).not.toContain("test-secret");
+	expect(await page.locator(".settings-group select").first().inputValue()).toBe("second/scripted");
+	await h.shot("02-custom-connected");
+});
+
+it("keeps the default on test failure and marks a removed model unavailable", async () => {
+	const page = h.page();
+	const form = page.getByRole("form", { name: "Model setup" });
+	await page.locator(".settings-group select").first().selectOption("scripted/scripted");
+	await expect.poll(() => page.locator(".settings-group select").first().inputValue()).toBe("scripted/scripted");
+	h.model.script({ error: "private-response-sentinel" });
+	await form.getByRole("button", { name: "Test and use model" }).click();
+	await form.getByRole("alert").waitFor();
+	expect(await form.getByRole("alert").textContent()).not.toContain("private-response-sentinel");
+	expect(await page.locator(".settings-group select").first().inputValue()).toBe("scripted/scripted");
+	await page.locator(".settings-group select").first().selectOption("second/scripted");
+	await expect.poll(() => page.locator(".settings-group select").first().inputValue()).toBe("second/scripted");
+	await writeFile(join(h.run, "home", "models.json"), '{"providers":{}}');
+	await page.getByRole("button", { name: "Reload", exact: true }).click();
+	await expect.poll(() => page.locator(".settings-group select").first().textContent()).toContain("second/scripted · Unavailable");
+	await h.shot("03-unavailable");
+});

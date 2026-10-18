@@ -36,7 +36,7 @@ export function attention(previous: readonly BotSummary[] | undefined, next: rea
 		notices.push(
 			run.state === "completed"
 				? { botId: bot.botId, title: bot.name, body: "Finished" }
-				: { botId: bot.botId, title: bot.name, body: run.error === undefined ? "Could not finish" : `Could not finish: ${run.error}` },
+				: { botId: bot.botId, title: bot.name, body: "Could not finish" },
 		);
 	}
 	return { badge, keepAwake, notices };
