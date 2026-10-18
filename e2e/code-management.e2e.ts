@@ -97,6 +97,8 @@ it("shows partial completion after denial and prevents a caught failure from pro
 	expect((await snapshot()).approvals).toHaveLength(0);
 	expect((await parent()).execution.managementClosed).toBe(true);
 	await h.page().getByText("管理操作已停止，已完成的更改会保留。", { exact: true }).waitFor();
+	expect(await h.page().locator('.code-activity li[data-state="failed"]').last().textContent()).toContain("创建 Bot");
+	expect(await h.page().locator('.code-activity li[data-state="failed"]').last().textContent()).not.toContain("已创建");
 	await h.shot("05-partial-completion-zh");
 	await h.relaunch();
 	expect((await parent()).execution.children[0].object.id).toBe((await api("bots.list"))[1].botId);

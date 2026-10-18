@@ -1,6 +1,11 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
+ "Search chat history": "搜索聊天记录",
+ "List conversations": "列出会话",
+ "Inspect Bots": "查看 Bot",
+ "Inspect groups": "查看群组",
+ "Update group": "修改群组",
  "Working with application": "正在操作应用",
  "Application work completed": "应用操作已完成",
  "Application steps": "应用操作步骤",

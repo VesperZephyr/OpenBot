@@ -509,21 +509,21 @@ function MessageText({ parts, markdown = false }: { readonly parts: readonly { r
 	);
 }
 
-const TOOL_VERBS: Record<string, readonly [running: string, done: string]> = {
+const TOOL_VERBS: Record<string, readonly [running: string, done: string, action?: string]> = {
 	codemode: ["Reading application data", "Read application data"],
-	app_conversations_search: ["Searching chat history", "Searched chat history"],
-	app_conversations_read: ["Reading chat context", "Read chat context"],
-	app_conversations_list: ["Listing conversations", "Listed conversations"],
-	app_bots_list: ["Inspecting Bots", "Inspected Bots"],
-	app_groups_list: ["Inspecting groups", "Inspected groups"],
-	group_inspect: ["Inspecting groups", "Inspected groups"],
-	group_create: ["Creating group", "Created group"],
-	group_update: ["Updating group", "Updated group"],
-	group_dissolve: ["Dissolving group", "Dissolved group"],
-	bot_inspect: ["Inspecting Bots", "Inspected Bots"],
-	bot_create: ["Creating Bot", "Created Bot"],
-	bot_update: ["Updating Bot", "Updated Bot"],
-	bot_delete: ["Deleting Bot", "Deleted Bot"],
+	app_conversations_search: ["Searching chat history", "Searched chat history", "Search chat history"],
+	app_conversations_read: ["Reading chat context", "Read chat context", "Read chat context"],
+	app_conversations_list: ["Listing conversations", "Listed conversations", "List conversations"],
+	app_bots_list: ["Inspecting Bots", "Inspected Bots", "Inspect Bots"],
+	app_groups_list: ["Inspecting groups", "Inspected groups", "Inspect groups"],
+	group_inspect: ["Inspecting groups", "Inspected groups", "Inspect groups"],
+	group_create: ["Creating group", "Created group", "Create group"],
+	group_update: ["Updating group", "Updated group", "Update group"],
+	group_dissolve: ["Dissolving group", "Dissolved group", "Dissolve group"],
+	bot_inspect: ["Inspecting Bots", "Inspected Bots", "Inspect Bots"],
+	bot_create: ["Creating Bot", "Created Bot", "Create Bot"],
+	bot_update: ["Updating Bot", "Updated Bot", "Update Bot"],
+	bot_delete: ["Deleting Bot", "Deleted Bot", "Delete Bot"],
 	local_read: ["Reading", "Read"],
 	local_list: ["Listing", "Listed"],
 	local_write: ["Writing", "Wrote"],
@@ -644,7 +644,7 @@ function CodeActivity({ children }: { readonly children: AppExecution["children"
 											: "Failed";
 				return (
 					<li key={child.callId} data-state={child.state}>
-						<span>{t(verb?.[child.state === "running" ? 0 : 1] ?? child.capability)}</span>
+						<span>{t(verb?.[child.state === "running" ? 0 : child.state === "succeeded" ? 1 : 2] ?? child.capability)}</span>
 						<span>{t(status)}</span>
 						{child.object ? <CodeObject object={child.object} /> : null}
 					</li>
