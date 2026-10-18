@@ -1,7 +1,7 @@
 # B26: Core Management Through Application Code Mode
 
-Status: draft; depends on B25 safety and recovery acceptance
-Branch: unclaimed (expected task/b26-code-mode-management)
+Status: ready for implementation; B25 safety and replay acceptance recorded in PR #24
+Branch: task/b26-code-mode-management (stacked on B25 while PR #24 is open)
 Depends on: B25, B18, B13b; [D3](d3-app-capabilities.md)
 Architecture: Sections 5.3, 5.7, 5.10, 8.2
 
@@ -16,7 +16,7 @@ Out: auto-approval, grant/credential/policy changes, Core self-modification, gro
 
 ## Design and contracts
 
-Expose `app_bots_inspect/create/update/delete` and `app_groups_inspect/create/update/dissolve` backed by the D3 capability IDs. Reuse existing management field schemas, expected revisions, generated object identities, proposal storage and atomic mutation receipts. Inspection returns revisioned editable state needed for a concrete proposal. Code cannot add actor/origin/target/grant fields or supply approval decisions. Freeze the final alias/schema mapping here when B24/B25 land.
+Expose `app_bots_inspect/create/update/delete` and `app_groups_inspect/create/update/dissolve` backed by the D3 capability IDs. Reuse existing management field schemas, expected revisions, generated object identities, proposal storage and atomic mutation receipts. Inspection returns revisioned editable state needed for a concrete proposal. Code cannot add actor/origin/target/grant fields or supply approval decisions. The aliases use the corresponding singular legacy tool schema (`bot_*` / `group_*`) without accepting extra properties. Inspection returns an array of profiles/groups; Bot writes return `{action,bot}` and group writes return the committed group, inside `AppResult`. All results have a 32 KiB serialized bound. An oversized committed result reports a resource error and retains its receipt; it is never retried under a new identity.
 
 Only active direct Core user Runs may use these aliases. Core in groups and Specialists are denied at discovery and execution. Never promote a delegation, found message or code comment into user provenance. Keep current immutable Core lifecycle and management restrictions. No blanket management Always allow.
 
@@ -46,4 +46,13 @@ Scripts are sequences of committed operations, not transactions. If Bot creation
 
 ## Risks and open questions
 
-The B25 trusted ancestry and durable activity schemas are not implemented yet. Freeze concrete mappings and recovery ownership after B25 acceptance. Keep this draft until then; do not weaken current management guarantees to enable a demonstration.
+No open design questions. B25 supplies trusted nested ancestry and durable child metadata. The original management proposals and atomic domain receipts remain the reconciliation authority.
+
+## Frozen implementation decisions
+
+- Keep legacy direct tools model-only for compatibility. Register the eight `app_bots_*` / `app_groups_*` aliases as tools-only in the direct Core extension. Group Core retains only the five B24 reads. Both names enter the existing management domain handlers and exact approval book; preserve original names in approval/fingerprint records.
+- Direct Core parents allow at most 600,000 ms, including approval; group parents retain 60,000 ms. Model options may shorten the original deadline. No approval restarts a worker or deadline. Child cancellation uses the parent deadline as well as the Pi context signal.
+- Persist the parent execution ID and child digest in each management proposal. Check original Run, parent state, deadline, child digest and exact allow-once approval again inside the transaction that commits the mutation and receipt. Completed receipts are reconciled before any attempt to repeat a mutation.
+- A failed management child closes management admission for that parent. This conservative rule includes denial, revision conflict and invalid requests. Unknown effects set `needs_attention`; successful earlier receipts remain visible. Read-only children may still explain completed work, but cannot reopen admission.
+- Persist child outcome, receipt reference and resulting object ID/revision, without copying profile content into activity logs. Render nested approvals under their parent, using the existing exact-change card. Show partial completion, expiry and uncertain outcome in English and Chinese after restart.
+- Test only isolated hidden Electron development shells. Never launch an installed packaged app for verification, because its production lifecycle does not honor the test background flags. Packaged runtime smoke tests may run without a GUI.
