@@ -187,6 +187,18 @@ export class ReceiptLedger {
 		};
 	}
 
+ /** Recovery can stop a process without knowing its earlier effects; acknowledge only confirmed quiescence. */
+ confirmStopped(ids:readonly string[]):boolean {
+  for(const id of ids){
+   const rows=this.#db.prepare("select pgid, tool from receipts where invocation_id = ? and status in ('accepted','unknown')").all(id) as {pgid:number|null;tool:string}[];
+   const tasks=this.#db.prepare("select pgid from background_tasks where invocation_id = ? and status in ('running','unknown')").all(id) as {pgid:number|null}[];
+   for(const row of [...rows.filter(row=>row.tool==="local_exec"),...tasks]){
+    if(row.pgid===null)return false;
+    try{process.kill(-row.pgid,0);return false;}catch(error){if((error as NodeJS.ErrnoException).code!=="ESRCH")return false;}
+   }
+  }return true;
+ }
+
 	#recover(): void {
 		const stale = this.#db.prepare("select invocation_id, pgid, leader_started from receipts where status = 'accepted'").all() as {
 			invocation_id: string;

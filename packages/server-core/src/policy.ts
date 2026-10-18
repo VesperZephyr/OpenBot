@@ -14,7 +14,7 @@ import type { PolicySnapshot } from "./approvals.ts";
 export type GrantLists = { readonly readwrite: readonly string[]; readonly read: readonly string[] };
 
 export async function loadPolicy(store: PolicyStore, workspace: string): Promise<PolicySnapshot & { readonly grants: GrantLists }> {
-	const [settings, grants] = await Promise.all([store.settings(), store.grants()]);
+	const { settings, grants } = await store.snapshot();
 	const lists = grantLists(grants, workspace);
 	return {
 		...settings,

@@ -1,6 +1,6 @@
 # B12a: Deterministic Policy, Revocation, and Unattended Approval Expiry
 
-Status: ready
+Status: implemented; final acceptance in progress
 Branch: task/b12a-deterministic-policy; pull request target: main
 Depends on: B14b lifecycle gates (PR #31), B5 policy, B13c Run provenance, B24–B26 application authority
 Architecture: Sections 5.1–5.3 and 8.1–8.2
@@ -37,7 +37,7 @@ A rule has `id`, `targetId`, revision/creation metadata, optional `botId`, one t
 - `local_exec`: literal program with optional literal subcommand or exact normalized command part; optional canonical working-directory subtree. Match the existing conservative lexer, not a second shell parser. If parsing is ambiguous and a rule could apply within its Bot/cwd scope, ask rather than assuming a non-match.
 - `local_read`, `local_list`, `local_write`, `local_edit`: canonical path subtree. The selected tool fixes read versus write intent.
 
-No regex, arbitrary JavaScript, recursive expression language, wildcard tool family, or model-generated executable predicate. Maximum 256 Ask first rules; each string follows the existing bounded protocol limits. Command matching describes the parsed command line, not everything an unrestricted shell program might subsequently do.
+No regex, arbitrary JavaScript, recursive expression language, wildcard tool family, or model-generated executable predicate. Maximum 256 Ask first rules, 4,096 durable policy request identities and 4,096 unreconciled/background operation records; saturation refuses new entries without discarding replay identities. Each string follows the existing bounded protocol limits. Command matching describes the parsed command line, not everything an unrestricted shell program might subsequently do.
 
 New user-only methods create/delete Ask first rules using `requestId` and `expectedRevision`; retrying an identical create is idempotent, changed input conflicts, stale edits preserve the user's draft. Existing policy settings, command allow-rule deletion and grant methods share revision updates and restrictive-change handling. New rules are not exposed as model tools or application Code Mode capabilities.
 

@@ -78,7 +78,7 @@ const MODEL_TEST_TIMEOUT_MS = 30_000;
 /** Credential contract the Host implements over the Keychain; re-exported so the Host never imports Pi. */
 export type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
 export type { ApprovalStore } from "./approvals.ts";
-export type { PolicyStore, SavedScope } from "./policy.ts";
+export type { PolicyStore, SavedScope, AuthoritySnapshot, PolicyOperation } from "./policy.ts";
 export type { ConfigEnvironment, ConfiguredProviderStatus, ModelConfigStatus } from "./model-config.ts";
 export type { MemoryEdit } from "./memory.ts";
 export { isTerminal, KEPT_TERMINAL_RUNS, type RunInput, type RunMessage, type RunStore, type StoredRun } from "./runs.ts";
@@ -128,7 +128,7 @@ export type ToolInvoker = (call: {
 	readonly args: Readonly<Record<string, unknown>>;
 	readonly signal: AbortSignal;
 	readonly onProgress: (output: string) => void;
-}) => Promise<{ readonly status: string; readonly output: string; readonly value?: import("@openbot/protocol").JsonValue; readonly taskId?: string }>;
+}) => Promise<{ readonly failureReason?:import("@openbot/protocol").ToolFailureReason; readonly status: string; readonly output: string; readonly value?: import("@openbot/protocol").JsonValue; readonly taskId?: string }>;
 
 export type BotRuntimeOptions = {
 	readonly executionGate?: ModelExecutionGate;
@@ -665,6 +665,16 @@ export class BotRuntime {
 		}, this.#context);
 	}
 
+ /** Persist scoped aborts without enabling unrelated scheduling during startup recovery. */
+ async interruptChannels(channels:readonly {botId:string;channelId?:string}[]):Promise<void>{
+  const ids=new Set(await Promise.all(channels.map(async channel=>(await this.#contextRecord(channel.botId,channel.channelId??"direct")).conversationId)));
+  const work=await this.#harness.inspect(this.#context);
+  for(const input of work.submissions)if(ids.has(input.conversationId)&&input.type==="input"&&input.status==="queued")await this.#harness.abortSubmission(input.id,this.#context);
+  const tasks=work.tasks.filter(task=>ids.has(task.record.conversationId));
+  for(const task of tasks)await this.#harness.abortTask(task.record.id,this.#context);
+  if(work.scheduling==="running")await Promise.all(tasks.map(task=>this.#harness.waitForTask(task.record.id,this.#context)));
+ }
+
 	/** Abort channel work. Startup uses background mode to mark cancellation before the scheduler resumes. */
 	async cancel(botId: BotId, channelId = "direct", background = false): Promise<void> {
 		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
@@ -1040,7 +1050,7 @@ function thinkingOf(entry: EntryRecord): string | undefined {
 	return text === "" ? undefined : text;
 }
 
-type MutableToolItem = { kind: "tool"; id: string; tool: string; args: unknown; status: ToolCallStatus; output?: string; taskId?: string };
+type MutableToolItem = { kind: "tool"; id: string; tool: string; args: unknown; status: ToolCallStatus; failureReason?:import("@openbot/protocol").ToolFailureReason; output?: string; taskId?: string };
 
 /** What the model receives for an `unknown` outcome, instead of the executor's text (Section 5.1). */
 export const UNKNOWN_OUTCOME_TEXT = "This action was interrupted and may have partly run. Check its effect before doing anything else.";
@@ -1108,6 +1118,7 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 					.map((part) => part.text)
 					.join("\n");
 				const details: unknown = message.details;
+    if(details&&typeof details==="object"&&"failureReason" in details&&["approval_expired","permission_revoked","approval_denied"].includes(String(details.failureReason)))item.failureReason=details.failureReason as import("@openbot/protocol").ToolFailureReason;
 				if (typeof details === "object" && details !== null && "taskId" in details && typeof details.taskId === "string") {
 					item.taskId = details.taskId;
 				}
@@ -1285,7 +1296,7 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker, codeOnly = 
 				output: [{ type: "text", text }],
 				...(outcome.value === undefined ? {} : { structuredOutput: outcome.value }),
 				isError: outcome.status !== "succeeded",
-				details: { status: outcome.status, ...(outcome.taskId === undefined ? {} : { taskId: outcome.taskId }) },
+				details: { status: outcome.status, ...(outcome.failureReason?{failureReason:outcome.failureReason}:{}), ...(outcome.taskId === undefined ? {} : { taskId: outcome.taskId }) },
 			};
 		},
 	});

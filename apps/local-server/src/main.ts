@@ -124,6 +124,7 @@ const send = (message: HostToDesktop): void => {
 const service = new HostService({
 	nativeLifecycleRequired: process.env.OPENBOT_DESKTOP_LIFECYCLE === "1",
 	quiesce: () => executor.quiesce(),
+ authorityExecutor:{synchronize:revision=>executor.synchronize(revision),revoke:ids=>executor.revoke(ids)},
 	audit: (event) => console.info(JSON.stringify({ type: "operation", ...event })),
 	runtime,
 	secrets: credentials,

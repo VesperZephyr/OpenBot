@@ -35,6 +35,7 @@ export const RENDERER_METHODS = [
 	"policy.get",
 	"policy.update",
 	"policy.rules.delete",
+ "policy.ask.create", "policy.ask.delete", "policy.reconcile",
 	"grants.list",
 	"grants.revoke",
 	"grants.add",

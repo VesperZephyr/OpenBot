@@ -106,6 +106,27 @@ describe("LocalExecutor", () => {
 		expect(settled.output).not.toContain("never");
 	});
 
+ it("rejects stale authority while preserving terminal receipts and unrelated work",async()=>{
+  expect(executor.synchronize(2)).toBe(true);expect(executor.synchronize(1)).toBe(false);
+  const command=invocation("local_exec",{command:"printf once >> authority.txt",description:"authority"},{authorityRevision:2});
+  expect((await run(command)).status).toBe("succeeded");executor.synchronize(3);
+  expect((await run(command)).status).toBe("succeeded");
+  expect((await run({...command,invocationId:"stale"})).output).toContain("permission_revoked");
+  expect(await readFile(join(workspace,"authority.txt"),"utf8")).toBe("once");
+  const first=invocation("local_exec",{command:"sleep 30",description:"affected",background:true},{authorityRevision:3});
+  const second=invocation("local_exec",{command:"sleep 30",description:"unrelated",background:true},{authorityRevision:3});
+  const a=await run(first),b=await run(second);expect(a.taskId).toBeDefined();expect(b.taskId).toBeDefined();
+  expect(await executor.revoke([first.invocationId])).toBe(true);
+  expect((await run(invocation("task_output",{taskId:b.taskId,wait_seconds:0},{authorityRevision:3}))).output).toContain("running");
+  expect((await run(invocation("task_output",{taskId:a.taskId,wait_seconds:0},{authorityRevision:3}))).output).toContain("stopped");
+  await executor.cancelAll();
+ });
+
+ it("cancels a file mutation while asynchronous path authorization is pending",async()=>{
+  const write=invocation("local_write",{path:"cancelled-write.txt",content:"must not be written"});const result=run(write);executor.cancel(write.invocationId);
+  expect((await result).status).toBe("cancelled");await expect(readFile(join(workspace,"cancelled-write.txt"),"utf8")).rejects.toThrow();
+ });
+
 	it("does not pass credentials to commands", async () => {
 		process.env.OPENBOT_TEST_API_KEY = "sk-should-not-leak";
 		try {

@@ -1,3 +1,4 @@
+import { matchesAsk } from "./ask-first.ts";
 /**
  * Pending approvals and the first-release policy. Both implement Tool Router ports, which `apps/local-server` wires.
  *
@@ -26,192 +27,278 @@ import { evaluateCommand, type FolderAccess } from "./command-policy.ts";
 /** Consumed and withdrawn records are deleted at start once they are this old. */
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
-type Entry = { record: ApprovalRecord; readonly waiters: Set<(decision: ApprovalDecision) => void> };
+type Waiter = (decision?: ApprovalDecision, error?: Error) => void;
+type Entry = { record: ApprovalRecord; readonly waiters: Set<Waiter>; withdrawing?: boolean; timer?: ReturnType<typeof setTimeout> };
 
 export class ApprovalBook {
 	readonly #changed: (botId: BotId) => void;
 	readonly #now: () => number;
-	/** Records not yet consumed that this process has seen: pending ones for the UI, decided ones to consume. */
 	readonly #entries = new Map<string, Entry>();
 	#store: ApprovalStore | undefined;
 	#closed = false;
-
-	/** `changed` runs whenever a Bot's pending approvals change, so its conversation can be republished. */
+	#line: Promise<unknown> = Promise.resolve();
 	constructor(changed: (botId: BotId) => void, now: () => number = Date.now) {
 		this.#changed = changed;
 		this.#now = now;
 	}
-
-	/**
-	 * Attach the store, prune old records, and load pending ones so the UI shows them before Pi reruns their calls.
-	 * Call once, before the runtime resumes.
-	 */
+	#serial<T>(fn: () => Promise<T>): Promise<T> {
+		const result = this.#line.catch(() => {}).then(fn);
+		this.#line = result;
+		return result;
+	}
 	async start(store: ApprovalStore): Promise<void> {
 		this.#store = store;
 		await store.prune(this.#now() - RETENTION_MS);
 		for (const record of await store.pending()) {
-			if (record.deadline !== undefined && record.deadline <= this.#now()) {
-				await store.put({ ...record, state: "withdrawn", decidedAt: this.#now() });
-				continue;
+			const entry: Entry = { record, waiters: new Set() };
+			this.#entries.set(record.approvalId, entry);
+			if (record.deadline !== undefined && record.deadline <= this.#now()) await this.#expire(entry);
+			else {
+				this.#arm(entry);
+				this.#changed(record.botId);
 			}
-			this.#entries.set(record.approvalId, { record, waiters: new Set() });
-			this.#changed(record.botId);
 		}
 	}
-
-	/**
-	 * Stop writing: the Host is shutting down, which aborts every wait, and the records must stay `pending` so the
-	 * relaunched Host asks again. Call before the runtime closes.
-	 */
 	close(): void {
 		this.#closed = true;
+		for (const entry of this.#entries.values()) if (entry.timer) clearTimeout(entry.timer);
 	}
-
-	/**
-	 * Record an approval and wait for the user. Asking again for the same ID (the same call, rerun) joins the pending
-	 * request, or returns the decision already made without waiting.
-	 */
 	async request(approval: PendingApproval, signal: AbortSignal): Promise<ApprovalDecision> {
 		signal.throwIfAborted();
-		const store = this.#requireStore();
-		if (approval.deadline !== undefined && approval.deadline <= this.#now())
-			throw new ProtocolError("invalid_request", "Application execution expired");
-		let entry = this.#entries.get(approval.approvalId);
-		if (entry === undefined) {
-			const stored = await store.get(approval.approvalId);
-			// Decided before (this call was rerun): the same answer, without asking. Consumed records answer the same way.
-			if (stored?.decision !== undefined) {
-				if (stored.state !== "consumed") this.#entries.set(stored.approvalId, { record: stored, waiters: new Set() });
-				return stored.decision;
+		const entry = await this.#serial(async () => {
+			signal.throwIfAborted();
+			let found = this.#entries.get(approval.approvalId);
+			const stored = found?.record ?? (await this.#requireStore().get(approval.approvalId));
+			if (stored) {
+				if (!sameIdentity(stored, approval)) throw new ProtocolError("request_conflict", "Approval identity changed");
+				if (["withdrawn", "revoked", "expired"].includes(stored.state)) throw approvalError(stored.state);
+				// A deny remains terminal. Allows must still match current authority at dispatch.
+				if (stored.decision !== "deny" && stored.binding && approval.binding && stored.binding.revision !== approval.binding.revision)
+					throw approvalError("revoked");
 			}
-			// A withdrawn record belonged to a cancelled Run, so a new request asks afresh.
-			const record: ApprovalRecord = stored?.state === "pending" ? stored : { ...approval, state: "pending" };
-			if (stored?.state !== "pending") await store.put(record);
-			// Another request for the same ID may have registered while this one awaited the store.
-			entry = this.#entries.get(approval.approvalId);
-			if (entry === undefined) {
-				entry = { record, waiters: new Set() };
-				this.#entries.set(approval.approvalId, entry);
+			if (!found) {
+				const deadline =
+					stored?.deadline ??
+					(approval.binding?.origin === "unattended"
+						? Math.min(approval.deadline ?? Infinity, approval.createdAt + 600000)
+						: approval.deadline);
+				const record: ApprovalRecord = stored ?? { ...approval, ...(deadline === undefined ? {} : { deadline }), state: "pending" };
+				if (!stored) await this.#requireStore().put(record);
+				found = { record, waiters: new Set() };
+				this.#entries.set(approval.approvalId, found);
 				this.#changed(approval.botId);
+				this.#arm(found);
 			}
-		}
+			if (
+				found.record.state !== "consumed" &&
+				found.record.decision !== "deny" &&
+				found.record.deadline !== undefined &&
+				found.record.deadline <= this.#now()
+			)
+				await this.#expire(found);
+			if (found.record.state === "expired") throw approvalError("expired");
+			return found;
+		});
 		if (entry.record.decision !== undefined) return entry.record.decision;
 		signal.throwIfAborted();
-		const joined = entry;
-
-		const { promise, resolve, reject } = Promise.withResolvers<ApprovalDecision>();
-		const waiter = (decision: ApprovalDecision): void => {
-			signal.removeEventListener("abort", abort);
-			resolve(decision);
-		};
-		const abort = (): void => {
-			joined.waiters.delete(waiter);
-			reject(signal.reason);
-			// A shutdown aborts too; only a cancelled Run withdraws the request (nothing is left to answer).
-			if (this.#closed || joined.waiters.size > 0 || joined.record.state !== "pending") return;
-			const withdrawn: ApprovalRecord = { ...joined.record, state: "withdrawn", decidedAt: this.#now() };
-			joined.record = withdrawn;
-			this.#entries.delete(withdrawn.approvalId);
-			this.#changed(withdrawn.botId);
-			void store.put(withdrawn).catch((error: unknown) => console.error("Could not withdraw an approval", error));
-		};
-		joined.waiters.add(waiter);
-		signal.addEventListener("abort", abort, { once: true });
-		return promise;
+		return new Promise<ApprovalDecision>((resolve, reject) => {
+			const waiter: Waiter = (decision, error) => {
+				signal.removeEventListener("abort", abort);
+				if (error) reject(error);
+				else resolve(decision!);
+			};
+			const abort = () => {
+				entry.waiters.delete(waiter);
+				if (!this.#closed && !entry.waiters.size) entry.withdrawing = true;
+				reject(signal.reason);
+				void this.#serial(async () => {
+					if (this.#closed || entry.waiters.size || entry.record.state !== "pending") return;
+					await this.#terminal(entry, "withdrawn");
+				}).catch(() => {});
+			};
+			entry.waiters.add(waiter);
+			signal.addEventListener("abort", abort, { once: true });
+			if (signal.aborted) abort();
+			// A decision may have committed between admission and joining.
+			else if (entry.record.decision !== undefined) {
+				entry.waiters.delete(waiter);
+				waiter(entry.record.decision);
+			} else if (entry.record.state !== "pending") {
+				entry.waiters.delete(waiter);
+				waiter(undefined, approvalError(entry.record.state));
+			}
+		});
 	}
-
-	/**
-	 * Settle a pending approval: the decision, and for `always_allow` the rule or grant it saves, are committed in one
-	 * step before the call wakes. Returns false when it is not pending (already decided, or its Run ended). An
-	 * `always_allow` scope must be one of the options the Host offered on this approval.
-	 */
-	async decide(approvalId: string, decision: ApprovalDecision): Promise<boolean> {
-		const entry = this.#entries.get(approvalId);
-		if (entry === undefined || entry.record.state !== "pending" || this.#closed) return false;
-		if (entry.record.deadline !== undefined && entry.record.deadline <= this.#now()) return false;
+	decide(id: string, decision: ApprovalDecision): Promise<boolean> {
+		return this.#serial(() => this.#decide(id, decision));
+	}
+	async #decide(id: string, decision: ApprovalDecision): Promise<boolean> {
+		const entry = this.#entries.get(id);
+		if (!entry || entry.withdrawing || entry.record.state !== "pending" || this.#closed) return false;
+		if (entry.record.deadline !== undefined && entry.record.deadline <= this.#now()) {
+			await this.#expire(entry);
+			return false;
+		}
 		const saved =
 			typeof decision === "string"
 				? undefined
 				: { scope: offeredScope(entry.record, decision.scope), id: randomUUID(), createdAt: this.#now() };
-		const record: ApprovalRecord = {
-			...entry.record,
-			state: decision === "deny" ? "denied" : "allowed",
-			decision,
-			decidedAt: this.#now(),
-		};
-		// Claimed before the commit, so a second click cannot decide twice.
-		entry.record = record;
+		const record: ApprovalRecord = { ...entry.record, state: decision === "deny" ? "denied" : "allowed", decision, decidedAt: this.#now() };
 		await this.#requireStore().put(record, saved);
+		entry.record = (await this.#requireStore().get(id)) ?? record;
+		if (entry.timer) clearTimeout(entry.timer);
 		this.#changed(record.botId);
 		for (const waiter of entry.waiters) waiter(decision);
 		entry.waiters.clear();
 		return true;
 	}
-
-	/**
-	 * Check every pending approval again after rules or grants changed (Section 5.3): one policy now allows runs as if
-	 * allowed once, one it now refuses is denied, and the rest keep waiting with **Always allow** options recomputed
-	 * from the current policy, so a card never offers a choice computed from rules or grants that no longer exist.
-	 */
-	async reevaluate(evaluate: (approval: PendingApproval) => Decision): Promise<void> {
-		for (const entry of [...this.#entries.values()]) {
-			if (entry.record.state !== "pending" || this.#closed) continue;
-			const { state: _state, decision: _decision, decidedAt: _decidedAt, ...approval } = entry.record;
-			const verdict = evaluate(approval);
-			if (verdict.kind === "allow") {
-				await this.decide(approval.approvalId, "allow_once");
-			} else if (verdict.kind === "deny") {
-				await this.decide(approval.approvalId, "deny");
-			} else {
-				const { alwaysAllowOptions: _options, ...rest } = entry.record;
+	reevaluate(evaluate: (approval: PendingApproval) => Decision, revision?: number): Promise<void> {
+		return this.#serial(async () => {
+			for (const entry of this.#entries.values()) {
+				if (entry.record.state !== "pending" || this.#closed) continue;
+				if (entry.record.deadline !== undefined && entry.record.deadline <= this.#now()) {
+					await this.#expire(entry);
+					continue;
+				}
+				const verdict = evaluate(entry.record);
+				const { alwaysAllowOptions: _old, ...rest } = entry.record;
 				const record: ApprovalRecord = {
 					...rest,
-					reason: verdict.reason,
-					...(verdict.alwaysAllowOptions === undefined ? {} : { alwaysAllowOptions: verdict.alwaysAllowOptions }),
+					...(rest.binding && revision !== undefined ? { binding: { ...rest.binding, revision } } : {}),
+					...(verdict.kind === "ask"
+						? { reason: verdict.reason, ...(verdict.alwaysAllowOptions ? { alwaysAllowOptions: verdict.alwaysAllowOptions } : {}) }
+						: {}),
 				};
-				if (JSON.stringify(record) === JSON.stringify(entry.record)) continue;
-				entry.record = record;
 				await this.#requireStore().put(record);
-				this.#changed(record.botId);
+				entry.record = record;
+				if (verdict.kind === "allow") await this.#decide(record.approvalId, "allow_once");
+				else if (verdict.kind === "deny") await this.#decide(record.approvalId, "deny");
+				else this.#changed(record.botId);
 			}
-		}
+		});
 	}
 
-	/**
-	 * The call's result is committed: its decided approval is used up. Calls without a decided approval are ignored,
-	 * so the Host may report every settled call.
-	 */
-	async settled(botId: BotId, callId: string, conversationId?: string): Promise<void> {
-		for (const [approvalId, { record }] of this.#entries) {
-			if (
-				record.botId !== botId ||
-				record.callId !== callId ||
-				(conversationId !== undefined && (record.conversationId ?? record.approvalId.split(":")[1]) !== conversationId) ||
-				record.decision === undefined
-			)
-				continue;
-			this.#entries.delete(approvalId);
-			if (!this.#closed) await this.#requireStore().put({ ...record, state: "consumed" });
-			return;
+	async rejection(id: string): Promise<string | undefined> {
+		const record = await this.#requireStore().get(id);
+		if (!record) return undefined;
+		if (record.decision === "deny") return "The user denied this action. Do not retry it unchanged.";
+		if (["expired", "withdrawn", "revoked"].includes(record.state))
+			return record.state === "expired" ? "approval_expired" : "permission_revoked";
+		if (record.deadline !== undefined && record.deadline <= this.#now() && record.state !== "consumed") {
+			await this.#serial(async () => {
+				const entry = this.#entries.get(id);
+				if (entry) await this.#expire(entry);
+				else await this.#requireStore().put({ ...record, state: "expired", decidedAt: this.#now() });
+			});
+			return "approval_expired";
 		}
+		return undefined;
 	}
-
+	/** Exact current decision, checked after asynchronous grants preparation. */
+	async authorized(approval: PendingApproval): Promise<boolean> {
+		const record = await this.#requireStore().get(approval.approvalId);
+		return (
+			!!record &&
+			sameIdentity(record, approval) &&
+			["allowed", "consumed"].includes(record.state) &&
+			record.decision !== "deny" &&
+			record.decision !== undefined &&
+			record.binding?.revision === approval.binding?.revision &&
+			(record.deadline === undefined || record.deadline > this.#now())
+		);
+	}
+	settled(botId: BotId, callId: string, conversationId?: string): Promise<void> {
+		return this.#serial(async () => {
+			for (const [id, entry] of this.#entries) {
+				const r = entry.record;
+				if (
+					r.botId !== botId ||
+					r.callId !== callId ||
+					(conversationId !== undefined && (r.conversationId ?? r.approvalId.split(":")[1]) !== conversationId) ||
+					r.decision === undefined
+				)
+					continue;
+				if (!this.#closed) await this.#requireStore().put({ ...r, state: "consumed" });
+				if (entry.timer) clearTimeout(entry.timer);
+				this.#entries.delete(id);
+				return;
+			}
+		});
+	}
 	forBot(botId: BotId, conversationId?: string): PendingApproval[] {
 		return [...this.#entries.values()]
 			.filter(
-				(entry) =>
-					entry.record.state === "pending" &&
-					entry.record.botId === botId &&
-					(conversationId === undefined || (entry.record.conversationId ?? entry.record.approvalId.split(":")[1]) === conversationId),
+				({ record: r, withdrawing }) =>
+					!withdrawing &&
+					r.state === "pending" &&
+					r.botId === botId &&
+					(conversationId === undefined || (r.conversationId ?? r.approvalId.split(":")[1]) === conversationId),
 			)
-			.map(({ record: { state: _state, decision: _decision, decidedAt: _decidedAt, ...approval } }) => approval)
+			.map(({ record: { state: _s, decision: _d, decidedAt: _at, ...r } }) => r)
 			.sort((a, b) => a.createdAt - b.createdAt);
 	}
-
+	#arm(entry: Entry): void {
+		if (entry.record.state !== "pending" || entry.record.deadline === undefined) return;
+		entry.timer = setTimeout(
+			() => {
+				void this.#serial(() => this.#expire(entry)).catch(() => {});
+			},
+			Math.max(0, entry.record.deadline - this.#now()),
+		);
+		entry.timer.unref?.();
+	}
+	async #expire(entry: Entry): Promise<void> {
+		if (entry.record.state === "consumed" || entry.record.decision === "deny" || this.#closed) return;
+		if (entry.record.deadline !== undefined && entry.record.deadline > this.#now()) {
+			this.#arm(entry);
+			return;
+		}
+		await this.#terminal(entry, "expired");
+	}
+	async #terminal(entry: Entry, state: "withdrawn" | "expired" | "revoked"): Promise<void> {
+		const record: ApprovalRecord = { ...entry.record, state, decidedAt: this.#now() };
+		await this.#requireStore().put(record);
+		entry.record = record;
+		if (entry.timer) clearTimeout(entry.timer);
+		this.#changed(record.botId);
+		for (const waiter of entry.waiters) waiter(undefined, approvalError(state));
+		entry.waiters.clear();
+	}
 	#requireStore(): ApprovalStore {
-		if (this.#store === undefined) throw new Error("The approval book is not started");
+		if (!this.#store) throw new Error("The approval book is not started");
 		return this.#store;
 	}
+}
+function approvalError(state: string): Error {
+	return new ProtocolError(
+		state === "expired" ? "approval_expired" : "permission_revoked",
+		state === "expired" ? "approval_expired" : state === "revoked" ? "permission_revoked" : "Approval was withdrawn; start a new request",
+	);
+}
+function sameIdentity(a: PendingApproval, b: PendingApproval): boolean {
+	return (
+		a.approvalId === b.approvalId &&
+		a.callId === b.callId &&
+		a.botId === b.botId &&
+		a.conversationId === b.conversationId &&
+		a.tool === b.tool &&
+		a.target.kind === b.target.kind &&
+		a.target.targetId === b.target.targetId &&
+		canonical(a.args) === canonical(b.args) &&
+		a.binding?.runId === b.binding?.runId &&
+		a.binding?.origin === b.binding?.origin &&
+		a.binding?.argsDigest === b.binding?.argsDigest
+	);
+}
+function canonical(value: unknown): string {
+	if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+	if (value && typeof value === "object")
+		return `{${Object.entries(value)
+			.filter(([, v]) => v !== undefined)
+			.sort(([a], [b]) => a.localeCompare(b))
+			.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`)
+			.join(",")}}`;
+	return JSON.stringify(value);
 }
 
 /** The offered option equal to `scope`; anything else is refused, so the renderer cannot widen what is saved. */
@@ -227,7 +314,7 @@ function offeredScope(approval: PendingApproval, scope: AlwaysAllowScope): Alway
 	return offered.scope;
 }
 
-export type PolicyCall = { readonly tool: string; readonly args: Readonly<Record<string, unknown>> };
+export type PolicyCall = { readonly botId?: string; readonly tool: string; readonly args: Readonly<Record<string, unknown>> };
 export type Decision =
 	| { readonly kind: "allow" }
 	| { readonly kind: "ask"; readonly reason: string; readonly alwaysAllowOptions?: readonly AlwaysAllowOption[] }
@@ -235,6 +322,8 @@ export type Decision =
 
 /** Everything `decide` reads, captured once per call: the user's command policy and the folder grants. */
 export type PolicySnapshot = FolderAccess & {
+	readonly revision?: number;
+	readonly askFirst?: readonly import("@openbot/protocol").AskFirstRule[];
 	readonly commandSetting: CommandSetting;
 	readonly readOnlyDefault: boolean;
 	readonly rules: readonly CommandRule[];
@@ -253,6 +342,8 @@ export function decide(call: PolicyCall, definition: ToolDefinition, policy: Pol
 	switch (definition.capability) {
 		case "commands": {
 			if (policy.commandSetting === "never") return { kind: "deny", reason: "Commands are turned off in Settings" };
+			if (policy.askFirst?.some((rule) => matchesAsk(rule, call, policy.workspace)))
+				return { kind: "ask", reason: "An Ask first rule requires confirmation" };
 			if (policy.commandSetting === "allow") return { kind: "allow" };
 			const command = typeof call.args.command === "string" ? call.args.command : "";
 			const cwd = policy.resolve(typeof call.args.cwd === "string" ? call.args.cwd : ".", policy.workspace);
@@ -267,7 +358,10 @@ export function decide(call: PolicyCall, definition: ToolDefinition, policy: Pol
 			if (path === undefined) return { kind: "deny", reason: "No path given" };
 			const access: GrantAccess = definition.capability === "files.read" ? "read" : "readwrite";
 			const canonical = policy.resolve(path, policy.workspace);
-			if (policy.isGranted(canonical, access)) return { kind: "allow" };
+			if (policy.isGranted(canonical, access))
+				return policy.askFirst?.some((rule) => matchesAsk(rule, call, policy.workspace))
+					? { kind: "ask", reason: "An Ask first rule requires confirmation" }
+					: { kind: "allow" };
 			const verb = access === "read" ? "Reads" : "Changes";
 			return {
 				kind: "ask",

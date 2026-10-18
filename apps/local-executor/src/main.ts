@@ -30,6 +30,7 @@ pruneArtifacts(artifactsDirectory);
 // and kills their orphaned process groups.
 const ledger = ReceiptLedger.open(join(ledgerDirectory, "receipts.sqlite"));
 const executor = new LocalExecutor({
+ requireAuthority:true,
 	targetId,
 	workspace,
 	ledger,
@@ -42,6 +43,11 @@ const send = (message: ExecutorMessage): void => {
 
 process.on("message", (message: ExecutorRequest) => {
 	switch (message.kind) {
+  case "policy.sync":send({kind:"policy.synced",messageId:message.messageId,confirmed:message.targetId===targetId&&executor.synchronize(message.revision)});return;
+  case "execution.revoke":{
+   if(message.targetId!==targetId||!Array.isArray(message.invocationIds)||message.invocationIds.length>4096||message.invocationIds.some(id=>typeof id!=="string"||id.length>2048)){send({kind:"execution.quiesced",messageId:message.messageId,confirmed:false});return;}
+   void executor.revoke(message.invocationIds).then(confirmed=>send({kind:"execution.quiesced",messageId:message.messageId,confirmed}),()=>send({kind:"execution.quiesced",messageId:message.messageId,confirmed:false}));return;
+  }
 		case "execution.quiesce": {
 			if (
 				message.targetId !== targetId ||
@@ -78,6 +84,7 @@ process.on("message", (message: ExecutorRequest) => {
 				kind: "tool.status",
 				invocationId: message.invocationId,
 				status: receipt?.status ?? "absent",
+    ...(receipt?{argsDigest:receipt.argsDigest,tool:receipt.tool}:{}),
 				...(receipt?.outcome === undefined ? {} : { outcome: receipt.outcome }),
 			});
 			return;

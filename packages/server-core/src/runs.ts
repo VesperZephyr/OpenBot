@@ -161,6 +161,23 @@ export class RunScheduler {
 				}
 		});
 	}
+ async interruptSelected(ids:readonly string[],quiesce:()=>Promise<void>):Promise<void>{
+  const selected=await this.#serial(async()=>{
+   const selected:StoredRun[]=[];
+   for(const id of ids){const run=this.#runs.get(id)??await this.#store.get(id);if(!run||!(["running","needs_attention"].includes(run.state)))continue;
+    const changed={...run,interruption:{reason:"permission_revoked" as const,requestedAt:run.interruption?.requestedAt??this.#now()}};await this.#put(changed);selected.push(changed);
+   }return selected;
+  });
+  try{await this.#runtime.interruptChannels(selected.map(run=>({botId:run.botId,...(run.channelId?{channelId:run.channelId}:{})})));}catch(error){await quiesce().catch(()=>{});throw error;}
+  await quiesce();
+  await this.#serial(async()=>{
+   for(const run of selected){const current=this.#runs.get(run.runId)??run;if(current.state==="completed")continue;
+    const ended:StoredRun={...current,state:"needs_attention",endedAt:this.#now(),interruption:{reason:"permission_revoked",requestedAt:run.interruption!.requestedAt,settledAt:this.#now()},error:"Permission was revoked. Review completed actions before continuing."};
+    await this.#put(ended);this.#ended.get(run.runId)?.resolve(ended.state);this.#ended.delete(run.runId);
+   }
+  });
+ }
+
 	#rememberChannel(run: StoredRun): void {
 		const key = JSON.stringify([run.botId, run.channelId ?? "direct"]),
 			previous = this.#latestChannel.get(key);

@@ -17,7 +17,8 @@ export class ExecutorProcess implements ExecutorTransport {
 	readonly #assertAllowed: () => void;
 	readonly #pending = new Map<string, Pending>();
 	readonly #statusWaiters = new Map<string, ((reply: StatusReply) => void)[]>();
-	#child: ChildProcess | undefined;
+	readonly #controls=new Map<string,{resolve:()=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
+ #child: ChildProcess | undefined;
 	#ready: Promise<void> | undefined;
 	#quiescence:
 		| { id: string; promise: Promise<void>; resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
@@ -53,6 +54,7 @@ export class ExecutorProcess implements ExecutorTransport {
 
 	async invoke(invocation: ToolInvocation, onProgress: (output: string) => void, signal: AbortSignal): Promise<ToolOutcome> {
 		await this.#start();
+  if(invocation.authorityRevision!==undefined)await this.synchronize(invocation.authorityRevision);
 		// The Run may have been stopped while the router or the start awaited: nothing was sent, so nothing runs.
 		signal.throwIfAborted();
 		this.#assertAllowed();
@@ -69,6 +71,14 @@ export class ExecutorProcess implements ExecutorTransport {
 			signal.removeEventListener("abort", cancel);
 		}
 	}
+
+ async #control(message:Extract<ExecutorRequest,{kind:"policy.sync"|"execution.revoke"}>):Promise<void>{
+  await this.#start();const waiting=Promise.withResolvers<void>();
+  const timer=setTimeout(()=>{this.#controls.delete(message.messageId);waiting.reject(new Error("Permission reconciliation needs attention"));},10000);
+  this.#controls.set(message.messageId,{resolve:waiting.resolve,reject:waiting.reject,timer});this.#send(message);return waiting.promise;
+ }
+ synchronize(revision:number):Promise<void>{return this.#control({kind:"policy.sync",messageId:randomUUID(),targetId:this.#targetId,revision});}
+ revoke(invocationIds:readonly string[]):Promise<void>{return this.#control({kind:"execution.revoke",messageId:randomUUID(),targetId:this.#targetId,invocationIds});}
 
 	async quiesce(): Promise<void> {
 		await this.#start();
@@ -98,10 +108,20 @@ export class ExecutorProcess implements ExecutorTransport {
 	async status(invocationId: string): Promise<StatusReply> {
 		await this.#start();
 		const { promise, resolve } = Promise.withResolvers<StatusReply>();
-		this.#statusWaiters.set(invocationId, [...(this.#statusWaiters.get(invocationId) ?? []), resolve]);
+  const settle=(reply:StatusReply)=>{clearTimeout(timer);resolve(reply);};
+  const timer=setTimeout(()=>{this.#statusWaiters.set(invocationId,(this.#statusWaiters.get(invocationId)??[]).filter(waiter=>waiter!==settle));resolve({kind:"tool.status",invocationId,status:"unknown",outcome:{status:"unknown",output:"The executor did not confirm this invocation's receipt"}});},10000);
+		this.#statusWaiters.set(invocationId, [...(this.#statusWaiters.get(invocationId) ?? []), settle]);
 		this.#send({ kind: "tool.status", invocationId });
 		return promise;
 	}
+
+ async receipt(id:string,argsDigest:string,tool:string):Promise<ToolOutcome|undefined>{
+  const result=await this.status(id);
+  if(result.status==="absent"||result.status==="accepted"||!result.outcome)return undefined;
+  if(result.status==="unknown"&&result.argsDigest===undefined)return result.outcome;
+  if(result.argsDigest!==argsDigest||result.tool!==tool)return {status:"failed",output:"Refused: invocation identity changed"};
+  return result.outcome;
+ }
 
 	async stop(): Promise<void> {
 		const child = this.#child;
@@ -123,7 +143,10 @@ export class ExecutorProcess implements ExecutorTransport {
 		const { promise, resolve, reject } = Promise.withResolvers<void>();
 		child.on("message", (message: ExecutorMessage) => {
 			if (this.#child !== child) return;
-			switch (message.kind) {
+			if(message.kind==="policy.synced"||message.kind==="execution.quiesced"){
+    const control=this.#controls.get(message.messageId);if(control){clearTimeout(control.timer);this.#controls.delete(message.messageId);if(message.confirmed)control.resolve();else control.reject(new Error("Permission reconciliation needs attention"));return;}
+   }
+   switch (message.kind) {
 				case "execution.quiesced": {
 					const pending = this.#quiescence;
 					if (pending?.id !== message.messageId) return;
@@ -155,7 +178,8 @@ export class ExecutorProcess implements ExecutorTransport {
 		});
 		child.on("exit", (code, signal) => {
 			if (this.#child !== child) return;
-			const waiting = this.#quiescence;
+			for(const [id,control]of this.#controls){clearTimeout(control.timer);control.reject(new Error("Executor stopped before permission reconciliation"));this.#controls.delete(id);}
+   const waiting = this.#quiescence;
 			this.#quiescence = undefined;
 			if (waiting) {
 				clearTimeout(waiting.timer);

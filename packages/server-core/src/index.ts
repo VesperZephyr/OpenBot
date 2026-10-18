@@ -1,3 +1,4 @@
+import { AuthorityCoordinator, type AuthorityExecutor } from "./authority.ts";
 import {LifecycleController} from "./lifecycle.ts";
 import { legacyManagementName } from "@openbot/protocol";
 /**
@@ -64,6 +65,7 @@ export type OperationAudit = {
 };
 
 export type HostServiceOptions = {
+ readonly authorityExecutor?:AuthorityExecutor;
  readonly nativeLifecycleRequired?:boolean;
  readonly quiesce?:()=>Promise<void>;
 	/** Content-free diagnostics; authoritative action state stays in its own durable store. */
@@ -96,6 +98,7 @@ export type HostServiceOptions = {
 type Handlers = { [M in HostMethod]: (params: HostParams<M>) => Promise<HostResult<M>> };
 
 export class HostService {
+ readonly authority:AuthorityCoordinator;
  readonly lifecycle:LifecycleController;
 	readonly capabilities: AppCapabilities;
 	readonly management: BotManagement;
@@ -175,7 +178,8 @@ export class HostService {
 
 		this.capabilities = new AppCapabilities(this.#runtime, this.#status.targetId, (run) => this.groups.admissible(run));
 		this.management.appGuard = (call) => this.capabilities.authorizeManagement(call);
-		this.#policy = new PolicyService({ runtime: this.#runtime, approvals: this.#approvals, workspace: this.#workspace, now: this.#now });
+		this.authority=new AuthorityCoordinator({dataDirectory:this.#dataDirectory,runtime:this.#runtime,workspace:this.#workspace,targetId:this.#status.targetId,approvals:this.#approvals,executor:options.authorityExecutor??{synchronize:async()=>{},revoke:async()=>{}},interrupt:async(ids,stop)=>{await this.#runs.interruptSelected(ids,stop);await this.groups.interruptActive();}});
+  this.#policy = new PolicyService({ runtime: this.#runtime, approvals: this.#approvals, workspace: this.#workspace, now: this.#now,change:fn=>this.authority.change(fn),reconcile:()=>this.authority.reconcile() });
 		this.#feed = new ConversationFeed({
 			deliver: (snapshot) => this.#emit({ type: "conversation.updated", payload: snapshot }),
 			...(options.coalesce?.windowMs === undefined ? {} : { windowMs: options.coalesce.windowMs }),
@@ -235,7 +239,7 @@ export class HostService {
 			},
 			"runs.cancel": async ({ runId }) => ({ state: await this.#runs.cancel(runId) }),
 			"approvals.decide": async ({ approvalId, decision }) => {
-				if (!(await this.#approvals.decide(approvalId, decision))) {
+				if (!(await this.authority.change(()=>this.#approvals.decide(approvalId, decision)))) {
 					throw new ProtocolError("not_found", "This request was already answered or its task ended");
 				}
 				// The new rule or grant may cover other waiting calls too.
@@ -270,6 +274,9 @@ export class HostService {
 				return null;
 			},
 			"policy.get": () => this.#policy.get(),
+ "policy.ask.create":input=>this.#policy.createAsk(input),
+ "policy.ask.delete":input=>this.#policy.deleteAsk(input),
+ "policy.reconcile":()=>this.#policy.reconcile(),
 			"policy.update": (change) => this.#policy.update(change),
 			"policy.rules.delete": ({ id }) => this.#policy.deleteRule(id),
 			"grants.list": () => this.#policy.grants(),
@@ -352,9 +359,11 @@ export class HostService {
 		} catch {
 			/* Keep diagnostics independent of startup. */
 		}
+		await this.#runtime.policy().bind(this.#status.targetId);
 		await this.#approvals.start(this.#runtime.approvals());
 		for (const bot of await this.#runtime.listBots()) if (bot.status !== "deleted") await this.#observe(bot.botId);
-		await this.#runs.start();
+		await this.authority.reconcile();
+  await this.#runs.start();
 		if (this.lifecycle.state.needsResume) await this.lifecycle.pause("recovery").catch(() => {});
 		await this.groups.start();
 		if (!this.lifecycle.state.blocked) this.#runtime.resume();

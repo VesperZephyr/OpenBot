@@ -114,6 +114,12 @@ export const HOST_PARAM_SCHEMAS = {
 		commandSetting: Type.Optional(Type.Enum(["ask", "allow", "never"])),
 		readOnlyDefault: Type.Optional(Type.Boolean()),
 	}),
+ "policy.ask.create": strict({ requestId: Id, expectedRevision: Type.Integer({minimum:0,maximum:Number.MAX_SAFE_INTEGER}), botId: Type.Optional(Id), predicate: Type.Union([
+ strict({tool:Type.Literal("local_exec"),program:Type.String({minLength:1,maxLength:4096}),subcommand:Type.Optional(Type.String({minLength:1,maxLength:256})),exact:Type.Optional(Type.String({minLength:1,maxLength:16384})),cwd:Type.Optional(Type.String({minLength:1,maxLength:4096}))}),
+ strict({tool:Type.Enum(["local_read","local_list","local_write","local_edit"]),path:Type.String({minLength:1,maxLength:4096})})
+ ])}),
+ "policy.ask.delete": strict({requestId:Id, expectedRevision:Type.Integer({minimum:0,maximum:Number.MAX_SAFE_INTEGER}),id:Id}),
+ "policy.reconcile": NoParams,
 	"policy.rules.delete": strict({ id: Id }),
 	"grants.list": NoParams,
 	"grants.revoke": strict({ id: Id }),

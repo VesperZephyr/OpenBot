@@ -581,7 +581,8 @@ function ToolCard({
 			"",
 	);
 	const waiting = approval !== undefined || childApprovals.length > 0;
-	const label = waiting
+	const failureLabel=item.failureReason?{approval_expired:"Approval expired",permission_revoked:"Permission revoked",approval_denied:"Approval denied"}[item.failureReason]:undefined;
+ const label = failureLabel?t(failureLabel):waiting
 		? t("Waiting for approval")
 		: item.status === "running" || item.status === "pending"
 			? t(running)

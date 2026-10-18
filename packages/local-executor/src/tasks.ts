@@ -21,6 +21,7 @@ const MAX_WAIT_SECONDS = 60;
 export type TaskLedger = Pick<ReceiptLedger, "recordGroup" | "recordTask" | "finishTask" | "task">;
 
 type Task = {
+ readonly invocationId:string;
 	readonly runId?: string;
 	readonly taskId: string;
 	readonly conversationId: string;
@@ -56,7 +57,8 @@ export class CommandTasks {
 		onProgress: (output: string) => void,
 		signal: AbortSignal,
 	): Promise<ToolOutcome> {
-		const log = new OutputLog(logPath);
+		signal.throwIfAborted();
+  const log = new OutputLog(logPath);
 		let foreground = true;
 		const command = runCommand(args, log, (chunk) => {
 			if (foreground) onProgress(chunk);
@@ -85,6 +87,7 @@ export class CommandTasks {
 		log.spill();
 		const taskId = `task_${randomUUID().slice(0, 8)}`;
 		const task: Task = {
+ invocationId:invocation.invocationId,
 			...(invocation.runId ? { runId: invocation.runId } : {}),
 			taskId,
 			conversationId: invocation.conversationId,
@@ -147,6 +150,8 @@ export class CommandTasks {
 	stopAll(): Promise<CommandExit[]> {
 		return Promise.all([...this.#tasks.values()].map((task) => (task.command.cancel(), task.ended)));
 	}
+
+ stopInvocations(ids:ReadonlySet<string>):Promise<CommandExit[]> {return Promise.all([...this.#tasks.values()].filter(task=>ids.has(task.invocationId)).map(task=>(task.command.cancel(),task.ended)));}
 
 	#report(task: Task): ToolOutcome {
 		const end = task.log.position;

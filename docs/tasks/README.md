@@ -109,3 +109,9 @@ Current increment: B13a channel contexts and B13b group lifecycle follow merged 
 | Task | Status |
 | --- | --- |
 | [B14b: Lifecycle gates and explicit continuation](b14b-lifecycle-gates.md) | implemented, in review; targets main |
+
+## Deterministic permissions
+
+| Task | Status |
+| --- | --- |
+| [B12a: Deterministic policy, revocation and approval expiry](b12a-deterministic-policy.md) | implemented; acceptance in progress; depends on B14b, targets main |

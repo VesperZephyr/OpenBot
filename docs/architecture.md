@@ -395,6 +395,8 @@ An approval card shows the Bot, tool, target, and exact arguments, and offers **
 
 Grant or rule revocation invalidates pending approvals and requests cancellation of affected active work. Policy is checked again immediately before dispatch. An approval controls a proposed action; it does not reverse work already completed.
 
+B12a implements literal command/program/subcommand and canonical file/cwd subtree Ask first predicates, optionally narrowed to a Bot. Every effective policy/grant change increments one target-bound authority revision. Approval identity also binds trusted Run origin and canonical arguments; Always allow commits its resulting revision atomically. Host dispatch admission and policy changes share a short serial coordinator; running commands do not retain that lock. Restrictive changes retain a durable reconciliation intent and affected invocation metadata. The executor synchronizes revisions and acknowledges scoped termination; stale calls cannot start new effects, while exact terminal receipts remain readable. A removed folder grant conservatively affects shell work because arbitrary commands are not confined to their cwd. Unrelated proven file operations and unrelated Bot-scoped rule operations continue. Unknown termination keeps the affected authority fenced. Unattended approval deadlines survive replay and use the earlier of ten minutes or the Code Mode parent deadline. URL/connector predicates and optional model review remain separate increments.
+
 ### 5.4 Managed Browser
 
 Browser tasks use an OpenBot-managed browser profile, separate from the user's everyday browser profile. All Bots share this profile, so signing in once makes a session available to every Bot.
@@ -538,7 +540,7 @@ The transport is private IPC with versioned request, response, and event envelop
 | `messages.submit` | Accept `requestId`, conversation, content, mentions, skill and connector attachments, and artifact references; return `runId`, state, and whether the message steered an active Run, after durable receipt |
 | `runs.cancel`, `runs.pause`, `runs.resume` | Persist an idempotent cancellation or pause request and report its outcome separately |
 | `approvals.decide` | `allow_once`, `always_allow` with a confirmed rule scope, or `deny` for the exact pending invocation |
-| `policy.get`, `policy.update`, `policy.rules.delete` | Read and change the command setting, the read-only default, and command rules; Ask first rules and Auto Review arrive in Phase 2 |
+| `policy.get`, `policy.update`, `policy.rules.delete`, `policy.ask.create`, `policy.ask.delete`, `policy.reconcile` | Target-bound policy revisions, command defaults/allow rules, bounded Ask first predicates and durable scoped-revocation reconciliation; user-only methods |
 | `grants.list`, `grants.add`, `grants.revoke` | List, add (folder picked in a native dialog by main), or revoke folder grants for a `targetId` |
 | `models.list`, `models.addProvider`, `models.test` | List models, declare an OpenAI- or Anthropic-compatible endpoint in the model configuration file (never its key), and send one small test request |
 | `skills.list`, `skills.get`, `skills.save`, `skills.delete` | Manage the skill library |

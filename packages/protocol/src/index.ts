@@ -36,6 +36,9 @@ export function assertLocalTarget(target: ExecutionTarget, boundTargetId: string
 }
 
 export type ProtocolErrorCode =
+	| "approval_expired"
+ | "permission_revoked"
+ | "approval_denied"
 	| "target_unsupported"
 	| "target_mismatch"
 	| "request_conflict"
@@ -257,6 +260,7 @@ export type TranscriptItem =
 			readonly tool: string;
 			readonly args: unknown;
 			readonly status: ToolCallStatus;
+   readonly failureReason?:ToolFailureReason;
 			/** Bounded text the model received, or the running output while the call is live. */
 			readonly output?: string;
 			/** Set when a `local_exec` call moved its command to the background. */
@@ -319,7 +323,7 @@ export type RunRecord = {
 	readonly runId: RunId;
 	readonly botId: BotId;
 	readonly state: "queued" | "running" | "completed" | "failed" | "cancelled" | "needs_attention";
- readonly interruption?: {readonly reason:LifecycleReason;readonly requestedAt:number;readonly settledAt?:number};
+ readonly interruption?: {readonly reason:LifecycleReason|"permission_revoked";readonly requestedAt:number;readonly settledAt?:number};
 	/** OpenBot request IDs of every message in this Run, first one starts it. */
 	readonly requestIds: readonly string[];
 	readonly createdAt: number;
@@ -329,7 +333,9 @@ export type RunRecord = {
 };
 
 /** A tool call stopped before dispatch until the user decides (Section 5.3). */
+export type ApprovalBinding = { readonly runId?: string; readonly origin: "attended" | "unattended"; readonly argsDigest: string; readonly revision: number };
 export type PendingApproval = {
+ readonly binding?: ApprovalBinding;
 	readonly deadline?: number;
 	readonly conversationId?: string;
 	readonly approvalId: string;
@@ -371,9 +377,19 @@ export type CommandRuleScope = { readonly program: string; readonly subcommand?:
 
 export type CommandRule = CommandRuleScope & { readonly id: string; readonly createdAt: number };
 
+export type AskFirstPredicate =
+ | { readonly tool: "local_exec"; readonly program: string; readonly subcommand?: string; readonly exact?: string; readonly cwd?: string }
+ | { readonly tool: "local_read" | "local_list" | "local_write" | "local_edit"; readonly path: string };
+export type AskFirstInput = { readonly botId?: string; readonly predicate: AskFirstPredicate };
+export type AskFirstRule = AskFirstInput & { readonly id: string; readonly targetId: string; readonly revision: number; readonly createdAt: number };
+export type PolicyReconciliation = { readonly id: string; readonly revision: number; readonly state: "pending" | "complete" | "attention"; readonly createdAt: number };
 export type PolicySettings = {
+ readonly targetId?: string;
+ readonly revision: number;
+ readonly askFirst: readonly AskFirstRule[];
+ readonly reconciliation?: PolicyReconciliation;
 	readonly commandSetting: CommandSetting;
-	/** Read-only commands (`rg`, `ls`, `git status`, …) inside granted folders run without asking. */
+	/** Read-only commands (`rg`, `ls`, …) inside granted folders run without asking. */
 	readonly readOnlyDefault: boolean;
 	readonly rules: readonly CommandRule[];
 };
@@ -395,7 +411,7 @@ export type FolderGrant = {
  * Lifecycle of an approval in the Host's store (Section 5.3): `pending` until the user decides, `allowed` or `denied`
  * until the call's result is committed (`consumed`), or `withdrawn` when its Run was cancelled first.
  */
-export type ApprovalState = "pending" | "allowed" | "denied" | "withdrawn" | "consumed";
+export type ApprovalState = "pending" | "allowed" | "denied" | "withdrawn" | "consumed" | "expired" | "revoked";
 
 export type ApprovalRecord = PendingApproval & {
 	readonly state: ApprovalState;
@@ -528,6 +544,9 @@ export type HostMethods = {
 		params: { readonly commandSetting?: CommandSetting; readonly readOnlyDefault?: boolean };
 		result: PolicySettings;
 	};
+ "policy.ask.create": { params: AskFirstInput & { readonly requestId: string; readonly expectedRevision: number }; result: PolicySettings };
+ "policy.ask.delete": { params: { readonly requestId: string; readonly expectedRevision: number; readonly id: string }; result: PolicySettings };
+ "policy.reconcile": { params: Record<string, never>; result: PolicySettings };
 	"policy.rules.delete": { params: { readonly id: string }; result: PolicySettings };
 	"grants.list": { params: Record<string, never>; result: readonly FolderGrant[] };
 	"grants.revoke": { params: { readonly id: string }; result: readonly FolderGrant[] };
@@ -604,6 +623,7 @@ export const HOST_METHODS = [
 	"policy.get",
 	"policy.update",
 	"policy.rules.delete",
+ "policy.ask.create", "policy.ask.delete", "policy.reconcile",
 	"grants.list",
 	"grants.revoke",
 	"grants.add",
@@ -715,6 +735,7 @@ export function isRequestEnvelope(
 
 /** Executor-protocol invocation, identical for the local executor and any future target. */
 export type ToolInvocation = {
+ readonly authorityRevision?: number;
 	readonly runId?: string;
 	readonly invocationId: string;
 	readonly botId: BotId;
@@ -732,7 +753,9 @@ export type ToolInvocation = {
 
 export type InvocationStatus = "succeeded" | "failed" | "cancelled" | "unknown";
 
+export type ToolFailureReason = "approval_expired" | "permission_revoked" | "approval_denied";
 export type ToolOutcome = {
+ readonly failureReason?:ToolFailureReason;
 	readonly status: InvocationStatus;
 	/** Bounded text for the model. */
 	readonly output: string;
@@ -747,6 +770,8 @@ export type ToolOutcome = {
 
 /** Host to executor. */
 export type ExecutorRequest =
+ | {readonly kind:"policy.sync";readonly messageId:string;readonly targetId:string;readonly revision:number}
+ | {readonly kind:"execution.revoke";readonly messageId:string;readonly targetId:string;readonly invocationIds:readonly string[]}
  | {readonly kind:"execution.quiesce";readonly messageId:string;readonly targetId:string}
 	| { readonly kind: "tool.invoke"; readonly invocation: ToolInvocation }
 	| { readonly kind: "tool.cancel"; readonly invocationId: string }
@@ -759,6 +784,7 @@ export type ExecutorRequest =
 
 /** Executor to Host. */
 export type ExecutorMessage =
+ | {readonly kind:"policy.synced";readonly messageId:string;readonly confirmed:boolean}
  | {readonly kind:"execution.quiesced";readonly messageId:string;readonly confirmed:boolean}
 	| {
 			readonly kind: "executor.hello";
@@ -772,6 +798,8 @@ export type ExecutorMessage =
 	| { readonly kind: "tool.result"; readonly invocationId: string; readonly outcome: ToolOutcome }
 	| {
 			readonly kind: "tool.status";
+   readonly argsDigest?:string;
+   readonly tool?:string;
 			readonly invocationId: string;
 			readonly status: InvocationStatus | "accepted" | "absent";
 			readonly outcome?: ToolOutcome;

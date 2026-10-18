@@ -50,7 +50,7 @@ export function InterruptedRun({ run }: { run: RunRecord }) {
 		[busy, setBusy] = useState(false);
 	return (
 		<li className="interrupted-run" role="status">
-			<strong>{t("Task interrupted")}</strong>
+			<strong>{t(run.interruption?.reason==="permission_revoked"?"Permission revoked":"Task interrupted")}</strong>
 			<p>{t("Review completed actions before continuing. An interrupted action may have partly run.")}</p>
 			<button
 				type="button"
