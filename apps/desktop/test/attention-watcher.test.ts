@@ -43,4 +43,17 @@ describe("native attention effects", () => {
 			expect(native.stop).toHaveBeenCalledTimes(1);
 		}
 	});
+ it("ignores a roster returned after Host loss", async () => {
+  const pending = Promise.withResolvers<BotSummary[]>();
+  const watcher = new AttentionWatcher({host:{call:()=>pending.promise} as unknown as HostProcess,focused:()=>false,openBot:vi.fn()});
+  watcher.onHostState({status:"ready"});
+  watcher.onHostState({status:"stopped"});
+  native.badge.mockClear();
+  pending.resolve([{kind:"core",revision:1,botId:"core",name:"OpenBot",role:"",instructions:"",pinned:true,status:"active",createdAt:0,activity:"working",pendingApprovals:1}]);
+  await new Promise(resolve=>setImmediate(resolve));
+  expect(native.badge).not.toHaveBeenCalled();
+  expect(native.start).not.toHaveBeenCalled();
+  expect(native.show).not.toHaveBeenCalled();
+ });
+
 });

@@ -463,7 +463,12 @@ export type ModelSummary = {
 // ---------------------------------------------------------------------------
 // Desktop-to-Host methods (Section 6.1). Each entry maps a method name to its params and result.
 
+export type ObservationCursor = { readonly streamId: string; readonly seq: number };
+
+export type ObservationUpdate = ObservationCursor & { readonly changes: number };
+
 export type HostMethods = {
+	"observation.wait": { params: { readonly cursor?: ObservationCursor; readonly waitMs?: number }; result: ObservationUpdate };
 	"collaboration.stop": { params: { rootId: string }; result: null };
 	"groups.list": { params: Record<string, never>; result: readonly Group[] };
 	"groups.snapshot": { params: { groupId: string }; result: GroupSnapshot };
@@ -586,6 +591,7 @@ export type HostParams<M extends HostMethod> = HostMethods[M]["params"];
 export type HostResult<M extends HostMethod> = HostMethods[M]["result"];
 
 export const HOST_METHODS = [
+	"observation.wait",
 	"collaboration.stop",
 	"groups.list",
 	"groups.snapshot",

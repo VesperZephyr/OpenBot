@@ -102,8 +102,6 @@ const status: HostStatus = {
 	startedAt: Date.now(),
 };
 
-const streamId = crypto.randomUUID();
-let seq = 0;
 const send = (message: HostToDesktop): void => {
 	if (process.send !== undefined && process.connected) process.send(message);
 };
@@ -118,8 +116,7 @@ const service = new HostService({
 	approvals,
 	workspace,
 	maxActiveRuns: maxActiveRuns(process.env.OPENBOT_MAX_ACTIVE_RUNS),
-	emit: (event) =>
-		send({ ...event, protocolVersion: PROTOCOL_VERSION, kind: "event", streamId, seq: ++seq }),
+	emit: () => {},
 	// Pi committed the call's result: the executor may prune its receipt, and the call's approval is used up.
 	toolSettled: (botId, callId, conversationId) => {
 		void (async () => {

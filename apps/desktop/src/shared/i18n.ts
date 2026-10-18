@@ -30,6 +30,7 @@ export const chinese: Readonly<Record<string, string>> = {
  "withdrawn": "已撤回",
  "consumed": "已使用",
 
+ "Too many observation requests": "状态同步请求过多，正在重新连接",
  "Search chat history": "搜索聊天记录",
  "List conversations": "列出会话",
  "Inspect Bots": "查看 Bot",

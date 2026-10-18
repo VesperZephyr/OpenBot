@@ -1,8 +1,18 @@
+import { LatestRead, observe } from "../../shared/observation";
 /**
- * Renderer state. Every Host-owned value is a snapshot fetched through the preload API and replaced by events; the
+ * Renderer state. Every Host-owned value is a snapshot fetched through the preload API and refreshed by observation; the
  * renderer never keeps its own copy of the transcript or settings.
  */
-import type { ConversationKey, ConversationSummary, Group, BotSummary, ConversationSnapshot, ModelSummary, RedactedSettings } from "@openbot/protocol";
+import type {
+	GroupSnapshot,
+	ConversationKey,
+	ConversationSummary,
+	Group,
+	BotSummary,
+	ConversationSnapshot,
+	ModelSummary,
+	RedactedSettings,
+} from "@openbot/protocol";
 import { create } from "zustand";
 import { composers } from "./useComposer";
 import { ERROR_PREFIX, type HostState } from "../../shared/api";
@@ -16,6 +26,7 @@ export type View =
 export type SearchTarget = { conversationKey: ConversationKey; messageId: string; nonce: string };
 
 type State = {
+	groupSnapshots: Readonly<Record<string, GroupSnapshot>>;
 	searchTarget: SearchTarget | undefined;
 	host: HostState;
 	windowActive: boolean;
@@ -33,6 +44,7 @@ type State = {
 };
 
 export const useStore = create<State>(() => ({
+	groupSnapshots: {},
 	searchTarget: undefined,
 	host: { status: "starting" },
 	windowActive: false,
@@ -60,49 +72,72 @@ export function report(error: unknown): void {
 	useStore.setState({ notice: errorMessage(error) });
 }
 
-let summaryRefresh: Promise<void> | undefined;
-let summaryAgain = false;
-/** At most one list request in flight; an invalidation during it always schedules a newer read. */
-export function refreshSummaries(): Promise<void> {
-	summaryAgain = true;
-	if (summaryRefresh) return summaryRefresh;
-	summaryRefresh = (async () => {
-		while (summaryAgain) {
-			summaryAgain = false;
-			const rows = await api["conversations.list"]({});
-			if (!summaryAgain) useStore.setState({ summaries: Object.fromEntries(rows.map((row) => [row.conversationKey, row])) });
-		}
-	})().finally(() => { summaryRefresh = undefined; });
-	return summaryRefresh;
+const summariesRead = new LatestRead(
+	() => api["conversations.list"]({}),
+	(rows) => {
+		useStore.setState({ summaries: Object.fromEntries(rows.map((row) => [row.conversationKey, row])) });
+	},
+);
+const groupsRead = new LatestRead(
+	() => api["groups.list"]({}),
+	(groups) => useStore.setState({ groups }),
+);
+const botsRead = new LatestRead(
+	() => api["bots.list"]({}),
+	(bots) => {
+		for (const key of Object.keys(composers.snapshot()))
+			if (key.startsWith("bot:") && !bots.some((b) => b.botId === key.slice(4))) composers.remove(key as `bot:${string}`);
+		useStore.setState({ bots });
+	},
+);
+const settingsRead = new LatestRead(
+	async () => {
+		const [settings, models] = await Promise.all([api["settings.get"]({}), api["models.list"]({})]);
+		return { settings, models };
+	},
+	(value) => useStore.setState(value),
+);
+const conversationRead = new LatestRead(
+	async () => {
+		const view = useStore.getState().view;
+		await api["conversations.subscribe"]({ botId: view.kind === "bot" ? view.botId : null });
+		return view.kind === "bot" ? await api["conversations.snapshot"]({ botId: view.botId }) : undefined;
+	},
+	(snapshot) => {
+		const view = useStore.getState().view;
+		if (snapshot && view.kind === "bot" && view.botId === snapshot.botId)
+			useStore.setState((s) => ({ conversations: { ...s.conversations, [snapshot.botId]: snapshot } }));
+	},
+);
+const groupRead = new LatestRead(
+	async () => {
+		const view = useStore.getState().view;
+		return view.kind === "group" ? await api["groups.snapshot"]({ groupId: view.groupId }) : undefined;
+	},
+	(snapshot) => {
+		const view = useStore.getState().view;
+		if (snapshot && view.kind === "group" && view.groupId === snapshot.group.groupId)
+			useStore.setState((s) => ({ groupSnapshots: { ...s.groupSnapshots, [view.groupId]: snapshot } }));
+	},
+);
+const readers = [summariesRead, groupsRead, botsRead, settingsRead, conversationRead, groupRead];
+let readGeneration = 0;
+function resetReads() {
+	readGeneration++;
+	for (const reader of readers) reader.reset();
 }
+export const refreshSummaries = () => summariesRead.request();
+export const refreshGroups = () => groupsRead.request();
+export const refreshBots = () => botsRead.request();
+export const refreshSettings = () => settingsRead.request();
+export const refreshGroupSnapshot = () => groupRead.request();
 export async function markRead(conversationKey: ConversationKey, through: number): Promise<void> {
 	await api["conversations.markRead"]({ conversationKey, through });
 	await refreshSummaries();
 }
-
-export async function refreshGroups(): Promise<void> {
-	useStore.setState({ groups: await api["groups.list"]({}) });
-}
-
-export async function refreshBots(): Promise<void> {
-	const bots = await api["bots.list"]({});
-	for (const key of Object.keys(composers.snapshot())) {
-		if (key.startsWith("bot:") && !bots.some((bot) => bot.botId === key.slice(4))) composers.remove(key as `bot:${string}`);
-	}
-	useStore.setState({ bots });
-}
-
-export async function refreshSettings(): Promise<void> {
-	const [settings, models] = await Promise.all([api["settings.get"]({}), api["models.list"]({})]);
-	useStore.setState({ settings, models });
-}
-
-/** Select a Bot: its conversation becomes the one the Host streams to this window, then it is fetched fresh. */
 export async function openBot(botId: string, searchTarget?: SearchTarget): Promise<void> {
 	useStore.setState({ view: { kind: "bot", botId }, searchTarget });
-	await api["conversations.subscribe"]({ botId });
-	const snapshot = await api["conversations.snapshot"]({ botId });
-	useStore.setState((state) => ({ conversations: { ...state.conversations, [botId]: snapshot } }));
+	await conversationRead.request();
 }
 
 export async function createBot(name: string): Promise<void> {
@@ -117,59 +152,77 @@ export async function sendMessage(botId: string, text: string, requestId: string
 
 export function connect(): () => void {
 	let activityEvent = false;
-	const stopActivity = window.openbot.onWindowActive((windowActive) => { activityEvent = true; useStore.setState({ windowActive }); });
-	void window.openbot.windowActive().then((windowActive) => { if (!activityEvent) useStore.setState({ windowActive }); }).catch(report);
-	const stopEvents = window.openbot.onEvent((event) => {
-		switch (event.type) {
-			case "groups.changed":
-				void refreshSummaries().catch(report);
-				void refreshGroups().catch(report);
-				return;
-			case "bots.changed":
-				void refreshSummaries().catch(report);
-				void refreshGroups().catch(report);
-				void refreshBots().catch(report);
-				return;
-			case "conversation.updated": {
-				const snapshot = event.payload;
-				useStore.setState((state) => ({ conversations: { ...state.conversations, [snapshot.botId]: snapshot } }));
-			}
-		}
+	const stopActivity = window.openbot.onWindowActive((windowActive) => {
+		activityEvent = true;
+		useStore.setState({ windowActive });
 	});
+	void window.openbot
+		.windowActive()
+		.then((windowActive) => {
+			if (!activityEvent) useStore.setState({ windowActive });
+		})
+		.catch(report);
+	let stopObservation: (() => void) | undefined;
+	let disposed = false;
+	let stateEvent = false;
+	const applyHost = (host: HostState) => {
+		stopObservation?.();
+		resetReads();
+		useStore.setState({ host });
+		if (host.status === "ready")
+			stopObservation = observe({
+				wait: (cursor) => api["observation.wait"](cursor ? { cursor } : {}),
+				changed: async (reset, changes) => {
+					if (reset) resetReads();
+					await loadAll(reset ? 15 : changes);
+				},
+				error: report,
+			});
+	};
 	const stopHost = window.openbot.onHostState((host) => {
-		useStore.setState({ host });
-		// A restarted Host has a new event stream; reload every snapshot.
-		if (host.status === "ready") void loadAll();
+		stateEvent = true;
+		if (!disposed) applyHost(host);
 	});
-	void window.openbot.hostState().then((host) => {
-		useStore.setState({ host });
-		if (host.status === "ready") void loadAll();
+	void window.openbot
+		.hostState()
+		.then((host) => {
+			if (!disposed && !stateEvent) applyHost(host);
+		})
+		.catch(report);
+	const stopSelection = useStore.subscribe((state, previous) => {
+		if (state.view !== previous.view) {
+			conversationRead.reset();
+			groupRead.reset();
+			if (state.host.status === "ready") void Promise.all([conversationRead.request(), groupRead.request()]).catch(report);
+		}
 	});
 	// A clicked notification: main showed the window, the renderer opens the Bot.
 	const stopOpenBot = window.openbot.onOpenBot((botId) => void openBot(botId).catch(report));
 	return () => {
 		stopActivity();
-		stopEvents();
+		disposed = true;
+		stopObservation?.();
+		stopSelection();
+		resetReads();
 		stopHost();
 		stopOpenBot();
 	};
 }
 
-async function loadAll(): Promise<void> {
-	try {
-		await Promise.all([refreshBots(), refreshGroups(), refreshSettings(), refreshSummaries()]);
-		const { view, onboarding, settings, bots } = useStore.getState();
-		// Decided once per window: later Host restarts never interrupt or restart the flow.
-		if (onboarding === undefined && settings !== undefined) useStore.setState({ onboarding: needsOnboarding(settings, bots) });
-		// A restarted Host has no subscription; opening the Bot again subscribes and fetches it fresh.
-		if (view.kind === "bot") await openBot(view.botId);
-		else if (view.kind === "home") {
-			const core = bots.find((bot) => bot.kind === "core");
-			if (core !== undefined) await openBot(core.botId);
-		}
-	} catch (error) {
-		report(error);
-	}
+async function loadAll(changes: number): Promise<void> {
+	const generation = readGeneration;
+	await Promise.all([
+		...(changes & 1 ? [refreshBots()] : []),
+		...(changes & 3 ? [refreshGroups(), refreshSummaries()] : []),
+		...(changes & 8 ? [refreshSettings()] : []),
+	]);
+	if (generation !== readGeneration || useStore.getState().host.status !== "ready") return;
+	const { view, onboarding, settings, bots } = useStore.getState();
+	if (onboarding === undefined && settings) useStore.setState({ onboarding: needsOnboarding(settings, bots) });
+	if (view.kind === "home" || (view.kind === "bot" && !bots.some((bot) => bot.botId === view.botId))) {
+		const core = bots.find((b) => b.kind === "core");
+		if (core) await openBot(core.botId);
+	} else await Promise.all([...(changes & 5 ? [conversationRead.request()] : []), ...(changes & 3 ? [groupRead.request()] : [])]);
 }
 
 /**

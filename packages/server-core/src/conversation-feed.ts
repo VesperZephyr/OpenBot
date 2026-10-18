@@ -1,8 +1,8 @@
 /**
- * Which conversation snapshots reach Desktop (architecture 6.1, B7 streaming cost). Only the one subscribed Bot gets
+ * Which conversation changes invalidate Desktop (architecture 6.1). Only the one subscribed Bot gets
  * `conversation.updated` events; every other Bot's changes reach the sidebar through `bots.changed`. Updates of the
- * subscribed Bot are coalesced so streaming text crosses IPC at most once per window, always ending on the latest
- * snapshot.
+ * subscribed Bot are coalesced before the service records a bounded observation revision. The internal callback retains
+ * snapshots for fixtures; production does not forward them across IPC.
  */
 import type { BotId, ConversationSnapshot } from "@openbot/protocol";
 import { Coalescer, type Timers } from "./coalescer.ts";

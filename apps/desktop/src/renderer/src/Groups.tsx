@@ -2,8 +2,8 @@ import { ChatComposer } from "./ChatComposer";
 import { ConversationShell, DetailsPanel, Timeline } from "./ConversationUI";
 import { MarkReadButton, RosterPreview, recentTime } from "./RosterPreview";
 import { useEffect, useRef, useState } from "react";
-import type { Group, GroupSnapshot } from "@openbot/protocol";
-import { api, refreshGroups, report, useStore } from "./store";
+import type { Group } from "@openbot/protocol";
+import { refreshGroupSnapshot, api, refreshGroups, report, useStore } from "./store";
 import { t } from "./i18n";
 import { Markdown } from "./markdown";
 import { ApprovalCard } from "./ApprovalCard";
@@ -162,29 +162,13 @@ export function GroupEditor({ group: liveGroup, onClose }: { group?: Group; onCl
 }
 export function GroupView({ groupId }: { groupId: string }) {
 	const bots = useStore((s) => s.bots);
-	const [snapshot, setSnapshot] = useState<GroupSnapshot>();
+	const snapshot = useStore((s) => s.groupSnapshots[groupId]);
 	const [editing, setEditing] = useState(false);
 	const [dissolving, setDissolving] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [details, setDetails] = useState(false);
 	useEffect(() => {
-		let alive = true;
-		let timer: ReturnType<typeof setTimeout>;
-		const refresh = async () => {
-			try {
-				const next = await api["groups.snapshot"]({ groupId });
-				if (alive) setSnapshot(next);
-			} catch (error) {
-				if (alive) report(error);
-			} finally {
-				if (alive) timer = setTimeout(refresh, 700);
-			}
-		};
-		void refresh();
-		return () => {
-			alive = false;
-			clearTimeout(timer);
-		};
+		void refreshGroupSnapshot().catch(report);
 	}, [groupId]);
 
 	if (!snapshot) return <div className="empty-state">{t("Loading…")}</div>;
@@ -389,7 +373,7 @@ export function GroupView({ groupId }: { groupId: string }) {
 											groupId,
 											expectedRevision: group.revision,
 										});
-										setSnapshot(await api["groups.snapshot"]({ groupId }));
+										await refreshGroupSnapshot();
 										await refreshGroups();
 										setDissolving(false);
 									} catch (error) {

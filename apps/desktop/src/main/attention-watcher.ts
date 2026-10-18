@@ -27,6 +27,7 @@ export class AttentionWatcher {
 	#blocker: number | undefined;
 	/** Fetches run one at a time; a change while one runs schedules exactly one more. */
 	#fetching = false;
+	#generation = 0;
 	#again = false;
 	/** Notifications are kept referenced until closed; a collected Notification loses its click handler. */
 	readonly #shown = new Set<Notification>();
@@ -40,6 +41,7 @@ export class AttentionWatcher {
 	}
 
 	onHostState(state: HostState): void {
+		this.#generation++;
 		if (state.status === "ready") {
 			// A new Host instance: the next roster is a fresh baseline.
 			this.#roster = undefined;
@@ -51,6 +53,8 @@ export class AttentionWatcher {
 	}
 
 	stop(): void {
+		this.#generation++;
+		this.#again = false;
 		this.#apply(0, false);
 	}
 
@@ -60,9 +64,11 @@ export class AttentionWatcher {
 			return;
 		}
 		this.#fetching = true;
+		const generation = this.#generation;
 		void this.#options.host
 			.call("bots.list", {})
 			.then((roster) => {
+				if (generation !== this.#generation) return;
 				const result = attention(this.#roster, roster);
 				this.#roster = roster;
 				this.#apply(result.badge, result.keepAwake);

@@ -101,6 +101,7 @@ export class Groups {
 		const stop = await this.runtime.observe(
 			botId,
 			(snapshot) => {
+				this.#changed();
 				for (const item of snapshot.items)
 					if (item.kind === "tool" && !["pending", "running"].includes(item.status) && !settled.has(item.id)) {
 						settled.add(item.id);
@@ -160,6 +161,7 @@ export class Groups {
 					});
 					runId = admitted.runId;
 					await store.admitted(d.deliveryId, runId);
+					this.#changed();
 				}
 				const run = await this.runtime.runsStore().get(runId);
 				if (!run || !isTerminal(run.state)) continue;

@@ -111,3 +111,9 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Task | Status |
 | --- | --- |
 | [B13d: Local usage and execution evidence](b13d-usage-evidence.md) | in review ([PR #33](https://github.com/VesperZephyr/OpenBot/pull/33)); acceptance passed |
+
+## Desktop reliability
+
+| Task | Status |
+| --- | --- |
+| [B14a: Reliable, bounded observation](b14a-reliable-observation.md) | implemented, in review |
