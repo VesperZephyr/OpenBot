@@ -114,4 +114,4 @@ Current increment: B13a channel contexts and B13b group lifecycle follow merged 
 
 | Task | Status |
 | --- | --- |
-| [B12a: Deterministic policy, revocation and approval expiry](b12a-deterministic-policy.md) | implemented; acceptance in progress; depends on B14b, targets main |
+| [B12a: Deterministic policy, revocation and approval expiry](b12a-deterministic-policy.md) | in review; depends on B14b, targets main |

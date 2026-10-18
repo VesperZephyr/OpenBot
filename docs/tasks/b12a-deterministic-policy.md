@@ -1,6 +1,6 @@
 # B12a: Deterministic Policy, Revocation, and Unattended Approval Expiry
 
-Status: implemented; final acceptance in progress
+Status: in review
 Branch: task/b12a-deterministic-policy; pull request target: main
 Depends on: B14b lifecycle gates (PR #31), B5 policy, B13c Run provenance, B24–B26 application authority
 Architecture: Sections 5.1–5.3 and 8.1–8.2
@@ -91,3 +91,15 @@ Approval cards show unattended expiry in ordinary language, preserve exact argum
 ## Open questions
 
 None for this increment. URL/connector predicates and model review are separate batches. Revocation uses conservative operation dependency evidence and existing local supervision; it is not a new OS security boundary.
+
+## Acceptance evidence
+
+Implementation candidate: `cd12cd7` (2026-10-18); later changes only record this evidence.
+
+- `pnpm run check`: 319 tests in 52 files passed, including authority, approval, store migration/replay, scoped revocation and executor invariants.
+- `pnpm run e2e`: all 84 tests in 24 files passed in the isolated background app. The final targeted policy/collaboration rerun also passed all eight scenarios. Existing collaboration fixtures now resume intentionally interrupted work and use exact command allows rather than globally changing policy while expecting background work to survive.
+- Policy screenshots inspected: English settings and exact approval; Chinese rules; scoped interruption with unrelated work continuing; revoked folder; unattended deadline and disabled expired controls. Native folder selection is stubbed. Renderer clock advancement verifies expired controls; Host fake-clock tests separately verify durable expiry and no dispatch.
+- Bundled Host/executor startup passed with isolated local state.
+- A real configured model in the hidden desktop requested a synthetic write under Commands Allow. A Core-scoped Ask first rule blocked it until exact approval. Adding a matching rule during execution revoked the Run; explicit continuation read the result. File and tool receipts proved exactly one initial write and no late effect. Rules and completed reconciliation survived restart. The window remained inactive, audit logs excluded task contents, and the temporary credential configuration was removed. Raw evidence stays outside Git.
+
+All automated acceptance items passed. Native packaged lock/sleep/TCC/signing enforcement was not exercised and remains a separate release gate. Revocation confirms supervised termination where receipts permit; it does not undo committed effects or sandbox arbitrary shell programs. No Pi vendor baseline or dependency changes were made.

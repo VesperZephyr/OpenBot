@@ -104,4 +104,4 @@ Attention-state mutation, UI navigation, cross-Bot memory operations, new dispat
 
 ## Deterministic policy delivery
 
-- [B12a](tasks/b12a-deterministic-policy.md): implemented on `task/b12a-deterministic-policy`, dependent on B14b / PR #31. Target-bound revisions, atomic approval scopes, exact approval identity, conservative scoped revocation, unattended expiry and English/Chinese settings. Acceptance is recorded in the task spec; the PR targets `main`, with prerequisite B14b merged first.
+- [B12a](tasks/b12a-deterministic-policy.md): implemented on `task/b12a-deterministic-policy`, dependent on B14b / PR #31. Target-bound revisions, atomic approval scopes, exact approval identity, conservative scoped revocation, unattended expiry and English/Chinese settings. 319 unit/Host tests and 84 full background e2e tests passed, with bundled startup and isolated real-model acceptance. Evidence is recorded in the task spec; the PR targets `main`, with prerequisite B14b merged first.
