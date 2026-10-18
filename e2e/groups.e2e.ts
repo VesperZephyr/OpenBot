@@ -120,7 +120,7 @@ it("group approval survives restart, stop is scoped, removal cancels queued work
 	await h.page().getByRole("group", { name: "Approval request" }).waitFor();
 	expect((await api("conversations.snapshot", { botId: alpha })).approvals).toHaveLength(0);
 	await h.shot("02-group-approval");
-	await h.relaunch();
+	await h.crashHost();
 	await openGroup();
 	await approve();
 	await waitReply("Group command done");
@@ -165,7 +165,7 @@ it("Core creates and edits through exact approval; group Core has no management 
 	await h.page().getByText("Review this group change", { exact: true }).waitFor();
 	expect(await api("groups.list")).toHaveLength(1);
 	expect(await h.page().getByRole("button", { name: "Always allow", exact: true }).count()).toBe(0);
-	await h.relaunch();
+	await h.crashHost();
 	await h.page().getByText("Review this group change", { exact: true }).waitFor();
 	await approve();
 	await h.page().getByText("Core room created", { exact: true }).waitFor();
@@ -209,7 +209,8 @@ it("Chinese management and dissolution retain history and stop pending work", as
 	await send("Hold this task.");
 	await h.page().getByRole("group", { name: "Approval request" }).waitFor();
 	await api("settings.update", { language: "zh-CN" });
-	await h.relaunch();
+	await h.crashHost();
+    await h.page().reload();
 	await h.page().locator(".group-nav", { hasText: "Studio" }).click();
 	await h.page().getByRole("button", { name: "会话详情", exact: true }).waitFor();
 	await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(880, 620));

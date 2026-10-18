@@ -33,6 +33,7 @@ const ledger = ReceiptLedger.open(join(ledgerDirectory, "receipts.sqlite"));
 const artifactStore = new ArtifactStore(join(dataDirectory, "attachments"));
 const executor = new LocalExecutor({
 	artifactStore,
+ requireAuthority:true,
 	targetId,
 	workspace,
 	ledger,
@@ -110,6 +111,27 @@ process.on("message", (message: ExecutorRequest) => {
 			}
 			return;
 		}
+  case "policy.sync":send({kind:"policy.synced",messageId:message.messageId,confirmed:message.targetId===targetId&&executor.synchronize(message.revision)});return;
+  case "execution.revoke":{
+   if(message.targetId!==targetId||!Array.isArray(message.invocationIds)||message.invocationIds.length>4096||message.invocationIds.some(id=>typeof id!=="string"||id.length>2048)){send({kind:"execution.quiesced",messageId:message.messageId,confirmed:false});return;}
+   void executor.revoke(message.invocationIds).then(confirmed=>send({kind:"execution.quiesced",messageId:message.messageId,confirmed}),()=>send({kind:"execution.quiesced",messageId:message.messageId,confirmed:false}));return;
+  }
+		case "execution.quiesce": {
+			if (
+				message.targetId !== targetId ||
+				typeof message.messageId !== "string" ||
+				message.messageId.length > 256 ||
+				Object.keys(message).length !== 3
+			) {
+				send({ kind: "execution.quiesced", messageId: message.messageId, confirmed: false });
+				return;
+			}
+			void executor.cancelAll().then(
+				(confirmed) => send({ kind: "execution.quiesced", messageId: message.messageId, confirmed }),
+				() => send({ kind: "execution.quiesced", messageId: message.messageId, confirmed: false }),
+			);
+			return;
+		}
 		case "tool.invoke": {
 			const { invocationId } = message.invocation;
 			void executor
@@ -145,6 +167,7 @@ process.on("message", (message: ExecutorRequest) => {
 				kind: "tool.status",
 				invocationId: message.invocationId,
 				status: receipt?.status ?? "absent",
+    ...(receipt?{argsDigest:receipt.argsDigest,tool:receipt.tool}:{}),
 				...(receipt?.outcome === undefined ? {} : { outcome: receipt.outcome }),
 			});
 			return;

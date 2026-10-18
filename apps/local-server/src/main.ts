@@ -62,6 +62,7 @@ await mkdir(workspaceSetting, { recursive: true });
 const workspace = await realpath(workspaceSetting);
 
 const executor = new ExecutorProcess({
+	assertAllowed: () => service.lifecycle.assertAllowed(),
 	// Development layout: the executor app is a sibling of this app in the workspace.
 	entry: process.env.OPENBOT_EXECUTOR_ENTRY ?? resolve(dirname(fileURLToPath(import.meta.url)), "../../local-executor/src/main.ts"),
 	targetId: target.targetId,
@@ -88,6 +89,7 @@ const router = createToolRouter({
 });
 
 const runtime = await BotRuntime.open({
+	executionGate: { assertAllowed: () => service.lifecycle.assertAllowed(), signal: () => service.lifecycle.signal },
 	databasePath: join(dataDirectory, "openbot.sqlite"),
 	credentials,
 	tools: {
@@ -119,6 +121,9 @@ const send = (message: HostToDesktop): void => {
 
 const service = new HostService({
 	artifacts: { request: (requestId, operation) => executor.artifactRequest(requestId, operation) },
+	nativeLifecycleRequired: process.env.OPENBOT_DESKTOP_LIFECYCLE === "1",
+	quiesce: () => executor.quiesce(),
+ authorityExecutor:{synchronize:revision=>executor.synchronize(revision),revoke:ids=>executor.revoke(ids)},
 	audit: (event) => console.info(JSON.stringify({ type: "operation", ...event })),
 	runtime,
 	secrets: credentials,
@@ -151,7 +156,6 @@ approvalListeners.changed = (botId) => service.approvalsChanged(botId);
 // reruns interrupted calls with their stable call IDs; each finds its approval and its receipt.
 await executor.start();
 await service.start();
-runtime.resume();
 
 process.on("message", async (message: unknown) => {
 	if (!isRequestEnvelope(message)) return;
@@ -186,6 +190,7 @@ async function shutdown(code: number): Promise<void> {
 	if (stopping) return;
 	stopping = true;
 	clearInterval(keepAlive);
+	await service.lifecycle.pause("quitting").catch(() => console.error("Lifecycle shutdown could not be confirmed"));
 	await service.stop();
 	await runtime.close();
 	await executor.stop();

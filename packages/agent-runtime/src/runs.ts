@@ -55,7 +55,8 @@ export interface RunStore {
 }
 
 const TERMINAL: Record<RunRecord["state"], boolean> = {
-	queued: false,
+	needs_attention:true,
+ queued: false,
 	running: false,
 	completed: true,
 	failed: true,

@@ -123,3 +123,15 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Task | Status |
 | --- | --- |
 | [B15a: Bounded file inputs and result artifacts](b15a-bounded-artifacts.md) | in review ([PR #30](https://github.com/VesperZephyr/OpenBot/pull/30)); acceptance recorded in the spec |
+
+## Lifecycle foundation
+
+| Task | Status |
+| --- | --- |
+| [B14b: Lifecycle gates and explicit continuation](b14b-lifecycle-gates.md) | implemented, in review; targets main |
+
+## Deterministic permissions
+
+| Task | Status |
+| --- | --- |
+| [B12a: Deterministic policy, revocation and approval expiry](b12a-deterministic-policy.md) | in review; depends on B14b, targets main |

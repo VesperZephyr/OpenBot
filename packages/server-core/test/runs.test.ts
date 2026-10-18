@@ -56,6 +56,7 @@ describe("RunScheduler", () => {
 	let gates: Gates;
 	let scheduler: RunScheduler;
 	let clock: number;
+	let admitted = true;
 	/** Bots whose running Run was stopped, as reported to the `stopping` hook. */
 	let stopped: BotId[];
 	/** Resolves when the Run reaches the state; checked after every change the scheduler reports. */
@@ -91,6 +92,7 @@ describe("RunScheduler", () => {
 			runtime,
 			maxActiveRuns: 1,
 			...attachments,
+			canAdmit: () => admitted,
 			changed: () => changed(),
 			now: () => ++clock,
 			stopping: (botId) => stopped.push(botId),
@@ -107,6 +109,7 @@ describe("RunScheduler", () => {
 		directory = await mkdtemp(join(tmpdir(), "openbot-scheduler-"));
 		databasePath = join(directory, "openbot.sqlite");
 		clock = 0;
+		admitted = true;
 		stopped = [];
 		attachments = {};
 	});
@@ -194,6 +197,108 @@ describe("RunScheduler", () => {
 		await reaches("a", "saved-file", "completed");
 		expect(hydrated).toBe(0);
 		expect(scripted.requests()).toBe(0);
+		await close();
+	});
+
+	it("interrupts active work, preserves the queue and continues with a fresh stable request", async () => {
+		await open(WAIT, "Queued answer", "Continued answer");
+		await createBots("a", "b");
+		await scheduler.start();
+		const first = await scheduler.submit("a", "one", "Original task");
+		await gates.entered("a");
+		const queued = await scheduler.submit("b", "two", "Queued task");
+		admitted = false;
+		await scheduler.interruptAll("user");
+		expect(scripted.requests()).toBe(1);
+		expect(scheduler.attention("a")).toMatchObject({
+			runId: first.runId,
+			state: "needs_attention",
+			interruption: { reason: "user", settledAt: expect.any(Number) },
+		});
+		expect((await runtime.runsStore().get(queued.runId))?.state).toBe("queued");
+		await expect(scheduler.continue(first.runId, "continued")).rejects.toThrow("paused");
+		admitted = true;
+		await scheduler.resume();
+		await reaches("b", queued.runId, "completed");
+		const continued = await scheduler.continue(first.runId, "continued");
+		expect(continued.runId).not.toBe(first.runId);
+		await reaches("a", continued.runId, "completed");
+		expect((await scheduler.continue(first.runId, "continued")).runId).toBe(continued.runId);
+		expect(scripted.requests()).toBe(3);
+		expect(scheduler.attention("a")).toBeUndefined();
+		await close();
+	});
+	it("keeps an unconfirmed interruption unavailable for continuation until reconciliation succeeds", async () => {
+		await open(WAIT);
+		await createBots("a");
+		await scheduler.start();
+		const first = await scheduler.submit("a", "one", "Work");
+		await gates.entered("a");
+		admitted = false;
+		await expect(
+			scheduler.interruptAll("suspended", async () => {
+				throw Error("unknown");
+			}),
+		).rejects.toThrow("unknown");
+		expect((await runtime.runsStore().get(first.runId))?.interruption?.settledAt).toBeUndefined();
+		admitted = true;
+		await expect(scheduler.continue(first.runId, "continued")).rejects.toThrow("Only an interrupted");
+		admitted = false;
+		await scheduler.interruptAll("recovery");
+		expect(scheduler.attention("a")?.interruption?.settledAt).toBeDefined();
+		await close();
+	});
+	it("does not submit crash-recovered work before native readiness, even when its channel is no longer admissible", async () => {
+		await open("Must not run");
+		await createBots("a");
+		await runtime.runsStore().put({
+			runId: "saved",
+			botId: "a",
+			state: "running",
+			requestIds: ["saved-request"],
+			createdAt: 1,
+			messages: [{ requestId: "saved-request", text: "Work" }],
+			inputs: [{ requestId: "saved-request", text: "Work" }],
+		});
+		admitted = false;
+		scheduler = new RunScheduler({
+			runtime,
+			maxActiveRuns: 1,
+			canAdmit: () => admitted,
+			admissible: async () => false,
+			changed: () => changed(),
+			now: () => ++clock,
+		});
+		await scheduler.start();
+		expect(scripted.requests()).toBe(0);
+		await scheduler.interruptAll("recovery");
+		expect(scripted.requests()).toBe(0);
+		expect(scheduler.attention("a")?.state).toBe("needs_attention");
+		await close();
+	});
+
+	it("preserves a committed answer when startup observation was interrupted", async () => {
+		await open("Already answered");
+		await createBots("a");
+		const input = await runtime.submit("a", "one", "Work", "start");
+		await runtime.waitSubmission("a", input.submissionId);
+		await runtime
+			.runsStore()
+			.put({
+				runId: "saved-answer",
+				botId: "a",
+				state: "running",
+				requestIds: ["one"],
+				createdAt: 1,
+				messages: [{ requestId: "one", text: "Work" }],
+				inputs: [{ requestId: "one", text: "Work", submissionId: input.submissionId }],
+			});
+		admitted = false;
+		await scheduler.start();
+		await scheduler.interruptAll("recovery");
+		expect((await runtime.runsStore().get("saved-answer"))?.state).toBe("completed");
+		expect(scheduler.attention("a")).toBeUndefined();
+		expect(scripted.requests()).toBe(1);
 		await close();
 	});
 

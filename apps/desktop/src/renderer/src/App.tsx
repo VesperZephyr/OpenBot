@@ -1,5 +1,6 @@
 import { UsagePanel } from "./UsagePanel";
 import { ArtifactCard } from "./ArtifactCard";
+import {LifecycleControls,InterruptedRun} from "./Lifecycle";
 import { appManagementCapability, legacyManagementName, type AppExecution } from "@openbot/protocol";
 import { ConversationSearch } from "./ConversationSearch";
 import { ChatComposer } from "./ChatComposer";
@@ -233,6 +234,7 @@ function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; 
 				</div>
 			)}
 			<GroupSidebar query={query} unreadOnly={unreadOnly} />
+ <LifecycleControls/>
 			<ConversationSearch query={query} unreadOnly={unreadOnly} />
 			<div className="sidebar-footer">
 				<button
@@ -485,6 +487,7 @@ function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 				),
 			)}
 			<PendingMessages snapshot={snapshot} />
+ {snapshot.run?.state==="needs_attention"&&<InterruptedRun key={snapshot.run.runId} run={snapshot.run}/>}
 			{snapshot.live !== undefined && snapshot.live.state !== "waiting_approval" && (
 				<li className="message message-assistant is-live">
 					{snapshot.live.partial === undefined ? (
@@ -613,7 +616,8 @@ function ToolCard({
 			"",
 	);
 	const waiting = approval !== undefined || childApprovals.length > 0;
-	const label = waiting
+	const failureLabel=item.failureReason?{approval_expired:"Approval expired",permission_revoked:"Permission revoked",approval_denied:"Approval denied"}[item.failureReason]:undefined;
+ const label = failureLabel?t(failureLabel):waiting
 		? t("Waiting for approval")
 		: item.status === "running" || item.status === "pending"
 			? t(running)

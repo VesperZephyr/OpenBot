@@ -50,6 +50,7 @@ export function createToolRouter(options: {
 		};
 	};
 	return new ToolRouter({
+  assertExecutionAllowed:()=>options.service().lifecycle.assertAllowed(),
 		target: options.target,
 		closeAppManagement: (call) => options.service().closeAppManagement(call),
 		approvals: options.approvals,
@@ -88,6 +89,8 @@ export function createToolRouter(options: {
 			memory_update: memoryUpdate(options.editMemory),
 		},
 		policy: {
+   binding:(call,argsDigest)=>options.service().authority.binding(call,argsDigest),
+   dispatch:(call,approved,binding,invoke)=>options.service().authority.dispatch(call,approved,binding,invoke),
 			// Policy is read fresh for every call, so a rule or grant change applies to the next call (Section 5.3).
 			decide: async (call, definition) =>
 				(await options.service().groups.executionGate(call)) ??

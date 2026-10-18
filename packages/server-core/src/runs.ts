@@ -21,6 +21,7 @@ export type RunSchedulerOptions = {
 	readonly runtime: BotRuntime;
 	readonly resolveAttachments?: (botId: string, ids: readonly string[]) => Promise<readonly ArtifactRef[]>;
 	readonly hydrateAttachments?: (botId: string, refs: readonly ArtifactRef[]) => Promise<readonly ArtifactContent[]>;
+	readonly canAdmit?: () => boolean;
 	/** Most Runs that may be running at once, across all Bots. */
 	readonly maxActiveRuns: number;
 	/** Runs whenever a Bot's Runs changed, so its conversation can be republished. */
@@ -39,6 +40,7 @@ export class RunScheduler {
 	readonly #resolveAttachments: NonNullable<RunSchedulerOptions["resolveAttachments"]>;
 	readonly #hydrateAttachments: NonNullable<RunSchedulerOptions["hydrateAttachments"]>;
 	readonly #runtime: BotRuntime;
+	readonly #canAdmit: () => boolean;
 	readonly #store: RunStore;
 	readonly #cap: number;
 	readonly #changed: (botId: BotId) => void;
@@ -54,6 +56,7 @@ export class RunScheduler {
 	readonly #observed = new Set<string>();
 	/** Each Bot's newest Run written since start, terminal ones included. */
 	readonly #latest = new Map<BotId, StoredRun>();
+	readonly #latestChannel = new Map<string, StoredRun>();
 	#line: Promise<unknown> = Promise.resolve();
 	#stopped = false;
 
@@ -61,6 +64,7 @@ export class RunScheduler {
 		this.#runtime = options.runtime;
 		this.#resolveAttachments = options.resolveAttachments ?? (async () => []);
 		this.#hydrateAttachments = options.hydrateAttachments ?? (async () => []);
+		this.#canAdmit = options.canAdmit ?? (() => true);
 		this.#store = options.runtime.runsStore();
 		if (!Number.isInteger(options.maxActiveRuns) || options.maxActiveRuns < 1) {
 			throw new Error(`The active-Run cap must be a positive integer, got ${options.maxActiveRuns}`);
@@ -79,20 +83,132 @@ export class RunScheduler {
 	start(): Promise<void> {
 		return this.#serial(async () => {
 			for (const run of await this.#store.list()) {
-				if (isTerminal(run.state)) continue;
-				this.#runs.set(run.runId, run);
+				if (!isTerminal(run.state) || (run.state === "needs_attention" && !run.interruption?.settledAt)) this.#runs.set(run.runId, run);
+				this.#rememberChannel(run);
 				const latest = this.#latest.get(run.botId);
-				if (latest === undefined || latest.createdAt <= run.createdAt) this.#latest.set(run.botId, run);
-				if (!(await this.#admissible(run))) {
-					if (run.state === "running") {
-						this.#stopping(run.botId, run.channelId, run.runId);
-						await this.#runtime.cancel(run.botId, run.channelId, true);
-					}
-					await this.#put({ ...run, state: "cancelled", endedAt: this.#now() });
-				} else if (run.state === "running") await this.#submitInputs(run);
+				if (!latest || latest.createdAt <= run.createdAt) this.#latest.set(run.botId, run);
+				if (isTerminal(run.state)) continue;
+
+				if (this.#canAdmit()) await this.#recover(run);
 			}
 			await this.#admit();
 		});
+	}
+
+	async #recover(run: StoredRun): Promise<void> {
+		if (!this.#canAdmit()) return;
+		const admissible = await this.#admissible(run);
+		if (!this.#canAdmit()) return;
+		if (!admissible) {
+			if (run.state === "running") {
+				this.#stopping(run.botId, run.channelId, run.runId);
+				await this.#runtime.cancel(run.botId, run.channelId, true);
+			}
+			await this.#put({ ...run, state: "cancelled", endedAt: this.#now() });
+		} else if (run.state === "running") await this.#submitInputs(run);
+	}
+
+	hasWork(): boolean {
+		return [...this.#runs.values()].some((run) => !isTerminal(run.state));
+	}
+	resume(): Promise<void> {
+		return this.#serial(async () => {
+			if (!this.#canAdmit()) return;
+			for (const run of this.#runs.values()) if (!isTerminal(run.state)) await this.#recover(run);
+			await this.#admit();
+		});
+	}
+	async interruptAll(reason: import("@openbot/protocol").LifecycleReason, quiesce: () => Promise<void> = async () => {}): Promise<void> {
+		try {
+			await this.#serial(async () => {
+				for (const run of this.#runs.values()) {
+					if (run.state !== "running" || run.interruption) continue;
+					// Read committed submission status without a wait that could restart Pi scheduling.
+					const answered =
+						run.inputs.length > 0 &&
+						(
+							await Promise.all(
+								run.inputs.map((input) =>
+									input.submissionId ? this.#runtime.submissionState(run.botId, input.submissionId, run.channelId) : "absent",
+								),
+							)
+						).every((state) => state === "done");
+					if (answered) {
+						await this.#put({
+							...run,
+							state: "completed",
+							endedAt: this.#now(),
+							inputs: run.inputs.map((input) => ({ ...input, outcome: { status: "done" as const } })),
+						});
+						this.#ended.get(run.runId)?.resolve("completed");
+						this.#ended.delete(run.runId);
+					} else await this.#put({ ...run, interruption: { reason, requestedAt: this.#now() } });
+				}
+			});
+			await this.#runtime.interruptAll();
+		} catch (error) {
+			await quiesce().catch(() => {});
+			throw error;
+		}
+		await quiesce();
+		await this.#serial(async () => {
+			for (const run of this.#runs.values())
+				if ((run.state === "running" || run.state === "needs_attention") && run.interruption) {
+					const ended: StoredRun = {
+						...run,
+						state: "needs_attention",
+
+						endedAt: this.#now(),
+						interruption: { ...run.interruption, settledAt: this.#now() },
+						error: "Work was interrupted. Review completed actions before continuing.",
+					};
+					await this.#put(ended);
+					this.#ended.get(run.runId)?.resolve(ended.state);
+					this.#ended.delete(run.runId);
+				}
+		});
+	}
+ async interruptSelected(ids:readonly string[],quiesce:()=>Promise<void>):Promise<void>{
+  const selected=await this.#serial(async()=>{
+   const selected:StoredRun[]=[];
+   for(const id of ids){const run=this.#runs.get(id)??await this.#store.get(id);if(!run||!(["running","needs_attention"].includes(run.state)))continue;
+    const changed={...run,interruption:{reason:"permission_revoked" as const,requestedAt:run.interruption?.requestedAt??this.#now()}};await this.#put(changed);selected.push(changed);
+   }return selected;
+  });
+  try{await this.#runtime.interruptChannels(selected.map(run=>({botId:run.botId,...(run.channelId?{channelId:run.channelId}:{})})));}catch(error){await quiesce().catch(()=>{});throw error;}
+  await quiesce();
+  await this.#serial(async()=>{
+   for(const run of selected){const current=this.#runs.get(run.runId)??run;if(current.state==="completed")continue;
+    const ended:StoredRun={...current,state:"needs_attention",endedAt:this.#now(),interruption:{reason:"permission_revoked",requestedAt:run.interruption!.requestedAt,settledAt:this.#now()},error:"Permission was revoked. Review completed actions before continuing."};
+    await this.#put(ended);this.#ended.get(run.runId)?.resolve(ended.state);this.#ended.delete(run.runId);
+   }
+  });
+ }
+
+	#rememberChannel(run: StoredRun): void {
+		const key = JSON.stringify([run.botId, run.channelId ?? "direct"]),
+			previous = this.#latestChannel.get(key);
+		if (!previous || previous.runId === run.runId || previous.createdAt <= run.createdAt) this.#latestChannel.set(key, run);
+	}
+	attention(botId: string, channelId = "direct"): StoredRun | undefined {
+		const latest = this.#latestChannel.get(JSON.stringify([botId, channelId]));
+		return latest?.state === "needs_attention" ? latest : undefined;
+	}
+
+	async continue(runId: string, requestId: string): Promise<SubmitOutcome> {
+		if (!this.#canAdmit()) throw new ProtocolError("invalid_request", "Work is paused. Resume work before continuing.");
+		const run = await this.#store.get(runId);
+		if (!run || run.state !== "needs_attention" || !run.interruption?.settledAt || run.channelId)
+			throw new ProtocolError("invalid_request", "Only an interrupted private task can be continued.");
+		const bot = await this.#runtime.getBot(run.botId);
+		if (!bot || bot.status === "deleted") throw new ProtocolError("invalid_request", "This Bot no longer exists");
+		const text =
+			`Continue the interrupted task using the saved conversation history. Inspect completed actions and reconcile uncertain effects before repeating any operation; ask the user if an effect cannot be verified. Original request excerpt (consult the conversation for the full request):\n` +
+			run.messages
+				.map((message) => message.text)
+				.join("\n\n")
+				.slice(0, 24000);
+		return this.submit(run.botId, `continuation:${run.runId}:${requestId}`, text);
 	}
 
 	/** Stop observing; Pi keeps the work, and the next start picks it up. */
@@ -144,7 +260,7 @@ export class RunScheduler {
 				await this.#put(joined);
 				return { runId: joined.runId, state: joined.state, steered: true };
 			}
-			if (current?.state === "running" && !this.#cancelling.has(current.runId)) {
+			if (current?.state === "running" && this.#canAdmit() && !current.interruption && !this.#cancelling.has(current.runId)) {
 				// Recorded before Pi admits it, so a crash in between resubmits it on start.
 				const steered = {
 					...current,
@@ -186,6 +302,7 @@ export class RunScheduler {
 				return { state: "cancelled" as const };
 			}
 			if (run.state !== "running") return { state: run.state };
+			if (!this.#canAdmit()) throw new ProtocolError("invalid_request", "Work is paused. Wait for interruption to settle.");
 			this.#cancelling.add(runId);
 			return { abort: run.botId, channelId: run.channelId, ended: this.#endedOf(runId).promise };
 		});
@@ -211,7 +328,7 @@ export class RunScheduler {
 		const current = [...this.#runs.values()].find(holds);
 		if (current !== undefined) return current;
 		const stored = (await this.#store.list()).find(holds);
-		if (stored !== undefined) this.#runs.set(stored.runId, stored);
+		if (stored !== undefined && !isTerminal(stored.state)) this.#runs.set(stored.runId, stored);
 		return stored;
 	}
 
@@ -221,6 +338,7 @@ export class RunScheduler {
 	 */
 	async #admit(): Promise<void> {
 		for (;;) {
+			if (!this.#canAdmit()) return;
 			const runs = [...this.#runs.values()];
 			const running = runs.filter((run) => run.state === "running");
 			if (running.length >= this.#cap) return;
@@ -238,6 +356,7 @@ export class RunScheduler {
 			}
 			// Messages that joined while queued start the Pi run together, so the model reads them in one turn. The first
 			// request ID is the Pi request ID.
+			if (!this.#canAdmit()) return;
 			const started: StoredRun = {
 				...next,
 				state: "running",
@@ -259,6 +378,7 @@ export class RunScheduler {
 	async #submitInputs(run: StoredRun): Promise<void> {
 		let current = run;
 		for (const [index, input] of run.inputs.entries()) {
+			if (!this.#canAdmit()) return;
 			if (input.submissionId !== undefined || input.outcome !== undefined) continue;
 			const mode: Mode = index === 0 ? "start" : "steer";
 			let submissionId = input.attachments?.length
@@ -289,11 +409,19 @@ export class RunScheduler {
 					await this.#put(current);
 					break;
 				}
-				submissionId = (await this.#runtime.submit(run.botId, input.requestId, input.text, mode, run.channelId, attachments)).submissionId;
+				try {
+					submissionId = (await this.#runtime.submit(run.botId, input.requestId, input.text, mode, run.channelId, attachments, () => {
+						if (!this.#canAdmit()) throw new ProtocolError("invalid_request", "Work is paused. Resume work before continuing.");
+					})).submissionId;
+				} catch (error) {
+					if (!this.#canAdmit()) return;
+					throw error;
+				}
 			}
 			current = withInput(current, input.requestId, { submissionId });
 			await this.#put(current);
 		}
+		if (!this.#canAdmit()) return;
 		for (const input of current.inputs) {
 			if (input.outcome !== undefined || input.submissionId === undefined) continue;
 			this.#observe(current.runId, input.requestId, input.submissionId, current.botId, current.channelId);
@@ -304,11 +432,17 @@ export class RunScheduler {
 	#observe(runId: RunId, requestId: string, submissionId: string, botId: BotId, channelId?: string): void {
 		if (this.#observed.has(submissionId)) return;
 		this.#observed.add(submissionId);
-		this.#runtime.waitSubmission(botId, submissionId, channelId).then(
-			(outcome) => void this.#serial(() => this.#settled(runId, requestId, outcome)).catch(() => {}),
-			// The runtime closed with the Host; the next start observes the submission again.
-			() => {},
-		);
+		this.#runtime
+			.waitSubmission(botId, submissionId, channelId, () => {
+				if (!this.#canAdmit()) throw new ProtocolError("invalid_request", "Work is paused. Resume work before continuing.");
+			})
+			.then(
+				(outcome) => void this.#serial(() => this.#settled(runId, requestId, outcome)).catch(() => {}),
+				// A lifecycle gate or closed Host leaves the durable submission available for observation after Resume.
+				() => {
+					this.#observed.delete(submissionId);
+				},
+			);
 	}
 
 	async #settled(runId: RunId, requestId: string, outcome: NonNullable<RunInput["outcome"]>): Promise<void> {
@@ -342,11 +476,23 @@ export class RunScheduler {
 		// A stop wins over the error the abort surfaced; a Run whose answer landed before the stop stays completed.
 		const failure = outcomes.find((outcome) => outcome?.status === "unanswered");
 		const cancelled = outcomes.some((outcome) => outcome?.reason === "aborted") || (this.#cancelling.has(runId) && failure !== undefined);
-		const ended: StoredRun = cancelled
-			? { ...run, state: "cancelled", endedAt: this.#now() }
-			: failure !== undefined
-				? { ...run, state: "failed", endedAt: this.#now(), error: failure.reason ?? "unanswered" }
-				: { ...run, state: "completed", endedAt: this.#now() };
+		const interrupted =
+			run.interruption ??
+			(!this.#canAdmit() && failure !== undefined ? { reason: "recovery" as const, requestedAt: this.#now() } : undefined);
+		const ended: StoredRun =
+			interrupted && failure !== undefined
+				? {
+						...run,
+						state: "needs_attention",
+						interruption: interrupted,
+						endedAt: this.#now(),
+						error: "Work was interrupted. Review completed actions before continuing.",
+					}
+				: cancelled
+					? { ...run, state: "cancelled", endedAt: this.#now() }
+					: failure !== undefined
+						? { ...run, state: "failed", endedAt: this.#now(), error: failure.reason ?? "unanswered" }
+						: { ...run, state: "completed", endedAt: this.#now() };
 		await this.#put(ended);
 		if (ended.state === "cancelled") await this.#runtime.markStopped(run.botId, run.channelId);
 		this.#cancelling.delete(runId);
@@ -366,8 +512,9 @@ export class RunScheduler {
 
 	async #put(run: StoredRun): Promise<void> {
 		await this.#store.put(run);
-		if (isTerminal(run.state)) this.#runs.delete(run.runId);
+		if (isTerminal(run.state) && !(run.state === "needs_attention" && !run.interruption?.settledAt)) this.#runs.delete(run.runId);
 		else this.#runs.set(run.runId, run);
+		this.#rememberChannel(run);
 		const latest = this.#latest.get(run.botId);
 		if (latest === undefined || latest.runId === run.runId || latest.createdAt <= run.createdAt) this.#latest.set(run.botId, run);
 		this.#changed(run.botId);

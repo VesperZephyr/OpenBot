@@ -46,7 +46,7 @@ it("shows exact nested approvals, resumes a waiting script and retains six appro
 	const waiting = await parent();
 	expect(waiting.execution.children[0].capability).toBe("app_bots_create");
 	await h.shot("01-nested-exact-approval-en");
-	await h.relaunch();
+	await h.crashHost();
 	await approve();
 	await h.page().getByText("Create group", { exact: true }).waitFor();
 	expect(await api("bots.list")).toHaveLength(2);

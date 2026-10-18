@@ -36,10 +36,11 @@ export const EXECUTOR_TOOLS: readonly ExecutorToolName[] = [
 export type ExecutorLedger = Pick<
 	ReceiptLedger,
 	"get" | "accept" | "recordGroup" | "finish" | "ack" | "recordTask" | "finishTask" | "task"
-> & { reconcileArtifact?: ReceiptLedger["reconcileArtifact"] };
+> & Partial<Pick<ReceiptLedger, "reconcileArtifact" | "confirmStopped">>;
 
 export type ExecutorOptions = {
-	readonly targetId: string;
+	readonly requireAuthority?:boolean;
+ readonly targetId: string;
 	/** Default directory for relative paths and commands. */
 	readonly workspace: string;
 	readonly ledger: ExecutorLedger;
@@ -59,6 +60,8 @@ export class LocalExecutor {
 	/** Invocations this process is running, so a repeat joins the run and `cancel` reaches it. */
 	readonly #running = new Map<string, Running>();
 	readonly #tasks: CommandTasks;
+ #revision=-1;
+ readonly #revoked=new Set<string>();
 
 	constructor(options: ExecutorOptions) {
 		this.#options = options;
@@ -92,7 +95,10 @@ export class LocalExecutor {
 		let receipt;
 		try {
 			receipt = ledger.get(invocation.invocationId);
-			if (receipt === undefined) ledger.accept(invocation);
+			if (receipt === undefined) {
+    if(this.#revoked.has(invocation.invocationId)||(this.#options.requireAuthority&&invocation.authorityRevision!==this.#revision)|| (invocation.authorityRevision!==undefined&&invocation.authorityRevision!==this.#revision))return Promise.resolve({status:"failed",output:"permission_revoked: stale execution authority"});
+    ledger.accept(invocation);
+   }
 		} catch (error) {
 			// Nothing ran: the side effect starts only after `accepted` is committed.
 			return Promise.resolve({ status: "failed", output: `The executor could not record the invocation: ${errorText(error)}` });
@@ -112,7 +118,7 @@ export class LocalExecutor {
 		const outcome = this.#run(invocation, entry.abort.signal, onProgress)
 			.catch(
 				(error: unknown): ToolOutcome => ({
-					status: "failed",
+					status: entry.abort.signal.aborted?"cancelled":"failed",
 					output: error instanceof AccessDenied ? `Access denied: ${errorText(error)}` : errorText(error),
 				}),
 			)
@@ -126,6 +132,15 @@ export class LocalExecutor {
 		return outcome;
 	}
 
+ synchronize(revision:number):boolean {if(!Number.isSafeInteger(revision)||revision<0||revision<this.#revision)return false;this.#revision=revision;return true;}
+ async revoke(ids:readonly string[]):Promise<boolean>{
+  const selected=new Set(ids);for(const id of selected)this.#revoked.add(id);
+  const running=[...this.#running].filter(([id])=>selected.has(id)).map(([,entry])=>{entry.abort.abort();return entry.outcome;});
+  const [outcomes,tasks]=await Promise.all([Promise.all(running),this.#tasks.stopInvocations(selected)]);
+  const late=await this.#tasks.stopInvocations(selected);
+  return outcomes.every(outcome=>outcome.status!=="unknown")&&[...tasks,...late].every(exit=>exit.groupGone!==false)&&(this.#options.ledger.confirmStopped?.(ids)??!this.#options.requireAuthority);
+ }
+
 	/** Cancel a running invocation. A command already in the background is stopped with `task_stop` instead. */
 	cancel(invocationId: string): void {
 		this.#running.get(invocationId)?.abort.abort();
@@ -137,12 +152,14 @@ export class LocalExecutor {
 	}
 
 	/** Cancel everything this process runs, for shutdown: no command outlives the executor that started it. */
-	cancelAll(): Promise<unknown> {
+	async cancelAll(): Promise<boolean> {
 		const outcomes = [...this.#running.values()].map((entry) => {
 			entry.abort.abort();
 			return entry.outcome;
 		});
-		return Promise.all([...outcomes, this.#tasks.stopAll()]);
+		const [finished, tasks] = await Promise.all([Promise.all(outcomes), this.#tasks.stopAll()]);
+		const lateTasks = await this.#tasks.stopAll();
+		return finished.every((outcome) => outcome.status !== "unknown") && [...tasks, ...lateTasks].every((exit) => exit.groupGone !== false);
 	}
 
 	/** The Host committed the outcome; the receipt may be pruned after the retention period. */
@@ -153,7 +170,8 @@ export class LocalExecutor {
 	async #run(invocation: ToolInvocation, signal: AbortSignal, onProgress: (output: string) => void): Promise<ToolOutcome> {
 		assertLocalTarget(invocation.target, this.#options.targetId);
 		if (Date.now() > invocation.deadline) return { status: "failed", output: "Refused: the invocation's deadline passed" };
-		const context: FileContext = { workspace: this.#options.workspace, grants: invocation.grants, readGrants: invocation.readGrants };
+		signal.throwIfAborted();
+  const context: FileContext = { signal, workspace: this.#options.workspace, grants: invocation.grants, readGrants: invocation.readGrants };
 		const spill = artifactPath(this.#options.artifactsDirectory, invocation.invocationId);
 		const limited = (output: string): ToolOutcome => {
 			const { text, truncated } = limitText(output, spill);

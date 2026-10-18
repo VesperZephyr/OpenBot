@@ -29,6 +29,7 @@ export class Groups {
 	readonly runtime: BotRuntime;
 	readonly authority: BotManagement;
 	readonly #runs: RunScheduler;
+ readonly #canRun:()=>boolean;
 	readonly #approvals: ApprovalBook;
 	readonly #changed: () => void;
 	readonly #settled: (botId: string, callId: string, conversationId?: string) => void;
@@ -40,6 +41,7 @@ export class Groups {
 	#stopped = false;
 	constructor(options: {
 		runtime: BotRuntime;
+  canRun?:()=>boolean;
 		authority: BotManagement;
 		runs: RunScheduler;
 		approvals: ApprovalBook;
@@ -48,6 +50,7 @@ export class Groups {
 		stopping: (botId: string, channelId: string, runId?: string) => void;
 	}) {
 		this.runtime = options.runtime;
+ this.#canRun=options.canRun??(()=>true);
 		this.authority = options.authority;
 		this.#runs = options.runs;
 		this.#approvals = options.approvals;
@@ -70,6 +73,18 @@ export class Groups {
 			(!root || root.state === "running")
 		);
 	}
+	async interruptActive(): Promise<void> {
+		const runs = await this.runtime.runsStore().list();
+		const deliveries = await this.runtime.groups().deliveries();
+		const interrupted = new Set(runs.filter((run) => !!run.interruption).map((run) => run.runId));
+		for (const root of await this.runtime.groups().roots()) {
+			if (root.state === "running" && deliveries.some((d) => d.rootId === root.rootId && d.runId && interrupted.has(d.runId))) {
+				await this.runtime.groups().stop(root.rootId, "Work interrupted by application lifecycle");
+			}
+		}
+		this.#changed();
+	}
+
 	async start(): Promise<void> {
 		await this.runtime.groups().backfillIndex();
 		for (const channel of await this.runtime.channels()) {
@@ -135,7 +150,7 @@ export class Groups {
 	}
 	sweep(): Promise<void> {
 		const work = this.#line.then(async () => {
-			if (this.#stopped) return;
+			if (this.#stopped||!this.#canRun()) return;
 			const store = this.runtime.groups();
 			await store.reconcile(Date.now());
 			const deliveries = await store.deliveries();
@@ -147,6 +162,7 @@ export class Groups {
 			const cancelled = new Set(deliveries.filter((d) => d.state === "cancelled").map((d) => `delivery:${d.deliveryId}`));
 			await this.#runs.cancelMatching((run) => run.requestIds.some((id) => cancelled.has(id)));
 			for (const d of deliveries) {
+    if(!this.#canRun())return;
 				if (d.state !== "pending") continue;
 				if (d.parentId && deliveries.find((p) => p.deliveryId === d.parentId)?.state !== "completed") continue;
 				await this.runtime.ensureChannel(d.botId, d.groupId);
@@ -169,7 +185,7 @@ export class Groups {
 				const text = run.state === "completed" && submissionId ? await this.runtime.submissionAnswer(d.botId, submissionId, d.groupId) : "";
 				const artifacts =
 					run.state === "completed" && submissionId ? await this.runtime.submissionArtifacts(d.botId, submissionId, d.groupId) : [];
-				await store.finish(d.deliveryId, run.state as "completed" | "failed" | "cancelled", text, Date.now(), artifacts);
+				await store.finish(d.deliveryId, run.state === "needs_attention" ? "failed" : run.state as "completed" | "failed" | "cancelled", text, Date.now(), artifacts);
 				this.#changed();
 			}
 		});

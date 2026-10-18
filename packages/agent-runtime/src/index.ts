@@ -1,4 +1,7 @@
 import type { ArtifactContent, ArtifactRef } from "@openbot/protocol";
+import { gatedModels, type ModelExecutionGate } from "./model-gate.ts";
+import { lifecycleStore } from "./lifecycle.ts";
+export type { LifecycleStore } from "./lifecycle.ts";
 import { BotsDoc, type BotRecord } from "./bots.ts";
 import { validateAppMutation, appChildDigest } from "./app-executions.ts";
 /**
@@ -78,7 +81,7 @@ const MODEL_TEST_TIMEOUT_MS = 30_000;
 /** Credential contract the Host implements over the Keychain; re-exported so the Host never imports Pi. */
 export type { Credential, CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
 export type { ApprovalStore } from "./approvals.ts";
-export type { PolicyStore, SavedScope } from "./policy.ts";
+export type { PolicyStore, SavedScope, AuthoritySnapshot, PolicyOperation } from "./policy.ts";
 export type { ConfigEnvironment, ConfiguredProviderStatus, ModelConfigStatus } from "./model-config.ts";
 export type { MemoryEdit } from "./memory.ts";
 export { isTerminal, KEPT_TERMINAL_RUNS, type RunInput, type RunMessage, type RunStore, type StoredRun } from "./runs.ts";
@@ -129,6 +132,7 @@ export type ToolInvoker = (call: {
 	readonly signal: AbortSignal;
 	readonly onProgress: (output: string) => void;
 }) => Promise<{
+	readonly failureReason?: import("@openbot/protocol").ToolFailureReason;
 	readonly status: string;
 	readonly output: string;
 	readonly value?: import("@openbot/protocol").JsonValue;
@@ -137,6 +141,7 @@ export type ToolInvoker = (call: {
 }>;
 
 export type BotRuntimeOptions = {
+	readonly executionGate?: ModelExecutionGate;
 	/** SQLite file owned exclusively by this Host process. */
 	readonly databasePath: string;
 	/**
@@ -184,6 +189,9 @@ export type SubmitResult =
 	| { readonly status: "unanswered"; readonly reason: string };
 
 export class BotRuntime {
+	lifecycle() {
+		return lifecycleStore(this.#harness, this.#context);
+	}
 	readonly #harness: Harness;
 	readonly #extensions: { bot: Extension; core: Extension; group: Extension; app: Extension };
 	readonly #models: MutableModels;
@@ -296,7 +304,7 @@ export class BotRuntime {
 		const harness = await Harness.open(
 			await openNodeSqliteStorage(options.databasePath),
 			{
-				models,
+				models: options.executionGate ? gatedModels(models, options.executionGate) : models,
 				registry,
 				// No `env` and no CodingTools: every side effect must go through Tool Router and the executor.
 				settings: { toolExecution: "sequential", extensions: [bot] },
@@ -573,6 +581,7 @@ export class BotRuntime {
 		mode: "start" | "steer",
 		channelId = "direct",
 		attachments: readonly ArtifactContent[] = [],
+		assertAllowed?: () => void,
 	): Promise<{ submissionId: string }> {
 		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [{ type: "text", text }];
@@ -592,6 +601,7 @@ export class BotRuntime {
 					},
 				}
 			: {};
+		assertAllowed?.();
 		const submission = await conversation.submit(
 			{
 				type: "input",
@@ -647,9 +657,11 @@ export class BotRuntime {
 		botId: BotId,
 		submissionId: string,
 		channelId = "direct",
+		assertAllowed?: () => void,
 	): Promise<{ status: "done" | "unanswered"; reason?: string }> {
 		const owned = await this.#ownedSubmission(botId, submissionId, channelId);
 		if (owned === undefined) throw new ProtocolError("not_found", `Unknown submission ${submissionId} for Bot ${botId}`);
+		assertAllowed?.();
 		const settled = await owned.submission.wait(this.#context);
 		return settled.status === "done" ? { status: "done" } : { status: "unanswered", reason: settled.reason };
 	}
@@ -713,7 +725,7 @@ export class BotRuntime {
 	async submissionAnswer(botId: string, submissionId: string, channelId: string): Promise<string> {
 		const owned = await this.#ownedSubmission(botId, submissionId, channelId);
 		if (!owned) return "";
-		const settled = await owned.submission.wait(this.#context);
+		const settled = owned.status;
 		if (settled.type !== "input" || settled.status !== "done") return "";
 		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		const page = await conversation.entries({ minEntryId: settled.answer, maxEntryId: settled.answer }, 1, undefined, this.#context);
@@ -750,6 +762,36 @@ export class BotRuntime {
 		} while (cursor !== undefined);
 		return [...results.values()];
 	}
+
+	/** Mark every live Pi task before enabling its cancellation drain, including startup with scheduling paused. */
+	async interruptAll(): Promise<void> {
+		const work = await this.#harness.inspect(this.#context);
+		for (const input of work.submissions) {
+			if (input.type === "input" && input.status === "queued") await this.#harness.abortSubmission(input.id, this.#context);
+		}
+		for (const task of work.tasks) await this.#harness.abortTask(task.record.id, this.#context);
+		this.#harness.resume();
+		await Promise.all(work.tasks.map((task) => this.#harness.waitForTask(task.record.id, this.#context)));
+		await this.#harness.waitForIdle(this.#context);
+		await this.#harness.commit(async (tx) => {
+			for (const execution of Object.values((await tx.doc(AppExecutionsDoc)).executions)) {
+				if (!["admitted", "running"].includes(execution.state)) continue;
+				execution.state = "cancelled";
+				execution.endedAt = Date.now();
+				for (const child of execution.children) if (child.state === "running") child.state = "cancelled";
+			}
+		}, this.#context);
+	}
+
+ /** Persist scoped aborts without enabling unrelated scheduling during startup recovery. */
+ async interruptChannels(channels:readonly {botId:string;channelId?:string}[]):Promise<void>{
+  const ids=new Set(await Promise.all(channels.map(async channel=>(await this.#contextRecord(channel.botId,channel.channelId??"direct")).conversationId)));
+  const work=await this.#harness.inspect(this.#context);
+  for(const input of work.submissions)if(ids.has(input.conversationId)&&input.type==="input"&&input.status==="queued")await this.#harness.abortSubmission(input.id,this.#context);
+  const tasks=work.tasks.filter(task=>ids.has(task.record.conversationId));
+  for(const task of tasks)await this.#harness.abortTask(task.record.id,this.#context);
+  if(work.scheduling==="running")await Promise.all(tasks.map(task=>this.#harness.waitForTask(task.record.id,this.#context)));
+ }
 
 	/** Abort channel work. Startup uses background mode to mark cancellation before the scheduler resumes. */
 	async cancel(botId: BotId, channelId = "direct", background = false): Promise<void> {
@@ -1135,6 +1177,7 @@ type MutableToolItem = {
 	tool: string;
 	args: unknown;
 	status: ToolCallStatus;
+	failureReason?: import("@openbot/protocol").ToolFailureReason;
 	output?: string;
 	taskId?: string;
 	artifact?: import("@openbot/protocol").ArtifactRef;
@@ -1227,6 +1270,7 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 					typeof details.artifact === "object"
 				)
 					item.artifact = details.artifact as import("@openbot/protocol").ArtifactRef;
+    if(details&&typeof details==="object"&&"failureReason" in details&&["approval_expired","permission_revoked","approval_denied"].includes(String(details.failureReason)))item.failureReason=details.failureReason as import("@openbot/protocol").ToolFailureReason;
 				if (typeof details === "object" && details !== null && "taskId" in details && typeof details.taskId === "string") {
 					item.taskId = details.taskId;
 				}
@@ -1432,6 +1476,7 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker, codeOnly = 
 				isError: outcome.status !== "succeeded",
 				details: {
 					status: outcome.status,
+					...(outcome.failureReason ? { failureReason: outcome.failureReason } : {}),
 					...(outcome.artifact ? { artifact: outcome.artifact } : {}),
 					...(outcome.taskId === undefined ? {} : { taskId: outcome.taskId }),
 				},

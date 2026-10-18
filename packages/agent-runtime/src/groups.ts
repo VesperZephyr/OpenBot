@@ -371,12 +371,12 @@ export function groupStore(
 				return copy((receipts[id] = { fingerprint, deliveryId }));
 			}, context);
 		},
-		async stop(rootId: string): Promise<void> {
+		async stop(rootId: string, reason="Stopped by user"): Promise<void> {
 			await harness.commit(async (tx) => {
 				const doc = await tx.doc(GroupsDoc);
 				const root = doc.roots?.[rootId];
 				if (!root) fail("Unknown collaboration task");
-				if (root!.state === "running") halt(doc, root!, "cancelled", "Stopped by user");
+				if (root!.state === "running") halt(doc, root!, "cancelled", reason);
 			}, context);
 		},
 		async reconcile(at: number): Promise<void> {

@@ -1,4 +1,5 @@
 import { LatestRead, observe } from "../../shared/observation";
+import type { LifecycleState } from "@openbot/protocol";
 /**
  * Renderer state. Every Host-owned value is a snapshot fetched through the preload API and refreshed by observation; the
  * renderer never keeps its own copy of the transcript or settings.
@@ -27,6 +28,7 @@ export type SearchTarget = { conversationKey: ConversationKey; messageId: string
 
 type State = {
 	groupSnapshots: Readonly<Record<string, GroupSnapshot>>;
+	lifecycle: LifecycleState | undefined;
 	searchTarget: SearchTarget | undefined;
 	host: HostState;
 	windowActive: boolean;
@@ -45,6 +47,7 @@ type State = {
 
 export const useStore = create<State>(() => ({
 	groupSnapshots: {},
+	lifecycle: undefined,
 	searchTarget: undefined,
 	host: { status: "starting" },
 	windowActive: false,
@@ -120,12 +123,17 @@ const groupRead = new LatestRead(
 			useStore.setState((s) => ({ groupSnapshots: { ...s.groupSnapshots, [view.groupId]: snapshot } }));
 	},
 );
-const readers = [summariesRead, groupsRead, botsRead, settingsRead, conversationRead, groupRead];
+const lifecycleRead = new LatestRead(
+	() => api["lifecycle.get"]({}),
+	(lifecycle) => useStore.setState({ lifecycle }),
+);
+const readers = [summariesRead, groupsRead, botsRead, settingsRead, conversationRead, groupRead, lifecycleRead];
 let readGeneration = 0;
 function resetReads() {
 	readGeneration++;
 	for (const reader of readers) reader.reset();
 }
+export const refreshLifecycle = () => lifecycleRead.request();
 export const refreshSummaries = () => summariesRead.request();
 export const refreshGroups = () => groupsRead.request();
 export const refreshBots = () => botsRead.request();
@@ -219,7 +227,7 @@ async function loadAll(changes: number): Promise<void> {
 	await Promise.all([
 		...(changes & 1 ? [refreshBots()] : []),
 		...(changes & 3 ? [refreshGroups(), refreshSummaries()] : []),
-		...(changes & 8 ? [refreshSettings()] : []),
+		...(changes & 8 ? [refreshSettings(), refreshLifecycle()] : []),
 	]);
 	if (generation !== readGeneration || useStore.getState().host.status !== "ready") return;
 	const { view, onboarding, settings, bots } = useStore.getState();

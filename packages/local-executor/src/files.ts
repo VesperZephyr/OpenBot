@@ -15,21 +15,23 @@ const MAX_LIST_ENTRIES = 500;
 const SNIFF_BYTES = 4096;
 
 /** `grants` allow reading and writing; `readGrants` allow reading only. */
-export type FileContext = { readonly workspace: string; readonly grants: readonly string[]; readonly readGrants: readonly string[] };
+export type FileContext = { readonly signal?: AbortSignal; readonly workspace: string; readonly grants: readonly string[]; readonly readGrants: readonly string[] };
 
 export async function readText(
 	args: { path: string; offset?: number; limit?: number },
 	context: FileContext,
 ): Promise<{ readonly output: string; readonly truncated: boolean }> {
 	const path = await grantedPath(args.path, context.workspace, [...context.grants, ...context.readGrants]);
-	const info = await stat(path);
+	context.signal?.throwIfAborted();
+ const info = await stat(path);
 	if (info.isDirectory()) throw new Error(`${path} is a directory; use local_list`);
 	// Devices, FIFOs, and sockets can block forever or never end.
 	if (!info.isFile()) throw new Error(`${path} is not a regular file`);
 	if (info.size > MAX_READ_FILE_BYTES) throw new Error(`${path} is ${info.size} bytes; files over 10 MB are not read`);
 	if (await looksBinary(path)) throw new Error(`${path} looks like a binary file`);
 
-	const content = await readFile(path);
+	context.signal?.throwIfAborted();
+ const content = await readFile(path, {signal:context.signal});
 	const lines = content.toString("utf8").split("\n");
 	const first = Math.max(1, args.offset ?? 1);
 	const last = Math.min(lines.length, first - 1 + Math.min(args.limit ?? OUTPUT_LIMITS.lines, OUTPUT_LIMITS.lines));
@@ -48,7 +50,8 @@ export async function readText(
 
 export async function listDirectory(args: { path: string }, context: FileContext): Promise<string> {
 	const path = await grantedPath(args.path, context.workspace, [...context.grants, ...context.readGrants]);
-	const entries = await readdir(path, { withFileTypes: true });
+	context.signal?.throwIfAborted();
+ const entries = await readdir(path, { withFileTypes: true });
 	const names = entries
 		.map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name))
 		.sort((a, b) => a.localeCompare(b));
@@ -59,9 +62,10 @@ export async function listDirectory(args: { path: string }, context: FileContext
 
 export async function writeText(args: { path: string; content: string }, context: FileContext): Promise<string> {
 	const path = await grantedPath(args.path, context.workspace, context.grants);
-	await mkdir(dirname(path), { recursive: true });
+	context.signal?.throwIfAborted();
+ await mkdir(dirname(path), { recursive: true });
 	const existed = await exists(path);
-	await atomicWrite(path, args.content);
+	await atomicWrite(path, args.content, context.signal);
 	return `${existed ? "Overwrote" : "Created"} ${path} (${Buffer.byteLength(args.content)} bytes)\n[sha256: ${sha256(Buffer.from(args.content))}]`;
 }
 
@@ -71,7 +75,8 @@ export async function editText(
 ): Promise<string> {
 	const path = await grantedPath(args.path, context.workspace, context.grants);
 	if (args.old_text === "") throw new Error("old_text is empty");
-	const content = await readFile(path);
+	context.signal?.throwIfAborted();
+ const content = await readFile(path, {signal:context.signal});
 	const current = sha256(content);
 	if (args.expected_sha256 !== undefined && args.expected_sha256.trim().toLowerCase() !== current) {
 		throw new Error(
@@ -87,7 +92,7 @@ export async function editText(
 		);
 	}
 	const updated = args.replace_all === true ? original.split(args.old_text).join(args.new_text) : original.replace(args.old_text, () => args.new_text);
-	await atomicWrite(path, updated);
+	await atomicWrite(path, updated, context.signal);
 	const replaced = args.replace_all === true ? matches.length : 1;
 	return `Edited ${path}: replaced ${replaced} occurrence${replaced === 1 ? "" : "s"}\n[sha256: ${sha256(Buffer.from(updated))}]`;
 }
@@ -96,10 +101,12 @@ function sha256(content: Buffer): string {
 	return createHash("sha256").update(content).digest("hex");
 }
 
-async function atomicWrite(path: string, content: string): Promise<void> {
+async function atomicWrite(path: string, content: string, signal?:AbortSignal): Promise<void> {
+ signal?.throwIfAborted();
 	const temporary = join(dirname(path), `.${basename(path)}.${randomUUID()}.tmp`);
 	try {
-		await writeFile(temporary, content, { flag: "wx" });
+		await writeFile(temporary, content, { flag: "wx", signal });
+  signal?.throwIfAborted();
 		await rename(temporary, path);
 	} catch (error) {
 		await rm(temporary, { force: true });
