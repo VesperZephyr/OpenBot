@@ -1,6 +1,6 @@
 # B13d: Local Usage and Execution Evidence
 
-Status: implemented; final acceptance in progress
+Status: in review ([PR #33](https://github.com/VesperZephyr/OpenBot/pull/33)); acceptance passed
 Branch: task/b13d-usage-evidence; PR target: main
 Depends on: merged Runs, B13c channels, B24–B26 receipts
 Architecture: Sections 2.3, 5.1, 6.2 and 8
@@ -60,3 +60,13 @@ The Bot details panel has a collapsed Usage and tasks section, with refresh, loa
 ## Open questions
 
 None for this increment. Per-request billing reconciliation and attribution of active Runs across changed pricing epochs are deliberately unavailable, not estimated. Future independent model tools need their own accounting contract before adding tool usage to these totals.
+
+## Acceptance evidence
+
+Implementation candidate: `51da585` (documentation follow-up only). All checks used isolated state and hidden, non-focusable windows.
+
+- `pnpm run check`: 285 tests in 45 files passed, including real Pi compaction, atomic interval/replay, pruning, legacy data, model pricing provenance and Bot/channel isolation.
+- Final `pnpm run e2e`: 78 tests in 23 files passed. Targeted usage/search verification: 11 tests in 2 files passed, including bilingual views, unknown cost, nested Code Mode approval links, group publication links and folded tool navigation. English/Chinese screenshots inspected.
+- Bundled Host/executor startup passed with isolated local state.
+- An isolated configured-model approval/write/read task wrote one synthetic file line and recorded 29,116 model tokens. Gateway cost correctly remained unavailable. Restart preserved totals and Run evidence; opening its folded approval caused no new inference or side effect. The audit remained metadata-only. Temporary provider configuration was removed.
+- No native permission/signing/power assertion evidence is claimed. Cross-branch lifecycle settlement acceptance belongs to I1, as specified above.

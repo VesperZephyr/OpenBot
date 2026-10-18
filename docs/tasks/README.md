@@ -108,4 +108,4 @@ Current increment: B13a channel contexts and B13b group lifecycle follow merged 
 
 | Task | Status |
 | --- | --- |
-| [B13d: Local usage and execution evidence](b13d-usage-evidence.md) | implemented; acceptance in progress; independent PR targeting main |
+| [B13d: Local usage and execution evidence](b13d-usage-evidence.md) | in review ([PR #33](https://github.com/VesperZephyr/OpenBot/pull/33)); acceptance passed |

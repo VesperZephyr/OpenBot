@@ -99,4 +99,4 @@ Attention-state mutation, UI navigation, cross-Bot memory operations, new dispat
 
 ## Usage delivery
 
-- [B13d: Usage and execution evidence](tasks/b13d-usage-evidence.md): implemented on `task/b13d-usage-evidence`, independently based on merged `main`. Reads Pi's model ledger without counting Code Mode children again, freezes Run intervals with admission/settlement, preserves known-price estimates and distinguishes unavailable prices, and links private/group results and approvals from bilingual Bot details. Final acceptance is recorded in the spec.
+- [B13d: Usage and execution evidence](tasks/b13d-usage-evidence.md): in review in [PR #33](https://github.com/VesperZephyr/OpenBot/pull/33), independently based on merged `main`. Reads Pi's model ledger without counting Code Mode children again, freezes Run intervals with admission/settlement, preserves known-price estimates and distinguishes unavailable prices, and links private/group results and approvals from bilingual Bot details. Final acceptance is recorded in the spec.
