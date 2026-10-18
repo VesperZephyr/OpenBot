@@ -182,12 +182,28 @@ export class HostService {
 				return profile;
 			},
 			"conversations.snapshot": async ({ botId }) => this.#view(await this.#runtime.snapshot(botId)),
-			"conversations.markRead": async ({ botId }) => {
-				const observer = this.#observers.get(botId);
-				if (observer?.activity === "unread") {
-					observer.activity = "idle";
-					this.#emit({ type: "bots.changed", payload: {} });
-				}
+			"conversations.search": async ({ query, unreadOnly = false, includeHidden = false, cursor }) => {
+				const [bots, groups, summaries] = await Promise.all([this.#runtime.listBots(), this.#runtime.groups().list(), this.#runtime.conversationIndex().list()]);
+				const unread = new Set(summaries.filter((r) => r.unreadCount > 0).map((r) => r.conversationKey));
+				const keys = [
+					...bots.filter((b) => b.status === "active" || (includeHidden && b.status === "hidden")).map((b) => `bot:${b.botId}` as const),
+					...groups.map((g) => `group:${g.groupId}` as const),
+				].filter((key) => !unreadOnly || unread.has(key));
+				return this.#runtime.searchConversations(query, new Set(keys), unreadOnly, includeHidden, cursor);
+			},
+			"conversations.list": async () => {
+				const keys = new Set([
+					...(await this.#runtime.listBots()).filter((b) => b.status !== "deleted").map((b) => `bot:${b.botId}`),
+					...(await this.#runtime.groups().list()).map((g) => `group:${g.groupId}`),
+				]);
+				return (await this.#runtime.conversationIndex().list()).filter((row) => keys.has(row.conversationKey));
+			},
+			"conversations.markRead": async ({ conversationKey, through }) => {
+				if (conversationKey.startsWith("bot:")) await this.#liveBot(conversationKey.slice(4));
+				else if (!conversationKey.startsWith("group:") || !await this.#runtime.groups().get(conversationKey.slice(6)))
+					throw new ProtocolError("not_found", "Conversation is unavailable");
+				if (await this.#runtime.conversationIndex().markRead(conversationKey, through))
+					this.#emit({ type: conversationKey.startsWith("bot:") ? "bots.changed" : "groups.changed", payload: {} });
 				return null;
 			},
 			"messages.submit": async ({ botId, requestId, text }) => {
@@ -363,6 +379,7 @@ export class HostService {
 					"conversations.snapshot",
 					"conversations.subscribe",
 					"conversations.markRead",
+					"conversations.search",
 					"files.resolveReveal",
 				].includes(method)
 			) {
@@ -437,13 +454,15 @@ export class HostService {
 
 	async #listBots(): Promise<BotSummary[]> {
 		const bots = await this.#runtime.listBots();
+		const index = new Map((await this.#runtime.conversationIndex().list()).map((row) => [row.conversationKey, row]));
 		return bots
 			.filter((bot) => bot.status !== "deleted")
 			.map((bot) => {
 				const lastRun = this.#runs.latest(bot.botId);
+				const activity = this.#observers.get(bot.botId)?.activity ?? "idle";
 				return {
 					...bot,
-					activity: this.#observers.get(bot.botId)?.activity ?? "idle",
+					activity: activity === "idle" && (index.get(`bot:${bot.botId}`)?.unreadCount ?? 0) > 0 ? "unread" as const : activity,
 					pendingApprovals: this.#approvals.forBot(bot.botId).length,
 					...(lastRun === undefined
 						? {}
@@ -549,11 +568,12 @@ export class HostService {
 		state.last = snapshot;
 		const view = this.#view(snapshot);
 		const before = state.activity;
-		state.activity = nextActivity(state, view);
+		state.activity = nextActivity(view);
 		// The roster also carries the approval count and the latest Run, which Desktop main turns into the dock badge,
 		// notifications, and the power assertion.
 		const latest = this.#runs.latest(botId);
-		const roster = `${view.approvals.length}|${latest?.runId ?? ""}|${latest?.state ?? ""}`;
+		const message = view.items.findLast((item) => (item.kind === "user" || item.kind === "assistant") && item.parts.some((p) => p.text.trim()));
+		const roster = `${view.approvals.length}|${latest?.runId ?? ""}|${latest?.state ?? ""}|${message?.id ?? ""}|${view.readCursor ?? 0}`;
 		if (state.activity !== before || roster !== state.roster) this.#emit({ type: "bots.changed", payload: {} });
 		state.roster = roster;
 		this.#feed.publish(view);
@@ -569,7 +589,7 @@ export class HostService {
 
 	async #observe(botId: BotId): Promise<void> {
 		if (this.#observers.has(botId)) return;
-		const state: ObserverState = { stop: () => {}, activity: "idle", answered: -1, settled: new Set() };
+		const state: ObserverState = { stop: () => {}, activity: "idle", settled: new Set() };
 		this.#observers.set(botId, state);
 		state.stop = await this.#runtime.observe(botId, (snapshot) => this.#publish(botId, state, snapshot));
 	}
@@ -578,7 +598,6 @@ export class HostService {
 type ObserverState = {
 	stop: () => void;
 	activity: BotActivity;
-	answered: number;
 	/** Tool calls whose result this observer has seen, so `toolSettled` runs once per call. */
 	readonly settled: Set<string>;
 	last?: ConversationSnapshot;
@@ -586,24 +605,14 @@ type ObserverState = {
 	roster?: string;
 };
 
-/**
- * Sidebar state from a conversation snapshot: needs attention while an approval waits or after an interrupted call
- * (until the user writes again), working while a Run is live, queued while its Run waits for a free slot, unread
- * once a new answer arrives after observation started; otherwise unchanged until the user reads it.
- */
-function nextActivity(state: { activity: BotActivity; answered: number }, snapshot: ConversationSnapshot): BotActivity {
-	const answered = snapshot.items.filter((item) => item.kind === "assistant").length;
-	const first = state.answered === -1;
-	const grew = !first && answered > state.answered;
-	state.answered = answered;
+/** Live attention is separate from the durable unread cursor used by the roster. */
+function nextActivity(snapshot: ConversationSnapshot): BotActivity {
 	if (snapshot.approvals.length > 0) return "needs_attention";
 	const sinceUser = snapshot.items.slice(snapshot.items.findLastIndex((item) => item.kind === "user") + 1);
 	if (sinceUser.some((item) => item.kind === "tool" && item.status === "interrupted")) return "needs_attention";
-	// Pi's live state, not the Run record: the answer lands before the Run is marked ended.
 	if (snapshot.live !== undefined) return "working";
 	if (snapshot.run?.state === "queued") return "queued";
-	if (grew) return "unread";
-	return state.activity === "unread" || state.activity === "idle" ? state.activity : "idle";
+	return "idle";
 }
 
 /** In-memory `SecretStore` for tests and development without a Keychain. */

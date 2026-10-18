@@ -113,12 +113,15 @@
 	margin-left: auto;
 }
 .timeline-frame {
+	display: flex;
+	flex-direction: column;
 	flex: 1;
 	min-height: 0;
 	position: relative;
 }
 .timeline-scroll {
-	height: 100%;
+	flex: 1;
+	min-height: 0;
 	overflow-y: auto;
 	overflow-anchor: none;
 	padding: 24px max(24px, calc((100% - 760px) / 2));
@@ -445,3 +448,76 @@
 .conversation-header > div:not(.menu) {
 	min-width: 0;
 }
+
+/* Previews and read progress share one quiet row for both channel kinds. */
+.bot-row .roster-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.bot-row time {
+	flex-shrink: 0;
+	margin-left: auto;
+	font-size: 10px;
+	font-weight: 400;
+	color: var(--muted);
+}
+.bot-row-text.has-unread .roster-name {
+	font-weight: 700;
+}
+.roster-preview-line {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	gap: 6px;
+}
+.roster-preview-line .bot-row-role {
+	flex: 1;
+	min-width: 0;
+}
+.unread-count {
+	flex-shrink: 0;
+	min-width: 17px;
+	padding: 1px 4px;
+	border-radius: 10px;
+	font-size: 10px;
+	font-weight: 600;
+	text-align: center;
+	background: #2563eb;
+	color: #fff;
+	line-height: 15px;
+}
+.conversation-header .mark-read {
+	flex-shrink: 0;
+	font-size: 12px;
+	padding: 5px 8px;
+	margin-left: auto;
+}
+.conversation-header .mark-read + .details-toggle {
+	margin-left: 0;
+}
+.bot-row .bot-row-name {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+}
+
+/* Search stays beside the conversation; only a chosen message changes its reading position. */
+.conversation-filters { display: flex; gap: 3px; margin: 4px 4px 8px; padding: 3px; border-radius: 9px; background: var(--surface-raised); }
+.conversation-filters button { flex: 1; padding: 4px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 11px; }
+.conversation-filters button[aria-pressed="true"] { color: var(--text); background: var(--surface); box-shadow: 0 1px 3px #0001; }
+.clear-search { flex: 0 0 22px; padding: 0; border: 0; background: transparent; font-size: 18px; color: var(--muted); }
+.search-results { margin-top: 8px; }
+.search-results h2 { font-weight: 600; color: var(--muted); padding-inline: 10px; margin: 0; }
+.search-result { display: flex; flex-direction: column; width: 100%; gap: 4px; padding: 10px; border: 0; border-radius: 9px; background: transparent; text-align: left; }
+.search-result:hover, .search-result:focus-visible { background: var(--surface-raised); }
+.search-result-name { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.search-result-meta { color: var(--muted); font-size: 10px; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-snippet { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; }
+.search-snippet mark { background: color-mix(in srgb, var(--unread) 17%, transparent); color: inherit; border-radius: 2px; }
+.search-status { font-size: 12px; color: var(--muted); padding: 6px 10px; }
+.search-status button, .search-more { font-size: 11px; padding: 4px 8px; }
+.search-more { margin: 6px 10px; }
+.search-location { padding: 5px 18px; font-size: 11px; color: var(--muted); background: var(--surface-raised); }
+.timeline-content .search-target { outline: 2px solid color-mix(in srgb, var(--unread) 50%, transparent); outline-offset: 4px; border-radius: 8px; }

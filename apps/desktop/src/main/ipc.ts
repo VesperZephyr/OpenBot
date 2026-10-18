@@ -63,6 +63,12 @@ export function registerIpc({ host, isTrustedFrame, language, onSettings }: IpcO
 		}
 	});
 
+	ipcMain.handle(CHANNELS.getWindowActive, (event) => {
+		checkFrame(event);
+		const window = BrowserWindow.fromWebContents(event.sender);
+		return !!window && window.isVisible() && window.isFocused() && !window.isMinimized();
+	});
+
 	ipcMain.handle(CHANNELS.getHostState, (event) => {
 		checkFrame(event);
 		return host.state;

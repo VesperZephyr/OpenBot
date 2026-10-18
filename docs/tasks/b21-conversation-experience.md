@@ -1,6 +1,6 @@
 # B21: Conversation Experience
 
-Status: in review
+Status: done (PR #17)
 Branch: task/b21-conversation-design
 Depends on: B13c, B19, B20
 Architecture: Sections 5.7, 6.5, 7.1, 8

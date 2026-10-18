@@ -41,12 +41,12 @@ describe("OpenBot desktop", () => {
 		const card = page.getByRole("group", { name: "Approval request" });
 		await card.waitFor();
 		await expect.poll(() => card.locator(".approval-args").textContent()).toContain("wc -c hello.md | tee size.txt");
-		await expect.poll(() => page.locator(".bot-row", { hasText: "Scout" }).textContent()).toContain("Needs attention");
+		await expect.poll(() => page.locator(".bot-row").filter({ has: page.getByText("Scout", { exact: true }) }).textContent()).toContain("Needs attention");
 		await h.shot("03-approval");
 
 		await card.getByRole("button", { name: "Allow once" }).click();
 		await page.locator(".tool-card.tool-succeeded", { hasText: "Count bytes" }).waitFor();
-		await page.getByText("It is 17 bytes.").waitFor();
+		await page.locator(".transcript").getByText("It is 17 bytes.").waitFor();
 		expect(await page.locator(".tool-card", { hasText: "Count bytes" }).locator(".tool-output").textContent()).toContain("17");
 		await h.shot("04-approved");
 	});
@@ -57,7 +57,7 @@ describe("OpenBot desktop", () => {
 		await h.send("Delete it");
 		const card = page.getByRole("group", { name: "Approval request" });
 		await card.getByRole("button", { name: "Deny" }).click();
-		await page.getByText("Understood, I left it.").waitFor();
+		await page.locator(".transcript").getByText("Understood, I left it.").waitFor();
 		await page.locator(".tool-card.tool-failed", { hasText: "Delete file" }).waitFor();
 		expect(await readFile(join(h.workspace, "hello.md"), "utf8")).toBe("Hello from Scout\n");
 		const lastToolResult = JSON.stringify(h.model.requests.at(-1)?.messages.at(-1));

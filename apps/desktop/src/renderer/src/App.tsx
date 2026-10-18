@@ -1,6 +1,7 @@
+import { ConversationSearch } from "./ConversationSearch";
 import { ChatComposer } from "./ChatComposer";
 import { ConversationShell, DetailsPanel, Timeline, useDialogFocus } from "./ConversationUI";
-import { useComposer } from "./useComposer";
+import { MarkReadButton, RosterPreview, recentTime } from "./RosterPreview";
 import { ManagementHistory } from "./BotManagement";
 import { t } from "./i18n";
 import type {
@@ -48,7 +49,7 @@ export function App() {
 
 	useEffect(() => {
 		const onKey = (event: globalThis.KeyboardEvent): void => {
-			if (!event.metaKey || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+			if ((!event.metaKey && !event.ctrlKey) || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
 			if (event.key === "k") {
 				event.preventDefault();
 				document.querySelector<HTMLInputElement>(".conversation-search")?.focus();
@@ -138,25 +139,33 @@ export function App() {
 	);
 }
 
-/** Sidebar order: pinned first, then by creation time; hidden Bots only in their own section. */
+/** Core and pinned sections stay first; each section follows committed message recency. */
 function visibleBots(bots: readonly BotSummary[]): BotSummary[] {
+	const summaries = useStore.getState().summaries;
 	return bots
 		.filter((bot) => bot.status === "active")
 		.toSorted(
-			(a, b) => Number(b.kind === "core") - Number(a.kind === "core") || Number(b.pinned) - Number(a.pinned) || a.createdAt - b.createdAt,
+			(a, b) =>
+				Number(b.kind === "core") - Number(a.kind === "core") ||
+				Number(b.pinned) - Number(a.pinned) ||
+				recentTime(`bot:${b.botId}`, summaries, b.createdAt) - recentTime(`bot:${a.botId}`, summaries, a.createdAt) ||
+				a.botId.localeCompare(b.botId),
 		);
 }
 
 function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; onQuery: (v: string) => void }) {
 	const bots = useStore((state) => state.bots);
+	const summaries = useStore((state) => state.summaries);
+	const [unreadOnly, setUnreadOnly] = useState(false);
+	const eligible = (key: string) => !unreadOnly || (summaries[key]?.unreadCount ?? 0) > 0;
 	const view = useStore((state) => state.view);
 	const showHidden = useStore((state) => state.showHidden);
-	const visible = visibleBots(bots).filter((b) => `${b.name} ${b.role}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+	const visible = visibleBots(bots).filter((b) => eligible(`bot:${b.botId}`) && `${b.name} ${b.role}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
 	const core = visible.filter((bot) => bot.kind === "core");
 	const pinned = visible.filter((bot) => bot.pinned && bot.kind !== "core");
 	const others = visible.filter((bot) => !bot.pinned && bot.kind !== "core");
 	const hidden = bots.filter(
-		(bot) => bot.status === "hidden" && `${bot.name} ${bot.role}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
+		(bot) => bot.status === "hidden" && eligible(`bot:${bot.botId}`) && `${bot.name} ${bot.role}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
 	);
 	const selected = view.kind === "bot" ? view.botId : undefined;
 
@@ -170,15 +179,23 @@ function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; 
 					aria-label={t("Search conversations")}
 					placeholder={t("Search conversations")}
 					value={query}
+					maxLength={200}
 					onChange={(e) => onQuery(e.target.value)}
+					onKeyDown={(e) => { if (e.key === "Escape" && !e.nativeEvent.isComposing) onQuery(""); }}
 				/>
+				{query && <button className="clear-search" aria-label={t("Clear search")} onClick={() => onQuery("")}>×</button>}
 				<button type="button" className="new-button" aria-label={t("New")} title={t("New")} onClick={onNew}>
 					<span aria-hidden>＋</span>
 				</button>
 			</div>
-			<BotSection title={t("Your assistant")} bots={core} selected={selected} />
+			<div className="conversation-filters" role="group" aria-label={t("Conversation filter")}>
+				<button aria-pressed={!unreadOnly} onClick={() => setUnreadOnly(false)}>{t("All")}</button>
+				<button aria-pressed={unreadOnly} onClick={() => setUnreadOnly(true)}>{t("Unread")}</button>
+			</div>
+			{unreadOnly && !Object.values(summaries).some((r) => r.unreadCount > 0) && <p className="search-status">{t("No unread conversations")}</p>}
+			{core.length > 0 && <BotSection title={t("Your assistant")} bots={core} selected={selected} />}
 			{pinned.length > 0 && <BotSection title={t("Pinned")} bots={pinned} selected={selected} />}
-			<BotSection title={t("Bots")} bots={others} selected={selected} empty={t("Create a Bot for a specific job")} />
+			{(others.length > 0 || (!query.trim() && !unreadOnly)) && <BotSection title={t("Bots")} bots={others} selected={selected} empty={t("Create a Bot for a specific job")} />}
 			{hidden.length > 0 && (
 				<div className="section">
 					<button
@@ -193,7 +210,8 @@ function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; 
 					{(showHidden || query.trim()) && hidden.map((bot) => <BotRow key={bot.botId} bot={bot} selected={bot.botId === selected} />)}
 				</div>
 			)}
-			<GroupSidebar query={query} />
+			<GroupSidebar query={query} unreadOnly={unreadOnly} />
+			<ConversationSearch query={query} unreadOnly={unreadOnly} />
 			<div className="sidebar-footer">
 				<button
 					type="button"
@@ -234,8 +252,7 @@ const ACTIVITY_LABEL: Record<BotSummary["activity"], string | undefined> = {
 };
 
 function BotRow({ bot, selected }: { readonly bot: BotSummary; readonly selected: boolean }) {
-	const label = ACTIVITY_LABEL[bot.activity];
-	const { draft } = useComposer(`bot:${bot.botId}`);
+	const label = bot.activity === "unread" ? undefined : ACTIVITY_LABEL[bot.activity];
 	return (
 		<button
 			type="button"
@@ -244,16 +261,7 @@ function BotRow({ bot, selected }: { readonly bot: BotSummary; readonly selected
 			aria-current={selected ? "page" : undefined}
 		>
 			<Avatar core={bot.kind === "core"} name={bot.name} />
-			<span className="bot-row-text">
-				<span className="bot-row-name">
-					{bot.name}
-					{bot.kind === "core" && <span className="core-badge">{t("Core")}</span>}
-				</span>
-				<span className="bot-row-role">{label ? t(label) : draft.text ? t("Draft: {text}", { text: draft.text }) : bot.role}</span>
-			</span>
-			{label !== undefined && (
-				<span className={`activity activity-${bot.activity}`} aria-label={label === undefined ? undefined : t(label)} />
-			)}
+			<RosterPreview conversationKey={`bot:${bot.botId}`} name={bot.name} core={bot.kind === "core"} fallback={bot.role} activity={label} />
 		</button>
 	);
 }
@@ -371,12 +379,17 @@ function Conversation({ botId }: { readonly botId: string }) {
 					<div className="conversation-name">{bot.name}</div>
 					<div className="conversation-role">{bot.role || t("No label")}</div>
 				</div>
+				<MarkReadButton conversationKey={`bot:${botId}`} cursor={snapshot?.readCursor} />
 				<button className="icon-button details-toggle" aria-label={t("Conversation details")} onClick={() => setEditing(!editing)}>
 					ⓘ
 				</button>
 				<BotMenu bot={bot} onEdit={() => setEditing(true)} />
 			</header>
-			<Timeline conversationKey={`bot:${botId}`} activity={`${snapshot?.items.length}:${JSON.stringify(snapshot?.live ?? null)}`}>
+			<Timeline
+				readCursor={snapshot?.readCursor}
+				conversationKey={`bot:${botId}`}
+				activity={`${snapshot?.items.length}:${JSON.stringify(snapshot?.live ?? null)}`}
+			>
 				{snapshot === undefined || (snapshot.items.length === 0 && !running) ? (
 					<EmptyConversation bot={bot} />
 				) : (

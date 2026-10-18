@@ -43,7 +43,7 @@ describe("coding tools", () => {
 
 		// Consecutive successful calls fold into "Ran N steps", so the task_output row may sit inside a closed group.
 		await h.page().locator(".tool-card.tool-succeeded", { hasText: "Checked task" }).waitFor({ state: "attached", timeout: 30_000 });
-		await h.page().getByText("The slow job finished.").waitFor();
+		await h.page().locator(".transcript").getByText("The slow job finished.").waitFor();
 		const result = JSON.stringify(h.model.requests.at(-1)?.messages.at(-1));
 		expect(result).toContain("done");
 		expect(result).toContain("exited with code 0");

@@ -11,7 +11,7 @@ const openGroup = async () => {
 	await h.page().getByRole("heading", { name: "Research studio" }).waitFor();
 };
 const openBot = async (name: string) => {
-	await h.page().locator(".sidebar .bot-row").filter({ hasText: name }).click();
+	await h.page().locator(".sidebar .bot-row").filter({ has: h.page().getByText(name, { exact: true }) }).click();
 	await h.page().locator(".conversation-name").filter({ hasText: name }).waitFor();
 };
 const group = () => api("groups.snapshot", { groupId });

@@ -54,6 +54,8 @@ import { type PolicyStore, policyStore } from "./policy.ts";
 import { applyMemoryEdit, checkMemorySize, type MemoryEdit, MemoryDoc, MemoryReceiptDoc, memoryState } from "./memory.ts";
 import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
 import { botSections } from "./prompt.ts";
+import { ConversationSearchIndex, normalizeQuery } from "./conversation-search.ts";
+import { conversationIndexStore, projectConversation, directMessages } from "./conversation-index.ts";
 import { groupStore, detachGroupBot } from "./groups.ts";
 import { ManagementDoc, managementStore } from "./management.ts";
 import { type RunStore, runStore, RunsDoc } from "./runs.ts";
@@ -182,8 +184,9 @@ export class BotRuntime {
 	/** Built-in providers as registered at open, so a removed overlay restores the original. */
 	readonly #builtins: ReadonlyMap<string, Provider>;
 	#configuredIds: readonly string[] = [];
-	/** Stored entries before each conversation's current head marker; entries are immutable, so one read per head. */
+	readonly #search = new ConversationSearchIndex();
 	#coreBootstrap: Promise<BotProfile> | undefined;
+	/** Stored entries before each conversation's current head marker; entries are immutable, so one read per head. */
 	readonly #history = new Map<number, { readonly head: number; readonly entries: readonly EntryRecord[] }>();
 
 	private constructor(
@@ -275,8 +278,18 @@ export class BotRuntime {
 		return approvalStore(this.#harness, this.#context);
 	}
 
+	conversationIndex() {
+		return conversationIndexStore(this.#harness, this.#context);
+	}
+
+	searchConversations(query: string, eligible: ReadonlySet<string>, unreadOnly = false, includeHidden = false, cursor?: string) {
+		if (query.length > 200) throw new ProtocolError("invalid_request", "Search is limited to 200 characters");
+		const normalized = normalizeQuery(query);
+		return this.#search.search(normalized, eligible, JSON.stringify([normalized, unreadOnly, includeHidden]), cursor);
+	}
+
 	groups() {
-		return groupStore(this.#harness, this.#context, async (tx) => Object.values((await tx.doc(BotsDoc)).bots).map(toProfile));
+		return groupStore(this.#harness, this.#context, async (tx) => Object.values((await tx.doc(BotsDoc)).bots).map(toProfile), this.#search);
 	}
 
 	management() {
@@ -421,6 +434,7 @@ export class BotRuntime {
 			};
 			doc.bots[input.botId] = record;
 			if (input.memory) (await tx.doc(MemoryDoc, input.botId, null)).content = input.memory;
+			await projectConversation(tx, `bot:${input.botId}`, { messageCount: 0, incomingCount: 0 });
 			const result = toProfile(record);
 			await completeManagement(tx, proposal, result);
 			return result;
@@ -807,10 +821,12 @@ export class BotRuntime {
 	async #project(record: BotRecord, view: ConversationView, channelId = "direct"): Promise<ConversationSnapshot> {
 		const marker = view.entries[0]?.head === undefined ? undefined : view.entries[0];
 		const earlier = marker === undefined ? [] : await this.#earlierEntries(record, marker);
+		const snapshot = projectView(record.botId, view, earlier);
+		if (channelId === "direct") this.#search.project(`bot:${record.botId}`, directMessages(snapshot));
 		return {
-			...projectView(record.botId, view, earlier),
+			...snapshot,
 			conversationId: String(record.conversationId),
-			...(channelId === "direct" ? {} : { channelId }),
+			...(channelId === "direct" ? { readCursor: await this.conversationIndex().projectDirect(snapshot) } : { channelId }),
 		};
 	}
 

@@ -35,7 +35,7 @@ describe("Finder-style startup", () => {
 		);
 		await h.send("Run the login shell command");
 		await h.page().getByRole("group", { name: "Approval request" }).getByRole("button", { name: "Allow once" }).click();
-		await h.page().getByText("The login shell command worked.").waitFor();
+		await h.page().locator(".transcript").getByText("The login shell command worked.").waitFor();
 		const card = h.page().locator(".tool-card.tool-succeeded", { hasText: "Check login shell command" });
 		await card.waitFor();
 		expect(await card.locator(".tool-output").textContent()).toContain("login-path-command-ok");

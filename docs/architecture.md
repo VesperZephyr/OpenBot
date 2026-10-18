@@ -509,6 +509,14 @@ Credential handling:
 - For form steps that are not secrets, `request_user_input` presents one form per step and the Bot fills the answers into the page.
 - Users should not paste passwords or one-time codes into chat; the UI warns when a message looks like one.
 
+### 5.10 Application Capabilities and Local Code Mode (planned)
+
+[D3](tasks/d3-app-capabilities.md) specifies an authorized application capability gateway in `server-core`, pure input/output descriptors in `protocol`, and separate desktop/Pi adapters over shared domain services. This is planned work; current desktop IPC and management tools are not a general model-facing API. Search/read capabilities begin in [B24](tasks/b24-app-capability-api.md), local read-only Code Mode in [B25](tasks/b25-local-app-code-mode.md), and existing management integration in [B26](tasks/b26-code-mode-management.md).
+
+Core uses the vendored Pi QuickJS Code Mode implementation through `agent-runtime`; no remote code execution, unrestricted `env`, extra `models.*` calls or generic Host-method dispatcher is exposed. Caller identity, originating Run, scope, target and nested invocation ancestry are bound by the Host. Core direct user Runs may search retained nondeleted application history; Core group Runs are limited to that group's public content. Specialist management remains prohibited. Credentials, grants, approval decisions and Core self-modification stay outside the model surface.
+
+The parent script enters Tool Router orchestration admission without retaining a leaf sequencing lock. Every nested application call enters ordinary router validation/policy and the capability gateway, with current authorization checked again before dispatch. Typed result schemas, bounded discovery/output/worker lifetimes and stable child identities are required. Pi journals provide deterministic replay, while existing domain receipts and exact-change approvals remain authoritative for mutations. Partial script success never implies rollback. D3 specifies resource limits, privacy, UI projection and gates; B25/B26 remain draft until their integration evidence is available.
+
 ## 6. Local Interfaces
 
 ### 6.1 Desktop Application Protocol
@@ -519,7 +527,8 @@ The transport is private IPC with versioned request, response, and event envelop
 | --- | --- |
 | `bots.create`, `bots.update`, `bots.list`, `bots.duplicate`, `bots.delete`, `bots.export`, `bots.import` | Manage Bot profiles and templates; Duplicate copies profile and Prompt with empty memory and history; Delete cancels the Bot's Run and keeps its conversation on disk |
 | `bots.memory.get`, `bots.memory.update`, `bots.memory.restore` | Inspect current memory and bounded history; edit/restore with expected-revision checks |
-| `conversations.list`, `conversations.snapshot`, `conversations.subscribe`, `conversations.reset` | List Bot, group, and routine-run conversations; deliver the current view followed by ordered updates for the subscribed conversation; start a new topic |
+| `conversations.list`, `conversations.markRead` | Bounded local Bot/group latest-message summaries and durable read cursors; acknowledge a rendered snapshot through its incoming-message ordinal |
+| `conversations.snapshot`, `conversations.subscribe`, `conversations.reset` | Deliver the current direct-chat view and subscribed updates; start a new topic |
 | `groups.create`, `groups.update`, `groups.delete` | Manage group chats and membership |
 | `messages.submit` | Accept `requestId`, conversation, content, mentions, skill and connector attachments, and artifact references; return `runId`, state, and whether the message steered an active Run, after durable receipt |
 | `runs.cancel`, `runs.pause`, `runs.resume` | Persist an idempotent cancellation or pause request and report its outcome separately |
@@ -626,6 +635,10 @@ References: [goose `ui/desktop`](https://github.com/aaif-goose/goose/tree/main/u
 The desktop interface follows Grok Bot's layout and vocabulary so that users and contributors can rely on a known product.
 
 B21 implements a shared private/group conversation shell, name/role filtering, unified New, responsive contextual details, structured group mentions and scroll anchoring. Private chats remain direct; ordinary group messages go to Core. The renderer stores versioned drafts and immutable send attempts locally, persists before dispatch and retries uncertain delivery only on explicit request using the same Host request ID. Newer edits survive late acknowledgements. Drafts are not model context and are not synchronized. The broader target interface below includes future surfaces tracked by separate task specs.
+
+[B22](tasks/b22-conversation-list.md) stores a bounded latest-message preview and monotonic incoming/read ordinals per private or group conversation in the Host-owned `openbot.conversation-index` session document. It is local presentation metadata, excluded from model context and diagnostics. Group publication updates the index atomically; direct projections catch up from retained history before publishing snapshots. Missing legacy records seed existing history as read. `conversations.list` reads this index without loading transcripts; `conversations.markRead` validates `{ conversationKey, through }` against the current incoming count. Snapshots supply the rendered read cursor, so a delayed acknowledgement cannot clear newer replies. Auto-read requires native-window and document focus/visibility, an unobstructed timeline and 400 ms at the bottom; explicit Mark as read uses the same snapshot cursor. Activity and drafts preserve independent unread counts. Core/pinned sections stay protected while rows within each section follow latest committed message time.
+
+[B23](tasks/b23-conversation-search.md) adds `conversations.search` with a literal query, unread/hidden filters and a bounded continuation cursor. `agent-runtime` owns a derived in-memory corpus of committed user/assistant and public group text, reconstructed from Host-owned durable history before readiness; projections update it before publication and only after successful commits. The Host resolves current Bot/group and unread eligibility. Searches do not load histories, mutate read state, invoke models, or emit search content to diagnostics. Results contain at most 30 stable message references and 180-code-point snippets. Renderer queries and targets are transient; exact-message navigation suppresses automatic read acknowledgement until ordinary navigation or Jump to latest. Memory and startup cost scale with retained text; persistent indexing is future work.
 
 | Area | Content |
 | --- | --- |

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { BotRuntime } from "@openbot/agent-runtime";
 import { SCRIPTED_MODEL, scriptedModels } from "@openbot/agent-runtime/testing";
 import { type ConversationSnapshot, type HostEventType, PROTOCOL_VERSION } from "@openbot/protocol";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApprovalBook, HostService, MemorySecretStore, type ModelConfigFile } from "../src/index.ts";
 
 const status = { protocolVersion: PROTOCOL_VERSION, hostVersion: "test", nodeVersion: "test", targetId: "mac", startedAt: 0 };
@@ -104,9 +104,53 @@ describe("HostService", () => {
 
 		const list = await service.handle("bots.list", {});
 		expect(list.find((b) => b.botId === bot.botId)?.activity).toBe("unread");
-		await service.handle("conversations.markRead", { botId: bot.botId });
+		await service.handle("conversations.markRead", { conversationKey: `bot:${bot.botId}`, through: 1 });
 		expect((await service.handle("bots.list", {})).find((b) => b.botId === bot.botId)?.activity).toBe("idle");
 		expect(events).toContain("bots.changed");
+	});
+
+	it("lists bounded summaries without loading histories and rejects read receipts for deleted Bots", async () => {
+		const bot = await service.handle("bots.create", { requestId: "index", name: "Reader" });
+		const snap = vi.spyOn(runtime, "snapshot");
+		const originalGroups = runtime.groups();
+		const posts = vi.fn(originalGroups.posts);
+		const groups = vi.spyOn(runtime, "groups").mockReturnValue({ ...originalGroups, posts });
+		const rows = await service.handle("conversations.list", {});
+		expect(rows.find((r) => r.conversationKey === `bot:${bot.botId}`)?.unreadCount).toBe(0);
+		expect(snap).not.toHaveBeenCalled();
+		expect(posts).not.toHaveBeenCalled();
+		snap.mockRestore();
+		groups.mockRestore();
+		await service.handle("bots.delete", { botId: bot.botId });
+		expect((await service.handle("conversations.list", {})).some((r) => r.conversationKey === `bot:${bot.botId}`)).toBe(false);
+		await expect(service.handle("conversations.markRead", { conversationKey: `bot:${bot.botId}`, through: 0 })).rejects.toThrow("Unknown Bot");
+	});
+
+	it("searches current eligible identities and unread conversations without history reads or content audit", async () => {
+		await service.handle("settings.update", { defaultModel: SCRIPTED_MODEL });
+		const bot = await service.handle("bots.create", { requestId: "search", name: "Reader" });
+		await service.handle("conversations.subscribe", { botId: bot.botId });
+		const answered = nextSnapshot((s) => s.botId === bot.botId && s.items.some((i) => i.kind === "assistant"));
+		await service.handle("messages.submit", { botId: bot.botId, requestId: "q", text: "SEARCH_PRIVATE_SENTINEL" });
+		await answered;
+		const snap = vi.spyOn(runtime, "snapshot");
+		const store = runtime.groups(), posts = vi.fn(store.posts), history = vi.fn(store.history);
+		const groups = vi.spyOn(runtime, "groups").mockReturnValue({ ...store, posts, history });
+		const before = await service.handle("conversations.list", {});
+		const calls = audit.length;
+		expect((await service.handle("conversations.search", { query: "search_private_sentinel", unreadOnly: true })).items).toHaveLength(1);
+		expect(await service.handle("conversations.list", {})).toEqual(before);
+		expect(snap).not.toHaveBeenCalled(); expect(posts).not.toHaveBeenCalled(); expect(history).not.toHaveBeenCalled();
+		expect(audit).toHaveLength(calls);
+		expect(JSON.stringify(audit)).not.toContain("SEARCH_PRIVATE_SENTINEL");
+		snap.mockRestore(); groups.mockRestore();
+		await service.handle("conversations.markRead", { conversationKey: `bot:${bot.botId}`, through: 1 });
+		expect((await service.handle("conversations.search", { query: "sentinel", unreadOnly: true })).items).toHaveLength(0);
+		await service.handle("bots.update", { botId: bot.botId, status: "hidden" });
+		expect((await service.handle("conversations.search", { query: "sentinel" })).items).toHaveLength(0);
+		expect((await service.handle("conversations.search", { query: "sentinel", includeHidden: true })).items).toHaveLength(1);
+		await service.handle("bots.delete", { botId: bot.botId });
+		expect((await service.handle("conversations.search", { query: "sentinel", includeHidden: true })).items).toHaveLength(0);
 	});
 
 	it("creates one Bot per request ID", async () => {

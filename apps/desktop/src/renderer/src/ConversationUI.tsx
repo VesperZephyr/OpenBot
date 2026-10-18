@@ -1,4 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useStore } from "./store";
+import { useReadReceipt } from "./useReadReceipt";
+import type { ConversationKey } from "@openbot/protocol";
 import { t } from "./i18n";
 
 export function ConversationShell({
@@ -124,20 +127,26 @@ export function DetailsPanel({ title, onClose, children }: { title: string; onCl
 type Position = { top: number; following: boolean; id?: string; offset?: number };
 const positions = new Map<string, Position>();
 export function Timeline({
+	readCursor,
 	conversationKey,
 	activity,
 	children,
 	className = "",
 }: {
-	conversationKey: string;
+	readCursor?: number | undefined;
+	conversationKey: ConversationKey;
 	activity: string;
 	children: ReactNode;
 	className?: string;
 }) {
 	const ref = useRef<HTMLDivElement>(null),
 		inner = useRef<HTMLDivElement>(null);
-	const state = useRef<Position>(positions.get(conversationKey) ?? { top: 0, following: true });
+	const target = useStore((s) => s.searchTarget?.conversationKey === conversationKey ? s.searchTarget : undefined);
+	const state = useRef<Position>(target ? { top: 0, following: false } : positions.get(conversationKey) ?? { top: 0, following: true });
+	const [missing, setMissing] = useState(false);
+	const located = useRef<string | undefined>(undefined);
 	const [unseen, setUnseen] = useState(false);
+	useReadReceipt(conversationKey, readCursor, ref, () => state.current.following);
 	const capture = () => {
 		const el = ref.current;
 		if (!el) return;
@@ -162,6 +171,21 @@ export function Timeline({
 		}
 	};
 	useLayoutEffect(() => {
+		if (!target) { located.current = undefined; return; }
+		const el = ref.current;
+		const row = [...(el?.querySelectorAll<HTMLElement>("[data-message-id]") ?? [])].find((n) => n.dataset.messageId === target.messageId);
+		state.current.following = false;
+		if (!el || !row) { setMissing(true); return; }
+		setMissing(false);
+		row.classList.add("search-target");
+		if (located.current === target.nonce) return () => { row.classList.remove("search-target"); };
+		el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - el.clientHeight / 3;
+		state.current = { top: el.scrollTop, following: false, id: target.messageId, offset: row.getBoundingClientRect().top - el.getBoundingClientRect().top };
+		positions.set(conversationKey, state.current);
+		located.current = target.nonce;
+		return () => { row.classList.remove("search-target"); };
+	}, [target, activity]);
+	useLayoutEffect(() => {
 		restore();
 		if (!state.current.following) setUnseen(true);
 	}, [activity]);
@@ -185,22 +209,24 @@ export function Timeline({
 	}, [conversationKey]);
 	return (
 		<div className="timeline-frame">
+			{target && <div className="search-location" role="status">{t(missing ? "Search result is no longer available" : "Viewing a search result")}</div>}
 			<div ref={ref} className={`transcript timeline-scroll ${className}`} onScroll={capture}>
 				<div ref={inner} className="timeline-content">
 					{children}
 				</div>
 			</div>
-			{unseen && (
+			{(unseen || target) && (
 				<button
 					type="button"
 					className="jump-latest"
 					onClick={() => {
+						useStore.setState({ searchTarget: undefined });
 						state.current.following = true;
 						restore();
 						capture();
 					}}
 				>
-					{t("New activity · Jump to latest")} ↓
+					{t(target ? "Jump to latest" : "New activity · Jump to latest")} ↓
 				</button>
 			)}
 		</div>

@@ -61,7 +61,7 @@ describe("Desktop MVP", () => {
 		await h.send("Write two notes");
 		const steps = page.locator(".steps-row", { hasText: "Ran 3 steps" });
 		await steps.waitFor();
-		await page.getByText("Wrote two notes:").waitFor();
+		await page.locator(".transcript").getByText("Wrote two notes:").waitFor();
 		expect(await page.locator(".messages > .tool-card").count()).toBe(0);
 		await h.shot("03-steps-collapsed");
 
@@ -113,11 +113,11 @@ describe("Desktop MVP", () => {
 		await dialog.getByRole("button", { name: "Delete Bot" }).click();
 		await dialog.waitFor({ state: "detached" });
 		await expect.poll(() => page.locator(".bot-row").count()).toBe(1);
-		expect(await page.locator(".bot-row", { hasText: "OpenBot (copy)" }).count()).toBe(0);
+		expect(await page.locator(".bot-row").filter({ has: page.getByText("OpenBot (copy)", { exact: true }) }).count()).toBe(0);
 
 		// Deleted stays deleted after a restart.
 		await h.relaunch();
-		await h.page().locator(".bot-row", { hasText: "OpenBot" }).waitFor();
+		await h.page().locator(".bot-row").filter({ has: h.page().getByText("OpenBot", { exact: true }) }).waitFor();
 		expect(await h.page().locator(".bot-row").count()).toBe(1);
 	});
 });

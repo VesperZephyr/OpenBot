@@ -77,7 +77,15 @@ export const HOST_PARAM_SCHEMAS = {
 		status: Type.Optional(Type.Enum(["active", "hidden"])),
 	}),
 	"conversations.snapshot": BotOnly,
-	"conversations.markRead": BotOnly,
+	"conversations.list": NoParams,
+	"conversations.search": strict({ query: Type.String({ maxLength: 200 }), unreadOnly: Type.Optional(Type.Boolean()), includeHidden: Type.Optional(Type.Boolean()), cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })) }),
+	"conversations.markRead": strict({
+		conversationKey: Type.TemplateLiteral(
+			[Type.Union([Type.Literal("bot:"), Type.Literal("group:")]), Type.String()],
+			{ pattern: "^(bot|group):.+$", maxLength: 262 },
+		),
+		through: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+	}),
 	"messages.submit": strict({ botId: Id, requestId: Id, text: Type.String() }),
 	"runs.cancel": strict({ runId: Id }),
 	"approvals.decide": strict({

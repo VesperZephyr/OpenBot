@@ -10,7 +10,7 @@ import type { AddressInfo } from "node:net";
 export type ModelRequest = { readonly messages: readonly { role: string; content?: unknown }[]; readonly tools?: readonly unknown[] };
 
 export type ScriptedTurn =
-	| { readonly text: string }
+	| { readonly text: string; readonly delayMs?: number }
 	/** `args` may be computed from the request, for arguments only known at run time, such as a returned task ID. */
 	| { readonly tool: string; readonly args: Record<string, unknown> | ((request: ModelRequest) => Record<string, unknown>) }
 	/** The provider rejects the request with HTTP 400 and this message; not retried by Pi. */
@@ -46,7 +46,8 @@ export class ScriptedModel {
 					return;
 				}
 				response.writeHead(200, { "content-type": "text/event-stream" });
-				response.end(this.#stream(turn, sent));
+				if ("delayMs" in turn && turn.delayMs) setTimeout(() => response.end(this.#stream(turn, sent)), turn.delayMs);
+				else response.end(this.#stream(turn, sent));
 			});
 		});
 		await new Promise<void>((resolve) => this.#server?.listen(0, "127.0.0.1", resolve));

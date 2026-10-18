@@ -46,11 +46,11 @@ describe("desktop test presentation", () => {
 			if (app.dock) app.dock.setBadge = () => { state.testNativeEffects.push("badge"); };
 			powerSaveBlocker.start = () => { state.testNativeEffects.push("power"); return -1; };
 		});
-		await h.page().locator(".bot-row", { hasText: "Quiet Scout" }).click();
+		await h.page().locator(".bot-row").filter({ has: h.page().getByText("Quiet Scout", { exact: true }) }).click();
 		h.model.script({ tool: "local_exec", args: { command: "printf quiet", description: "Quiet command" } }, { text: "Quietly completed." });
 		await h.send("Run a quiet command");
 		await h.page().getByRole("group", { name: "Approval request" }).getByRole("button", { name: "Allow once" }).click();
-		await h.page().getByText("Quietly completed.").waitFor();
+		await h.page().locator(".transcript").getByText("Quietly completed.").waitFor();
 		await h.page().locator(".tool-card.tool-succeeded", { hasText: "Quiet command" }).waitFor();
 		await assertPresentation();
 		expect(await h.app().evaluate(() => (globalThis as typeof globalThis & { testNativeEffects: string[] }).testNativeEffects)).toEqual([]);
