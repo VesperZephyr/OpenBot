@@ -93,6 +93,6 @@ Owner-requested architecture increment: expose selected current application capa
 
 1. [B24: Authorized application API](tasks/b24-app-capability-api.md) — merged into `main` via PR #23; five shared typed read services, scoped search/history and Core routed tools. 246 unit tests, 68 background e2e and isolated real-model private/group/restart verification.
 2. [B25: Local app Code Mode](tasks/b25-local-app-code-mode.md) — merged into `main` via PR #24; bounded Pi QuickJS/discovery/replay adapter, original Run authorization, durable bilingual activity and packaged worker assets. 259 unit tests, 69 background e2e, ad-hoc package and isolated real-model private/group/restart acceptance.
-3. [B26: Code Mode management](tasks/b26-code-mode-management.md) — implemented; eight direct-Core management aliases, exact nested approvals, transactional receipt checks, failure latching, expiry and bilingual partial-completion activity. Acceptance is recorded in the spec.
+3. [B26: Code Mode management](tasks/b26-code-mode-management.md) — done, in review in PR #27 targeting `main`; eight direct-Core management aliases, exact nested approvals, transactional receipt checks, failure latching, expiry and bilingual partial-completion activity. Acceptance is recorded in the spec.
 
 Attention-state mutation, UI navigation, cross-Bot memory operations, new dispatch surfaces and external API transports remain separately specified follow-ups. Existing desktop method availability never automatically confers model authority.

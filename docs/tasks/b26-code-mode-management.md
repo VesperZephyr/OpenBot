@@ -1,6 +1,6 @@
 # B26: Core Management Through Application Code Mode
 
-Status: implemented; acceptance verification in progress
+Status: done; in review in [PR #27](https://github.com/VesperZephyr/OpenBot/pull/27)
 Branch: task/b26-code-mode-management; pull request target: main
 Depends on: B25, B18, B13b; [D3](d3-app-capabilities.md)
 Architecture: Sections 5.3, 5.7, 5.10, 8.2
@@ -64,6 +64,7 @@ No open design questions. B25 supplies trusted nested ancestry and durable child
 - The router persists management closure before releasing its leaf queue. This prevents already-queued `Promise.all` operations from racing a denial. The runtime also rejects later caught-error retries. Five suspended-Harness boundaries preserve child IDs and deadlines without duplicate effects.
 - Durable child activity is observed independently of Pi conversation changes, including the first approval. English/Chinese cards show exact fields, partial completion, committed object references, expiry and Stop. Deleted objects retain their identity without a broken navigation button.
 - `pnpm run check`: 278 tests across 44 files passed, including 18 management Code Mode tests. The matrix covers six approved mutations, inspection, rejection/queued retries, original authority spoofing, stale revisions, cancellation, changed approvals, uncertain delivery, receipt reconciliation, Core protection, expired approval and live projection.
+- Full background `pnpm run e2e`: 73 tests across 22 files passed. The four B26 scenarios cover the full lifecycle, partial completion/denial, group-only read discovery, expiry/Stop and restart. A final targeted rerun verifies neutral action labels for rejected/expired steps after screenshot inspection.
 - Isolated real-model acceptance used the locally configured `mafia / gpt-6.1-sol` endpoint. An English composed script created a Specialist and group with two exact approvals; after a full Electron/Host restart, a Chinese composed script updated both, dissolved the group and deleted the test Bot with four more exact approvals. The local journal confirms six consumed allow-once decisions, six distinct mutation child receipts, three Bot operations and three group intents. Restart preserved the original execution metadata. Only Core remains active; the dissolved test group retains its history.
 - All app verification used isolated test state and hidden, non-focusable development Electron windows; window activity stayed false at approvals and completion. Screenshots were inspected for English/Chinese exact approval, expiry, partial completion and real-model completion. The agent-browser CLI did not retain its CDP target between commands, so Playwright CDP drove the same isolated app. The isolated app was stopped and its copied model configuration removed after acceptance.
 - Runtime staging passed its bundled Node/Host/executor smoke test without a GUI. Production app bundles were never opened; native OS permissions and signed package behavior were not revalidated in this batch.
