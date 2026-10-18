@@ -1,7 +1,7 @@
 # B24: Authorized Application Capability API
 
-Status: ready
-Branch: unclaimed (expected task/b24-app-capability-api)
+Status: implemented, in review (PR #23)
+Branch: task/b24-app-capability-api
 Depends on: B23, D3
 Architecture: Sections 4.2, 5.10, 6.1; [D3](d3-app-capabilities.md)
 
@@ -25,8 +25,8 @@ Implement these read capabilities:
 | `conversations.list` / `app_conversations_list` | `{unreadOnly?: boolean, includeHidden?: boolean, cursor?: string}` | `{items: ConversationSummary[], nextCursor?: string}`, 50 per page, no draft text |
 | `conversations.search` / `app_conversations_search` | Existing B23 fields plus optional `conversationKey` | Existing B23 `ConversationSearchResult`, max 30; effective scope bound into cursor |
 | `conversations.read` / `app_conversations_read` | `{conversationKey, anchorMessageId, before?: integer 0..10, after?: integer 0..10}` | `{conversationKey, anchorMessageId, messages: {id,senderId,at,text,truncated}[], hasBefore,hasAfter}`, default 3/3, max 21 and 32 KiB serialized |
-| `bots.list` / `app_bots_list` | `{includeHidden?: boolean,cursor?: string}` | `{items: {botId,name,role,kind,status,revision}[],nextCursor?}`, max 50 |
-| `groups.list` / `app_groups_list` | `{cursor?: string}` | `{items: {groupId,name,status,revision}[],nextCursor?}`, max 50 |
+| `bots.list` / `app_bots_list` | `{includeHidden?: boolean,cursor?: string}` | `{items: {botId,name,role,kind,status,revision,truncated}[],nextCursor?}`, max 50 |
+| `groups.list` / `app_groups_list` | `{cursor?: string}` | `{items: {groupId,name,status,revision,truncated}[],nextCursor?}`, max 50 |
 
 List pages use stable lexical resource-key order; cursors bind version, effective scope and filters, reject malformed or mismatched tokens, and use the last key rather than an offset. Result limits apply to the entire serialized envelope. Bounded text fields truncate on Unicode boundaries and indicate truncation where applicable. Search keeps B23 message ordering/snippets; if a page hits the byte cap early, continuation uses the actual last returned key. Context reads preserve the anchor, allocate its text budget first (at most 8 KiB), then nearest neighbors; omit remaining neighbors with accurate `hasBefore/hasAfter`, never silently omit the anchor. Use one exact scoped resource lookup; do not scan other conversations for an ID.
 
@@ -36,7 +36,7 @@ The trusted context is Host-internal. For model calls, derive/persist botId, dir
 
 Do not trust identity text, metadata in retrieved messages, caller-provided target IDs or discovery visibility. Reads do not trigger tasks, update memory, change unread, or send content to a model themselves. Normal model tool output may enter the configured provider conversation, as documented in D3.
 
-Extend routed tool results with optional validated structured JSON and schema declarations while retaining current text-only work-tool behavior. Register read tools directly for eligible Core in this batch; B25 changes their caller mode for Code Mode. Inspect/mutation APIs stay on the existing management path until B26; no duplicate unapproved path.
+Extend routed tool results with optional validated structured JSON and schema declarations while retaining current text-only work-tool behavior. Provider-facing Pi schemas permit null for optional fields because strict tool providers require all properties. Only the Pi adapter converts those nulls to omitted fields before Tool Router validates the canonical descriptor; required and unknown fields remain invalid. First-page cursor and unrestricted permitted conversation selection are explicitly documented. Register read tools directly for eligible Core in this batch; B25 changes their caller mode for Code Mode. Inspect/mutation APIs stay on the existing management path until B26; no duplicate unapproved path.
 
 ## Steps
 
@@ -61,3 +61,15 @@ Scope must apply before retrieval and result formatting, not after output enters
 ## Open questions
 
 None for this batch. Code Mode resource hooks and management recovery remain explicitly gated in B25/B26.
+
+## Implementation and verification
+
+- `protocol/app-capabilities` owns the five read descriptors and bounded result contracts; runtime validators use a separate entry point to keep compiler code out of the renderer. `server-core/AppCapabilities` owns caller derivation, resource scope and shared desktop adapters. Canonical inputs reject extra keys and nulls; only declared optional Pi arguments normalize null to omission.
+- Every model read crosses Tool Router validation and policy, then the gateway rechecks original durable Run/channel/request/local-target authority before and after retrieval. Search/list cursors bind capability, filters and caller scope. Core group results contain only current-group public messages and minimal participant identities. Specialist app reads are denied.
+- Context reads retain original public text formatting across topics, exclude tools/reasoning, prioritize the exact anchor, and expose Unicode truncation and continuation indicators. Search keeps normalized literal matching. Reads leave source attention and memory unchanged; query text is excluded from operation diagnostics. Selected results still enter the configured model conversation and its local transcript.
+- `pnpm run check`: 246 tests / 41 files, including forged/stale authority, strict router inputs, result validation, scope-bound cursor reuse, group isolation, byte limits, exact anchors, Unicode formatting and paging under insertion/deletion.
+- `pnpm run e2e`: 68 tests / 21 files in background mode. Three new flows cover English Core search/read, Chinese group isolation with denied private lookup, and restart plus Specialist tool rejection. English/Chinese screenshots inspected under `e2e/.run/app-capabilities/`; existing search, draft and unread suites remain green.
+- Isolated real desktop acceptance uses the locally configured `mafia / gpt-6.1-sol` model with synthetic private/group history. Core searches and reads Analyst's old topic, answers with stable source IDs, and answers a Chinese group query from current-group public results. Persisted tool receipts were inspected. Full Electron/Host restart preserves source IDs and supports another Chinese search/read with unchanged source unread/memory. The native window remains inactive throughout.
+- Real-provider verification exposed strict-schema optional-field behavior; nullable optional Pi parameters and explicit first-page guidance resolve it. Scripted e2e now exercises null normalization. Temporary credentials/config copies stay outside Git and are removed after acceptance.
+
+Code Mode, generic IPC dispatch, new management permissions and packaging/signing changes are not part of this batch. B25/B26 retain their gates.

@@ -102,6 +102,9 @@ importers:
       '@earendil-works/pi-ai':
         specifier: workspace:*
         version: link:../../third_party/pi/packages/ai
+      '@earendil-works/pi-codemode':
+        specifier: workspace:*
+        version: link:../../third_party/pi/packages/codemode
       '@earendil-works/pi-durable':
         specifier: workspace:*
         version: link:../../third_party/pi/packages/durable

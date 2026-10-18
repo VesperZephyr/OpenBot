@@ -1,6 +1,6 @@
 # D3: Application Capabilities and Local Code Mode
 
-Status: design complete, proposed for review; B24 ready, B25/B26 draft behind implementation gates
+Status: accepted direction; B24 implemented in PR #23, B25/B26 draft behind implementation gates
 Branch: task/d3-app-capabilities
 Baseline: B23, commit d1635bc; vendored Pi b45e0ebcc5ae2fc42a6f2f23104d10e656e6bedb
 Date: 2026-10-18
@@ -26,9 +26,9 @@ Direct tools remain useful for simple work and compatibility; both transports mu
 
 ### Current code gaps
 
-- `packages/server-core/src/index.ts` exposes desktop methods, including B23 search. Model tools are separately composed in `apps/local-server/src/tools.ts`. Schema and service reuse is incomplete; desktop methods cannot all be exposed to a Bot.
-- `packages/agent-runtime/src/index.ts:routedTool` derives identity from durable conversations/Runs, but maps results mainly to text. Pi requires `structuredOutputSchema` plus `structuredOutput` for reliable programmatic results.
-- `packages/tool-router/src/index.ts` serializes by conversation. Holding that gate for a parent script while it awaits children entering the same gate deadlocks. The router currently relies on upstream argument validation and operation-specific authorization; the new shared entry must explicitly validate at the router/service boundary too.
+- `packages/server-core/src/index.ts` exposes desktop methods, including B23 search. Model tools are separately composed in `apps/local-server/src/tools.ts`. B24 shares descriptor-backed reads through `server-core/AppCapabilities`; desktop methods cannot all be exposed to a Bot.
+- `packages/agent-runtime/src/index.ts:routedTool` derives identity from durable conversations/Runs, and B24 maps validated application results through `structuredOutputSchema` plus `structuredOutput`. Ordinary work tools retain text results.
+- `packages/tool-router/src/index.ts` serializes by conversation. Holding that gate for a parent script while it awaits children entering the same gate deadlocks. B24 validates application leaves explicitly at the router/service boundary; parent orchestration admission remains a B25 task.
 - Bot management already requires active Core, a direct user-origin Run, exact approval, current revision and durable mutation receipt. Reuse those constraints, including the prohibition on model-driven Core profile changes. Do not infer broader permissions from the new API name.
 - Pi code mode is vendored but not installed in OpenBot's Harness. Its `models.*` default is enabled, output overflow may use `api.env`, and `store/load` persist per conversation. These defaults need deliberate integration.
 - Pi's nested results are task-scoped and cleaned up when the parent settles. They do not replace OpenBot's durable application mutation receipts or human-visible operation history.
@@ -66,7 +66,7 @@ Create files within current packages. A package named `app-api` is unnecessary u
 
 ## Capability contract
 
-Proposed contracts, not current APIs:
+Target contracts: B24 implements the five read descriptors; inspect/mutation descriptors and Code Mode remain planned:
 
 ```ts
 type AppCapabilityId =

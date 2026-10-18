@@ -1,3 +1,7 @@
+import { CODEMODE_DEFINITION } from "./app-execution.ts";
+export * from "./app-execution.ts";
+import { APP_TOOL_DEFINITIONS } from "./app-capabilities.ts";
+export * from "./app-capabilities.ts";
 /**
  * Versioned OpenBot data contracts shared by Desktop, the Host Runtime, and executors.
  * This package contains types, parameter schemas, and pure helpers only: no Pi, Electron, or Node dependencies. Its one
@@ -252,6 +256,7 @@ export type TranscriptItem =
 			readonly output?: string;
 			/** Set when a `local_exec` call moved its command to the background. */
 			readonly taskId?: string;
+			readonly execution?: import("./app-execution.ts").AppExecution;
 	  }
 	/** Where earlier messages left the model's context: a compaction summary or a new topic. */
 	| { readonly kind: "divider"; readonly id: string; readonly reason: "compaction" | "reset" }
@@ -472,7 +477,7 @@ export type HostMethods = {
 	};
 	"conversations.snapshot": { params: { readonly botId: BotId }; result: ConversationSnapshot };
 	"conversations.search": {
-		params: { readonly query: string; readonly unreadOnly?: boolean; readonly includeHidden?: boolean; readonly cursor?: string };
+		params: { readonly query: string; readonly unreadOnly?: boolean; readonly includeHidden?: boolean; readonly conversationKey?: ConversationKey; readonly cursor?: string };
 		result: ConversationSearchResult;
 	};
 	"conversations.list": { params: Record<string, never>; result: readonly ConversationSummary[] };
@@ -717,6 +722,8 @@ export type ToolOutcome = {
 	readonly status: InvocationStatus;
 	/** Bounded text for the model. */
 	readonly output: string;
+	/** Validated JSON for programmatic callers; absent for existing text-only work tools. */
+	readonly value?: import("./app-capabilities.ts").JsonValue;
 	/** Command exit details, separate from whether the invocation itself succeeded. */
 	readonly exit?: { readonly code: number | null; readonly signal: string | null };
 	readonly truncated?: boolean;
@@ -758,12 +765,13 @@ export type ExecutorMessage =
 // Tool catalog: what the model is offered. Schemas are plain JSON Schema, which Pi validates tool arguments against.
 
 export type ToolCapability =
-	"files.read" | "files.write" | "commands" | "tasks" | "web" | "memory" | "bot.management" | "group.management" | "collaboration";
+	"app.orchestrate" | "app.read" | "files.read" | "files.write" | "commands" | "tasks" | "web" | "memory" | "bot.management" | "group.management" | "collaboration";
 
 export type ToolDefinition = {
 	readonly name: string;
 	readonly description: string;
 	readonly parameters: Readonly<Record<string, unknown>>;
+	readonly resultSchema?: Readonly<Record<string, unknown>>;
 	readonly capability: ToolCapability;
 	readonly destination: "executor" | "host";
 };
@@ -794,6 +802,8 @@ const groupFields = {
 	leadBotId: string("Member with the lead role; ordinary messages always go to Core"),
 };
 export const TOOL_CATALOG = [
+	...APP_TOOL_DEFINITIONS,
+	CODEMODE_DEFINITION,
 	...(["bot_delegate", "bot_handoff"] as const).map((name) => ({
 		name,
 		capability: "collaboration" as const,

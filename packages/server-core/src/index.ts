@@ -2,6 +2,7 @@
  * Transport-independent application methods for the Host Runtime. Process composition, credential storage, and IPC
  * live in `apps/local-server`; this package only sees ports.
  */
+import { AppCapabilities } from "./app-capabilities.ts";
 import { randomUUID } from "node:crypto";
 import type { BotRuntime, ConfigEnvironment, ModelConfigStatus } from "@openbot/agent-runtime";
 import type { ApprovalBook } from "./approvals.ts";
@@ -91,6 +92,7 @@ export type HostServiceOptions = {
 type Handlers = { [M in HostMethod]: (params: HostParams<M>) => Promise<HostResult<M>> };
 
 export class HostService {
+	readonly capabilities: AppCapabilities;
 	readonly management: BotManagement;
 	readonly groups: Groups;
 	#botChanges: Promise<unknown> = Promise.resolve();
@@ -147,6 +149,7 @@ export class HostService {
 			settled: this.#toolSettled,
 			stopping: (botId, channelId, runId) => this.#conversationStopped(botId, channelId, runId),
 		});
+		this.capabilities = new AppCapabilities(this.#runtime, this.#status.targetId, run => this.groups.admissible(run));
 		this.#policy = new PolicyService({ runtime: this.#runtime, approvals: this.#approvals, workspace: this.#workspace, now: this.#now });
 		this.#feed = new ConversationFeed({
 			deliver: (snapshot) => this.#emit({ type: "conversation.updated", payload: snapshot }),
@@ -182,22 +185,8 @@ export class HostService {
 				return profile;
 			},
 			"conversations.snapshot": async ({ botId }) => this.#view(await this.#runtime.snapshot(botId)),
-			"conversations.search": async ({ query, unreadOnly = false, includeHidden = false, cursor }) => {
-				const [bots, groups, summaries] = await Promise.all([this.#runtime.listBots(), this.#runtime.groups().list(), this.#runtime.conversationIndex().list()]);
-				const unread = new Set(summaries.filter((r) => r.unreadCount > 0).map((r) => r.conversationKey));
-				const keys = [
-					...bots.filter((b) => b.status === "active" || (includeHidden && b.status === "hidden")).map((b) => `bot:${b.botId}` as const),
-					...groups.map((g) => `group:${g.groupId}` as const),
-				].filter((key) => !unreadOnly || unread.has(key));
-				return this.#runtime.searchConversations(query, new Set(keys), unreadOnly, includeHidden, cursor);
-			},
-			"conversations.list": async () => {
-				const keys = new Set([
-					...(await this.#runtime.listBots()).filter((b) => b.status !== "deleted").map((b) => `bot:${b.botId}`),
-					...(await this.#runtime.groups().list()).map((g) => `group:${g.groupId}`),
-				]);
-				return (await this.#runtime.conversationIndex().list()).filter((row) => keys.has(row.conversationKey));
-			},
+			"conversations.search": input => this.capabilities.desktopSearch(input),
+			"conversations.list": () => this.capabilities.desktopSummaries(),
 			"conversations.markRead": async ({ conversationKey, through }) => {
 				if (conversationKey.startsWith("bot:")) await this.#liveBot(conversationKey.slice(4));
 				else if (!conversationKey.startsWith("group:") || !await this.#runtime.groups().get(conversationKey.slice(6)))

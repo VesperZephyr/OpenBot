@@ -49,6 +49,8 @@ import {
 	type TranscriptItem,
 } from "@openbot/protocol";
 
+import { AppExecutionsDoc } from "./app-executions.ts";
+import { appCodemode, invokeAppChild, stopAppExecution, type OrchestrationAdmission } from "./codemode.ts";
 import { type ApprovalStore, approvalStore } from "./approvals.ts";
 import { type PolicyStore, policyStore } from "./policy.ts";
 import { applyMemoryEdit, checkMemorySize, type MemoryEdit, MemoryDoc, MemoryReceiptDoc, memoryState } from "./memory.ts";
@@ -126,6 +128,8 @@ export type ToolInvoker = (call: {
 	readonly runId?: string;
 	readonly collaboration?: { readonly runId: string };
 	readonly authority?: ManagementAuthority;
+	readonly appExecutionId?: string;
+	readonly appAuthority?: import("@openbot/protocol").AppReadAuthority;
 	readonly botId: BotId;
 	readonly conversationId: string;
 	readonly callId: string;
@@ -133,7 +137,7 @@ export type ToolInvoker = (call: {
 	readonly args: Readonly<Record<string, unknown>>;
 	readonly signal: AbortSignal;
 	readonly onProgress: (output: string) => void;
-}) => Promise<{ readonly status: string; readonly output: string; readonly taskId?: string }>;
+}) => Promise<{ readonly status: string; readonly output: string; readonly value?: import("@openbot/protocol").JsonValue; readonly taskId?: string }>;
 
 export type BotRuntimeOptions = {
 	/** SQLite file owned exclusively by this Host process. */
@@ -146,7 +150,8 @@ export type BotRuntimeOptions = {
 	/** Credential store for the default model collection; the Host passes a Keychain-backed store. */
 	readonly credentials?: CredentialStore;
 	/** Without an invoker, Bots get no tools and can only answer in text. */
-	readonly tools?: { readonly invoke: ToolInvoker; readonly definitions: readonly ToolDefinition[] };
+	readonly tools?: { readonly invoke: ToolInvoker; readonly definitions: readonly ToolDefinition[]; readonly admitOrchestration?: OrchestrationAdmission };
+	readonly codemodeAssets?: {workerUrl:string;wasmPath:string};
 	readonly context?: Context;
 };
 
@@ -178,7 +183,7 @@ export type SubmitResult =
 
 export class BotRuntime {
 	readonly #harness: Harness;
-	readonly #extensions: { bot: Extension; core: Extension; group: Extension };
+	readonly #extensions: { bot: Extension; core: Extension; group: Extension; app: Extension };
 	readonly #models: MutableModels;
 	readonly #context: Context;
 	/** Built-in providers as registered at open, so a removed overlay restores the original. */
@@ -193,7 +198,7 @@ export class BotRuntime {
 		harness: Harness,
 		models: MutableModels,
 		context: Context,
-		extensions: { bot: Extension; core: Extension; group: Extension },
+		extensions: { bot: Extension; core: Extension; group: Extension; app: Extension },
 	) {
 		this.#extensions = extensions;
 		this.#harness = harness;
@@ -212,7 +217,7 @@ export class BotRuntime {
 				options.tools === undefined
 					? []
 					: options.tools.definitions
-							.filter((d) => !d.capability.endsWith(".management") && d.capability !== "collaboration")
+							.filter((d) => !d.capability.endsWith(".management") && d.capability !== "collaboration" && d.capability !== "app.read" && d.capability !== "app.orchestrate")
 							.map((definition) => routedTool(definition, options.tools!.invoke)),
 			sections: botSections(async (input, context) => {
 				const bots = (await input.read.snapshot(BotsDoc, context))?.bots ?? {};
@@ -235,6 +240,22 @@ export class BotRuntime {
 				.filter((d) => d.capability === "collaboration")
 				.map((d) => routedTool(d, options.tools!.invoke)),
 		});
+		const code = options.tools?.admitOrchestration ? appCodemode(options.tools.admitOrchestration, async (api, context) => {
+			const saved = await api.memo<import("./codemode.ts").CodeIdentity>("openbot.code-identity", context);
+			if (saved) return saved;
+			const bots = (await api.snapshot(BotsDoc, context))?.bots ?? {};
+			const direct = Object.values(bots).find(b => b.conversationId === Number(api.conversationId));
+			const channel = Object.values((await api.snapshot(ChannelsDoc, context))?.channels ?? {}).find(c => c.conversationId === Number(api.conversationId));
+			const botId = direct?.botId ?? channel?.botId;
+			const run = Object.values((await api.snapshot(RunsDoc, context))?.runs ?? {}).find(r => r.botId === botId && (r.channelId ?? "direct") === (channel?.channelId ?? "direct") && r.state === "running");
+			if (!botId || !run?.origin || !run.requestIds[0]) throw Error("Code Mode is not authorized");
+			return api.memo("openbot.code-identity", {botId, authority:{runId:run.runId,channelId:run.channelId??"direct",origin:run.origin,rootRequestId:run.requestIds[0]}}, context);
+		}, options.codemodeAssets) : undefined;
+		const app = defineExtension({...code, name: "openbot.app-read", tools: [
+			...(code?.tools ?? []),
+			...(options.tools?.definitions ?? []).filter(d => d.capability === "app.read").map(d => routedTool(d, options.tools!.invoke, !!code)),
+		]});
+		registry.install(app);
 		registry.install(group);
 		registry.install(bot);
 		registry.install(core);
@@ -258,10 +279,11 @@ export class BotRuntime {
 		}, context);
 		await harness.commit(async (tx) => {
 			const channels = await tx.doc(ChannelsDoc);
+			const bots = (await tx.doc(BotsDoc)).bots;
 			for (const channel of Object.values(channels.channels))
-				await configure(tx, channel.conversationId as PiConversationId, { extensions: [bot, group] });
+				await configure(tx, channel.conversationId as PiConversationId, { extensions: [bot, group, ...(bots[channel.botId]?.kind === "core" ? [app] : [])] });
 		}, context);
-		return new BotRuntime(harness, models, context, { bot, core, group });
+		return new BotRuntime(harness, models, context, { bot, core, group, app });
 	}
 
 	/** Start the scheduler so work interrupted by the last shutdown continues. Call after recovery checks pass. */
@@ -282,10 +304,17 @@ export class BotRuntime {
 		return conversationIndexStore(this.#harness, this.#context);
 	}
 
-	searchConversations(query: string, eligible: ReadonlySet<string>, unreadOnly = false, includeHidden = false, cursor?: string) {
+	searchConversations(query: string, eligible: ReadonlySet<string>, unreadOnly = false, includeHidden = false, cursor?: string, scope = "legacy") {
 		if (query.length > 200) throw new ProtocolError("invalid_request", "Search is limited to 200 characters");
 		const normalized = normalizeQuery(query);
-		return this.#search.search(normalized, eligible, JSON.stringify([normalized, unreadOnly, includeHidden]), cursor);
+		return this.#search.search(normalized, eligible, JSON.stringify([normalized, unreadOnly, includeHidden, scope]), cursor);
+	}
+
+	async committedMessages(key: import("@openbot/protocol").ConversationKey) {
+		const bot = key.startsWith("bot:") ? await this.getBot(key.slice(4)) : undefined;
+		const exists = key.startsWith("bot:") ? !!bot && bot.status !== "deleted" : !!await this.groups().get(key.slice(6));
+		if (!exists) throw new ProtocolError("not_found", "Conversation is unavailable");
+		return this.#search.read(key);
 	}
 
 	groups() {
@@ -327,7 +356,7 @@ export class BotRuntime {
 			await configure(tx, conversation.id, {
 				...agentChange({ ...bot, ...((bot.model ?? defaultModel) ? { model: (bot.model ?? defaultModel)! } : {}) }),
 				instructions: revisionedInstructions(bot.instructions, bot.revision ?? 1),
-				extensions: [this.#extensions.bot, this.#extensions.group],
+				extensions: [this.#extensions.bot, this.#extensions.group, ...(bot.kind === "core" ? [this.#extensions.app] : [])],
 			});
 			channels.channels[key] = { botId, channelId, conversationId: conversation.id };
 			return String(conversation.id);
@@ -379,7 +408,7 @@ export class BotRuntime {
 			const doc = await tx.doc(BotsDoc);
 			const existing = doc.bots[botId]!;
 			doc.bots[botId] = { ...existing, kind: "core", status: "active", pinned: true };
-			await configure(tx, existing.conversationId as PiConversationId, { extensions: [this.#extensions.bot, this.#extensions.core] });
+			await configure(tx, existing.conversationId as PiConversationId, { extensions: [this.#extensions.bot, this.#extensions.core, this.#extensions.app] });
 			return toProfile(JSON.parse(JSON.stringify(doc.bots[botId])) as BotRecord);
 		}, this.#context);
 	}
@@ -579,6 +608,16 @@ export class BotRuntime {
 	async cancel(botId: BotId, channelId = "direct", background = false): Promise<void> {
 		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		await conversation.abort(this.#context, { background });
+		const conversationId = await this.conversationKey(botId,channelId);
+		await stopAppExecution(conversationId);
+		await this.#harness.commit(async tx => {
+			for(const record of Object.values((await tx.doc(AppExecutionsDoc)).executions)) {
+				if(record.conversationId === conversationId && ["admitted","running"].includes(record.state)) {
+					record.state="cancelled";record.endedAt=Date.now();
+					for(const child of record.children)if(child.state==="running")child.state="cancelled";
+				}
+			}
+		},this.#context);
 	}
 
 	/**
@@ -817,11 +856,24 @@ export class BotRuntime {
 		return conversation;
 	}
 
+	async appExecution(id: string) {
+		return (await this.#harness.snapshot(AppExecutionsDoc, this.#context))?.executions[id];
+	}
+
 	/** Pi's view holds only the active context; prepend the stored entries before its head so history stays visible. */
 	async #project(record: BotRecord, view: ConversationView, channelId = "direct"): Promise<ConversationSnapshot> {
 		const marker = view.entries[0]?.head === undefined ? undefined : view.entries[0];
 		const earlier = marker === undefined ? [] : await this.#earlierEntries(record, marker);
-		const snapshot = projectView(record.botId, view, earlier);
+		const projected = projectView(record.botId, view, earlier);
+		const executions = new Map(Object.values((await this.#harness.snapshot(AppExecutionsDoc, this.#context))?.executions ?? {})
+			.filter(e => e.conversationId === String(record.conversationId)).map(e => [e.parentCallId,e]));
+		const snapshot = {
+			...projected,
+			items: projected.items.map(item => {
+				const execution = executions.get(item.id);
+				return item.kind === "tool" && item.tool === "codemode" && execution ? {...item, execution} : item;
+			}),
+		};
 		if (channelId === "direct") this.#search.project(`bot:${record.botId}`, directMessages(snapshot));
 		return {
 			...snapshot,
@@ -1050,15 +1102,18 @@ function projectView(botId: BotId, view: ConversationView, earlier: readonly Ent
 }
 
 /** A catalog tool registered with Pi. Replay-safe because the router and executor own idempotency (Section 5.1). */
-function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegistration {
+function routedTool(definition: ToolDefinition, invoke: ToolInvoker, codeOnly = false): ToolRegistration {
 	return defineTool({
 		name: definition.name,
+		callers: codeOnly ? ["tools"] : ["model"],
 		description: definition.description,
 		// Plain JSON Schema from the protocol catalog; Pi validates arguments against it before `execute`.
 		parameters: definition.parameters as never,
+		...(definition.resultSchema ? { structuredOutputSchema: definition.resultSchema as never } : {}),
 		replay: "safe",
 		executionMode: "sequential",
 		async execute(args, api, context) {
+			if (codeOnly) return invokeAppChild(definition, invoke, args, api, context);
 			const bots = (await api.snapshot(BotsDoc, context))?.bots ?? {};
 			const direct = Object.values(bots).find((bot) => bot.conversationId === Number(api.conversationId));
 			const channel = Object.values((await api.snapshot(ChannelsDoc, context))?.channels ?? {}).find(
@@ -1101,15 +1156,31 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 				);
 				runId = await api.memo("openbot.run-id", run?.runId ?? null, context);
 			}
+			let appAuthority: import("@openbot/protocol").AppReadAuthority | undefined;
+			if (definition.capability === "app.read") {
+				const saved = await api.memo<import("@openbot/protocol").AppReadAuthority | null>("openbot.app-authority", context);
+				if (saved !== undefined) appAuthority = saved ?? undefined;
+				else {
+					const run = runId ? (await api.snapshot(RunsDoc, context))?.runs[runId] : undefined;
+					appAuthority = (await api.memo("openbot.app-authority", run?.origin && run.requestIds[0] ? {
+						runId: run.runId, channelId: run.channelId ?? "direct", origin: run.origin, rootRequestId: run.requestIds[0],
+					} : null, context)) ?? undefined;
+				}
+			}
+			const required = new Set((definition.parameters.required as string[] | undefined) ?? []);
+			const input = definition.capability === "app.read"
+				? Object.fromEntries(Object.entries(args as Record<string, unknown>).filter(([key, value]) => value !== null || required.has(key) || !Object.hasOwn(definition.parameters.properties as object, key)))
+				: args;
 			const outcome = await invoke({
 				...(runId ? { runId } : {}),
 				...(collaboration ? { collaboration } : {}),
 				...(authority === undefined ? {} : { authority }),
+				...(appAuthority ? {appAuthority} : {}),
 				botId,
 				conversationId: String(api.conversationId),
 				callId: api.callId,
 				tool: definition.name,
-				args: args as Record<string, unknown>,
+				args: input as Record<string, unknown>,
 				signal,
 				onProgress: (output) => api.output(output),
 			});
@@ -1119,6 +1190,7 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker): ToolRegist
 			const text = outcome.status === "unknown" ? UNKNOWN_OUTCOME_TEXT : outcome.output === "" ? "(no output)" : outcome.output;
 			return {
 				output: [{ type: "text", text }],
+				...(outcome.value === undefined ? {} : { structuredOutput: outcome.value }),
 				isError: outcome.status !== "succeeded",
 				details: { status: outcome.status, ...(outcome.taskId === undefined ? {} : { taskId: outcome.taskId }) },
 			};

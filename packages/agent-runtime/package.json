@@ -10,6 +10,7 @@
 	"dependencies": {
 		"@earendil-works/chord": "workspace:*",
 		"@earendil-works/pi-ai": "workspace:*",
+		"@earendil-works/pi-codemode": "workspace:*",
 		"@earendil-works/pi-durable": "workspace:*",
 		"@openbot/protocol": "workspace:*",
 		"typebox": "1.3.27"

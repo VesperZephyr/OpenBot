@@ -1,7 +1,7 @@
 /** Rebuildable local search corpus. Durable transcripts remain the only source of truth. */
-import { ProtocolError, type ConversationKey, type ConversationPreview, type ConversationSearchHit, type ConversationSearchResult } from "@openbot/protocol";
+import { APP_MAX_RESULT_BYTES, ProtocolError, type ConversationKey, type ConversationPreview, type ConversationSearchHit, type ConversationSearchResult } from "@openbot/protocol";
 
-type Message = ConversationPreview & { conversationKey: ConversationKey };
+type Message = ConversationPreview & { conversationKey: ConversationKey; searchText: string };
 type Cursor = { fingerprint: string; at: number; conversationKey: string; messageId: string };
 const compare = (a: { at: number; conversationKey: string; messageId: string }, b: { at: number; conversationKey: string; messageId: string }) =>
 	b.at - a.at || lexical(a.conversationKey, b.conversationKey) || lexical(a.messageId, b.messageId);
@@ -38,8 +38,11 @@ export class ConversationSearchIndex {
 		const old = this.#messages.get(key) ?? [];
 		if (messages.length <= old.length) return;
 		this.#messages.set(key, [...old, ...messages.slice(old.length).map((m) => ({
-			...m, conversationKey: key, text: m.text.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, " ").replace(/\s+/gu, " ").trim(),
+			...m, conversationKey: key, searchText: m.text.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, " ").replace(/\s+/gu, " ").trim(),
 		}))]);
+	}
+	read(key: ConversationKey): readonly ConversationPreview[] {
+		return (this.#messages.get(key) ?? []).map(({conversationKey: _key, searchText: _searchText, ...message}) => ({...message}));
 	}
 	search(query: string, eligible: ReadonlySet<string>, fingerprint: string, cursor?: string): ConversationSearchResult {
 		const after = decode(cursor, fingerprint);
@@ -52,16 +55,24 @@ export class ConversationSearchIndex {
 				const order = { at: message.at, conversationKey: key, messageId: message.id };
 				if (after && compare(order, after) <= 0) continue;
 				if (candidates.length === 31 && compare(order, candidates[30]!) >= 0) continue;
-				const match = literal.exec(message.text);
+				const match = literal.exec(message.searchText);
 				if (!match) continue;
-				candidates.push(excerpt(message, match.index, match[0].length));
+				candidates.push(excerpt({...message, text:message.searchText}, match.index, match[0].length));
 				candidates.sort(compare);
 				if (candidates.length > 31) candidates.pop();
 			}
 		}
-		const items = candidates.slice(0, 30), last = items.at(-1);
-		return { items, ...(candidates.length > 30 && last ? { nextCursor: Buffer.from(JSON.stringify({
-			fingerprint, at: last.at, conversationKey: last.conversationKey, messageId: last.messageId,
-		})).toString("base64url") } : {}) };
+		const items = candidates.slice(0, 30);
+		const token = () => {
+			const last = items.at(-1)!;
+			return Buffer.from(JSON.stringify({fingerprint, at: last.at, conversationKey: last.conversationKey, messageId: last.messageId})).toString("base64url");
+		};
+		let nextCursor = candidates.length > items.length && items.length ? token() : undefined;
+		while (Buffer.byteLength(JSON.stringify({ok:true, value:{items, ...(nextCursor ? {nextCursor} : {})}})) > APP_MAX_RESULT_BYTES) {
+			items.pop();
+			if (!items.length) throw new ProtocolError("invalid_request", "Search result exceeds the size limit");
+			nextCursor = token();
+		}
+		return { items, ...(nextCursor ? {nextCursor} : {}) };
 	}
 }

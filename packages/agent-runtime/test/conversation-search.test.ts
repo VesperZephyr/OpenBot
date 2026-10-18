@@ -60,3 +60,21 @@ it("bounds pages across a 10,000-message corpus without loading or returning ful
 	expect(result.nextCursor).toBeDefined();
 	expect(JSON.stringify(result).length).toBeLessThan(20000);
 });
+
+it("preserves original context formatting and pages by serialized bytes without losing hits", () => {
+ const index = new ConversationSearchIndex();
+ const text = "needle\n\t```js\nconst x = 1;\n```";
+ index.project("group:g", [entry("context", text)]);
+ expect(index.read("group:g")[0]?.text).toBe(text);
+ expect(index.search("needle", eligible, "context").items[0]?.snippet).not.toContain("\n");
+ const messages = Array.from({length:40}, (_,i)=>entry(`${String(i).padStart(3,"0")}${"x".repeat(1000)}`, "needle " + "🦊".repeat(200), 100));
+ index.project("bot:a", messages);
+ const ids:string[]=[]; let cursor:string|undefined;
+ do {
+  const page=index.search("needle",new Set(["bot:a"]),"scope",cursor);
+  expect(Buffer.byteLength(JSON.stringify({ok:true,value:page}))).toBeLessThanOrEqual(32768);
+  expect(page.items.length).toBeLessThan(30);
+  ids.push(...page.items.map(m=>m.messageId));cursor=page.nextCursor;
+ } while(cursor);
+ expect(ids).toEqual(messages.map(m=>m.id));
+});

@@ -89,10 +89,10 @@ Architecture M3 (managed browser, takeover, secret requests), M6 (desktop comput
 
 ## Application capability foundation (D3)
 
-Owner-requested architecture increment: expose selected current application capabilities to Core through an authorized shared Host layer, then local programmatic composition. [D3](tasks/d3-app-capabilities.md) records source research, authority, module boundaries, budgets, recovery and privacy. No product behavior is changed by the design.
+Owner-requested architecture increment: expose selected current application capabilities to Core through an authorized shared Host layer, then local programmatic composition. [D3](tasks/d3-app-capabilities.md) records source research, authority, module boundaries, budgets, recovery and privacy. B24 implements the first authorized read slice.
 
-1. [B24: Authorized application API](tasks/b24-app-capability-api.md) — ready; shared typed read services, scoped search/history and Core routed tools.
-2. [B25: Local app Code Mode](tasks/b25-local-app-code-mode.md) — draft; reuse vendored Pi QuickJS/discovery/replay after the bounded-adapter and packaged-worker spike. Read-only application APIs first.
+1. [B24: Authorized application API](tasks/b24-app-capability-api.md) — done, in review in PR #23; five shared typed read services, scoped search/history and Core routed tools. 246 unit tests, 68 background e2e and isolated real-model private/group/restart verification.
+2. [B25: Local app Code Mode](tasks/b25-local-app-code-mode.md) — done, in review in PR #24 (stacked on #23); bounded Pi QuickJS/discovery/replay adapter, original Run authorization, durable bilingual activity and packaged worker assets. 259 unit tests, 69 background e2e, ad-hoc package and isolated real-model private/group/restart acceptance.
 3. [B26: Code Mode management](tasks/b26-code-mode-management.md) — draft; adapt existing Core Bot/group operations after B25 acceptance, retaining exact child approvals and mutation receipts.
 
 Attention-state mutation, UI navigation, cross-Bot memory operations, new dispatch surfaces and external API transports remain separately specified follow-ups. Existing desktop method availability never automatically confers model authority.

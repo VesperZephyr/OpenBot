@@ -2,7 +2,7 @@
  * Composes Tool Router for the Host: the policy port over the user's command policy and folder grants, the approval
  * book, the executor process, and Host tools. The executor re-checks every path against the grants it receives.
  */
-import { type ExecutionTarget, TOOL_CATALOG } from "@openbot/protocol";
+import { APP_TOOL_DEFINITIONS, type ExecutionTarget, TOOL_CATALOG } from "@openbot/protocol";
 import type { MemoryEdit, PolicyStore } from "@openbot/agent-runtime";
 import {
 	type ApprovalBook,
@@ -54,6 +54,7 @@ export function createToolRouter(options: {
 		approvals: options.approvals,
 		executor: options.executor,
 		hostTools: {
+			...Object.fromEntries(APP_TOOL_DEFINITIONS.map(d => [d.name, ((_args, _signal, call) => options.service().capabilities.invokeTool(call)) as import("@openbot/tool-router").HostToolHandler])),
 			bot_delegate: (_args, _signal, call) => options.service().groups.collaborate(call),
 			bot_handoff: (_args, _signal, call) => options.service().groups.collaborate(call),
 			group_inspect: (_args, _signal, call) => options.service().manageGroups(call),
@@ -75,7 +76,7 @@ export function createToolRouter(options: {
 			// Policy is read fresh for every call, so a rule or grant change applies to the next call (Section 5.3).
 			decide: async (call, definition) =>
 				(await options.service().groups.executionGate(call)) ??
-				(definition.capability === "collaboration"
+				((definition.capability === "app.read" || definition.capability === "app.orchestrate") ? options.service().capabilities.authorize(call) : definition.capability === "collaboration"
 					? options.service().groups.prepareCollaboration(call)
 					: definition.capability === "group.management"
 						? options.service().groups.prepare(call)

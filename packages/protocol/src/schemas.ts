@@ -6,6 +6,7 @@
 import { type Static, type TSchema, Type } from "typebox";
 import { Compile, type Validator } from "typebox/compile";
 import type { TLocalizedValidationError } from "typebox/error";
+import { APP_SEARCH_INPUT } from "./app-capabilities.ts";
 import { type HostMethod, type HostParams, MODEL_APIS } from "./index.ts";
 
 const Id = Type.String({ minLength: 1, maxLength: 256 });
@@ -78,7 +79,7 @@ export const HOST_PARAM_SCHEMAS = {
 	}),
 	"conversations.snapshot": BotOnly,
 	"conversations.list": NoParams,
-	"conversations.search": strict({ query: Type.String({ maxLength: 200 }), unreadOnly: Type.Optional(Type.Boolean()), includeHidden: Type.Optional(Type.Boolean()), cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 4096 })) }),
+	"conversations.search": APP_SEARCH_INPUT,
 	"conversations.markRead": strict({
 		conversationKey: Type.TemplateLiteral(
 			[Type.Union([Type.Literal("bot:"), Type.Literal("group:")]), Type.String()],

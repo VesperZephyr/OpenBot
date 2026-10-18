@@ -1,7 +1,7 @@
 # B25: Local Read-Only Application Code Mode
 
-Status: draft; do not implement the product rollout until the admission/limit spike below passes
-Branch: unclaimed (expected task/b25-local-app-code-mode)
+Status: implemented, in review in PR #24 (stacked on #23); acceptance recorded below
+Branch: task/b25-local-app-code-mode (based on B24 commit 510244a; PR #23 is not yet merged)
 Depends on: B24; [D3](d3-app-capabilities.md)
 Architecture: Sections 5.1, 5.10, 8.2
 
@@ -53,8 +53,45 @@ Record concrete adapter APIs, assertions and results here. If Pi lacks a necessa
 4. Full check/background e2e and inspected screenshots pass; isolated real-model composed search succeeds with the configured provider. Compare complete direct/composed task usage and latency as observations, not a required percentage gain.
 5. Build/package and exercise bundled worker/WASM loading. Report signing/native-permission limits separately.
 
-## Risks and open questions
+## Open questions
 
-- The exact pre-allocation bridge/output limiting hook and any minimal vendor patch are unresolved until the spike. Pi's existing heap limit alone is not a bound on all Host allocations.
-- Verify Pi nested sequencing and public parent ancestry APIs against the full integration; source inspection alone does not prove deadlock freedom.
-- Do not mark this spec ready until B24 has landed or its exact stable contracts and the spike results are incorporated.
+None blocking. B24 is the explicit stacked base until PR #23 merges. B26 remains separate.
+
+## Admission/limit spike design
+
+The pinned Pi exposes `acquireWorker` (release on actual exit), deterministic `start`, tool-task ancestry through `getTask`, and `executeTool` stable keys. Its VM bridge has no configurable pre-post call/byte budget. OB-CODEMODE-1 adds optional generic bridge limits to pi-codemode: request count, tool count, outstanding calls, argument bytes, cumulative serialized output bytes/items, return bytes and scratch-write bytes. The VM latches a hard failure and interrupts on overflow before posting further messages, even when user code catches an error. Limits enter the deterministic fingerprint. OpenBot sets these options; upstream defaults remain unchanged.
+
+The runtime adapter wraps Pi's existing extension/tool executor with Host admission and a per-execution sandbox. Parent and child identities are read from Pi task ancestry and a task-keyed durable application execution document, never parsed from generated source. Host admission calls the B24 authorization gateway through Tool Router without its leaf mutex. App tools become tools-only; existing work and management tools become model-only. Original parent provenance and a catalog/adapter digest are reused on replay. VM deadlines are clamped again at start. Durable child metadata records IDs, capability, argument digest and status, without retaining intermediate results twice.
+
+A runtime-owned worker entry and WASM path are bundled alongside the Host; no Pi imports enter desktop or local-server. The spike uses synthetic data only. Its passing assertions enable the Core read-only extension.
+
+## Spike evidence (2026-10-18)
+
+- `apps/local-server/test/codemode.test.ts`: real Pi Harness + Tool Router + B24 gateway completes concurrent nested roster reads through sequential leaves, retains selected output only, rejects expired authority after a replacement Run, resumes a suspended child with its original ID/deadline and no repeated completed read, bounds pending floods, and stops an infinite VM.
+- `packages/agent-runtime/test/codemode.test.ts`: adapter version/catalog/identity/deadline rejection and physical worker capacity.
+- Pi bridge tests: loop/allocation/output/argument floods and caught errors remain bounded; Host timers keep ticking; worker slots release on actual exit. Existing durable Code Mode tests (47) preserve journal replay and model-disable behavior.
+- `stage-runtime.mjs` bundles `codemode-worker.mjs` and copies `quickjs.wasm`/license. The staged Node binary executed the bundled worker from `/tmp` and returned `bundled-worker-ok` with no checkout module imports. Final packaged app validation remains an acceptance check.
+- Adapter APIs are `getTask`, `agent.callable`, `memo`, `commit`, `createCodemodeTool`, deterministic `start`, `acquireWorker`, `onWorkerStarted`, and the traced OB-CODEMODE-1 generic bridge limits. The product source remains entirely in OpenBot modules.
+
+## Implementation and acceptance
+
+The runtime wraps the existing Pi extension and tool executor, without installing CodingTools or an unrestricted environment. The Host is the sole execution-document owner. Caller restrictions apply to the actual Pi catalog. Each nested call uses the original parent record and B24 gateway both before and after reading. A stopped or invalidated execution cannot be revived by a late completion. Parent metadata survives disposal of Pi task documents; live and completed child activity uses the same local projection.
+
+Validation on 2026-10-18:
+
+- `pnpm run build:pi` and `pnpm run check`: boundaries/type checks and 259 tests across 43 files passed.
+- `pnpm run e2e`: 69 background tests across 21 suites passed. The composed-read suite additionally passed after final assertions for two model requests and one selected parent result. English/Chinese screenshots were inspected, including nested steps, denied reads, Stop and restart.
+- Pi Code Mode: 227 Node tests passed, three Bun-only cases skipped using a Node-only PATH; the existing Bun process-exit failures remain documented in vendor provenance. Pi Durable Code Mode: 47 tests passed. Effective bridge budgets participate in replay fingerprints; omitted budgets preserve upstream fingerprints.
+- `pnpm run package`: ad-hoc arm64 DMG built. Packaging now smoke-starts bundled Host/Executor from an isolated unrelated directory. JSONC uses its ESM entry because the UMD factory's relative require calls cannot be bundled. Worker/WASM/license assets load outside app.asar on bundled Node 24.22.0.
+- Isolated real desktop with `mafia / gpt-6.1-sol`: English private-history composition, Chinese current-group composition, persisted execution metadata and real search/read after complete desktop/Host restart. The background desktop loads the final packaged Host/Executor/Node/worker/WASM through development launch overrides. No owner conversations or workspace were used. Installed-app UI/signing/native permission acceptance is not claimed; Developer ID/notarization remain unverified.
+
+### Observed model cost and latency
+
+One synthetic retained-history question was run with the same configured model and fixture using the direct B24 adapter and B25 composition. The direct reference used a separate copied local database and the same full tool catalog, with Code Mode disabled at the runtime port. This is a single observation, not a benchmark or a savings promise. Provider cache behavior and generated scripts affect the result.
+
+| Whole task | Model requests | Uncached input | Cached input | Output | Reported total tokens | Wall time |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Direct search then read | 3 | 9,250 | 16,896 | 191 | 26,337 | 12.3 s |
+| Code Mode composition | 4 | 11,546 | 29,312 | 1,023 | 41,881 | 29.8 s |
+
+The composed run first discovered a declaration, then used a date regex that required a year and emitted no matching date. It corrected the script and returned the verified date and source IDs. Both composed scripts successfully performed authorized search/read; local VM execution was below 0.1 s each. Code Mode reduced neither model rounds nor tokens in this cold-discovery example. The scripted two-read composition uses two model requests and returns one selected tool result; intermediate reads remain local. Prompt/discovery efficiency and script quality remain follow-up product work.

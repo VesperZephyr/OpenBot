@@ -504,6 +504,12 @@ function MessageText({ parts, markdown = false }: { readonly parts: readonly { r
 }
 
 const TOOL_VERBS: Record<string, readonly [running: string, done: string]> = {
+	codemode: ["Reading application data", "Read application data"],
+	app_conversations_search: ["Searching chat history", "Searched chat history"],
+	app_conversations_read: ["Reading chat context", "Read chat context"],
+	app_conversations_list: ["Listing conversations", "Listed conversations"],
+	app_bots_list: ["Inspecting Bots", "Inspected Bots"],
+	app_groups_list: ["Inspecting groups", "Inspected groups"],
 	group_inspect: ["Inspecting groups", "Inspected groups"],
 	group_create: ["Creating group", "Created group"],
 	group_update: ["Updating group", "Updated group"],
@@ -533,6 +539,14 @@ function ToolCard({
 	readonly approval: PendingApproval | undefined;
 }) {
 	const args = (item.args ?? {}) as Record<string, unknown>;
+	let output = item.output;
+	if(item.tool === "codemode" && item.execution?.error) output=t(item.execution.error);
+	if (item.tool.startsWith("app_") && output) {
+		try {
+			const result = JSON.parse(output);
+			if (result.ok === false && typeof result.error?.message === "string") output = t(result.error.message);
+		} catch { /* Interrupted tools may not have a complete result envelope. */ }
+	}
 	const managedName = useStore(
 		(state) =>
 			state.bots.find((bot) => bot.botId === args.botId)?.name ?? state.groups.find((group) => group.groupId === args.groupId)?.name,
@@ -579,8 +593,13 @@ function ToolCard({
 					)}
 					<RevealButton item={item} />
 				</summary>
+				{item.execution ? <ul className="code-activity" aria-label={t("Application read steps")}>{item.execution.children.map(child => {
+					const verb = TOOL_VERBS[child.capability];
+					return <li key={child.callId} data-state={child.state}><span>{t(verb?.[child.state === "running" ? 0 : 1] ?? child.capability)}</span><span>{t(child.state === "running" ? "Running" : child.state === "succeeded" ? "Completed" : child.state === "cancelled" ? "Stopped" : "Failed")}</span></li>;
+				})}</ul> : null}
+				{item.tool === "codemode" && typeof args.code === "string" ? <details className="code-source"><summary>{t("View script")}</summary><pre className="tool-output">{args.code}</pre></details> : null}
 				{item.tool === "local_exec" && typeof args.command === "string" && <pre className="tool-command">$ {args.command}</pre>}
-				{item.output !== undefined && item.output !== "" && <pre className="tool-output">{item.output}</pre>}
+				{output !== undefined && output !== "" && <pre className="tool-output">{output}</pre>}
 			</details>
 			{approval !== undefined && <ApprovalCard approval={approval} />}
 		</li>
