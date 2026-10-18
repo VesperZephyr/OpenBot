@@ -1,7 +1,7 @@
 # B25: Local Read-Only Application Code Mode
 
 Status: draft; do not implement the product rollout until the admission/limit spike below passes
-Branch: unclaimed (expected task/b25-local-app-code-mode)
+Branch: task/b25-local-app-code-mode (based on B24 commit 510244a; PR #23 is not yet merged)
 Depends on: B24; [D3](d3-app-capabilities.md)
 Architecture: Sections 5.1, 5.10, 8.2
 
@@ -58,3 +58,11 @@ Record concrete adapter APIs, assertions and results here. If Pi lacks a necessa
 - The exact pre-allocation bridge/output limiting hook and any minimal vendor patch are unresolved until the spike. Pi's existing heap limit alone is not a bound on all Host allocations.
 - Verify Pi nested sequencing and public parent ancestry APIs against the full integration; source inspection alone does not prove deadlock freedom.
 - Do not mark this spec ready until B24 has landed or its exact stable contracts and the spike results are incorporated.
+
+## Admission/limit spike design
+
+The pinned Pi exposes `acquireWorker` (release on actual exit), deterministic `start`, tool-task ancestry through `getTask`, and `executeTool` stable keys. Its VM bridge has no configurable pre-post call/byte budget. OB-CODEMODE-1 adds optional generic bridge limits to pi-codemode: request count, tool count, outstanding calls, argument bytes, cumulative serialized output bytes/items, return bytes and scratch-write bytes. The VM latches a hard failure and interrupts on overflow before posting further messages, even when user code catches an error. Limits enter the deterministic fingerprint. OpenBot sets these options; upstream defaults remain unchanged.
+
+The runtime adapter wraps Pi's existing extension/tool executor with Host admission and a per-execution sandbox. Parent and child identities are read from Pi task ancestry and a task-keyed durable application execution document, never parsed from generated source. Host admission calls the B24 authorization gateway through Tool Router without its leaf mutex. App tools become tools-only; existing work and management tools become model-only. Original parent provenance and a catalog/adapter digest are reused on replay. VM deadlines are clamped again at start. Durable child metadata records IDs, capability, argument digest and status, without retaining intermediate results twice.
+
+A runtime-owned worker entry and WASM path are bundled alongside the Host; no Pi imports enter desktop or local-server. The spike uses synthetic data only. Product enablement remains gated until the assertions below pass.
