@@ -1,6 +1,6 @@
 # B26: Core Management Through Application Code Mode
 
-Status: done; in review in [PR #27](https://github.com/VesperZephyr/OpenBot/pull/27)
+Status: done; merged into main in [PR #27](https://github.com/VesperZephyr/OpenBot/pull/27)
 Branch: task/b26-code-mode-management; pull request target: main
 Depends on: B25, B18, B13b; [D3](d3-app-capabilities.md)
 Architecture: Sections 5.3, 5.7, 5.10, 8.2
