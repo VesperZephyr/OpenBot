@@ -79,3 +79,19 @@ No new notifications, native dialogs, focus requests, tray behavior or power ass
 ## Open questions
 
 None. Explicit global Resume restarts preserved queues; interrupted active work requires a separate user continuation. Native release evidence is outside this hidden verification run.
+
+## Acceptance evidence
+
+Implementation revision: `5a441b2` (2026-10-18). Pi source and package dependencies are unchanged.
+
+| Acceptance | Evidence |
+| --- | --- |
+| Lifecycle authority | `server-core/test/lifecycle.test.ts` and `desktop/test/lifecycle.test.ts`: native startup gate, full observation ordering, durable pause, multiple blockers, immediate model abort, repeated safe observations, persistence/stop/resume failure, idle quit and accepted group work |
+| Model/tool dispatch | `agent-runtime/test/model-gate.test.ts` covers generation/compaction gating after asynchronous request preparation and preserves admitted provider behavior. Router tests block direct tools, Code Mode parents, late approvals and delayed grants. Executor transport checks the latch after startup; background command tests wait for all supervised groups to exit |
+| Durable Runs | Scheduler tests cover preserved queues, fresh deduplicated continuation, unconfirmed stop, crash recovery before native readiness, committed-answer preservation and existing scoped Stop/capacity behavior. Group e2e proves a stopped chain does not wake peers after Resume |
+| Desktop | Seven `e2e/lifecycle.e2e.ts` scenarios: pause/reopen/queue/resume, simulated lock and command interruption, simulated suspend with approval withdrawal, Chinese controls, idle restart, hidden native authority, group stop, Code Mode cancellation and window-close continuity. Existing approval-recovery suites explicitly distinguish a Host crash from intentional application quit |
+| Automated checks | `pnpm run check`: 301 tests / 48 files. Full background `pnpm run e2e`: 80 tests / 23 files. Final persistence-failure and queued-group quit refinements passed focused unit checks and seven background lifecycle scenarios. `git diff --check` passed |
+| Bundled runtime | `node apps/desktop/scripts/stage-runtime.mjs` built the Host, executor and Code Mode assets and started bundled Node/Host/executor in an unrelated isolated directory without a UI or provider request |
+| Visual inspection | English interruption and Chinese paused/queued screenshots in `e2e/.run/lifecycle/` inspected; real-model Chinese completion/pause view inspected. Hidden windows remained inactive. Native lock/sleep events were simulated, never performed on the owner's session |
+| Real model | Isolated hidden Electron with the existing `mafia / gpt-6.1-sol` configuration. A queued synthetic request remained unsubmitted across restart. Resume led to one approved append followed by a sleeping command. Pause produced a settled interrupted Run and cancelled command receipt. Explicit Continue used `local_read`, returned English/Chinese confirmation, and left exactly one file line. Pause and the single effect survived another complete restart. Final spot check included the model lifecycle gate |
+| Privacy and release limits | Temporary copied model configuration removed; fixtures, screenshots and raw logs remain outside Git. Audit records excluded the marker and command text. Actual packaged lock/sleep delivery, signing/TCC, notifications and native power behavior remain release evidence gaps; no production app or native dialog was opened |
