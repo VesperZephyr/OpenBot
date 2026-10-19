@@ -1,6 +1,6 @@
 # B15b: Durable Background Command Completion
 
-Status: in progress
+Status: implemented; in review in [PR #36](https://github.com/VesperZephyr/OpenBot/pull/36)
 Branch: task/b15b-background-completion; PR target: main
 Depends on: verified B10 candidate `e30cf9eeaba057fea709e8e06af6b034d47068c4` (#35), including I1 #34 and B14b/B12a
 Architecture: Sections 5.1–5.3, 6.2 and 7.2
@@ -70,3 +70,16 @@ Local command completion subscriptions, bounded final-output receipts, restart-s
 ## Open questions
 
 None for this increment. Record a contract gap here before changing the design.
+
+
+## Verification evidence
+
+The implementation passed `pnpm run check` (390 tests / 60 files), the full hidden `pnpm run e2e` (108 tests / 30 files), and final completion regressions (five hidden desktop flows). A separate 16-test completion/collaboration/lifecycle rerun also passed. The final snapshot-retention regression keeps old pending tasks visible when newer completed history fills the bounded view. Bundled Host/executor startup passed with isolated state.
+
+Coverage includes one automatic result while another conversation responds, lost admission response/restart deduplication, terminal-source retention and old receipt replay, Stop before admission/late exit, reset/deletion/dissolution, consumed/unknown/mismatched receipts, single-flight polling, exact target, unattended approvals, denied Core management, approved follow-up commands without recursive wake, group reservation/replay/budget, UTF-8 output bounds, legacy SQLite migration, acknowledgement retention and content-free diagnostics. English/Chinese command cards and the real-model Chinese completion screenshot were inspected. Synthetic completion inputs are labeled and excluded from human-message search/preview projection.
+
+The isolated real model executed one synthetic background command and returned profit 13 automatically after its first turn. Evidence: source Run `run_9d3788e3-3e7c-4688-bc65-21a02814f95d`, continuation `run_fb2dc57e-524f-46ea-97e6-22fbaaa67cd0`, exactly one command and one completion input, no task_output calls, exact stored final output, 17,364 recorded tokens, stable result after restart, hidden/inactive windows and metadata-only operational logs. Final reopen rechecked durable evidence without repeating inference/effects. Temporary model configuration was removed; raw output, screenshots and local provider details remain outside Git.
+
+Earlier validation corrected two test text locators. The real file-count spill fixture hit its five-second deadline under full-suite disk contention; its allowance is now fifteen seconds with all assertions unchanged. Final checks passed. No product timeout was relaxed.
+
+PR #36 targets main and depends on B10 #35; it also incorporates main's D4 merge. No merge to main or release was performed. Native signing/TCC, live connector credential identity and physical power events remain separate release gates. B9a supervised stdio connectors is next.

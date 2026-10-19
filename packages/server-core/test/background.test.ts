@@ -132,10 +132,13 @@ it("waits for the source turn then delivers one separate unattended Run across d
 	await runtime.runsStore().put({ ...run!, state: "completed" });
 	await service.sweep();
 	expect((await runtime.background().get(receipt.invocationId))?.state).toBe("delivered");
-    for(let i=0;i<60;i++)await runtime.runsStore().put({...source,state:"completed",endedAt:100+i,createdAt:100+i,runId:`later${i}`,requestIds:[`later${i}`]});
-    expect(await runtime.runsStore().get("source")).toBeUndefined();
-    expect((await service.settle(call,{status:"succeeded",output:"Started",taskId:receipt.taskId})).status).toBe("succeeded");
-    expect((await runtime.background().get(receipt.invocationId))?.state).toBe("delivered");
+	for (let i = 0; i < 60; i++)
+		await runtime
+			.runsStore()
+			.put({ ...source, state: "completed", endedAt: 100 + i, createdAt: 100 + i, runId: `later${i}`, requestIds: [`later${i}`] });
+	expect(await runtime.runsStore().get("source")).toBeUndefined();
+	expect((await service.settle(call, { status: "succeeded", output: "Started", taskId: receipt.taskId })).status).toBe("succeeded");
+	expect((await runtime.background().get(receipt.invocationId))?.state).toBe("delivered");
 });
 it("reconciles a crash after admission with the same logical request", async () => {
 	await subscribe();
@@ -170,6 +173,22 @@ it("never turns uncertain receipts or failed sources into new work", async () =>
 	await service.sweep();
 	expect(submit).not.toHaveBeenCalled();
 	expect((await runtime.background().get(receipt.invocationId))?.state).toBe("attention");
+	for (const [index, state] of (["failed", "needs_attention", "completed"] as const).entries()) {
+		await runtime.runsStore().put({ ...source, state: "running" });
+		call = { ...call, callId: `failure${index}` };
+		receipt = { ...receipt, invocationId: `${call.conversationId}:${call.callId}`, taskId: `task_failure${index}`, status: "succeeded" };
+		await subscribe();
+		await runtime
+			.runsStore()
+			.put({
+				...source,
+				state,
+				...(state === "completed" ? { interruption: { reason: "user" as const, requestedAt: 1, settledAt: 2 } } : {}),
+			});
+		await service.sweep();
+		expect((await runtime.background().get(receipt.invocationId))?.state).toBe("suppressed");
+	}
+	expect(submit).not.toHaveBeenCalled();
 });
 it("rejects origin changes, conflicting identities and recursive background subscriptions", async () => {
 	await subscribe();
@@ -246,8 +265,15 @@ it("records metadata transitions without command output", async () => {
 	expect(audit.mock.calls.some(([event]) => event.state === "queued")).toBe(true);
 });
 
-it("keeps an old pending command visible when newer completed history fills the snapshot",async()=>{
- await subscribe();receipt={...receipt,status:"running"};const record=(await runtime.background().get(receipt.invocationId))!;
- for(let i=0;i<70;i++)await runtime.background().reserve({...record,invocationId:`history${i}`,taskId:`task_history${i}`,state:"delivered"});
- await service.sweep();const visible=service.view("bot",call.conversationId);expect(visible).toHaveLength(64);expect(visible[0]?.invocationId).toBe(receipt.invocationId);expect(visible.at(-1)?.invocationId).toBe("history69");
+it("keeps an old pending command visible when newer completed history fills the snapshot", async () => {
+	await subscribe();
+	receipt = { ...receipt, status: "running" };
+	const record = (await runtime.background().get(receipt.invocationId))!;
+	for (let i = 0; i < 70; i++)
+		await runtime.background().reserve({ ...record, invocationId: `history${i}`, taskId: `task_history${i}`, state: "delivered" });
+	await service.sweep();
+	const visible = service.view("bot", call.conversationId);
+	expect(visible).toHaveLength(64);
+	expect(visible[0]?.invocationId).toBe(receipt.invocationId);
+	expect(visible.at(-1)?.invocationId).toBe("history69");
 });

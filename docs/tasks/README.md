@@ -152,4 +152,4 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Spec | Status |
 | --- | --- |
-| [B15b: Durable background command completion](b15b-background-completion.md) | in progress; depends on #35; targets main |
+| [B15b: Durable background command completion](b15b-background-completion.md) | in review (#36); depends on #35; targets main |

@@ -67,12 +67,19 @@ export class BackgroundTasks {
 		for (const botId of new Set(this.#records.map((r) => r.botId))) this.options.changed(botId);
 	}
 	view(botId?: string, conversationId?: string, groupId?: string): BackgroundRecord[] {
-        const records=this.#records.filter(r=>r.taskId&&(!botId||r.botId===botId)&&(!conversationId||r.conversationId===conversationId)&&(!groupId||r.channelId===groupId));
-        const pending=records.filter(r=>!backgroundTerminal(r)), remaining=Math.max(0,64-pending.length);
-        const recent=remaining?records.filter(backgroundTerminal).slice(-remaining):[];
-        const visible=new Set([...pending,...recent].map(r=>r.invocationId));
-        return records.filter(r=>visible.has(r.invocationId));
-    }
+		const records = this.#records.filter(
+			(r) =>
+				r.taskId &&
+				(!botId || r.botId === botId) &&
+				(!conversationId || r.conversationId === conversationId) &&
+				(!groupId || r.channelId === groupId),
+		);
+		const pending = records.filter((r) => !backgroundTerminal(r)),
+			remaining = Math.max(0, 64 - pending.length);
+		const recent = remaining ? records.filter(backgroundTerminal).slice(-remaining) : [];
+		const visible = new Set([...pending, ...recent].map((r) => r.invocationId));
+		return records.filter((r) => visible.has(r.invocationId));
+	}
 
 	async start() {
 		await this.#refresh();
@@ -163,7 +170,7 @@ export class BackgroundTasks {
 			const id = `${call.conversationId}:${call.callId}`,
 				store = this.options.runtime.background();
 			const record = await store.bind(id, outcome.taskId);
-            if(record && (record.state === "delivered" || record.state === "attention")) return outcome;
+			if (record && (record.state === "delivered" || record.state === "attention")) return outcome;
 			if (record && (!(await this.#source(record)) || record.state === "suppressed")) {
 				await store.update(id, { state: "suppressed", reason: "The originating task is no longer eligible" });
 				await this.options.port?.stop(id);

@@ -1,6 +1,6 @@
 # OpenBot Technical Plan
 
-Last updated: 2026-10-18.
+Last updated: 2026-10-19.
 
 This plan turns [the architecture](architecture.md) into an ordered sequence of work. The architecture defines contracts and boundaries; this document records what exists, what each milestone builds, how each step is verified, and which decisions are still open. When the two disagree, fix the architecture first, then update this plan.
 
@@ -9,6 +9,8 @@ Each section marks state explicitly: **Implemented** means code in the repositor
 Delivery sequencing after merged B26 is maintained in the [development roadmap](development-roadmap.md), designed in [D4](tasks/d4-delivery-plan.md). B14a, B15a, B14b, B12a and B13d are implemented in review branches. I1 combines their contracts in PR #34 before the B10 skills increment: 358 unit/Host tests, 99 hidden e2e tests, bundled startup and an isolated real-model workflow passed. Native release evidence remains separate from feature merges.
 
 B10 is in review in PR #35, based on I1: 370 unit/Host tests, 103 hidden e2e tests, bundled startup and isolated real-model skill reuse passed. The library remains local and no skill changes tool authority.
+
+B15b is in review in PR #36: durable command completion receipts, separate unattended continuation, group-budget reservation and bilingual inline status. It passed 390 unit/Host tests, 108 hidden e2e tests, bundled startup and isolated real-model completion/restart verification.
 
 ## 1. Current State
 
@@ -24,6 +26,7 @@ B10 is in review in PR #35, based on I1: 370 unit/Host tests, 103 hidden e2e tes
 | `packages/local-executor`, `apps/local-executor` | Implemented: receipt ledger (`<data>/executor/receipts.sqlite`, accepted before effect, unknown after crash, digest check, ack and pruning); orphan process-group guard; read vs read-write grants; one output limiter with spill files under `<data>/artifacts`; `local_edit` expected SHA-256; background commands (`task_output`, `task_stop`, Stop ends them) | `local-executor/test/*.test.ts` |
 | `apps/local-server` | Implemented: data directory, `host.lock`, provider-key scrubbing, Keychain secret store, executor supervision, Tool Router composition, schema-checked IPC dispatch, recovery gate (executor ledger, approvals, Runs) before `resume()` | Host smoke scripts driving the real Host over IPC with a scripted model (memory, prompt, Runs and cap, approvals, web search, New topic, background tasks, Stop, read-only commands, Always allow, onboarding methods, subscriptions, duplicate and delete, schema rejection) |
 | `apps/desktop` | Implemented: onboarding, sidebar with Queued and Needs attention, transcript with collapsed steps, Copy, Reveal in Finder, thinking, dividers, Retry, Always allow card, Stop and pending messages, Settings (models, web search, commands, folders), Memory tab, Duplicate and Delete, notifications, dock badge, power assertion, `app://` renderer, TypeBox validation in main | Type check, unit tests, and the e2e suites (22 tests across 8 suites, green in CI on macOS for PR #3); packaged smoke of an ad-hoc DMG (Host on bundled Node, UI over `app://`) |
+| Background completion (B15b, PR #36) | Host-owned durable subscriptions; bounded executor final receipts; separate unattended Runs; group root reservation; suppression tombstones; bilingual inline controls | 390 unit/Host tests, 108 hidden e2e tests, final five-flow rerun, bundled startup and real-model one-shot completion/restart |
 | Reviewed skills (B10, PR #35) | Executor version store and verified SKILL.md; Host provenance/exact approval; Pi metadata and immutable skill input snapshots; bilingual library/review and composer selection | 370 unit/Host tests, 103 hidden e2e tests, inspected bilingual screenshots, bundled startup and real-model second-Bot reuse |
 | Desktop test execution | Implemented on `task/b7a-background-e2e`: background by default; hidden non-focusable windows, no native attention effects; explicit `e2e:headed` debugging | `pnpm run check` (163 tests), `pnpm run e2e` (24 tests, 9 suites); hidden-renderer screenshots inspected |
 | Desktop command path | Implemented on `task/b8a-login-path`: one bounded login-shell PATH probe before Host startup, reused on restart; inherited PATH fallback; other shell variables and output discarded | 15 resolver tests; ScriptedModel e2e from a system-only PATH; isolated agent-browser flow; ad-hoc package and bundled Host/executor smoke |
