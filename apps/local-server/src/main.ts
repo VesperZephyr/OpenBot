@@ -89,7 +89,8 @@ const router = createToolRouter({
 });
 
 const runtime = await BotRuntime.open({
-	executionGate: { assertAllowed: () => service.lifecycle.assertAllowed(), signal: () => service.lifecycle.signal },
+	skills:()=>service.skills.list(),
+ executionGate: { assertAllowed: () => service.lifecycle.assertAllowed(), signal: () => service.lifecycle.signal },
 	databasePath: join(dataDirectory, "openbot.sqlite"),
 	credentials,
 	tools: {
@@ -116,11 +117,16 @@ const status: HostStatus = {
 };
 
 const send = (message: HostToDesktop): void => {
-	if (process.send !== undefined && process.connected) process.send(message);
+	if (process.send !== undefined && process.connected)
+		process.send(message, (error) => {
+			// The parent can close the pipe after connected was checked. Drain work through normal shutdown.
+			if (error) void shutdown(1);
+		});
 };
 
 const service = new HostService({
-	artifacts: { request: (requestId, operation) => executor.artifactRequest(requestId, operation) },
+	skills:{request:(id,operation,revision,signal)=>executor.skillRequest(id,operation,revision,signal)},
+ artifacts: { request: (requestId, operation) => executor.artifactRequest(requestId, operation) },
 	nativeLifecycleRequired: process.env.OPENBOT_DESKTOP_LIFECYCLE === "1",
 	quiesce: () => executor.quiesce(),
  authorityExecutor:{synchronize:revision=>executor.synchronize(revision),revoke:ids=>executor.revoke(ids)},

@@ -1,3 +1,4 @@
+import { SkillLibrary } from "./Skills";
 import { UsagePanel } from "./UsagePanel";
 import { ArtifactCard } from "./ArtifactCard";
 import {LifecycleControls,InterruptedRun} from "./Lifecycle";
@@ -92,6 +93,7 @@ export function App() {
 					<>
 						{view.kind === "bot" && <Conversation key={view.botId} botId={view.botId} />}
 						{view.kind === "settings" && <Settings />}
+ {view.kind === "skills" && <SkillLibrary />}
 						{view.kind === "group" && <GroupView key={view.groupId} groupId={view.groupId} />}
 						{view.kind === "home" && <Home onNew={() => setCreating(true)} />}
 					</>
@@ -237,6 +239,7 @@ function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; 
  <LifecycleControls/>
 			<ConversationSearch query={query} unreadOnly={unreadOnly} />
 			<div className="sidebar-footer">
+ <button type="button" className={`nav-item ${view.kind === "skills" ? "is-selected" : ""}`} onClick={()=>useStore.setState({view:{kind:"skills"}})}>{t("Skills")}</button>
 				<button
 					type="button"
 					className={`nav-item ${view.kind === "settings" ? "is-selected" : ""}`}
@@ -470,7 +473,7 @@ function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 				item={entry}
 				retry={
 					retry?.id === entry.id
-						? { botId: snapshot.botId, text: retry.text, ...(retry.artifactIds ? { artifactIds: retry.artifactIds } : {}) }
+						? { botId: snapshot.botId, text: retry.text,...(retry.skills?{skills:retry.skills}:{}), ...(retry.artifactIds ? { artifactIds: retry.artifactIds } : {}) }
 						: undefined
 				}
 			/>
@@ -509,7 +512,7 @@ function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 
 function Message(props: {
 	readonly item: Exclude<TranscriptItem, { kind: "tool" | "divider" }>;
-	readonly retry: { readonly botId: string; readonly text: string; readonly artifactIds?: readonly string[] } | undefined;
+	readonly retry: { readonly botId: string; readonly text: string; readonly artifactIds?: readonly string[];readonly skills?:readonly import("@openbot/protocol").SkillRef[] } | undefined;
 }) {
 	const { item, retry } = props;
 	if (item.kind === "other") return null;
@@ -519,13 +522,14 @@ function Message(props: {
 			<MessageTime at={item.at} />
 			{item.kind === "assistant" && item.thinking !== undefined && <Thinking text={item.thinking} />}
 			<MessageText parts={item.parts} markdown={item.kind === "assistant"} />
-			{item.kind === "user" && item.attachments?.map((ref) => <ArtifactCard key={ref.artifactId} artifact={ref} />)}
+			{item.kind === "user" && item.skills?.map(skill=><span className="skill-chip" key={skill.name}>/{skill.name} <small>v{skill.revision}</small></span>)}
+ {item.kind === "user" && item.attachments?.map((ref) => <ArtifactCard key={ref.artifactId} artifact={ref} />)}
 			{item.kind === "user" && item.error && <p className="message-error">{t(item.error)}</p>}
 			{item.kind === "assistant" && item.error !== undefined && (
 				<div className="message-error">
 					{item.error}
 					{retry !== undefined && (
-						<RetryButton botId={retry.botId} text={retry.text} {...(retry.artifactIds ? { artifactIds: retry.artifactIds } : {})} />
+						<RetryButton botId={retry.botId} text={retry.text} {...(retry.skills?{skills:retry.skills}:{})} {...(retry.artifactIds ? { artifactIds: retry.artifactIds } : {})} />
 					)}
 				</div>
 			)}
@@ -547,7 +551,9 @@ function MessageText({ parts, markdown = false }: { readonly parts: readonly { r
 }
 
 const TOOL_VERBS: Record<string, readonly [running: string, done: string, action?: string]> = {
-	artifact_publish: ["Publish result file", "Published result file"],
+	skill_load: ["Load skill", "Loaded skill"],
+ skill_save: ["Review skill", "Reviewed skill"],
+ artifact_publish: ["Publish result file", "Published result file"],
 	codemode: ["Reading application data", "Read application data"],
 	app_conversations_search: ["Searching chat history", "Searched chat history", "Search chat history"],
 	app_conversations_read: ["Reading chat context", "Read chat context", "Read chat context"],

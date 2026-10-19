@@ -13,7 +13,8 @@ export function PendingMessages({ snapshot }: { readonly snapshot: ConversationS
 		<>
 			{(snapshot.pending ?? []).map((message) => (
 				<li key={message.id} className="message message-user is-pending">
-					{message.attachments?.map((ref) => (
+					{message.skills?.map(skill=><span className="skill-chip" key={skill.name}>/{skill.name} <small>v{skill.revision}</small></span>)}
+ {message.attachments?.map((ref) => (
 						<ArtifactCard key={ref.artifactId} artifact={ref} />
 					))}
 					<div className="message-text">

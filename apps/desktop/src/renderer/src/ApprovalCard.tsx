@@ -1,3 +1,5 @@
+import { SkillReview } from "./Skills";
+import { validSkillOperation, type SkillChange } from "@openbot/protocol";
 import { useState, useEffect } from "react";
 import { legacyManagementName, type ApprovalDecision, type PendingApproval } from "@openbot/protocol";
 import { api, report } from "./store";
@@ -21,11 +23,12 @@ export function ApprovalCard({ approval }: { readonly approval: PendingApproval 
 	};
 	const tool = legacyManagementName(approval.tool);
 	const args = (approval.args ?? {}) as Record<string, unknown>;
+ const skillChange=tool==="skill_save"&&validSkillOperation(args)&&(args.action==="save"||args.action==="delete")?args as SkillChange:undefined;
 	return (
 		<div className="approval" data-approval-id={approval.approvalId} role="group" aria-label={t("Approval request")}>
 			<div className="approval-reason">{t(approval.reason)}</div>
    {approval.deadline!==undefined&&<p role="status">{expired?t("Approval expired"):t(approval.binding?.origin==="unattended"?"Unattended approval expires in {seconds}s":"Approval expires in {seconds}s",{seconds:Math.max(0,Math.ceil((approval.deadline-now)/1000))})}</p>}
-			{tool.startsWith("group_") ? (
+			{skillChange?<SkillReview change={skillChange}/>:tool.startsWith("group_") ? (
 				<GroupPreview args={args} action={tool.slice(6)} />
 			) : ["bot_create", "bot_update", "bot_delete"].includes(tool) ? (
 				<ManagementPreview args={{ ...args, action: tool.slice(4) }} />

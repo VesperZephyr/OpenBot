@@ -1,3 +1,5 @@
+import { SkillOperationError } from "@openbot/protocol";
+import type { SkillOperation, SkillResult } from "@openbot/protocol";
 import { randomUUID } from "node:crypto";
 /**
  * The Host's connection to the local executor process: starts it, checks its handshake against the bound target, and
@@ -15,7 +17,8 @@ export class ExecutorProcess implements ExecutorTransport {
 	readonly #entry: string;
 	readonly #env: NodeJS.ProcessEnv;
 	readonly #targetId: string;
-	readonly #artifactWaiters = new Map<
+	readonly #skillWaiters = new Map<string,{resolve:(result:SkillResult)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
+ readonly #artifactWaiters = new Map<
 		string,
 		{ resolve: (result: ArtifactOperationResult) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
 	>();
@@ -91,6 +94,15 @@ export class ExecutorProcess implements ExecutorTransport {
 		return waiting.promise;
 	}
 
+ async skillRequest(requestId:string,operation:SkillOperation,authorityRevision?:number,signal?:AbortSignal):Promise<SkillResult>{
+  await this.#start();
+  if(authorityRevision!==undefined){await this.synchronize(authorityRevision);this.#assertAllowed();signal?.throwIfAborted();}
+  if(this.#skillWaiters.size>=8)throw new Error("Too many skill requests");
+  const messageId=randomUUID(),waiting=Promise.withResolvers<SkillResult>();
+  const timer=setTimeout(()=>{this.#skillWaiters.delete(messageId);waiting.reject(new SkillOperationError("Skill operation timed out; retry the same request to reconcile",true));},10000);
+  this.#skillWaiters.set(messageId,{resolve:waiting.resolve,reject:waiting.reject,timer});
+  this.#send({kind:"skill.request",messageId,requestId,targetId:this.#targetId,operation,...(authorityRevision===undefined?{}:{authorityRevision})});return waiting.promise;
+ }
  async #control(message:Extract<ExecutorRequest,{kind:"policy.sync"|"execution.revoke"}>):Promise<void>{
   await this.#start();const waiting=Promise.withResolvers<void>();
   const timer=setTimeout(()=>{this.#controls.delete(message.messageId);waiting.reject(new Error("Permission reconciliation needs attention"));},10000);
@@ -166,7 +178,11 @@ export class ExecutorProcess implements ExecutorTransport {
     const control=this.#controls.get(message.messageId);if(control){clearTimeout(control.timer);this.#controls.delete(message.messageId);if(message.confirmed)control.resolve();else control.reject(new Error("Permission reconciliation needs attention"));return;}
    }
 			switch (message.kind) {
-				case "artifact.response": {
+				case "skill.response": {
+ const waiting=this.#skillWaiters.get(message.messageId);if(!waiting)return;this.#skillWaiters.delete(message.messageId);clearTimeout(waiting.timer);
+ if(message.error||!message.result)waiting.reject(new SkillOperationError(message.error??"Skill result is unavailable",message.uncertain===true));else waiting.resolve(message.result);return;
+ }
+ case "artifact.response": {
 					const pending = this.#artifactWaiters.get(message.messageId);
 					if (!pending) return;
 					this.#artifactWaiters.delete(message.messageId);
@@ -206,7 +222,8 @@ export class ExecutorProcess implements ExecutorTransport {
 		});
 		child.on("exit", (code, signal) => {
 			if (this.#child !== child) return;
-			for (const pending of this.#artifactWaiters.values()) {
+			for(const pending of this.#skillWaiters.values()){clearTimeout(pending.timer);pending.reject(new SkillOperationError("Skill operation was interrupted; retry the same request to reconcile",true));}this.#skillWaiters.clear();
+ for (const pending of this.#artifactWaiters.values()) {
 				clearTimeout(pending.timer);
 				pending.reject(new Error("Attachment operation was interrupted; its outcome may need reconciliation"));
 			}

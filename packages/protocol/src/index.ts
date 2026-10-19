@@ -1,3 +1,5 @@
+export * from "./skills.ts";
+import type { SkillChange, SkillSummary, SkillDetail, SkillVersion, SkillRef, SkillAttachment, SkillOperation, SkillResult } from "./skills.ts";
 import type { ArtifactRef, ArtifactContent, ArtifactOperation, ArtifactOperationResult } from "./artifacts.ts";
 import type {LifecycleState,NativeLifecycle,LifecycleReason} from "./lifecycle.ts";
 export type {LifecycleState,NativeLifecycle,LifecycleReason,LifecycleRecord} from "./lifecycle.ts";
@@ -249,6 +251,7 @@ export type TranscriptItem =
 			readonly parts: readonly MessagePart[];
 			readonly at?: number;
 			readonly attachments?: readonly ArtifactRef[];
+ readonly skills?:readonly SkillRef[];
 			readonly error?: string;
 	  }
 	| {
@@ -322,7 +325,7 @@ export type ConversationSnapshot = {
 	readonly pending?: readonly PendingMessage[];
 };
 
-export type PendingMessage = { readonly id: string; readonly parts: readonly MessagePart[]; readonly attachments?: readonly ArtifactRef[] };
+export type PendingMessage = { readonly id: string; readonly parts: readonly MessagePart[]; readonly attachments?: readonly ArtifactRef[]; readonly skills?:readonly SkillRef[] };
 
 /**
  * The work one message starts (Section 7.2). Messages sent while a Run is queued or running join it. A Run counts
@@ -497,6 +500,10 @@ export type ObservationCursor = { readonly streamId: string; readonly seq: numbe
 export type ObservationUpdate = ObservationCursor & { readonly changes: number };
 
 export type HostMethods = {
+ "skills.list": {params: Record<string,never>; result: readonly SkillSummary[]};
+ "skills.get": {params: {name:string; revision?:number}; result:SkillDetail};
+ "skills.save": {params: {requestId:string; name:string; expectedRevision:number; document:import("./skills.ts").SkillDocument}; result:SkillVersion};
+ "skills.delete": {params: {requestId:string; name:string; expectedRevision:number}; result:SkillVersion};
 	"observation.wait": { params: { readonly cursor?: ObservationCursor; readonly waitMs?: number }; result: ObservationUpdate };
 	"artifacts.import": { params: { requestId: string; path: string }; result: ArtifactRef };
 	"artifacts.export": { params: { requestId: string; artifactId: string; path: string }; result: null };
@@ -556,7 +563,7 @@ export type HostMethods = {
 	"conversations.list": { params: Record<string, never>; result: readonly ConversationSummary[] };
 	"conversations.markRead": { params: { readonly conversationKey: ConversationKey; readonly through: number }; result: null };
 	"messages.submit": {
-		params: { readonly botId: BotId; readonly requestId: string; readonly text: string; readonly artifactIds?: readonly string[] };
+		params: { readonly botId: BotId; readonly requestId: string; readonly text: string; readonly artifactIds?: readonly string[]; readonly skills?: readonly SkillRef[] };
 		/** `steered`: the message joined the Bot's running or queued Run instead of starting one. */
 		result: { readonly runId: RunId; readonly state: RunRecord["state"]; readonly steered: boolean };
 	};
@@ -643,6 +650,7 @@ export const HOST_METHODS = [
 	"artifacts.import",
 	"artifacts.export",
 	"artifacts.get",
+ "skills.list","skills.get","skills.save","skills.delete",
 	"artifacts.preview",
 	"artifacts.remove",
  "lifecycle.get","lifecycle.pause","lifecycle.resume","lifecycle.native","runs.continue",
@@ -824,6 +832,7 @@ export type ToolOutcome = {
 
 /** Host to executor. */
 export type ExecutorRequest =
+ | {readonly kind:"skill.request"; readonly messageId:string; readonly requestId:string; readonly targetId:string; readonly operation:SkillOperation; readonly authorityRevision?:number}
 	| {
 			readonly kind: "artifact.request";
 			readonly messageId: string;
@@ -845,6 +854,7 @@ export type ExecutorRequest =
 
 /** Executor to Host. */
 export type ExecutorMessage =
+ | {readonly kind:"skill.response"; readonly messageId:string; readonly result?:SkillResult; readonly error?:string; readonly uncertain?:boolean}
 	| { readonly kind: "artifact.response"; readonly messageId: string; readonly result: ArtifactOperationResult; readonly error?: never }
 	| { readonly kind: "artifact.response"; readonly messageId: string; readonly error: string; readonly result?: never }
  | {readonly kind:"policy.synced";readonly messageId:string;readonly confirmed:boolean}
@@ -880,6 +890,7 @@ export type ToolCapability =
 	| "tasks"
 	| "web"
 	| "memory"
+ | "skills"
 	| "bot.management"
 	| "group.management"
 	| "collaboration";
@@ -903,6 +914,8 @@ const object = (properties: Record<string, unknown>, required: readonly string[]
 });
 
 export const TOOL_CATALOG = [
+ {name:"skill_load", capability:"skills", destination:"host", description:"Load an exact reviewed shared skill as guidance. Use name, revision and sha256 from the skills list. It grants no permissions.", parameters:object({name:string("Skill name"),revision:integer("Exact revision"),sha256:string("Exact SHA-256")},["name","revision","sha256"])},
+ {name:"skill_save", capability:"skills", destination:"host", description:"Propose saving or deleting a shared procedure in a direct user conversation. Always requires exact user review. Use expectedRevision 0 for a new name; otherwise inspect the current revision. Never include secrets or task data. No implicit grants.", parameters:object({action:{type:"string",enum:["save","delete"]},name:string("Skill name"),expectedRevision:{type:"integer",minimum:0},document:object(Object.fromEntries(["name","description","inputs","requirements","steps","validation","output","approvalBoundaries"].map(key=>[key,string(key)])),["name","description","inputs","requirements","steps","validation","output","approvalBoundaries"])},["action","name","expectedRevision"])},
 	{
 		name: "artifact_publish",
 		capability: "files.read",

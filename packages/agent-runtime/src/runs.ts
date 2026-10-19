@@ -15,6 +15,7 @@ export type RunMessage = {
 	readonly requestId: string;
 	readonly text: string;
 	readonly attachments?: readonly import("@openbot/protocol").ArtifactRef[];
+ readonly skills?:readonly import("@openbot/protocol").SkillAttachment[];
 };
 
 /**
@@ -26,6 +27,7 @@ export type RunInput = {
 	readonly requestId: string;
 	readonly text: string;
 	readonly attachments?: readonly import("@openbot/protocol").ArtifactRef[];
+ readonly skills?:readonly import("@openbot/protocol").SkillAttachment[];
 	readonly submissionId?: string;
 	readonly outcome?: { readonly status: "done" | "unanswered"; readonly reason?: string };
 };

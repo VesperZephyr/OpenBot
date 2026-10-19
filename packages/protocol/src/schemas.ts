@@ -40,7 +40,13 @@ const GroupFields = strict({
 });
 const ArtifactId = Type.String({ pattern: "^artifact_[a-f0-9]{32}$" });
 const ArtifactPath = Type.String({ minLength: 1, maxLength: 4096 });
+const SkillName=Type.String({pattern:"^[a-z0-9]+(?:-[a-z0-9]+)*$",maxLength:64});
+const SkillDocument=strict({name:SkillName,description:Type.String({minLength:1,maxLength:300}),inputs:Type.String({minLength:1,maxLength:32768}),requirements:Type.String({minLength:1,maxLength:32768}),steps:Type.String({minLength:1,maxLength:32768}),validation:Type.String({minLength:1,maxLength:32768}),output:Type.String({minLength:1,maxLength:32768}),approvalBoundaries:Type.String({minLength:1,maxLength:32768})});
 export const HOST_PARAM_SCHEMAS = {
+ "skills.list":NoParams,
+ "skills.get":strict({name:SkillName,revision:Type.Optional(Type.Integer({minimum:1}))}),
+ "skills.save":strict({requestId:Id,name:SkillName,expectedRevision:Type.Integer({minimum:0}),document:SkillDocument}),
+ "skills.delete":strict({requestId:Id,name:SkillName,expectedRevision:Type.Integer({minimum:0})}),
 	"observation.wait": strict({
 		cursor: Type.Optional(strict({
 			streamId: Type.String({ minLength: 1, maxLength: 128 }),
@@ -105,6 +111,7 @@ export const HOST_PARAM_SCHEMAS = {
 		through: Type.Integer({ minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
 	}),
 	"messages.submit": strict({
+ skills:Type.Optional(Type.Array(strict({name:SkillName,revision:Type.Integer({minimum:1}),sha256:Type.String({pattern:"^[a-f0-9]{64}$"})}),{maxItems:2})),
 		botId: Id,
 		requestId: Id,
 		text: Type.String(),

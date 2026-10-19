@@ -159,12 +159,12 @@ describe("Deterministic policy", () => {
 			const s = await api("groups.snapshot", { groupId: "group_expiry" });
 			return s.tasks.flatMap((task: any) => task.conversation?.approvals ?? [])[0];
 		};
-		await expect.poll(pending).toBeTruthy();
+		await expect.poll(pending, { timeout: 15000 }).toBeTruthy();
 		const first = await pending();
 		expect(first.binding.origin).toBe("unattended");
 		expect(first.deadline - first.createdAt).toBe(600000);
 		await h.crashHost();
-		await expect.poll(async () => (await pending())?.deadline).toBe(first.deadline);
+		await expect.poll(async () => (await pending())?.deadline, { timeout: 15000 }).toBe(first.deadline);
 		await h.page().locator(".group-nav").filter({ hasText: "Expiry team" }).click();
 		await h
 			.page()

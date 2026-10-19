@@ -93,8 +93,8 @@ export class AuthorityCoordinator {
 				if (!run || run.botId !== call.botId || run.interruption)
 					throw new ProtocolError("permission_revoked", "permission_revoked: the Run was interrupted");
 			}
-			if (definition?.destination === "executor") {
-				const verdict = decide(
+			if (definition?.destination === "executor" || definition?.capability === "skills") {
+				const verdict = definition.capability === "skills" ? (call.tool === "skill_save" ? {kind:"ask" as const} : {kind:"allow" as const}) : decide(
 					call,
 					definition,
 					call.tool === "local_read"

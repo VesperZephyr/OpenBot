@@ -1,3 +1,4 @@
+import { Skills, type SkillPort } from "./skills.ts";
 import { Observation } from "./observation.ts";
 import { ARTIFACT_LIMITS } from "@openbot/protocol";
 import type { ArtifactRef, ArtifactContent, ArtifactOperation, ArtifactOperationResult } from "@openbot/protocol";
@@ -72,6 +73,7 @@ export interface ArtifactPort {
 }
 export type HostServiceOptions = {
 	readonly artifacts?: ArtifactPort;
+ readonly skills?:SkillPort;
  readonly authorityExecutor?:AuthorityExecutor;
  readonly nativeLifecycleRequired?:boolean;
  readonly quiesce?:()=>Promise<void>;
@@ -105,6 +107,7 @@ export type HostServiceOptions = {
 type Handlers = { [M in HostMethod]: (params: HostParams<M>) => Promise<HostResult<M>> };
 
 export class HostService {
+ readonly skills:Skills;
  readonly authority:AuthorityCoordinator;
  readonly lifecycle:LifecycleController;
 	readonly capabilities: AppCapabilities;
@@ -154,7 +157,8 @@ export class HostService {
 		this.#now = options.now ?? Date.now;
 		this.management = new BotManagement(this.#runtime, this.#status.targetId, this.#now);
 		this.#runs = new RunScheduler({
-			resolveAttachments: (botId, ids) => this.#resolveAttachments(botId, ids),
+			resolveSkills:refs=>this.skills.attachments(refs),
+ resolveAttachments: (botId, ids) => this.#resolveAttachments(botId, ids),
 			hydrateAttachments: async (botId, refs) => {
 				const current = await this.#resolveAttachments(
 					botId,
@@ -214,7 +218,13 @@ export class HostService {
 			...(options.coalesce?.windowMs === undefined ? {} : { windowMs: options.coalesce.windowMs }),
 			...(options.coalesce?.timers === undefined ? {} : { timers: options.coalesce.timers }),
 		});
-		this.#handlers = {
+		this.skills=new Skills({runtime:this.#runtime,...(options.skills?{port:options.skills}:{}),targetId:this.#status.targetId,assertAllowed:()=>this.lifecycle.assertAllowed(),changed:()=>this.#observation.changed(8)});
+ const skillChange=(requestId:string,change:import("@openbot/protocol").SkillChange)=>this.authority.change(async()=>this.skills.change(`desktop:${requestId}`,change,(await this.#runtime.policy().snapshot()).settings.revision));
+ this.#handlers = {
+ "skills.list":()=>this.skills.list(),
+ "skills.get":({name,revision})=>this.skills.get(name,revision),
+ "skills.save":({requestId,...change})=>skillChange(requestId,{action:"save",...change}),
+ "skills.delete":({requestId,...change})=>skillChange(requestId,{action:"delete",...change}),
 			"observation.wait": ({ cursor, waitMs }) => this.#observation.wait(cursor, waitMs),
 			"artifacts.import": ({ requestId, path }) => this.#artifact(requestId, { action: "import", path }) as Promise<ArtifactRef>,
 			"artifacts.export": ({ requestId, artifactId, path }) =>
@@ -265,13 +275,13 @@ export class HostService {
 					this.#emit({ type: conversationKey.startsWith("bot:") ? "bots.changed" : "groups.changed", payload: {} });
 				return null;
 			},
-			"messages.submit": async ({ botId, requestId, text, artifactIds }) => {
-				if (text.trim() === "" && !artifactIds?.length) throw new ProtocolError("invalid_request", "Message is empty");
+			"messages.submit": async ({ botId, requestId, text, artifactIds, skills }) => {
+				if (text.trim() === "" && !artifactIds?.length && !skills?.length) throw new ProtocolError("invalid_request", "Message is empty");
 				const bot = await this.#liveBot(botId);
 				if (bot.model === undefined && (await this.#runtime.defaultModel()) === undefined) {
 					throw new ProtocolError("invalid_request", "Choose a model in Settings before messaging a Bot");
 				}
-				return this.#runs.submit(botId, requestId, text, artifactIds ? { artifactIds } : {});
+				return this.#runs.submit(botId, requestId, text, {...(artifactIds?{artifactIds}:{}),...(skills?{skills}:{})});
 			},
 			"runs.cancel": async ({ runId }) => ({ state: await this.#runs.cancel(runId) }),
 			"approvals.decide": async ({ approvalId, decision }) => {
@@ -666,10 +676,11 @@ export class HostService {
 		if (stored === undefined) return snapshot;
 		const { messages, inputs: _inputs, ...run } = stored;
 		if (run.state !== "queued") return { ...snapshot, run };
-		const queued = messages.map(({ requestId, text, attachments }) => ({
+		const queued = messages.map(({ requestId, text, attachments, skills }) => ({
 			id: requestId,
 			parts: [{ type: "text" as const, text }],
 			...(attachments ? { attachments } : {}),
+ ...(skills?{skills:skills.map(({name,revision,sha256})=>({name,revision,sha256}))}:{}),
 		}));
 		return { ...snapshot, run, pending: [...(snapshot.pending ?? []), ...queued] };
 	}

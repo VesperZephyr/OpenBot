@@ -7,6 +7,7 @@ import type { GrantAccess, HostMethod, HostParams, HostResult } from "@openbot/p
 export const RENDERER_METHODS = [
 	"observation.wait",
 	"artifacts.get",
+ "skills.list","skills.get","skills.save","skills.delete",
 	"artifacts.preview",
 	"artifacts.remove",
 	"collaboration.stop",

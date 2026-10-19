@@ -1,6 +1,6 @@
 import { ArtifactCard } from "./ArtifactCard";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { api, report, sendMessage } from "./store";
+import { api, report, sendMessage, useStore } from "./store";
 import { t } from "./i18n";
 import { composers, useComposer } from "./useComposer";
 import type { ConversationKey, SendAttempt } from "./composers";
@@ -20,6 +20,18 @@ export function ChatComposer({
 }) {
 	const { draft, attempt } = useComposer(conversationKey);
 	const input = useRef<HTMLTextAreaElement>(null);
+ const skills=useStore(s=>s.skills);
+ const [skillPicker,setSkillPicker]=useState(false),[skillActive,setSkillActive]=useState(0),[skillDismissed,setSkillDismissed]=useState<string>();
+ const skillListId=useId();
+ const skillMatch=members?null:draft.text.match(/(?:^|\s)\/([a-z0-9-]*)$/);
+ const skillShowing=!members&&!readOnly&&(skillPicker||!!skillMatch&&skillDismissed!==draft.text);
+ const skillOptions=(skills??[]).filter(s=>s.available&&!s.deleted&&!draft.skills?.some(ref=>ref.name===s.name)&&s.name.includes(skillMatch?.[1]??""));
+ useEffect(()=>setSkillActive(0),[skillMatch?.[1],skillOptions.length]);
+ const chooseSkill=(skill:import("@openbot/protocol").SkillSummary)=>{
+  if((draft.skills?.length??0)>=2)return;
+  composers.edit(conversationKey,{skills:[...(draft.skills??[]),{name:skill.name,revision:skill.revision,sha256:skill.sha256}],...(skillMatch?{text:draft.text.slice(0,draft.text.lastIndexOf("/"))}:{})});
+  setSkillPicker(false);setSkillDismissed(draft.text);input.current?.focus();
+ };
 	const [attaching, setAttaching] = useState(false);
 	const [picker, setPicker] = useState(false),
 		[active, setActive] = useState(0),
@@ -57,6 +69,7 @@ export function ChatComposer({
 					a.text,
 					a.requestId,
 					a.attachments?.map((ref) => ref.artifactId),
+ a.skills,
 				)
 			: api["groups.send"]({
 					groupId: conversationKey.slice(6),
@@ -118,6 +131,10 @@ export function ChatComposer({
 				</p>
 			)}
 			<div className="composer">
+ {draft.skills?.map(skill=><button type="button" disabled={readOnly} key={skill.name} className="skill-chip" aria-label={t("Detach skill {name}",{name:skill.name})} onClick={()=>composers.edit(conversationKey,{skills:draft.skills?.filter(s=>s.name!==skill.name)??[]})}>/{skill.name} <small>v{skill.revision}</small> ×</button>)}
+ {skillShowing&&<div className="skill-options" role="listbox" id={skillListId} aria-label={t("Attach a skill")}>
+ {(draft.skills?.length??0)>=2?<p>{t("Select up to two distinct skills")}</p>:skillOptions.length?skillOptions.map((skill,index)=><button type="button" role="option" id={`${skillListId}-${index}`} aria-selected={index===skillActive} key={skill.name} onMouseDown={e=>e.preventDefault()} onClick={()=>chooseSkill(skill)}>/{skill.name} · v{skill.revision}<small> · {skill.description}</small></button>):<p>{t("No matching skills. Create one in Skills.")}</p>}
+ </div>}
 				{!!draft.attachments?.length && (
 					<div className="attachment-chips">
 						{draft.attachments.map((ref) => (
@@ -183,16 +200,22 @@ export function ChatComposer({
 					readOnly={readOnly}
 					aria-label={label}
 					placeholder={label}
-					aria-controls={showing ? listId : undefined}
-					aria-expanded={members ? showing : undefined}
-					aria-activedescendant={showing && options.length ? `${listId}-${active}` : undefined}
+					aria-controls={skillShowing?skillListId:showing ? listId : undefined}
+					aria-expanded={members ? showing : skillShowing}
+					aria-activedescendant={skillShowing&&skillOptions.length?`${skillListId}-${skillActive}`:showing && options.length ? `${listId}-${active}` : undefined}
 					onChange={(e) => {
 						composers.edit(conversationKey, { text: e.target.value });
 						setDismissed(undefined);
+ setSkillDismissed(undefined);
 					}}
 					onKeyDown={(e) => {
 						if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
-						if (showing) {
+						if(skillShowing){
+ if(e.key==="Escape"){e.preventDefault();e.stopPropagation();setSkillPicker(false);setSkillDismissed(draft.text);return;}
+ if(["ArrowDown","ArrowUp"].includes(e.key)){e.preventDefault();setSkillActive(n=>(n+(e.key==="ArrowDown"?1:-1)+skillOptions.length)%(skillOptions.length||1));return;}
+ if(["Enter","Tab"].includes(e.key)&&!e.shiftKey){e.preventDefault();if(skillOptions[skillActive])chooseSkill(skillOptions[skillActive]);return;}
+ }
+ if (showing) {
 							if (e.key === "Escape") {
 								e.preventDefault();
 								e.stopPropagation();
@@ -276,12 +299,13 @@ export function ChatComposer({
 									<span aria-hidden>＋</span>
 								</button>
 							)}
-							{controls}
+							{!members&&<button type="button" className="icon-button" aria-label={t("Attach a skill")} aria-expanded={skillShowing} onClick={()=>{setSkillPicker(!skillShowing);setSkillDismissed(skillShowing?draft.text:undefined);input.current?.focus();}}>/</button>}
+ {controls}
 							<button
 								type="button"
 								aria-label={t("Send")}
 								className="primary send"
-								disabled={(!draft.text.trim() && !draft.attachments?.length) || !!attempt || !!stale || attaching}
+								disabled={(!draft.text.trim() && !draft.attachments?.length && !draft.skills?.length) || !!attempt || !!stale || attaching}
 								onClick={() => void send()}
 							>
 								<span aria-hidden>↑</span>

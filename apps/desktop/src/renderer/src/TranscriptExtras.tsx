@@ -31,13 +31,15 @@ export function RetryButton({
 	botId,
 	text,
 	artifactIds,
+ skills,
 }: {
 	readonly botId: string;
 	readonly text: string;
 	readonly artifactIds?: readonly string[];
+ readonly skills?:readonly import("@openbot/protocol").SkillRef[];
 }) {
 	return (
-		<button type="button" className="retry" onClick={() => void sendMessage(botId, text, undefined, artifactIds).catch(report)}>
+		<button type="button" className="retry" onClick={() => void sendMessage(botId, text, undefined, artifactIds, skills).catch(report)}>
 			{t("Retry")}
 		</button>
 	);
@@ -50,7 +52,7 @@ export function RetryButton({
 export function retryTarget(
 	items: readonly TranscriptItem[],
 	live: boolean,
-): { readonly id: string; readonly text: string; readonly artifactIds?: readonly string[] } | undefined {
+): { readonly id: string; readonly text: string; readonly artifactIds?: readonly string[];readonly skills?:readonly import("@openbot/protocol").SkillRef[] } | undefined {
 	if (live) return undefined;
 	const errorIndex = items.findLastIndex((item) => item.kind === "assistant");
 	const failed = items[errorIndex];
@@ -58,7 +60,7 @@ export function retryTarget(
 	const user = items.slice(0, errorIndex).findLast((item) => item.kind === "user");
 	if (user?.kind !== "user") return undefined;
 	const text = user.parts.map((part) => part.text).join("\n\n");
-	return text.trim() === "" && !user.attachments?.length
+	return text.trim() === "" && !user.attachments?.length && !user.skills?.length
 		? undefined
-		: { id: failed.id, text, ...(user.attachments?.length ? { artifactIds: user.attachments.map((a) => a.artifactId) } : {}) };
+		: { id: failed.id, text,...(user.skills?{skills:user.skills}:{}), ...(user.attachments?.length ? { artifactIds: user.attachments.map((a) => a.artifactId) } : {}) };
 }

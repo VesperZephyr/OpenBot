@@ -62,7 +62,7 @@ describe("RunScheduler", () => {
 	/** Resolves when the Run reaches the state; checked after every change the scheduler reports. */
 	let reaches: (botId: BotId, runId: string, state: RunRecord["state"]) => Promise<void>;
 	let changed: () => void;
-	let attachments: Pick<import("../src/runs.ts").RunSchedulerOptions, "resolveAttachments" | "hydrateAttachments"> = {};
+	let attachments: Pick<import("../src/runs.ts").RunSchedulerOptions, "resolveAttachments" | "hydrateAttachments" | "resolveSkills"> = {};
 
 	async function open(...turns: Parameters<typeof scriptedModels>): Promise<void> {
 		scripted = scriptedModels(...turns);
@@ -122,6 +122,21 @@ describe("RunScheduler", () => {
 		for (const botId of botIds) await runtime.createBot({ botId, name: botId, model: SCRIPTED_MODEL, createdAt: 0 });
 	}
 
+
+ it("freezes accepted skills before queueing and keeps them through continuation and conflicting replay",async()=>{
+  const skill={name:"report",revision:1,sha256:"a".repeat(64),document:{name:"report",description:"Method",inputs:"Numbers",requirements:"None",steps:"Original method",validation:"Check",output:"Report",approvalBoundaries:"Ask"},markdown:"Original reviewed method"};
+  const ref={name:skill.name,revision:skill.revision,sha256:skill.sha256};let available=true;
+  attachments={resolveSkills:async()=>{if(!available)throw new Error("removed");return [skill];}};
+  await open(WAIT,"Unrelated finished","Used original method","Continued original method");await createBots("a","b");await scheduler.submit("a","busy","Hold");await gates.entered("a");
+  const queued=await scheduler.submit("b","with-skill","Use selected",{skills:[ref]});available=false;
+  expect((await scheduler.submit("b","with-skill","Use selected",{skills:[ref]})).runId).toBe(queued.runId);
+  await expect(scheduler.submit("b","with-skill","Use selected",{skills:[{...ref,revision:2}]})).rejects.toThrow("already used");
+  gates.release("a");await reaches("b",queued.runId,"completed");expect((await runtime.runsStore().get(queued.runId))?.inputs[0]?.skills).toEqual([skill]);
+  const original=(await runtime.runsStore().get(queued.runId))!;
+  await runtime.runsStore().put({...original,runId:"interrupted-skill",state:"needs_attention",inputs:[],interruption:{reason:"user",requestedAt:1,settledAt:2}});
+  const continued=await scheduler.continue("interrupted-skill","resume");await reaches("b",continued.runId,"completed");expect((await runtime.runsStore().get(continued.runId))?.messages[0]?.skills).toEqual([skill]);
+  expect((await runtime.snapshot("b")).items.filter(i=>i.kind==="user").at(-1)).toMatchObject({skills:[ref]});await close();
+ });
 	it("fails unavailable accepted attachments visibly without admitting empty model input", async () => {
 		const ref = {
 			artifactId: `artifact_${"a".repeat(32)}`,

@@ -22,11 +22,13 @@ export type View =
 	| { readonly kind: "group"; readonly groupId: string }
 	| { readonly kind: "bot"; readonly botId: string }
 	| { readonly kind: "settings" }
+ | { readonly kind:"skills" }
 	| { readonly kind: "home" };
 
 export type SearchTarget = { conversationKey: ConversationKey; messageId: string; nonce: string };
 
 type State = {
+ skills:readonly import("@openbot/protocol").SkillSummary[]|undefined;
 	groupSnapshots: Readonly<Record<string, GroupSnapshot>>;
 	lifecycle: LifecycleState | undefined;
 	searchTarget: SearchTarget | undefined;
@@ -46,7 +48,8 @@ type State = {
 };
 
 export const useStore = create<State>(() => ({
-	groupSnapshots: {},
+	skills:undefined,
+ groupSnapshots: {},
 	lifecycle: undefined,
 	searchTarget: undefined,
 	host: { status: "starting" },
@@ -127,7 +130,9 @@ const lifecycleRead = new LatestRead(
 	() => api["lifecycle.get"]({}),
 	(lifecycle) => useStore.setState({ lifecycle }),
 );
-const readers = [summariesRead, groupsRead, botsRead, settingsRead, conversationRead, groupRead, lifecycleRead];
+const skillsRead=new LatestRead(()=>api["skills.list"]({}),skills=>useStore.setState({skills}));
+export const refreshSkills=()=>skillsRead.request();
+const readers = [skillsRead,summariesRead, groupsRead, botsRead, settingsRead, conversationRead, groupRead, lifecycleRead];
 let readGeneration = 0;
 function resetReads() {
 	readGeneration++;
@@ -159,8 +164,9 @@ export async function sendMessage(
 	text: string,
 	requestId: string = crypto.randomUUID(),
 	artifactIds?: readonly string[],
+ skills?:readonly import("@openbot/protocol").SkillRef[],
 ): Promise<void> {
-	await api["messages.submit"]({ botId, requestId, text, ...(artifactIds?.length ? { artifactIds } : {}) });
+	await api["messages.submit"]({ botId, requestId, text,...(skills?.length?{skills}:{}), ...(artifactIds?.length ? { artifactIds } : {}) });
 }
 
 export function connect(): () => void {
@@ -227,7 +233,7 @@ async function loadAll(changes: number): Promise<void> {
 	await Promise.all([
 		...(changes & 1 ? [refreshBots()] : []),
 		...(changes & 3 ? [refreshGroups(), refreshSummaries()] : []),
-		...(changes & 8 ? [refreshSettings(), refreshLifecycle()] : []),
+		...(changes & 8 ? [refreshSettings(), refreshLifecycle(), refreshSkills()] : []),
 	]);
 	if (generation !== readGeneration || useStore.getState().host.status !== "ready") return;
 	const { view, onboarding, settings, bots } = useStore.getState();

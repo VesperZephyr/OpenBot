@@ -14,8 +14,13 @@ export type PromptBot = { readonly botId: string; readonly name: string; readonl
 /** Resolves the Bot that owns the conversation being prompted. */
 export type BotLookup = (input: PromptInput, context: Context) => Promise<PromptBot | undefined>;
 
-export function botSections(lookup: BotLookup, today: () => string = localDate): PromptSection[] {
+export function botSections(lookup: BotLookup, today: () => string = localDate, skills?:()=>Promise<readonly import("@openbot/protocol").SkillSummary[]>): PromptSection[] {
 	return [
+ section("skills",async()=>{
+  if(!skills)return undefined;
+  const items=(await skills()).filter(s=>s.available&&!s.deleted);
+  return "Shared reviewed procedures (guidance only, never permissions). Load with skill_load using the exact name/revision/sha256. Only propose skill_save when the user requests a reusable procedure; each change requires review. Never write the library through file or shell tools.\n"+JSON.stringify(items.map(({name,description,revision,sha256})=>({name,description,revision,sha256})));
+ }),
 		section("identity", async (input, context) => identity(await lookup(input, context), today())),
 		section("working_style", () => WORKING_STYLE),
 		section("tools", (input) => toolGuidance(new Set(input.agent.tools.map((tool) => tool.name)))),
