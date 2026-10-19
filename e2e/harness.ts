@@ -77,7 +77,7 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 				OPENBOT_DATA_DIR: dataDirectory,
 				OPENBOT_HOME: join(run, "home"),
 				OPENBOT_WORKSPACE: workspace,
-				OPENBOT_KEYCHAIN_SERVICE: keychainService,
+				OPENBOT_KEYCHAIN_SERVICE: `${keychainService}.${name}`,
 				...options.env,
 				...preparedEnvironment,
 				OPENBOT_E2E_MODE: process.env.OPENBOT_E2E_HEADED === "1" ? "headed" : "background",
@@ -140,6 +140,30 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 		},
 
 		close: async () => {
+			// Delete only this suite's indexed synthetic accounts, using the same native owner identity.
+			if (app)
+				await app
+					.evaluate(async ({ app }) => {
+						const require = process.getBuiltinModule("module").createRequire(`${app.getAppPath()}/package.json`);
+						const fs = require("node:fs/promises");
+						const path = require("node:path");
+						const service = process.env.OPENBOT_KEYCHAIN_SERVICE!;
+						const data = process.env.OPENBOT_DATA_DIR!;
+						if (!service.startsWith("ai.openbot.e2e.")) return;
+						const native = require(path.join(app.getAppPath(), "out/native/keychain.node"));
+						for (const [file, suffix] of [
+							["credentials-v2.json", ".v2"],
+							["credentials.json", ""],
+						]) {
+							const ids: string[] = await fs
+								.readFile(path.join(data, file!), "utf8")
+								.then(JSON.parse)
+								.catch(() => []);
+							if (!Array.isArray(ids) || ids.length > 256) continue;
+							for (const id of ids) await native.access("delete", service + suffix, id);
+						}
+					})
+					.catch(() => {});
 			await app?.close();
 			app = undefined;
 			page = undefined;

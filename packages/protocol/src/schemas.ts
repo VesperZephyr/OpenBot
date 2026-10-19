@@ -141,6 +141,8 @@ export const HOST_PARAM_SCHEMAS = {
 		defaultModel: Type.Optional(Type.Union([ModelRef, Type.Null()])),
 	}),
 	"models.list": NoParams,
+	"credentials.status": NoParams,
+	"credentials.migrate": NoParams,
 	"credentials.set": strict({ providerId: Id, apiKey: Type.String({ maxLength: 16_384 }) }),
 	"credentials.delete": strict({ providerId: Id }),
 	"bots.memory.get": BotOnly,

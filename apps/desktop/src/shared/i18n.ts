@@ -1,6 +1,20 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
+ "Credential storage": "凭据存储",
+ "OpenBot stores credentials in your Mac’s Keychain.": "OpenBot 将凭据存储在 Mac 的钥匙串中。",
+ "Credential operation is unconfirmed. Refresh and retry.": "凭据操作尚未确认，请刷新并重试。",
+ "Checking credential storage…": "正在检查凭据存储…",
+ "Credential metadata is missing or damaged. Restore the local indexes before retrying.": "凭据元数据缺失或损坏，请恢复本地索引后重试。",
+ "Keychain access is unavailable. Unlock your Keychain or re-enter affected credentials.": "无法访问钥匙串，请解锁钥匙串或重新输入受影响的凭据。",
+ "Credential storage is ready.": "凭据存储已就绪。",
+ "Saved: {saved}. Legacy entries: {legacy}. Need migration: {pending}.": "已保存：{saved}。旧凭据：{legacy}。待迁移：{pending}。",
+ "Migrate saved credentials explicitly. If access is blocked, re-enter the value in its credential form. Legacy entries remain until cleanup is confirmed.": "请手动迁移已保存的凭据。若访问被拒绝，请在对应的凭据表单中重新输入。清理确认前会保留旧凭据条目。",
+ "Migrating credentials…": "正在迁移凭据…",
+ "Migrate saved credentials": "迁移已保存的凭据",
+ "Refresh credential status": "刷新凭据状态",
+ "Migrated: {migrated}. Blocked: {blocked}. Cleanup pending: {cleanup}.": "已迁移：{migrated}。受阻：{blocked}。待清理：{cleanup}。",
+
  "Finding connector tools":"正在查找连接器工具",
  "Found connector tools":"已查找连接器工具",
  "Connector removal needs attention. Retry removal to finish cleanup.": "连接器移除尚未完成，请重试移除以完成清理。",

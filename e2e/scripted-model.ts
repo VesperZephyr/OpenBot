@@ -18,6 +18,9 @@ export type ScriptedTurn = (
 
 export class ScriptedModel {
 	readonly requests: ModelRequest[] = [];
+	/** Optional synthetic test assertion; actual authorization values are never retained. */
+	acceptAuthorization?: (header: string | undefined) => boolean;
+	readonly authorizationChecks: boolean[] = [];
 	readonly #turns: ScriptedTurn[] = [];
 	#server: Server | undefined;
 	#calls = 0;
@@ -37,6 +40,7 @@ export class ScriptedModel {
 					response.end(JSON.stringify({ data: [{ id: "scripted" }] }));
 					return;
 				}
+				if (this.acceptAuthorization) this.authorizationChecks.push(this.acceptAuthorization(request.headers.authorization));
 				const sent = JSON.parse(body) as ModelRequest;
 				this.requests.push(sent);
 				const turn = this.#turns.shift() ?? { text: "(the script has no more turns)" };

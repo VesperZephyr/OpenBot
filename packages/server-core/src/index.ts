@@ -40,8 +40,10 @@ import {
 	type RedactedSettings,
 } from "@openbot/protocol";
 
-/** Credential storage port. The Host implements it over the macOS Keychain; tests use memory. */
+/** Credential storage port. The Host uses the private Desktop broker; tests use memory. */
 export interface SecretStore {
+ status?(): Promise<import("@openbot/protocol").CredentialStatus>;
+ migrate?(): Promise<import("@openbot/protocol").CredentialMigration>;
 	/** Provider IDs that currently have a stored API key. Never returns the keys themselves. */
 	configuredProviders(): Promise<ReadonlySet<string>>;
 	setApiKey(providerId: string, apiKey: string): Promise<void>;
@@ -321,6 +323,8 @@ export class HostService {
 				await this.#reloadModelConfig();
 				return this.#runtime.listChatModels().filter((model) => !model.provider.startsWith(SEARCH_PROVIDER_PREFIX));
 			},
+			"credentials.status": () => { if (!this.#secrets.status) throw new ProtocolError("host_unavailable", "Credential storage is unavailable"); return this.#secrets.status(); },
+			"credentials.migrate": () => { if (!this.#secrets.migrate) throw new ProtocolError("host_unavailable", "Credential storage is unavailable"); return this.#secrets.migrate(); },
 			"credentials.set": async ({ providerId, apiKey }) => {
 				if (apiKey.trim() === "") throw new ProtocolError("invalid_request", "API key is empty");
 				await this.#secrets.setApiKey(providerId, apiKey.trim());

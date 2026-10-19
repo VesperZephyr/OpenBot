@@ -23,6 +23,7 @@ extraResources:
       - node
       - node-LICENSE
       - host/**
+      - native/**
 asar: true
 electronFuses:
   runAsNode: false

@@ -98,4 +98,7 @@ const wasm = piRequire.resolve("quickjs-wasi/quickjs.wasm");
 copyFileSync(wasm, join(stage,"host","quickjs.wasm"));
 copyFileSync(join(dirname(wasm),"LICENSE"), join(stage,"host","quickjs-LICENSE"));
 
+mkdirSync(join(stage, "native"), { recursive: true });
+for (const name of ["keychain.node", "node-api-headers-LICENSE"]) copyFileSync(join(desktop, "out/native", name), join(stage, "native", name));
+
 await verifyRuntime(stage);

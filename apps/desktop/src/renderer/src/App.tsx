@@ -1,3 +1,4 @@
+import { CredentialStorage } from "./CredentialStorage";
 import {ConnectorsPanel} from "./Connectors";
 import { BackgroundTask } from "./BackgroundTask";
 import { SkillLibrary } from "./Skills";
@@ -1019,7 +1020,7 @@ function Settings() {
 	const [providerId, setProviderId] = useState("openai");
 	const [apiKey, setApiKey] = useState("");
 
-	if (settings === undefined) return null;
+	if (settings === undefined) return <CredentialStorage />;
 	const configured = settings.providers.filter((provider) => provider.configured);
 
 	const saveKey = async (event: FormEvent): Promise<void> => {
@@ -1136,6 +1137,7 @@ function Settings() {
 					))}
 				</ul>
 			</div>
+			<CredentialStorage />
 			<WebSearchSettings />
 			<div id="settings-permissions">
 				<CommandSettings />

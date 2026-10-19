@@ -1,3 +1,5 @@
+import type { CredentialStatus, CredentialMigration } from "./credentials.ts";
+export * from "./credentials.ts";
 import type {ConnectorInstall,ConnectorChange,ConnectorProfile} from "./connectors.ts";
 export * from "./connectors.ts";
 export * from "./background.ts";
@@ -591,6 +593,8 @@ export type HostMethods = {
 		result: RedactedSettings;
 	};
 	"models.list": { params: Record<string, never>; result: readonly ModelSummary[] };
+	"credentials.status": { params: Record<string, never>; result: CredentialStatus };
+	"credentials.migrate": { params: Record<string, never>; result: CredentialMigration };
 	"credentials.set": {
 		params: { readonly providerId: string; readonly apiKey: string };
 		result: RedactedSettings;
@@ -692,6 +696,8 @@ export const HOST_METHODS = [
 	"settings.get",
 	"settings.update",
 	"models.list",
+	"credentials.status",
+	"credentials.migrate",
 	"credentials.set",
 	"credentials.delete",
 	"bots.memory.get",
