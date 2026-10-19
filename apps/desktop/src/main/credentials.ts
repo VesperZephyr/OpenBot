@@ -1,7 +1,7 @@
 import { constants } from "node:fs";
 import { mkdir, open, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
 	CREDENTIAL_LIMITS,
 	credentialId,
@@ -12,6 +12,24 @@ import {
 	type CredentialStatus,
 	type CredentialErrorCode,
 } from "@openbot/protocol";
+
+/** Installed identity never follows environment overrides; default development shares no credential metadata with it. */
+export function credentialStorageLocation(options: {
+	packaged: boolean;
+	dataDirectory: string;
+	isolatedDataDirectory: boolean;
+	serviceOverride?: string | undefined;
+}): { directory: string; service: string } {
+	const production = "ai.openbot.desktop.credentials";
+	if (options.packaged) return { directory: options.dataDirectory, service: production };
+	const service =
+		options.serviceOverride ?? `ai.openbot.development.${createHash("sha256").update(options.dataDirectory).digest("hex").slice(0, 12)}`;
+	if (service.startsWith(production)) throw new Error("Development requires an isolated credential service");
+	return {
+		directory: options.isolatedDataDirectory ? options.dataDirectory : join(options.dataDirectory, "development-credentials"),
+		service,
+	};
+}
 
 export interface NativeKeychain {
 	access(operation: "get" | "set" | "delete", service: string, account: string, value?: string): Promise<string | null>;

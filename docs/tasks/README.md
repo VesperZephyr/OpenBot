@@ -160,4 +160,4 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Spec | Status |
 | --- | --- |
-| [B14e: Desktop-owned Keychain credentials](b14e-main-credentials.md) | in review (#38); 431 unit/Host and 115 hidden e2e tests; native/real-model evidence in the spec; Developer ID gate open |
+| [B14e: Desktop-owned Keychain credentials](b14e-main-credentials.md) | in review (#38); 433 unit/Host and 115 hidden e2e tests; native/real-model evidence in the spec; Developer ID gate open |

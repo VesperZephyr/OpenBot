@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { DesktopCredentials, type NativeKeychain } from "../src/main/credentials";
+import { credentialStorageLocation, DesktopCredentials, type NativeKeychain } from "../src/main/credentials";
 import { CREDENTIAL_LIMITS, type CredentialOperation, type CredentialRequest } from "@openbot/protocol";
 
 const roots: string[] = [];
@@ -200,7 +200,10 @@ it("expires a queued write before dispatch instead of replaying it after a block
 	const original = f.native.access;
 	const gate = Promise.withResolvers<string | null>();
 	const started = Promise.withResolvers<void>();
-	f.native.access = () => { started.resolve(); return gate.promise; };
+	f.native.access = () => {
+		started.resolve();
+		return gate.promise;
+	};
 	const first = f.call("get", { id: "model" });
 	await started.promise;
 	const waiting = f.call("set", { id: "other", value: "new" });
@@ -212,4 +215,31 @@ it("expires a queued write before dispatch instead of replaying it after a block
 	vi.restoreAllMocks();
 	f.native.access = original;
 	expect(f.values.has("test.v2:other")).toBe(false);
+});
+
+it("default development writes cannot mutate the installed app's credential indexes", async () => {
+	const f = await fixture();
+	await f.call("set", { id: "installed", value: "installed-synthetic" });
+	const before = await f.index();
+	const location = credentialStorageLocation({ packaged: false, dataDirectory: f.root, isolatedDataDirectory: false });
+	const development = new DesktopCredentials(location.directory, location.service, f.native);
+	expect(
+		await development.handle({
+			kind: "credential.request",
+			requestId: "dev",
+			operation: "set",
+			params: { id: "development", value: "dev-synthetic" },
+		}),
+	).toMatchObject({ ok: true });
+	expect(await f.index()).toEqual(before);
+	expect(await f.call("list")).toMatchObject({ ok: true, result: { ids: ["installed"] } });
+});
+it("packaged credentials ignore service overrides and development cannot select the production namespace", () => {
+	const options = { dataDirectory: "/synthetic/data", isolatedDataDirectory: true, serviceOverride: "ai.openbot.e2e.test" };
+	expect(credentialStorageLocation({ ...options, packaged: true })).toEqual({
+		directory: options.dataDirectory,
+		service: "ai.openbot.desktop.credentials",
+	});
+	for (const serviceOverride of ["ai.openbot.desktop.credentials", "ai.openbot.desktop.credentials.v2"])
+		expect(() => credentialStorageLocation({ ...options, serviceOverride, packaged: false })).toThrow("isolated");
 });
