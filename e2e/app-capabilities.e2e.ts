@@ -67,6 +67,7 @@ it("keeps tools scoped after restart and reports Chinese read activity; Speciali
 	await h.relaunch();await selectBot("OpenBot");
 	h.model.script(composed("星图"),{text:"重启后仍可读取历史星图记录。"});
 	await send("查找之前关于星图的记录并读取上下文。");await done(core);
+	await h.page().getByText("重启后仍可读取历史星图记录。",{exact:true}).waitFor();
 	await h.page().getByText("已读取应用数据",{exact:true}).last().click();
 	await h.page().getByText("已搜索聊天记录",{exact:true}).last().waitFor();await h.page().getByText("已读取聊天上下文",{exact:true}).last().waitFor();
 	expect(toolResults(h.model.requests.at(-1)!).at(-1)?.ok).toBe(true);await h.shot("03-core-read-zh-restart");
