@@ -155,3 +155,9 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | [B15b: Durable background command completion](b15b-background-completion.md) | in review (#36); depends on #35; targets main |
 
 | [B9a: Supervised local stdio connectors](b9a-stdio-connectors.md) | implemented, in review (#37); depends on #36; targets main |
+
+## Credential ownership
+
+| Spec | Status |
+| --- | --- |
+| [B14e: Desktop-owned Keychain credentials](b14e-main-credentials.md) | in progress; depends on #37; targets main; Developer ID release evidence remains gated |
