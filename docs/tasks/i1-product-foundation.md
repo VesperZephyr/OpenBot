@@ -1,6 +1,6 @@
 # I1: Integrated Product Foundation
 
-Status: in review (#34)
+Status: done (#34)
 Branch: task/i1-product-foundation; PR target: main
 Depends on: D4 (#28), B14a (#29), B15a (#30), B14b (#31), B12a (#32), B13d (#33)
 Architecture: Sections 3–6 and 8; prerequisite task specs remain authoritative
@@ -68,4 +68,4 @@ Candidate `53bfb87` passed `pnpm run check` (358 tests / 57 files), the full hid
 
 A hidden isolated desktop run with the configured real model queued an attachment while paused, restarted, resumed, wrote exactly one report and published exactly one immutable result after Ask first approval. It recorded 30,027 model tokens; usage and the published copy survived restart after source removal. English/Chinese result and usage views were inspected, the window remained inactive, and audit records remained metadata-only. The first attempt selected an unintended path outside the test workspace; policy blocked it pending approval, no approval was granted, and the Run was cancelled. The successful retry named the synthetic workspace explicitly. Temporary credential configuration was removed after both attempts. Raw local evidence and screenshots are excluded from Git.
 
-PR #34 targets `main` and remains subject to owner review. Native signing, TCC identity, physical sleep/lock delivery and provider billing reconciliation are not established by these checks.
+PR #34 is merged into `main`. Native signing, TCC identity, physical sleep/lock delivery and provider billing reconciliation are not established by these checks.

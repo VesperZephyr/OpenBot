@@ -1,6 +1,6 @@
 # I2: MVP Acceptance Candidate and Bilingual Introduction
 
-Status: in progress
+Status: in review (#40)
 Branch: task/i2-mvp-acceptance; PR target: main
 Depends on: merged main through B14e (#38), B9b (#39, candidate `488ee67`)
 Architecture: Sections 1–3 and 6; G0 in the development roadmap
@@ -51,4 +51,13 @@ None for this acceptance scope.
 
 ## Evidence
 
-Pending verification.
+Implementation findings:
+
+- The first complete desktop run passed 118/120 tests. The unread group assertion queried the renderer immediately after observing the Host projection; it raced the bounded UI refresh. Its failure prevented the following draft setup, causing the second failure. The isolated six-test search suite passed unchanged, then the assertions were changed to await the actual visible rows. The focused search and new workflow suites passed all eight tests.
+- A real model used title-only result names, causing correct format rejection before it retried with filenames. The existing artifact contract is unchanged; its model-facing `name` description now explicitly requires the supported extension or omission. This is guidance for the existing parameter, not a new file-format or authorization rule.
+- A subsequent real-provider run failed after saving the report with `invalid_request_error`. Existing files/receipts survived. Recovery is checked using an explicit follow-up, with a calculation counter proving the command is not rerun.
+
+Final candidate checks and public screenshot provenance are recorded in [the acceptance record](../acceptance/mvp-2026-10-19.md).
+
+
+Final checks: `pnpm run check` passed 461 tests / 69 suites; full background `pnpm run e2e` passed 122 tests / 34 suites; focused workflow/search passed 8 / 2. The arm64 DMG built, bundled Host/executor startup passed, deep/strict ad-hoc signature and DMG checksum verification passed. The real model verified exact approval/denial, report values, immutable copies, restart/new-topic memory and explicit provider-error recovery without repeating the command. Temporary credentials were deleted. The 1440 × 900 screenshot was inspected and committed; both READMEs and local links were checked. Native release gates remain explicit in the acceptance record.
