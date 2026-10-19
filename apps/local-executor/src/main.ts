@@ -3,8 +3,8 @@
  * bound local target over the receipt ledger in `<data>/executor/receipts.sqlite`, saves cut tool output under
  * `<data>/artifacts`, and exits when the Host goes away, stopping the commands it supervises.
  */
-import { validBackgroundKeys, validSkillOperation } from "@openbot/protocol";
-import { SkillStore } from "@openbot/local-executor";
+import { validConnectorControl, validBackgroundKeys, validSkillOperation } from "@openbot/protocol";
+import { ConnectorSupervisor, SkillStore } from "@openbot/local-executor";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
@@ -34,7 +34,9 @@ pruneArtifacts(artifactsDirectory);
 const ledger = ReceiptLedger.open(join(ledgerDirectory, "receipts.sqlite"));
 const skillStore = new SkillStore(join(dataDirectory, "skills"));
 const artifactStore = new ArtifactStore(join(dataDirectory, "attachments"));
+const connectors = new ConnectorSupervisor(join(ledgerDirectory,"connectors.sqlite"),targetId,workspace,id=>send({kind:"connector.changed",connectorId:id}));
 const executor = new LocalExecutor({
+ connectors,
 	artifactStore,
  requireAuthority:true,
 	targetId,
@@ -51,6 +53,26 @@ const send = (message: ExecutorMessage): void => {
 
 process.on("message", (message: ExecutorRequest) => {
 	switch (message.kind) {
+  case "connector.control": {
+   const started=Date.now();
+   void (async()=>{
+    try {
+     if(message.targetId!==targetId||typeof message.messageId!=="string"||!message.messageId||message.messageId.length>256||typeof message.requestId!=="string"||!message.requestId||message.requestId.length>256||!Number.isSafeInteger(message.authorityRevision)||message.authorityRevision<0||!validConnectorControl(message.operation)||Object.keys(message).some(key=>!["kind","messageId","requestId","targetId","authorityRevision","operation"].includes(key)))throw Error("Invalid connector control");
+     const op=message.operation;
+     let result;
+     if(op.action==="connect"){
+      if(!executor.authorizedOperation(message.requestId,message.authorityRevision))throw Error("Stale connector authority");
+      result=await connectors.connect(op.definition,op.credential,()=>executor.authorizedOperation(message.requestId,message.authorityRevision));
+     }else if(op.action==="disconnect"){
+      const stopped=await connectors.disconnect(op.connectorId);
+      result=connectors.inspect(op.connectorId);
+      if(!stopped)result={...result,state:"needs_attention" as const,error:"Connector termination needs attention"};
+     }else result=connectors.inspect(op.connectorId);
+     console.info(JSON.stringify({type:"connector.control",requestId:message.requestId,connectorId:result.connectorId,state:result.state,durationMs:Date.now()-started}));
+     send({kind:"connector.response",messageId:message.messageId,result});
+    }catch{send({kind:"connector.response",messageId:message.messageId,error:"Connector control failed; inspect its state before retrying"});}
+   })();return;
+  }
 		case "tasks.inspect": {
 			if (Object.keys(message).some(key=>!["kind","messageId","targetId","keys","acknowledge"].includes(key)) || message.targetId !== targetId || typeof message.messageId !== "string" || !message.messageId || message.messageId.length > 256 || !validBackgroundKeys(message.keys) || (message.acknowledge !== undefined && typeof message.acknowledge !== "boolean")) {
 				send({kind:"tasks.inspected",messageId:message.messageId,error:"Invalid background receipt request"}); return;
@@ -171,6 +193,7 @@ process.on("message", (message: ExecutorRequest) => {
 		}
 		case "tool.invoke": {
 			const { invocationId } = message.invocation;
+ const started=Date.now();
 			void executor
 				.invoke(message.invocation, (output) => send({ kind: "tool.progress", invocationId, output }))
 				.catch((error: unknown): import("@openbot/protocol").ToolOutcome => ({
@@ -178,6 +201,7 @@ process.on("message", (message: ExecutorRequest) => {
 					output: `The executor could not record this action's result: ${error instanceof Error ? error.message : String(error)}`,
 				}))
 				.then((outcome) => {
+ if(message.invocation.tool.startsWith("mcp__"))console.info(JSON.stringify({type:"connector.invocation",invocationId,targetId,runId:message.invocation.runId,connectorId:message.invocation.connector?.connectorId,revision:message.invocation.connector?.revision,tool:message.invocation.tool,outcome:outcome.status,durationMs:Date.now()-started}));
 					if (message.invocation.tool === "artifact_publish")
 						console.info(
 							JSON.stringify({
@@ -223,7 +247,8 @@ const shutdown = (): void => {
 	if (stopping) return;
 	stopping = true;
 	setTimeout(() => process.exit(0), 3_500).unref();
-	void executor.cancelAll().finally(() => {
+	void executor.cancelAll().finally(async () => {
+  await connectors.close();
 		artifactStore.close();
  skillStore.close();
 		ledger.close();

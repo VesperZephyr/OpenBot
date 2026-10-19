@@ -1,3 +1,4 @@
+import {ConnectorsPanel} from "./Connectors";
 import { BackgroundTask } from "./BackgroundTask";
 import { SkillLibrary } from "./Skills";
 import { UsagePanel } from "./UsagePanel";
@@ -95,6 +96,7 @@ export function App() {
 						{view.kind === "bot" && <Conversation key={view.botId} botId={view.botId} />}
 						{view.kind === "settings" && <Settings />}
  {view.kind === "skills" && <SkillLibrary />}
+ {view.kind==="connectors"&&<ConnectorsPanel/>}
 						{view.kind === "group" && <GroupView key={view.groupId} groupId={view.groupId} />}
 						{view.kind === "home" && <Home onNew={() => setCreating(true)} />}
 					</>
@@ -240,6 +242,7 @@ function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; 
  <LifecycleControls/>
 			<ConversationSearch query={query} unreadOnly={unreadOnly} />
 			<div className="sidebar-footer">
+ <button type="button" className={`nav-item ${view.kind==="connectors"?"is-selected":""}`} onClick={()=>useStore.setState({view:{kind:"connectors"}})}>{t("Connect apps")}</button>
  <button type="button" className={`nav-item ${view.kind === "skills" ? "is-selected" : ""}`} onClick={()=>useStore.setState({view:{kind:"skills"}})}>{t("Skills")}</button>
 				<button
 					type="button"
@@ -553,6 +556,7 @@ function MessageText({ parts, markdown = false }: { readonly parts: readonly { r
 }
 
 const TOOL_VERBS: Record<string, readonly [running: string, done: string, action?: string]> = {
+ tool_search:["Finding connector tools","Found connector tools"],
 	skill_load: ["Load skill", "Loaded skill"],
  skill_save: ["Review skill", "Reviewed skill"],
  artifact_publish: ["Publish result file", "Published result file"],

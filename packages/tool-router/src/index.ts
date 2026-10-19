@@ -22,6 +22,7 @@ import {
 } from "@openbot/protocol";
 
 export type ToolCall = {
+ readonly connector?:import("@openbot/protocol").ConnectorBinding;
  readonly dispatchRevision?:number;
 	readonly runId?: string;
 	readonly collaboration?: { readonly runId: string };
@@ -70,6 +71,7 @@ export interface ExecutorTransport {
 export type HostToolHandler = (args: Readonly<Record<string, unknown>>, signal: AbortSignal, call: ToolCall) => Promise<ToolOutcome>;
 
 export type ToolRouterOptions = {
+ readonly resolveTool?:(name:string)=>ToolDefinition|undefined;
 	readonly assertCallAllowed?:(call:ToolCall)=>Promise<void>;
 	readonly trackCommand?: {
 		prepare:(call:ToolCall,argsDigest:string)=>Promise<boolean>;
@@ -161,10 +163,10 @@ export class ToolRouter {
 		if (app && !validAppInput(app.id, call.args)) return appFailure("invalid_request", "Invalid application arguments");
 		if (management && !validManagementInput(management.id, call.args))
 			return appFailure("invalid_request", "Invalid application arguments");
-		const definition = toolDefinition(call.tool);
+		const definition = toolDefinition(call.tool) ?? this.#options.resolveTool?.(call.tool);
 		if (definition === undefined) return { status: "failed", output: `Unknown tool: ${call.tool}` };
-		if(definition.destination==="executor"&&this.#options.executor.receipt){const receipt=await this.#options.executor.receipt(`${call.conversationId}:${call.callId}`,digest(call.args),call.tool);if(receipt)return this.#options.trackCommand?.settle(call,receipt)??receipt;}
-  const binding=await this.#options.policy.binding?.(call,digest(call.args));
+		if(definition.destination==="executor"&&this.#options.executor.receipt){const receipt=await this.#options.executor.receipt(`${call.conversationId}:${call.callId}`,digest(call.connector?{args:call.args,connector:call.connector}:call.args),call.tool);if(receipt)return this.#options.trackCommand?.settle(call,receipt)??receipt;}
+  const binding=await this.#options.policy.binding?.(call,digest(call.connector?{args:call.args,connector:call.connector}:call.args));
   const decision = await this.#options.policy.decide(call, definition);
 		this.#options.assertExecutionAllowed?.();
 		if (decision.kind === "deny")
@@ -238,13 +240,14 @@ export class ToolRouter {
 		this.#options.assertExecutionAllowed?.();
 		call.signal.throwIfAborted();
 		const invocation: ToolInvocation = {
+            ...(call.connector?{connector:call.connector}:{}),
 			...(call.runId ? { runId: call.runId } : {}),
 			invocationId: `${call.conversationId}:${call.callId}`,
 			botId: call.botId,
 			conversationId: call.conversationId,
 			tool: definition.name as ExecutorToolName,
 			args: call.args,
-			argsDigest: digest(call.args),
+			argsDigest: digest(call.connector?{args:call.args,connector:call.connector}:call.args),
 			target: this.#options.target,
 			grants: grants.readwrite,
 			readGrants: grants.read,

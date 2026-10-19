@@ -1,0 +1,182 @@
+.connectors-panel {
+	height: 100%;
+	overflow: auto;
+	padding: 32px clamp(20px, 4vw, 64px);
+}
+.connector-heading,
+.connector-title {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 24px;
+	margin-bottom: 28px;
+}
+.connector-heading h1 {
+	font-family: var(--font-display);
+	font-size: 30px;
+	letter-spacing: -0.7px;
+	font-weight: 600;
+	margin: 0;
+}
+.connector-heading p,
+.connector-empty p,
+.connector-index p {
+	color: var(--muted);
+}
+.connector-layout {
+	display: grid;
+	grid-template-columns: 210px minmax(0, 680px);
+	gap: 36px;
+}
+.connector-index {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	align-items: stretch;
+}
+.connector-index button {
+	text-align: left;
+	padding: 12px;
+}
+.connector-index strong,
+.connector-index small {
+	display: block;
+	overflow-wrap: anywhere;
+}
+.connector-index small {
+	color: var(--muted);
+	margin-top: 4px;
+}
+.connector-index [aria-current="true"] {
+	border-color: var(--text);
+	background: var(--surface-raised);
+}
+.connector-workspace {
+	min-width: 0;
+}
+.connector-workspace h2 {
+	font-size: 22px;
+	font-weight: 550;
+}
+.connector-workspace h3 {
+	font-size: 14px;
+	font-weight: 600;
+}
+.connector-title {
+	border-bottom: 1px solid var(--border);
+	padding-bottom: 16px;
+}
+.connector-title h2 {
+	margin: 0;
+}
+.connector-title span {
+	font-size: 12px;
+	color: var(--muted);
+}
+.connector-field {
+	display: grid;
+	gap: 6px;
+	margin-bottom: 16px;
+}
+.connector-field span {
+	color: var(--muted);
+	font-size: 12px;
+}
+.connector-field input,
+.connector-argument input {
+	width: 100%;
+	padding: 10px 12px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg);
+}
+.connector-workspace fieldset {
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 12px;
+}
+.connector-workspace legend {
+	color: var(--muted);
+	font-size: 12px;
+}
+.connector-argument {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 8px;
+}
+.connector-argument input {
+	font-family: var(--font-mono);
+	min-width: 0;
+}
+.connector-actions {
+	display: flex;
+	justify-content: flex-end;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 18px 0;
+}
+.connector-definition dt {
+	color: var(--muted);
+	font-size: 12px;
+	margin-top: 16px;
+}
+.connector-definition dd {
+	margin: 5px 0;
+	overflow-wrap: anywhere;
+	font-family: var(--font-mono);
+	font-size: 12px;
+}
+.connector-definition code {
+	display: block;
+	white-space: pre-wrap;
+}
+.connector-credential,
+.connector-tools {
+	border-top: 1px solid var(--border);
+	padding-top: 18px;
+	margin-top: 28px;
+}
+.connector-tools details {
+	padding: 12px 0;
+	border-bottom: 1px solid var(--border);
+}
+.connector-tools summary {
+	font-family: var(--font-mono);
+	font-size: 12px;
+	cursor: pointer;
+}
+.connector-tools p {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+.connector-tools pre {
+	max-height: 220px;
+	overflow: auto;
+	font-size: 11px;
+	padding: 12px;
+	background: var(--surface);
+}
+.connector-empty {
+	padding: 24px 0;
+	max-width: 450px;
+}
+.connector-removal {
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 16px;
+}
+.connector-removal button {
+	margin-right: 8px;
+}
+@media (max-width: 800px) {
+	.connector-layout {
+		grid-template-columns: 1fr;
+	}
+	.connector-index {
+		max-height: 180px;
+		overflow: auto;
+	}
+	.connector-heading {
+		align-items: flex-start;
+	}
+}

@@ -153,3 +153,5 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Spec | Status |
 | --- | --- |
 | [B15b: Durable background command completion](b15b-background-completion.md) | in review (#36); depends on #35; targets main |
+
+| [B9a: Supervised local stdio connectors](b9a-stdio-connectors.md) | implemented, in review (#37); depends on #36; targets main |

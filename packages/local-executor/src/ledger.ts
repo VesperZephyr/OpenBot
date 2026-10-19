@@ -253,7 +253,7 @@ export class ReceiptLedger {
  * group is ours; a different start time means the PID was reused, so it is left alone. A leader that exited while its
  * group lives on also proves it: a PID is not reused while a process group with that ID exists.
  */
-function killOrphanGroup(pgid: number, leaderStarted: string): void {
+export function killOrphanGroup(pgid: number, leaderStarted: string): void {
 	const started = processStartTime(pgid);
 	if (started !== undefined && started !== leaderStarted) return;
 	try {
@@ -264,7 +264,7 @@ function killOrphanGroup(pgid: number, leaderStarted: string): void {
 }
 
 /** `ps` start time of a process, or undefined when it does not exist. */
-function processStartTime(pid: number): string | undefined {
+export function processStartTime(pid: number): string | undefined {
 	try {
 		const started = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8" }).trim();
 		return started === "" ? undefined : started;

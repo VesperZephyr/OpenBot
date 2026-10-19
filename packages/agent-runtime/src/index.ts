@@ -1,3 +1,6 @@
+import { createToolSearchTool } from "@earendil-works/pi-durable/tool-search";
+import { CONNECTOR_SEARCH_DEFINITION } from "@openbot/protocol";
+import { connectorStore } from "./connectors.ts";
 import { backgroundStore } from "./background.ts";
 export { backgroundTerminal } from "./background.ts";
 import type { ArtifactContent, ArtifactRef } from "@openbot/protocol";
@@ -120,6 +123,7 @@ const CoreDoc = defineDoc<{ coreBotId?: string }>({
  * same call and never becomes a second invocation.
  */
 export type ToolInvoker = (call: {
+	readonly connector?: import("@openbot/protocol").ConnectorBinding;
 	readonly runId?: string;
 	readonly collaboration?: { readonly runId: string };
 	readonly authority?: ManagementAuthority;
@@ -196,7 +200,10 @@ export class BotRuntime {
 		return lifecycleStore(this.#harness, this.#context);
 	}
 	readonly #harness: Harness;
-	readonly #extensions: { bot: Extension; core: Extension; group: Extension; app: Extension };
+	readonly #extensions: { bot: Extension; core: Extension; group: Extension; app: Extension; connectors: Extension };
+	readonly #registry: ReturnType<typeof createRegistry>;
+	readonly #invoke: ToolInvoker | undefined;
+	#availableConnectorTools: ReadonlySet<string> = new Set();
 	readonly #models: MutableModels;
 	readonly #context: Context;
 	/** Built-in providers as registered at open, so a removed overlay restores the original. */
@@ -214,9 +221,13 @@ export class BotRuntime {
 		harness: Harness,
 		models: MutableModels,
 		context: Context,
-		extensions: { bot: Extension; core: Extension; group: Extension; app: Extension },
+		extensions: { bot: Extension; core: Extension; group: Extension; app: Extension; connectors: Extension },
+		registry: ReturnType<typeof createRegistry>,
+		invoke: ToolInvoker | undefined,
 	) {
 		this.#extensions = extensions;
+		this.#registry = registry;
+		this.#invoke = invoke;
 		this.#harness = harness;
 		this.#models = models;
 		this.#context = context;
@@ -301,6 +312,8 @@ export class BotRuntime {
 					.map((d) => routedTool(d, options.tools!.invoke, !!code)),
 			],
 		});
+		const connectors = defineExtension({ name: "openbot.connectors", tools: [] });
+		registry.install(connectors);
 		registry.install(app);
 		registry.install(group);
 		registry.install(bot);
@@ -311,7 +324,7 @@ export class BotRuntime {
 				models: options.executionGate ? gatedModels(models, options.executionGate) : models,
 				registry,
 				// No `env` and no CodingTools: every side effect must go through Tool Router and the executor.
-				settings: { toolExecution: "sequential", extensions: [bot] },
+				settings: { toolExecution: "sequential", extensions: [bot, connectors] },
 			},
 			context,
 		);
@@ -321,6 +334,7 @@ export class BotRuntime {
 			for (const record of Object.values(profiles.bots)) {
 				await configure(tx, record.conversationId as PiConversationId, {
 					instructions: revisionedInstructions(record.instructions, record.revision ?? 1),
+					extensions: [bot, connectors, ...(record.kind === "core" ? [core, app] : [])],
 				});
 			}
 		}, context);
@@ -329,10 +343,10 @@ export class BotRuntime {
 			const bots = (await tx.doc(BotsDoc)).bots;
 			for (const channel of Object.values(channels.channels))
 				await configure(tx, channel.conversationId as PiConversationId, {
-					extensions: [bot, group, ...(bots[channel.botId]?.kind === "core" ? [app] : [])],
+					extensions: [bot, connectors, group, ...(bots[channel.botId]?.kind === "core" ? [app] : [])],
 				});
 		}, context);
-		return new BotRuntime(harness, models, context, { bot, core, group, app });
+		return new BotRuntime(harness, models, context, { bot, core, group, app, connectors }, registry, options.tools?.invoke);
 	}
 
 	/** Start the scheduler so work interrupted by the last shutdown continues. Call after recovery checks pass. */
@@ -412,7 +426,12 @@ export class BotRuntime {
 			await configure(tx, conversation.id, {
 				...agentChange({ ...bot, ...((bot.model ?? defaultModel) ? { model: (bot.model ?? defaultModel)! } : {}) }),
 				instructions: revisionedInstructions(bot.instructions, bot.revision ?? 1),
-				extensions: [this.#extensions.bot, this.#extensions.group, ...(bot.kind === "core" ? [this.#extensions.app] : [])],
+				extensions: [
+					this.#extensions.connectors,
+					this.#extensions.bot,
+					this.#extensions.group,
+					...(bot.kind === "core" ? [this.#extensions.app] : []),
+				],
 			});
 			channels.channels[key] = { botId, channelId, conversationId: conversation.id };
 			return String(conversation.id);
@@ -465,7 +484,7 @@ export class BotRuntime {
 			const existing = doc.bots[botId]!;
 			doc.bots[botId] = { ...existing, kind: "core", status: "active", pinned: true };
 			await configure(tx, existing.conversationId as PiConversationId, {
-				extensions: [this.#extensions.bot, this.#extensions.core, this.#extensions.app],
+				extensions: [this.#extensions.connectors, this.#extensions.bot, this.#extensions.core, this.#extensions.app],
 			});
 			return toProfile(JSON.parse(JSON.stringify(doc.bots[botId])) as BotRecord);
 		}, this.#context);
@@ -503,7 +522,7 @@ export class BotRuntime {
 			await configure(tx, conversation.id, {
 				...agentChange({ ...input, ...(model === undefined ? {} : { model }) }),
 				instructions: revisionedInstructions(input.instructions ?? "", 1),
-				extensions: [this.#extensions.bot],
+				extensions: [this.#extensions.connectors, this.#extensions.bot],
 			});
 			const record: BotRecord = {
 				botId: input.botId,
@@ -683,8 +702,44 @@ export class BotRuntime {
 		await this.#harness.abortSubmission(Number(submissionId) as SubmissionId, this.#context, record.conversationId as PiConversationId);
 	}
 
-	/** Durable Run records; scheduling is the Host's job. */
-	background() { return backgroundStore(this.#harness,this.#context); }
+	/** Replace the deferred catalog; offline registrations remain resolvable for durable receipt recovery. */
+	async refreshConnectorTools(definitions: readonly ToolDefinition[], available: ReadonlySet<string>): Promise<void> {
+		this.#availableConnectorTools = new Set(available);
+		if (!this.#invoke) return;
+		const native = createToolSearchTool(),
+			gate = routedTool(CONNECTOR_SEARCH_DEFINITION, this.#invoke);
+		const search: ToolRegistration = {
+			...gate,
+			execute: async (args, api, context) => {
+				const checked = await gate.execute(args, api, context);
+				if (checked.isError) return checked;
+				const result = await native.execute(
+					args as { query: string; limit?: number },
+					{
+						...api,
+						agent: async (context) => {
+							const agent = await api.agent(context);
+							return { ...agent, deferred: agent.deferred.filter((tool) => this.#availableConnectorTools.has(tool.name)) };
+						},
+					},
+					context,
+				);
+				return { ...result, details: { ...(result.details as { loaded: string[] }), status: "succeeded" } };
+			},
+		};
+		this.#registry.install(
+			defineExtension({
+				name: "openbot.connectors",
+				tools: [search, ...definitions.map((definition) => routedTool(definition, this.#invoke!))],
+			}),
+		);
+	}
+	connectors() {
+		return connectorStore(this.#harness, this.#context);
+	}
+	background() {
+		return backgroundStore(this.#harness, this.#context);
+	}
 
 	runsStore(): RunStore {
 		return runStore(this.#harness, this.#context, async run => {
@@ -793,7 +848,7 @@ export class BotRuntime {
 		}, this.#context);
 	}
 
- /** Persist scoped aborts without enabling unrelated scheduling during startup recovery. */
+	/** Persist scoped aborts without enabling unrelated scheduling during startup recovery. */
  async interruptChannels(channels:readonly {botId:string;channelId?:string}[]):Promise<void>{
   const ids=new Set(await Promise.all(channels.map(async channel=>(await this.#contextRecord(channel.botId,channel.channelId??"direct")).conversationId)));
   const work=await this.#harness.inspect(this.#context);
@@ -1390,6 +1445,7 @@ function projectView(botId: BotId, view: ConversationView, earlier: readonly Ent
 function routedTool(definition: ToolDefinition, invoke: ToolInvoker, codeOnly = false): ToolRegistration {
 	return defineTool({
 		name: definition.name,
+		...(definition.deferred ? {deferred:true} : {}),
 		callers: codeOnly ? ["tools"] : ["model"],
 		description: definition.description,
 		// Plain JSON Schema from the protocol catalog; Pi validates arguments against it before `execute`.
@@ -1471,7 +1527,10 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker, codeOnly = 
 							),
 						)
 					: args;
+			let connector: import("@openbot/protocol").ConnectorBinding | undefined;
+			if (definition.connector) connector = await api.memo("openbot.connector-identity", context) ?? await api.memo("openbot.connector-identity", definition.connector, context);
 			const outcome = await invoke({
+				...(connector ? {connector} : {}),
 				...(runId ? { runId } : {}),
 				...(collaboration ? { collaboration } : {}),
 				...(authority === undefined ? {} : { authority }),

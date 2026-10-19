@@ -61,7 +61,9 @@ const workspaceSetting = process.env.OPENBOT_WORKSPACE ?? join(homedir(), "OpenB
 await mkdir(workspaceSetting, { recursive: true });
 const workspace = await realpath(workspaceSetting);
 
+let serviceReady=false;
 const executor = new ExecutorProcess({
+ connectorChanged:id=>{if(serviceReady)void service.connectors.refresh(id).catch(()=>{});},
 	assertAllowed: () => service.lifecycle.assertAllowed(),
 	// Development layout: the executor app is a sibling of this app in the workspace.
 	entry: process.env.OPENBOT_EXECUTOR_ENTRY ?? resolve(dirname(fileURLToPath(import.meta.url)), "../../local-executor/src/main.ts"),
@@ -125,6 +127,7 @@ const send = (message: HostToDesktop): void => {
 };
 
 const service = new HostService({
+ connectors:{request:(id,operation,revision)=>executor.connectorRequest(id,operation,revision)},
 	background:{inspect:(keys,ack)=>executor.inspectTasks(keys,ack),result:(id,digest)=>executor.receipt(id,digest,"local_exec"),stop:id=>executor.revoke([id])},
 	skills:{request:(id,operation,revision,signal)=>executor.skillRequest(id,operation,revision,signal)},
  artifacts: { request: (requestId, operation) => executor.artifactRequest(requestId, operation) },
@@ -163,6 +166,7 @@ approvalListeners.changed = (botId) => service.approvalsChanged(botId);
 // reruns interrupted calls with their stable call IDs; each finds its approval and its receipt.
 await executor.start();
 await service.start();
+serviceReady=true;
 
 process.on("message", async (message: unknown) => {
 	if (!isRequestEnvelope(message)) return;

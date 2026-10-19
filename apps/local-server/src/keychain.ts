@@ -1,3 +1,4 @@
+import {CONNECTOR_CREDENTIAL_PREFIX} from "@openbot/protocol";
 /**
  * macOS Keychain storage for provider API keys, through `/usr/bin/security`. Keys are passed on stdin, never on the
  * command line. Each provider's key is a generic password item under one service name.
@@ -60,6 +61,7 @@ export class KeychainCredentials implements SecretStore, CredentialStore {
 	// --- CredentialStore (pi-ai)
 
 	async read(providerId: string): Promise<Credential | undefined> {
+ if(providerId.startsWith(SEARCH_PROVIDER_PREFIX)||providerId.startsWith(CONNECTOR_CREDENTIAL_PREFIX))return undefined;
 		const key = await this.#find(providerId);
 		return key === undefined ? undefined : { type: "api_key", key };
 	}
@@ -67,7 +69,7 @@ export class KeychainCredentials implements SecretStore, CredentialStore {
 	async list(): Promise<readonly CredentialInfo[]> {
 		// Search keys share the store but are not model credentials.
 		return (await this.#index())
-			.filter((providerId) => !providerId.startsWith(SEARCH_PROVIDER_PREFIX))
+			.filter((providerId) => !providerId.startsWith(SEARCH_PROVIDER_PREFIX)&&!providerId.startsWith(CONNECTOR_CREDENTIAL_PREFIX))
 			.map((providerId) => ({ providerId, type: "api_key" as const }));
 	}
 
@@ -75,6 +77,7 @@ export class KeychainCredentials implements SecretStore, CredentialStore {
 		providerId: string,
 		fn: (current: Credential | undefined) => Promise<Credential | undefined>,
 	): Promise<Credential | undefined> {
+ if(providerId.startsWith(SEARCH_PROVIDER_PREFIX)||providerId.startsWith(CONNECTOR_CREDENTIAL_PREFIX))return Promise.reject(new Error("Reserved credential namespace"));
 		return this.#serialized(providerId, async () => {
 			const current = await this.read(providerId);
 			const next = await fn(current);

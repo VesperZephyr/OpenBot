@@ -7,6 +7,7 @@
  * which `local_read` may read as an implicit grant. Commands that run long move to the background (`tasks.ts`).
  */
 import { assertLocalTarget, type ExecutorToolName, type ToolInvocation, type ToolOutcome } from "@openbot/protocol";
+import type { ConnectorSupervisor } from "./connectors.ts";
 import { ArtifactStore, selectedPath } from "./artifacts.ts";
 import { editText, type FileContext, listDirectory, readText, writeText } from "./files.ts";
 import type { Receipt, ReceiptLedger } from "./ledger.ts";
@@ -39,6 +40,7 @@ export type ExecutorLedger = Pick<
 > & Partial<Pick<ReceiptLedger, "reconcileArtifact" | "confirmStopped" | "consumeTask">>;
 
 export type ExecutorOptions = {
+ readonly connectors?:ConnectorSupervisor;
 	readonly requireAuthority?:boolean;
  readonly targetId: string;
 	/** Default directory for relative paths and commands. */
@@ -158,9 +160,9 @@ export class LocalExecutor {
 			entry.abort.abort();
 			return entry.outcome;
 		});
-		const [finished, tasks] = await Promise.all([Promise.all(outcomes), this.#tasks.stopAll()]);
+		const [finished, tasks, connectors] = await Promise.all([Promise.all(outcomes), this.#tasks.stopAll(), this.#options.connectors?.stopAll() ?? true]);
 		const lateTasks = await this.#tasks.stopAll();
-		return finished.every((outcome) => outcome.status !== "unknown") && [...tasks, ...lateTasks].every((exit) => exit.groupGone !== false);
+		return connectors && finished.every((outcome) => outcome.status !== "unknown") && [...tasks, ...lateTasks].every((exit) => exit.groupGone !== false);
 	}
 
 	/** The Host committed the outcome; the receipt may be pruned after the retention period. */
@@ -172,6 +174,10 @@ export class LocalExecutor {
 		assertLocalTarget(invocation.target, this.#options.targetId);
 		if (Date.now() > invocation.deadline) return { status: "failed", output: "Refused: the invocation's deadline passed" };
 		signal.throwIfAborted();
+  if(invocation.tool.startsWith("mcp__")){
+            if(!invocation.connector||!this.#options.connectors)return {status:"failed",output:"Connector is unavailable"};
+            return this.#options.connectors.invoke(invocation.connector,invocation.tool,invocation.args,signal);
+        }
   const context: FileContext = { signal, workspace: this.#options.workspace, grants: invocation.grants, readGrants: invocation.readGrants };
 		const spill = artifactPath(this.#options.artifactsDirectory, invocation.invocationId);
 		const limited = (output: string): ToolOutcome => {
@@ -236,6 +242,7 @@ export class LocalExecutor {
 				return this.#tasks.stop(invocation.conversationId, taskId);
 			}
 		}
+        return {status:"failed",output:"Unknown executor tool"};
 	}
 }
 
@@ -246,3 +253,5 @@ function errorText(error: unknown): string {
 export { grantedPath };
 
 export { SkillStore } from "./skills.ts";
+
+export { ConnectorSupervisor } from "./connectors.ts";

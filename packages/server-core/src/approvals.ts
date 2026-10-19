@@ -340,6 +340,8 @@ export type PolicySnapshot = FolderAccess & {
  */
 export function decide(call: PolicyCall, definition: ToolDefinition, policy: PolicySnapshot): Decision {
 	switch (definition.capability) {
+        case "connectors": return {kind:"ask",reason:"Use this connector tool"};
+        case "connectors.discovery":return {kind:"allow"};
 		case "commands": {
 			if (policy.commandSetting === "never") return { kind: "deny", reason: "Commands are turned off in Settings" };
 			if (policy.askFirst?.some((rule) => matchesAsk(rule, call, policy.workspace)))

@@ -1,3 +1,4 @@
+import type {ConnectorControl,ConnectorConnection} from "@openbot/protocol";
 import type { BackgroundTaskKey, BackgroundTaskReceipt } from "@openbot/protocol";
 import { SkillOperationError } from "@openbot/protocol";
 import type { SkillOperation, SkillResult } from "@openbot/protocol";
@@ -16,6 +17,8 @@ type StatusReply = Extract<ExecutorMessage, { kind: "tool.status" }>;
 
 export class ExecutorProcess implements ExecutorTransport {
 	readonly #entry: string;
+ readonly #connectorWaiters=new Map<string,{resolve:(value:ConnectorConnection)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
+ readonly #connectorChanged:(id:string)=>void;
 	readonly #env: NodeJS.ProcessEnv;
 	readonly #targetId: string;
 	readonly #taskWaiters = new Map<string,{resolve:(value:readonly BackgroundTaskReceipt[])=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
@@ -41,8 +44,10 @@ export class ExecutorProcess implements ExecutorTransport {
 		dataDirectory: string;
 		env: NodeJS.ProcessEnv;
 		assertAllowed?: () => void;
+ connectorChanged?:(id:string)=>void;
 	}) {
 		this.#entry = options.entry;
+ this.#connectorChanged=options.connectorChanged??(()=>{});
 		this.#assertAllowed = options.assertAllowed ?? (() => {});
 		this.#targetId = options.targetId;
 		// The data directory is passed explicitly: the Host may have resolved a default its own environment lacks.
@@ -82,7 +87,16 @@ export class ExecutorProcess implements ExecutorTransport {
 		}
 	}
 
-	async artifactRequest(requestId: string, operation: ArtifactOperation): Promise<ArtifactOperationResult> {
+	async connectorRequest(requestId:string,operation:ConnectorControl,authorityRevision:number):Promise<ConnectorConnection>{
+  await this.#start();
+  if(operation.action==="connect"){await this.synchronize(authorityRevision);this.#assertAllowed();}
+  if(this.#connectorWaiters.size>=4)throw Error("Too many connector requests");
+  const messageId=randomUUID(),waiting=Promise.withResolvers<ConnectorConnection>();
+  const timer=setTimeout(()=>{this.#connectorWaiters.delete(messageId);waiting.reject(Error("Connector control timed out; inspect before reconnecting"));},15000);
+  this.#connectorWaiters.set(messageId,{...waiting,timer});
+  this.#send({kind:"connector.control",messageId,requestId,targetId:this.#targetId,authorityRevision,operation});return waiting.promise;
+ }
+ async artifactRequest(requestId: string, operation: ArtifactOperation): Promise<ArtifactOperationResult> {
 		await this.#start();
 		if (this.#artifactWaiters.size >= 4) throw new Error("Too many attachment requests");
 		const messageId = randomUUID(),
@@ -190,6 +204,12 @@ export class ExecutorProcess implements ExecutorTransport {
     const control=this.#controls.get(message.messageId);if(control){clearTimeout(control.timer);this.#controls.delete(message.messageId);if(message.confirmed)control.resolve();else control.reject(new Error("Permission reconciliation needs attention"));return;}
    }
 			switch (message.kind) {
+    case "connector.changed":this.#connectorChanged(message.connectorId);return;
+    case "connector.response":{
+     const waiting=this.#connectorWaiters.get(message.messageId);if(!waiting)return;
+     clearTimeout(waiting.timer);this.#connectorWaiters.delete(message.messageId);
+     if(message.error||!message.result)waiting.reject(Error("Connector state could not be confirmed"));else waiting.resolve(message.result);return;
+    }
 				case "tasks.inspected": {
 					const waiting=this.#taskWaiters.get(message.messageId);if(!waiting)return;
 					this.#taskWaiters.delete(message.messageId);clearTimeout(waiting.timer);
@@ -239,7 +259,8 @@ export class ExecutorProcess implements ExecutorTransport {
 		});
 		child.on("exit", (code, signal) => {
 			if (this.#child !== child) return;
-			for(const waiting of this.#taskWaiters.values()){clearTimeout(waiting.timer);waiting.reject(new Error("Background receipt interrupted"));}this.#taskWaiters.clear();
+			for(const waiting of this.#connectorWaiters.values()){clearTimeout(waiting.timer);waiting.reject(Error("Connector process disconnected"));}this.#connectorWaiters.clear();
+   for(const waiting of this.#taskWaiters.values()){clearTimeout(waiting.timer);waiting.reject(new Error("Background receipt interrupted"));}this.#taskWaiters.clear();
 			for(const pending of this.#skillWaiters.values()){clearTimeout(pending.timer);pending.reject(new SkillOperationError("Skill operation was interrupted; retry the same request to reconcile",true));}this.#skillWaiters.clear();
  for (const pending of this.#artifactWaiters.values()) {
 				clearTimeout(pending.timer);

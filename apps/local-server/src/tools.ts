@@ -50,7 +50,8 @@ export function createToolRouter(options: {
 		};
 	};
 	return new ToolRouter({
-		assertCallAllowed:call=>options.service().background.assertExecution(call),
+		resolveTool:name=>options.service().connectors.resolve(name),
+ assertCallAllowed:async call=>{await options.service().background.assertExecution(call);await options.service().connectors.assertExecution(call);},
 		trackCommand:{prepare:(call,digest)=>options.service().background.prepare(call,digest),settle:(call,outcome)=>options.service().background.settle(call,outcome)},
   assertExecutionAllowed:()=>options.service().lifecycle.assertAllowed(),
 		target: options.target,
@@ -58,6 +59,7 @@ export function createToolRouter(options: {
 		approvals: options.approvals,
 		executor: options.executor,
 		hostTools: {
+ tool_search:async()=>({status:"succeeded",output:"Tool discovery authorized"}),
  skill_load:(_args,_signal,call)=>options.service().skills.invoke(call),
  skill_save:(_args,_signal,call)=>options.service().skills.invoke(call),
 			...Object.fromEntries(
@@ -98,7 +100,7 @@ export function createToolRouter(options: {
 			// Policy is read fresh for every call, so a rule or grant change applies to the next call (Section 5.3).
 			decide: async (call, definition) =>
 				(await options.service().groups.executionGate(call)) ??
-				(definition.capability === "skills" ? options.service().skills.prepare(call) : definition.capability === "app.read" || definition.capability === "app.orchestrate"
+				(definition.capability.startsWith("connectors")?options.service().connectors.prepare(call):definition.capability === "skills" ? options.service().skills.prepare(call) : definition.capability === "app.read" || definition.capability === "app.orchestrate"
 					? options.service().capabilities.authorize(call)
 					: definition.capability === "collaboration"
 						? options.service().groups.prepareCollaboration(call)

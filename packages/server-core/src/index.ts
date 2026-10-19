@@ -1,7 +1,8 @@
+import {Connectors,type ConnectorPort} from "./connectors.ts";
 import { BackgroundTasks, type BackgroundPort } from "./background.ts";
 import { Skills, type SkillPort } from "./skills.ts";
 import { Observation } from "./observation.ts";
-import { ARTIFACT_LIMITS } from "@openbot/protocol";
+import { CONNECTOR_CREDENTIAL_PREFIX, ARTIFACT_LIMITS } from "@openbot/protocol";
 import type { ArtifactRef, ArtifactContent, ArtifactOperation, ArtifactOperationResult } from "@openbot/protocol";
 import { AuthorityCoordinator, type AuthorityExecutor } from "./authority.ts";
 import {LifecycleController} from "./lifecycle.ts";
@@ -74,6 +75,7 @@ export interface ArtifactPort {
 	request(requestId: string, operation: ArtifactOperation): Promise<ArtifactOperationResult>;
 }
 export type HostServiceOptions = {
+ readonly connectors?:ConnectorPort;
 	readonly background?:BackgroundPort;
 	readonly artifacts?: ArtifactPort;
  readonly skills?:SkillPort;
@@ -110,6 +112,7 @@ export type HostServiceOptions = {
 type Handlers = { [M in HostMethod]: (params: HostParams<M>) => Promise<HostResult<M>> };
 
 export class HostService {
+ readonly connectors:Connectors;
  readonly skills:Skills;
  readonly authority:AuthorityCoordinator;
  readonly lifecycle:LifecycleController;
@@ -216,17 +219,25 @@ export class HostService {
 		this.background=new BackgroundTasks({audit:event=>this.#audit({operationId:randomUUID(),operation:"background.delivery",at:Date.now(),durationMs:event.durationMs,outcome:event.state==="attention"?"failed":"succeeded",background:event}),runtime:this.#runtime,runs:this.#runs,...(options.background?{port:options.background}:{}),targetId:this.#status.targetId,canRun:()=>!this.lifecycle.state.blocked,groupAdmissible:run=>this.groups.admissible(run),changed:botId=>{this.#republish(botId);this.#emit({type:"groups.changed",payload:{}});}});
 		this.capabilities = new AppCapabilities(this.#runtime, this.#status.targetId, (run) => this.groups.admissible(run));
 		this.management.appGuard = (call) => this.capabilities.authorizeManagement(call);
-		this.authority=new AuthorityCoordinator({dataDirectory:this.#dataDirectory,runtime:this.#runtime,workspace:this.#workspace,targetId:this.#status.targetId,approvals:this.#approvals,executor:options.authorityExecutor??{synchronize:async()=>{},revoke:async()=>{}},interrupt:async(ids,stop)=>{await this.#runs.interruptSelected(ids,stop);await this.groups.interruptActive();}});
-  this.#policy = new PolicyService({ runtime: this.#runtime, approvals: this.#approvals, workspace: this.#workspace, now: this.#now,change:fn=>this.authority.change(fn),reconcile:()=>this.authority.reconcile() });
+		this.authority=new AuthorityCoordinator({resolveTool:name=>this.connectors.resolve(name),assertCall:call=>this.connectors.assertExecution(call),dataDirectory:this.#dataDirectory,runtime:this.#runtime,workspace:this.#workspace,targetId:this.#status.targetId,approvals:this.#approvals,executor:options.authorityExecutor??{synchronize:async()=>{},revoke:async()=>{}},interrupt:async(ids,stop)=>{await this.#runs.interruptSelected(ids,stop);await this.groups.interruptActive();}});
+  this.#policy = new PolicyService({resolveTool:name=>this.connectors.resolve(name), runtime: this.#runtime, approvals: this.#approvals, workspace: this.#workspace, now: this.#now,change:fn=>this.authority.change(fn),reconcile:()=>this.authority.reconcile() });
 		this.#feed = new ConversationFeed({
 			deliver: (snapshot) => this.#emit({ type: "conversation.updated", payload: snapshot }),
 			...(options.coalesce?.windowMs === undefined ? {} : { windowMs: options.coalesce.windowMs }),
 			...(options.coalesce?.timers === undefined ? {} : { timers: options.coalesce.timers }),
 		});
-		this.skills=new Skills({runtime:this.#runtime,...(options.skills?{port:options.skills}:{}),targetId:this.#status.targetId,assertAllowed:()=>this.lifecycle.assertAllowed(),changed:()=>this.#observation.changed(8)});
+		this.connectors=new Connectors({runtime:this.#runtime,targetId:this.#status.targetId,...(options.connectors?{port:options.connectors}:{}),secrets:this.#secrets,approvals:this.#approvals,assertAllowed:()=>this.lifecycle.assertAllowed(),change:fn=>this.authority.change(fn),publish:(defs,available)=>this.#runtime.refreshConnectorTools(defs,available),changed:()=>this.#observation.changed(8)});
+  this.skills=new Skills({runtime:this.#runtime,...(options.skills?{port:options.skills}:{}),targetId:this.#status.targetId,assertAllowed:()=>this.lifecycle.assertAllowed(),changed:()=>this.#observation.changed(8)});
  const skillChange=(requestId:string,change:import("@openbot/protocol").SkillChange)=>this.authority.change(async()=>this.skills.change(`desktop:${requestId}`,change,(await this.#runtime.policy().snapshot()).settings.revision));
  this.#handlers = {
 			"background.stop":({invocationId})=>this.background.stop(invocationId),
+ "connectors.list":()=>this.connectors.list(),
+ "connectors.install":input=>this.connectors.install(input),
+ "connectors.connect":input=>this.connectors.connect(input),
+ "connectors.disconnect":input=>this.connectors.disconnect(input),
+ "connectors.remove":input=>this.connectors.remove(input),
+ "connectors.credential.set":input=>this.connectors.credential(input),
+ "connectors.credential.delete":input=>this.connectors.credential(input),
  "skills.list":()=>this.skills.list(),
  "skills.get":({name,revision})=>this.skills.get(name,revision),
  "skills.save":({requestId,...change})=>skillChange(requestId,{action:"save",...change}),
@@ -445,6 +456,7 @@ export class HostService {
 		}
 		await this.#runtime.policy().bind(this.#status.targetId);
 		await this.#approvals.start(this.#runtime.approvals());
+ await this.connectors.start();
 		for (const bot of await this.#runtime.listBots()) if (bot.status !== "deleted") await this.#observe(bot.botId);
 		await this.authority.reconcile();
   await this.#runs.start();
@@ -457,6 +469,7 @@ export class HostService {
 	/** Call before the runtime closes: the shutdown aborts waiting calls, and their approvals must stay pending. */
 	async stop(): Promise<void> {
 		await this.background.close();
+ await this.connectors.close();
 		this.#observation.close();
 		await this.groups.stop();
 		this.#approvals.close();
@@ -623,7 +636,7 @@ export class HostService {
 			...(defaultModel === undefined ? {} : { defaultModel }),
 			providers: this.#runtime
 				.listProviders()
-				.filter(({ providerId }) => !providerId.startsWith(SEARCH_PROVIDER_PREFIX))
+				.filter(({ providerId }) => !providerId.startsWith(SEARCH_PROVIDER_PREFIX) && !providerId.startsWith(CONNECTOR_CREDENTIAL_PREFIX))
 				.map(({ providerId, name }) => {
 					const configured = fromConfig.get(providerId);
 					const keyStored = stored.has(providerId);
