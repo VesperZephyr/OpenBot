@@ -22,6 +22,7 @@ import {
 } from "@openbot/protocol";
 
 export type ToolCall = {
+ readonly dispatchRevision?:number;
 	readonly runId?: string;
 	readonly collaboration?: { readonly runId: string };
 	readonly authority?: import("@openbot/protocol").ManagementAuthority;
@@ -206,7 +207,7 @@ export class ToolRouter {
 				const current = await this.#options.policy.decide(call, definition);
 				if (current.kind === "deny") return appFailure("permission_denied", "Application management is not authorized");
 				this.#options.assertExecutionAllowed?.();
-				const outcome = await dispatch(()=>handler(call.args, call.signal, call));
+				const outcome = await dispatch(revision=>handler(call.args, call.signal, {...call,...(revision===undefined?{}:{dispatchRevision:revision})}));
 				if (outcome.status !== "succeeded")
 					return appFailure(
 						outcome.status === "unknown" ? "outcome_unknown" : "conflict",
@@ -223,7 +224,7 @@ export class ToolRouter {
 				if (!validManagementOutput(management.id, value)) return appFailure("outcome_unknown", "Management outcome needs attention");
 				return { ...outcome, output: JSON.stringify(value), value };
 			}
-			return dispatch(()=>handler(call.args, call.signal, call));
+			return dispatch(revision=>handler(call.args, call.signal, {...call,...(revision===undefined?{}:{dispatchRevision:revision})}));
 		}
 		const grants = await this.#options.policy.grants(call, approvedOnce);
 		this.#options.assertExecutionAllowed?.();

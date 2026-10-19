@@ -3,6 +3,8 @@
  * bound local target over the receipt ledger in `<data>/executor/receipts.sqlite`, saves cut tool output under
  * `<data>/artifacts`, and exits when the Host goes away, stopping the commands it supervises.
  */
+import { validSkillOperation } from "@openbot/protocol";
+import { SkillStore } from "@openbot/local-executor";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, realpathSync } from "node:fs";
 import { join } from "node:path";
@@ -30,6 +32,7 @@ pruneArtifacts(artifactsDirectory);
 // Opening converts receipts a previous executor left `accepted` to `unknown`, marks its background tasks `unknown`,
 // and kills their orphaned process groups.
 const ledger = ReceiptLedger.open(join(ledgerDirectory, "receipts.sqlite"));
+const skillStore = new SkillStore(join(dataDirectory, "skills"));
 const artifactStore = new ArtifactStore(join(dataDirectory, "attachments"));
 const executor = new LocalExecutor({
 	artifactStore,
@@ -41,11 +44,33 @@ const executor = new LocalExecutor({
 	...(Number.isFinite(yieldMs) && yieldMs >= 0 ? { yieldMs } : {}),
 });
 const send = (message: ExecutorMessage): void => {
-	if (process.connected) process.send?.(message);
+	if (process.connected) process.send?.(message, (error) => {
+		if (error) shutdown();
+	});
 };
 
 process.on("message", (message: ExecutorRequest) => {
 	switch (message.kind) {
+ case "skill.request": {
+  const started=Date.now();
+  try {
+   if(message.targetId!==targetId||typeof message.messageId!=="string"||message.messageId.length>256||typeof message.requestId!=="string"||!message.requestId||message.requestId.length>2048||!validSkillOperation(message.operation)||Object.keys(message).some(k=>!["kind","messageId","requestId","targetId","operation","authorityRevision"].includes(k)))throw new Error("Invalid skill request");
+   const op=message.operation;
+   let result;
+   if(op.action==="list")result=skillStore.list();
+   else if(op.action==="get")result=skillStore.get(op.name,op.revision);
+   else {
+    result=skillStore.receipt(message.requestId,op);
+    if(!result){if(!executor.authorizedOperation(message.requestId,message.authorityRevision))throw new Error("permission_revoked: stale skill authority");result=skillStore.change(message.requestId,op);}
+   }
+   console.info(JSON.stringify({type:"skill.operation",requestId:message.requestId,action:op.action,outcome:"succeeded",durationMs:Date.now()-started}));
+   send({kind:"skill.response",messageId:message.messageId,result});
+  }catch(error){
+   console.info(JSON.stringify({type:"skill.operation",requestId:message.requestId,outcome:"failed",durationMs:Date.now()-started}));
+   let uncertain=false;try{uncertain=typeof message.requestId==="string"&&skillStore.pendingRequest(message.requestId);}catch{uncertain=true;}
+ send({kind:"skill.response",messageId:message.messageId,uncertain,error:error instanceof Error&&!("code" in error)?error.message:"Skill storage is unavailable"});
+  }return;
+ }
 		case "artifact.request": {
 			if (!validArtifactRequest(message) || message.targetId !== targetId) {
 				send({ kind: "artifact.response", messageId: message.messageId, error: "Invalid artifact request" });
@@ -188,6 +213,7 @@ const shutdown = (): void => {
 	setTimeout(() => process.exit(0), 3_500).unref();
 	void executor.cancelAll().finally(() => {
 		artifactStore.close();
+ skillStore.close();
 		ledger.close();
 		process.exit(0);
 	});

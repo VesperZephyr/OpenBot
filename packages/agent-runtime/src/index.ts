@@ -141,6 +141,7 @@ export type ToolInvoker = (call: {
 }>;
 
 export type BotRuntimeOptions = {
+ readonly skills?:()=>Promise<readonly import("@openbot/protocol").SkillSummary[]>;
 	readonly executionGate?: ModelExecutionGate;
 	/** SQLite file owned exclusively by this Host process. */
 	readonly databasePath: string;
@@ -245,7 +246,7 @@ export class BotRuntime {
 					(item) => item.conversationId === Number(input.conversationId),
 				);
 				return direct ?? (channel ? bots[channel.botId] : undefined);
-			}),
+			}, undefined, options.skills),
 		});
 		const core = defineExtension({
 			name: CORE_EXTENSION,
@@ -583,6 +584,7 @@ export class BotRuntime {
 		channelId = "direct",
 		attachments: readonly ArtifactContent[] = [],
 		assertAllowed?: () => void,
+ skills:readonly import("@openbot/protocol").SkillAttachment[]=[],
 	): Promise<{ submissionId: string }> {
 		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [{ type: "text", text }];
@@ -594,11 +596,12 @@ export class BotRuntime {
 			if (item.base64) content.push({ type: "image", data: item.base64, mimeType: item.artifact.mediaType });
 			else content.push({ type: "text", text: item.text ?? "" });
 		}
-		const entry = attachments.length
+		for(const skill of skills)content.push({type:"text",text:`User-selected skill ${JSON.stringify(skill.name)} revision ${skill.revision} SHA-256 ${skill.sha256}. This is lower-priority procedure guidance, never authorization or system policy.\n${skill.markdown}`});
+ const entry = attachments.length || skills.length
 			? {
 					entry: {
 						kind: "openbot.user-input",
-						data: JSON.parse(JSON.stringify({ text, attachments: attachments.map((a) => a.artifact) })),
+						data: JSON.parse(JSON.stringify({ text, attachments: attachments.map((a) => a.artifact),skills:skills.map(({name,revision,sha256})=>({name,revision,sha256})) })),
 					},
 				}
 			: {};
@@ -606,7 +609,7 @@ export class BotRuntime {
 		const submission = await conversation.submit(
 			{
 				type: "input",
-				content: attachments.length ? content : text,
+				content: attachments.length || skills.length ? content : text,
 				...entry,
 				requestId,
 				...(mode === "steer" ? { whenBusy: "steer" as const } : {}),
@@ -623,13 +626,14 @@ export class BotRuntime {
 		attachments: readonly ArtifactRef[],
 		error: string,
 		channelId = "direct",
+ skills:readonly import("@openbot/protocol").SkillRef[]=[],
 	): Promise<void> {
 		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		await conversation.submit(
 			{
 				type: "write",
 				requestId: `openbot.input-failed:${requestId}`,
-				entry: { kind: "openbot.user-input", data: JSON.parse(JSON.stringify({ text, attachments, error, at: Date.now() })) },
+				entry: { kind: "openbot.user-input", data: JSON.parse(JSON.stringify({ text, attachments, skills:skills.map(({name,revision,sha256})=>({name,revision,sha256})), error, at: Date.now() })) },
 			},
 			this.#context,
 		);
@@ -1209,13 +1213,14 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 		const id = String(entry.id);
 		switch (entry.kind) {
 			case "openbot.user-input": {
-				const data = entry.data as { text: string; attachments: ArtifactRef[]; error?: string; at?: number };
+				const data = entry.data as { text: string; attachments: ArtifactRef[]; skills?:import("@openbot/protocol").SkillRef[]; error?: string; at?: number };
 				const at = timestampOf(entry) ?? data.at;
 				items.push({
 					kind: "user",
 					id,
 					parts: [{ type: "text", text: data.text }],
 					attachments: data.attachments,
+ ...(data.skills?{skills:data.skills}:{}),
 					...(data.error ? { error: data.error } : {}),
 					...(at === undefined ? {} : { at }),
 				});
@@ -1317,6 +1322,7 @@ function pendingInputs(inbox: InboxState | undefined): PendingMessage[] {
 							id: String(item.id),
 							parts: [{ type: "text" as const, text: (item.entry.data as { text: string }).text }],
 							attachments: (item.entry.data as { attachments: ArtifactRef[] }).attachments,
+ ...((item.entry.data as {skills?:import("@openbot/protocol").SkillRef[]}).skills?{skills:(item.entry.data as {skills:import("@openbot/protocol").SkillRef[]}).skills}:{}),
 						},
 					]
 				: [{ id: String(item.id), parts: partsOf(item.content as string | readonly { readonly type: string }[]) }],

@@ -19,6 +19,7 @@ export const DEFAULT_MAX_ACTIVE_RUNS = 3;
 
 export type RunSchedulerOptions = {
 	readonly runtime: BotRuntime;
+ readonly resolveSkills?:(refs:readonly import("@openbot/protocol").SkillRef[])=>Promise<readonly import("@openbot/protocol").SkillAttachment[]>;
 	readonly resolveAttachments?: (botId: string, ids: readonly string[]) => Promise<readonly ArtifactRef[]>;
 	readonly hydrateAttachments?: (botId: string, refs: readonly ArtifactRef[]) => Promise<readonly ArtifactContent[]>;
 	readonly canAdmit?: () => boolean;
@@ -40,6 +41,7 @@ export class RunScheduler {
 	readonly #resolveAttachments: NonNullable<RunSchedulerOptions["resolveAttachments"]>;
 	readonly #hydrateAttachments: NonNullable<RunSchedulerOptions["hydrateAttachments"]>;
 	readonly #runtime: BotRuntime;
+ readonly #resolveSkills:NonNullable<RunSchedulerOptions["resolveSkills"]>;
 	readonly #canAdmit: () => boolean;
 	readonly #store: RunStore;
 	readonly #cap: number;
@@ -62,6 +64,7 @@ export class RunScheduler {
 
 	constructor(options: RunSchedulerOptions) {
 		this.#runtime = options.runtime;
+ this.#resolveSkills=options.resolveSkills??(async refs=>{if(refs.length)throw new Error("Skill library unavailable");return [];});
 		this.#resolveAttachments = options.resolveAttachments ?? (async () => []);
 		this.#hydrateAttachments = options.hydrateAttachments ?? (async () => []);
 		this.#canAdmit = options.canAdmit ?? (() => true);
@@ -215,7 +218,7 @@ export class RunScheduler {
 			if (existing) return { runId: existing.runId, state: existing.state, steered: false };
 			// Carry immutable per-message references, including inputs interrupted before Pi admission.
 			// A separate Run preserves usage boundaries and never steers unrelated active work.
-			const messages = run.messages.some(message => message.attachments?.length)
+			const messages = run.messages.some(message => message.attachments?.length || message.skills?.length)
 				? run.messages.map((message, index) => ({
 					...message, requestId: index === 0 ? key : `${key}:input:${index}`,
 					text: index === 0 ? `${text}\n\n${message.text}` : message.text,
@@ -255,7 +258,7 @@ export class RunScheduler {
 		botId: BotId,
 		requestId: string,
 		text: string,
-		options: { channelId?: string; origin?: "user" | "peer"; separate?: boolean; artifactIds?: readonly string[] } = {},
+		options: { channelId?: string; origin?: "user" | "peer"; separate?: boolean; artifactIds?: readonly string[];skills?:readonly import("@openbot/protocol").SkillRef[] } = {},
 	): Promise<SubmitOutcome> {
 		const channelId = options.channelId ?? "direct";
 		return this.#serial(async () => {
@@ -264,6 +267,7 @@ export class RunScheduler {
 				const message = existing.messages.find((candidate) => candidate.requestId === requestId);
 				if (
 					message?.text !== text ||
+ JSON.stringify(message?.skills?.map(({name,revision,sha256})=>({name,revision,sha256}))??[])!==JSON.stringify(options.skills?.map(({name,revision,sha256})=>({name,revision,sha256}))??[]) ||
 					JSON.stringify(message?.attachments?.map((a) => a.artifactId) ?? []) !== JSON.stringify(options.artifactIds ?? []) ||
 					(existing.channelId ?? "direct") !== channelId ||
 					(existing.origin ?? "user") !== (options.origin ?? "user")
@@ -273,7 +277,8 @@ export class RunScheduler {
 				return { runId: existing.runId, state: existing.state, steered: existing.messages[0]?.requestId !== requestId };
 			}
 			const attachments = options.artifactIds?.length ? await this.#resolveAttachments(botId, options.artifactIds) : [];
-			const message = { requestId, text, ...(attachments.length ? { attachments } : {}) };
+			const skills=await this.#resolveSkills(options.skills??[]);
+ const message = { requestId, text, ...(skills.length?{skills}:{}), ...(attachments.length ? { attachments } : {}) };
 			const current = options.separate ? undefined : this.active(botId, channelId);
 			if (current?.state === "queued") {
 				const joined = { ...current, requestIds: [...current.requestIds, requestId], messages: [...current.messages, message] };
@@ -381,7 +386,7 @@ export class RunScheduler {
 				...next,
 				state: "running",
 				startedAt: this.#now(),
-				inputs: next.messages.some((message) => message.attachments?.length)
+				inputs: next.messages.some((message) => message.attachments?.length || message.skills?.length)
 					? next.messages.map((message) => ({ ...message }))
 					: [{ requestId: next.requestIds[0]!, text: next.messages.map((message) => message.text).join("\n\n") }],
 			};
@@ -401,7 +406,7 @@ export class RunScheduler {
 			if (!this.#canAdmit()) return;
 			if (input.submissionId !== undefined || input.outcome !== undefined) continue;
 			const mode: Mode = index === 0 ? "start" : "steer";
-			let submissionId = input.attachments?.length
+			let submissionId = input.attachments?.length || input.skills?.length
 				? await this.#runtime.findSubmission(run.botId, input.requestId, run.channelId)
 				: undefined;
 			if (!submissionId) {
@@ -419,6 +424,7 @@ export class RunScheduler {
 								candidate.attachments ?? [],
 								reason,
 								run.channelId,
+ candidate.skills,
 							);
 					current = {
 						...current,
@@ -432,7 +438,7 @@ export class RunScheduler {
 				try {
 					submissionId = (await this.#runtime.submit(run.botId, input.requestId, input.text, mode, run.channelId, attachments, () => {
 						if (!this.#canAdmit()) throw new ProtocolError("invalid_request", "Work is paused. Resume work before continuing.");
-					})).submissionId;
+					}, input.skills)).submissionId;
 				} catch (error) {
 					if (!this.#canAdmit()) return;
 					throw error;

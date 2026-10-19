@@ -132,6 +132,7 @@ export class LocalExecutor {
 		return outcome;
 	}
 
+ authorizedOperation(id:string,revision:number|undefined):boolean{return revision===this.#revision&&!this.#revoked.has(id);}
  synchronize(revision:number):boolean {if(!Number.isSafeInteger(revision)||revision<0||revision<this.#revision)return false;this.#revision=revision;return true;}
  async revoke(ids:readonly string[]):Promise<boolean>{
   const selected=new Set(ids);for(const id of selected)this.#revoked.add(id);
@@ -243,3 +244,5 @@ function errorText(error: unknown): string {
 }
 
 export { grantedPath };
+
+export { SkillStore } from "./skills.ts";

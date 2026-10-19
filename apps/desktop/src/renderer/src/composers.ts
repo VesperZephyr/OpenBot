@@ -1,8 +1,10 @@
+import { validSkillRef, type SkillRef } from "@openbot/protocol";
 import type { ArtifactRef } from "@openbot/protocol";
 /** Local UI state only. Host snapshots remain the sole source of accepted messages. */
 export type ConversationKey = `bot:${string}` | `group:${string}`;
 export type ComposerDraft = {
 	attachments?: readonly ArtifactRef[];
+ skills?:readonly SkillRef[];
 	version: 1;
 	text: string;
 	recipientIds: readonly string[];
@@ -11,6 +13,7 @@ export type ComposerDraft = {
 };
 export type SendAttempt = {
 	attachments?: readonly ArtifactRef[];
+ skills?:readonly SkillRef[];
 	requestId: string;
 	conversationKey: ConversationKey;
 	text: string;
@@ -29,6 +32,7 @@ const attachmentsValid = (value: unknown) =>
 		value.every(
 			(a) => a && typeof a.artifactId === "string" && /^artifact_[a-f0-9]{32}$/.test(a.artifactId) && typeof a.name === "string",
 		));
+const skillsValid=(v:unknown)=>v===undefined||Array.isArray(v)&&v.length<=2&&v.every(validSkillRef);
 const keyValid = (v: string): v is ConversationKey => /^(bot|group):.+$/.test(v);
 const integer = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
 export class ComposerStore {
@@ -52,7 +56,7 @@ export class ComposerStore {
 					r.draft.version !== 1 ||
 					typeof r.draft.text !== "string" ||
 					!strings(r.draft.recipientIds) ||
-					!attachmentsValid(r.draft.attachments) ||
+					!attachmentsValid(r.draft.attachments) || !skillsValid(r.draft.skills) ||
 					!integer(r.draft.revision) ||
 					!integer(r.draft.updatedAt)
 				)
@@ -65,7 +69,7 @@ export class ComposerStore {
 						!a.requestId ||
 						typeof a.text !== "string" ||
 						!strings(a.recipientIds) ||
-						!attachmentsValid(a.attachments) ||
+						!attachmentsValid(a.attachments) || !skillsValid(a.skills) ||
 						!integer(a.draftRevision) ||
 						!["pending", "uncertain"].includes(a.state))
 				)
@@ -99,7 +103,7 @@ export class ComposerStore {
 	private publish() {
 		for (const fn of this.listeners) fn();
 	}
-	edit(key: ConversationKey, change: Partial<Pick<ComposerDraft, "text" | "recipientIds" | "attachments">>) {
+	edit(key: ConversationKey, change: Partial<Pick<ComposerDraft, "text" | "recipientIds" | "attachments" | "skills">>) {
 		const old = this.get(key);
 		this.records = {
 			...this.records,
@@ -126,7 +130,7 @@ export class ComposerStore {
 		if (
 			old.attempt?.state === "pending" ||
 			(old.attempt && !retry) ||
-			(!old.attempt && !old.draft.text.trim() && !old.draft.attachments?.length)
+			(!old.attempt && !old.draft.text.trim() && !old.draft.attachments?.length && !old.draft.skills?.length)
 		)
 			return false;
 		const attempt: SendAttempt = old.attempt
@@ -137,7 +141,8 @@ export class ComposerStore {
 					text: old.draft.text.trim(),
 					recipientIds: [...old.draft.recipientIds],
 					...(old.draft.attachments?.length ? { attachments: old.draft.attachments.map((a) => ({ ...a })) } : {}),
-					draftRevision: old.draft.revision,
+					...(old.draft.skills?.length?{skills:old.draft.skills.map(s=>({...s}))}:{}),
+ draftRevision: old.draft.revision,
 					state: "pending",
 				};
 		this.records = { ...this.records, [key]: { ...old, attempt } };
