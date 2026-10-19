@@ -12,17 +12,17 @@ export function PendingMessages({ snapshot }: { readonly snapshot: ConversationS
 	return (
 		<>
 			{(snapshot.pending ?? []).map((message) => (
-				<li key={message.id} className="message message-user is-pending">
+				<li key={message.id} className={`message ${message.source==="background"?"message-background":"message-user"} is-pending`}>
 					{message.skills?.map(skill=><span className="skill-chip" key={skill.name}>/{skill.name} <small>v{skill.revision}</small></span>)}
  {message.attachments?.map((ref) => (
 						<ArtifactCard key={ref.artifactId} artifact={ref} />
 					))}
-					<div className="message-text">
+					{message.source==="background" ? <span>{t("Background task result")}</span> : <div className="message-text">
 						{message.parts.map((part, index) => (
 							// Parts have no identity of their own; their order is stable within one message.
 							<p key={index}>{part.text}</p>
 						))}
-					</div>
+					</div>}
 				</li>
 			))}
 			{snapshot.run?.state === "queued" && (

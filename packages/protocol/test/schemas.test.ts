@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HOST_METHODS } from "../src/index.ts";
+import { validBackgroundKeys, HOST_METHODS } from "../src/index.ts";
 import { HOST_PARAM_SCHEMAS, paramsError, validArtifactRequest } from "../src/schemas.ts";
 
 describe("Host method parameter schemas", () => {
@@ -106,4 +106,11 @@ describe("Host method parameter schemas", () => {
 		expect(message).not.toContain("sk-secret");
 		expect(message).not.toContain("12345678");
 	});
+});
+
+it("bounds private completion inspection and keeps renderer stop authority narrow",()=>{
+ const key={taskId:"task_one",invocationId:"conversation:call"};expect(validBackgroundKeys([key])).toBe(true);
+ for(const keys of [[{...key,targetId:"other"}],[{...key,taskId:""}],Array.from({length:17},()=>key)])expect(validBackgroundKeys(keys)).toBe(false);
+ expect(paramsError("background.stop",{invocationId:key.invocationId})).toBeUndefined();
+ expect(paramsError("background.stop",{invocationId:key.invocationId,botId:"other",targetId:"remote"})).toBeDefined();
 });

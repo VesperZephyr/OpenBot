@@ -1,0 +1,43 @@
+.background-task {
+	margin: 10px 0 16px 16px;
+	border-left: 2px solid var(--border);
+	padding: 8px 14px;
+	font-size: 13px;
+}
+.background-task-heading {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 12px;
+}
+.background-task-heading small {
+	color: var(--muted);
+	font-family: var(--font-mono);
+}
+.background-task-heading button {
+	margin-left: auto;
+}
+.background-task p {
+	margin: 6px 0;
+}
+.background-task details {
+	margin-top: 8px;
+}
+.background-task pre {
+	max-height: 240px;
+	overflow: auto;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	font-family: var(--font-mono);
+	font-size: 12px;
+}
+.message-background {
+	color: var(--muted);
+	font-size: 13px;
+	margin: 20px 0;
+	border-left: 2px solid var(--border);
+	padding-left: 16px;
+}
+.message-background summary {
+	cursor: pointer;
+}

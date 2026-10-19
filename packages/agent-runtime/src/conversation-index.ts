@@ -46,6 +46,7 @@ function project(messages: readonly ConversationPreview[]): Projection {
 export function directMessages(snapshot: ConversationSnapshot): ConversationPreview[] {
 	return snapshot.items.flatMap((item) => {
 		if (item.kind !== "user" && item.kind !== "assistant") return [];
+        if (item.kind === "user" && item.source === "background") return [];
 		const text = [...item.parts.map((p) => p.text), ...(item.kind === "user" ? (item.attachments?.map((a) => a.name) ?? []) : [])].join(
 			"\n",
 		);

@@ -125,6 +125,7 @@ const send = (message: HostToDesktop): void => {
 };
 
 const service = new HostService({
+	background:{inspect:(keys,ack)=>executor.inspectTasks(keys,ack),result:(id,digest)=>executor.receipt(id,digest,"local_exec"),stop:id=>executor.revoke([id])},
 	skills:{request:(id,operation,revision,signal)=>executor.skillRequest(id,operation,revision,signal)},
  artifacts: { request: (requestId, operation) => executor.artifactRequest(requestId, operation) },
 	nativeLifecycleRequired: process.env.OPENBOT_DESKTOP_LIFECYCLE === "1",

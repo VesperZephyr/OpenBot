@@ -32,6 +32,12 @@ type Row = { invocation_id: string; args_digest: string; tool: string; status: R
 export type TaskStatus = "running" | InvocationStatus;
 
 export type TaskRecord = {
+	readonly runId?: string;
+	readonly botId?: string;
+	readonly output?: string;
+	readonly truncated?: boolean;
+	readonly consumed: boolean;
+	readonly finishedAt?: number;
 	readonly taskId: string;
 	readonly invocationId: string;
 	readonly conversationId: string;
@@ -40,6 +46,7 @@ export type TaskRecord = {
 };
 
 type TaskRow = {
+	run_id: string | null; bot_id: string | null; output: string | null; truncated: number; consumed: number; finished_at: number | null;
 	task_id: string;
 	invocation_id: string;
 	conversation_id: string;
@@ -100,10 +107,13 @@ export class ReceiptLedger {
 		// Every accepted row must be on disk before the effect it guards starts.
 		db.exec("pragma synchronous = full");
 		db.exec(SCHEMA);
+		const columns = new Set((db.prepare("pragma table_info(background_tasks)").all() as {name:string}[]).map(row => row.name));
+		for (const [name, type] of Object.entries({run_id:"text",bot_id:"text",output:"text",truncated:"integer not null default 0",consumed:"integer not null default 0",wake_tracked:"integer not null default 0",wake_acked_at:"integer"}))
+			if (!columns.has(name)) db.exec(`alter table background_tasks add column ${name} ${type}`);
 		const ledger = new ReceiptLedger(db, now);
 		ledger.#recover();
 		db.prepare("delete from receipts where acked_at is not null and acked_at < ?").run(now() - RETENTION_MS);
-		db.prepare("delete from background_tasks where finished_at is not null and finished_at < ?").run(now() - RETENTION_MS);
+		db.prepare("delete from background_tasks where finished_at is not null and finished_at < ? and (wake_tracked=0 or wake_acked_at is not null)").run(now() - RETENTION_MS);
 		return ledger;
 	}
 
@@ -168,20 +178,20 @@ export class ReceiptLedger {
 	 * Record that an invocation's command moved to the background as `taskId`, with the process group its receipt
 	 * recorded. Committed before the invocation's result is reported.
 	 */
-	recordTask(taskId: string, invocationId: string, conversationId: string): void {
+	recordTask(taskId: string, invocationId: string, conversationId: string, metadata: {runId?:string;botId?:string;completionTracking?:boolean} = {}): void {
 		this.#db
 			.prepare(
-				`insert into background_tasks (task_id, invocation_id, conversation_id, pgid, leader_started, status, started_at)
-				 select ?, invocation_id, ?, pgid, leader_started, 'running', ? from receipts where invocation_id = ?`,
+				`insert into background_tasks (task_id, invocation_id, conversation_id, pgid, leader_started, status, started_at, run_id, bot_id, wake_tracked)
+				 select ?, invocation_id, ?, pgid, leader_started, 'running', ?, ?, ?, ? from receipts where invocation_id = ?`,
 			)
-			.run(taskId, conversationId, this.#now(), invocationId);
+			.run(taskId, conversationId, this.#now(), metadata.runId??null, metadata.botId??null, metadata.completionTracking?1:0, invocationId);
 	}
 
 	/** Record how a background task ended. Only a `running` row changes, as with receipts. */
-	finishTask(taskId: string, status: InvocationStatus, exit: { code: number | null; signal: string | null }): void {
+	finishTask(taskId: string, status: InvocationStatus, exit: { code: number | null; signal: string | null }, output?: {text:string;truncated:boolean}): void {
 		this.#db
-			.prepare("update background_tasks set status = ?, exit = ?, finished_at = ? where task_id = ? and status = 'running'")
-			.run(status, JSON.stringify(exit), this.#now(), taskId);
+			.prepare("update background_tasks set status = ?, exit = ?, finished_at = ?, output = ?, truncated = ? where task_id = ? and status = 'running'")
+			.run(status, JSON.stringify(exit), this.#now(), output?.text??null, output?.truncated?1:0, taskId);
 	}
 
 	task(taskId: string): TaskRecord | undefined {
@@ -189,11 +199,21 @@ export class ReceiptLedger {
 		if (row === undefined) return undefined;
 		return {
 			taskId: row.task_id,
+			...(row.run_id ? {runId:row.run_id} : {}), ...(row.bot_id ? {botId:row.bot_id} : {}),
+			...(row.output === null ? {} : {output:row.output,truncated:!!row.truncated}), consumed:!!row.consumed,
+			...(row.finished_at === null ? {} : {finishedAt:row.finished_at}),
 			invocationId: row.invocation_id,
 			conversationId: row.conversation_id,
 			status: row.status,
 			...(row.exit === null ? {} : { exit: JSON.parse(row.exit) as NonNullable<TaskRecord["exit"]> }),
 		};
+	}
+
+	consumeTask(taskId: string): void {
+		this.#db.prepare("update background_tasks set consumed=1 where task_id=? and status!='running'").run(taskId);
+	}
+	ackTask(taskId: string, invocationId: string): void {
+		this.#db.prepare("update background_tasks set wake_acked_at=? where task_id=? and invocation_id=? and status!='running'").run(this.#now(),taskId,invocationId);
 	}
 
  /** Recovery can stop a process without knowing its earlier effects; acknowledge only confirmed quiescence. */

@@ -348,6 +348,10 @@ A Pi tool receives `execute(args, api, context)`, including conversation, task, 
 
 A tool that cannot satisfy these rules must stay `replay: "unsafe"`, which makes Pi return an interrupted result after a crash. See [Pi tool recovery](https://github.com/earendil-works/pi/blob/b45e0ebcc5ae2fc42a6f2f23104d10e656e6bedb/packages/durable/README.md#tools).
 
+**Durable command completion (B15b).** Tool Router reserves Host-owned completion tracking before an authorized local command starts and binds a returned background task before its tool result commits. Only live user/peer Runs can subscribe. Executor terminal receipts atomically retain trusted source identity and at most 16 KiB of UTF-8 output; legacy tasks never wake a Bot. A target-bound private inspection request reads up to 16 known identities with one request in flight. Host copies the receipt before stable queue admission and acknowledgement. Unacknowledged tracked receipts are retained; consumed, stopped, invalid and uncertain work does not create a follow-up.
+
+A completion starts one separate background-origin Run after its source succeeds. It cannot steer user work, create another completion subscription, manage Bots/groups, save skills or delegate. Current policy, target and lifecycle gates still apply to every tool. Stop and context reset persist suppression before cancelling pending delivery; replay cannot clear that tombstone. Group subscriptions reserve one of the existing twelve automatic deliveries under the original root and post, with no extra acknowledgement continuation. Limits are 64 pending subscriptions, eight per source and 4,096 retained identities. Source/continuation Runs remain pinned while needed. Bilingual inline status and explicitly labeled synthetic input use existing observation; search and previews include the assistant result, not a synthetic human request. Operational diagnostics contain IDs/state/duration, never command bodies or output. See [B15b](tasks/b15b-background-completion.md).
+
 ### 5.2 Tool Set and Dispatch
 
 Tool Router dispatches every model-selected tool to one of two destinations. **Executor tools** cause side effects on the target and always run in the local executor. **Host tools** read or change OpenBot product state, or call configured network services with Host-held credentials, and run as `server-core` handlers. Both destinations pass the same target, policy, and scheduling checks.
@@ -584,6 +588,7 @@ The Host and the executor exchange a startup handshake containing protocol versi
 | `tool.status` | Reconcile a previously accepted invocation after interruption |
 | `tool.cancel` | Request termination; report confirmed termination or an uncertain outcome |
 | `result.ack` | Confirm that the Host persisted the terminal receipt |
+| `tasks.inspect` / `tasks.inspected` | Private target-bound inspection/acknowledgement of up to 16 known background task and invocation identities; ten-second timeout; no model access |
 | `tasks.stop` | Stop every background command a conversation started, when the user stops its Run |
 | `control.revoke` | Invalidate the current desktop control epoch and block subsequent desktop input |
 | `browser.gate` | Gate or release one Bot's browser window for takeover, pause, or cancellation |

@@ -163,7 +163,8 @@ export class Groups {
 			await this.#runs.cancelMatching((run) => run.requestIds.some((id) => cancelled.has(id)));
 			for (const d of deliveries) {
     if(!this.#canRun())return;
-				if (d.state !== "pending") continue;
+				if (d.state !== "pending" || (d.origin==="background" && !d.backgroundReady)) continue;
+				if(d.backgroundSourceId && deliveries.find(source=>source.deliveryId===d.backgroundSourceId)?.state!=="completed")continue;
 				if (d.parentId && deliveries.find((p) => p.deliveryId === d.parentId)?.state !== "completed") continue;
 				await this.runtime.ensureChannel(d.botId, d.groupId);
 				await this.#observe(d.botId, d.groupId);
@@ -173,7 +174,7 @@ export class Groups {
 					const admitted = await this.#runs.submit(d.botId, `delivery:${d.deliveryId}`, d.input, {
 						channelId: d.groupId,
 						separate: true,
-						origin: d.origin === "peer" || d.origin === "result" ? "peer" : "user",
+						origin: d.origin === "background" ? "background" : d.origin === "peer" || d.origin === "result" ? "peer" : "user",
 					});
 					runId = admitted.runId;
 					await store.admitted(d.deliveryId, runId);
@@ -235,6 +236,7 @@ export class Groups {
 			!run ||
 			run.botId !== call.botId ||
 			run.state !== "running" ||
+			run.origin === "background" ||
 			!run.channelId ||
 			run.channelId === "direct" ||
 			(await this.runtime.conversationKey(call.botId, run.channelId)) !== call.conversationId

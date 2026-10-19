@@ -50,6 +50,8 @@ export function createToolRouter(options: {
 		};
 	};
 	return new ToolRouter({
+		assertCallAllowed:call=>options.service().background.assertExecution(call),
+		trackCommand:{prepare:(call,digest)=>options.service().background.prepare(call,digest),settle:(call,outcome)=>options.service().background.settle(call,outcome)},
   assertExecutionAllowed:()=>options.service().lifecycle.assertAllowed(),
 		target: options.target,
 		closeAppManagement: (call) => options.service().closeAppManagement(call),

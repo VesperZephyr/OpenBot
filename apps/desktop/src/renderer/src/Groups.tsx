@@ -1,3 +1,4 @@
+import { BackgroundTask } from "./BackgroundTask";
 import { ArtifactCard } from "./ArtifactCard";
 import { ChatComposer } from "./ChatComposer";
 import { ConversationShell, DetailsPanel, Timeline } from "./ConversationUI";
@@ -281,6 +282,7 @@ export function GroupView({ groupId }: { groupId: string }) {
 							))}
 						</article>
 					))}
+				{snapshot.backgroundTasks?.map(record=><BackgroundTask key={record.invocationId} record={record}/>)}
 				{roots
 					.filter((r) => r.state !== "completed")
 					.map((root) => (

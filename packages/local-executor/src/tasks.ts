@@ -9,7 +9,7 @@
  * Tasks belong to the conversation that started them; another conversation's task ID is unknown to it.
  */
 import { randomUUID } from "node:crypto";
-import type { InvocationStatus, ToolOutcome } from "@openbot/protocol";
+import { BACKGROUND_LIMITS, type InvocationStatus, type ToolOutcome } from "@openbot/protocol";
 import { type CommandArgs, type CommandExit, commandOutcome, type RunningCommand, runCommand } from "./command.ts";
 import type { ReceiptLedger } from "./ledger.ts";
 import { LOG_START, type LogPosition, OutputLog } from "./output.ts";
@@ -18,7 +18,7 @@ import { LOG_START, type LogPosition, OutputLog } from "./output.ts";
 export const DEFAULT_YIELD_MS = 60_000;
 const MAX_WAIT_SECONDS = 60;
 
-export type TaskLedger = Pick<ReceiptLedger, "recordGroup" | "recordTask" | "finishTask" | "task">;
+export type TaskLedger = Pick<ReceiptLedger, "recordGroup" | "recordTask" | "finishTask" | "task"> & Partial<Pick<ReceiptLedger, "consumeTask">>;
 
 type Task = {
  readonly invocationId:string;
@@ -51,7 +51,7 @@ export class CommandTasks {
 	 * the output so far and a `taskId`. `signal` cancels it only while it is in the foreground.
 	 */
 	async exec(
-		invocation: { readonly invocationId: string; readonly conversationId: string; readonly runId?: string },
+		invocation: { readonly invocationId: string; readonly conversationId: string; readonly runId?: string; readonly botId?:string; readonly completionTracking?:boolean },
 		args: CommandArgs & { readonly background?: boolean },
 		logPath: string,
 		onProgress: (output: string) => void,
@@ -99,18 +99,24 @@ export class CommandTasks {
 			ended: command.exited.then((ended) => {
 				task.exit = ended;
 				log.close();
-				this.#ledger.finishTask(taskId, taskStatus(ended), { code: ended.code, signal: ended.signal });
+				const final = log.render(LOG_START);
+				const bytes = Buffer.from(final.text);
+				let start = Math.max(0, bytes.length - BACKGROUND_LIMITS.outputBytes);
+				while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) start++;
+				this.#ledger.finishTask(taskId, taskStatus(ended), { code: ended.code, signal: ended.signal }, {
+					text: bytes.subarray(start).toString("utf8"), truncated: final.truncated || start > 0,
+				});
 				return ended;
 			}),
 		};
-		this.#ledger.recordTask(taskId, invocation.invocationId, invocation.conversationId);
+		this.#ledger.recordTask(taskId, invocation.invocationId, invocation.conversationId, invocation);
 		this.#tasks.set(taskId, task);
 		const { text, truncated } = log.render(LOG_START);
 		const how =
 			args.background === true ? "Started in the background" : `Still running after ${this.#yieldMs / 1000}s; moved to the background`;
 		return {
 			status: "succeeded",
-			output: `${text === "" ? "(no output yet)" : text}\n[${how} as task ${taskId}. Check it with task_output; stop it with task_stop.]`,
+			output: `${text === "" ? "(no output yet)" : text}\n[${how} as task ${taskId}. ${invocation.completionTracking ? "The final result will return automatically after this turn; do not poll. " : "No automatic continuation is scheduled; use task_output to read it. "}Stop it with task_stop.]`,
 			truncated,
 			taskId,
 		};
@@ -179,6 +185,7 @@ export class CommandTasks {
 						? `timed out after ${task.timeoutSeconds}s`
 						: `exited with ${exit.code === null ? `signal ${exit.signal}` : `code ${exit.code}`}`;
 		// The final output is out; the ledger row answers later reads, and the buffer is freed.
+		this.#ledger.consumeTask?.(task.taskId);
 		this.#tasks.delete(task.taskId);
 		return {
 			status: "succeeded",
@@ -195,6 +202,7 @@ export class CommandTasks {
 		if (row === undefined || row.conversationId !== conversationId) {
 			return { status: "failed", output: `Unknown task ${taskId}; use the taskId local_exec returned` };
 		}
+		if (row.status !== "running") this.#ledger.consumeTask?.(taskId);
 		if (row.status === "unknown") {
 			return {
 				status: "succeeded",

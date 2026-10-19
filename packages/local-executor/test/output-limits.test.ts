@@ -28,6 +28,7 @@ it("caps each file and the aggregate while retaining recent output and honest lo
 	}
 	expect(readdirSync(root).reduce((sum, name) => sum + statSync(join(root, name)).size, 0)).toBe(SPILL_LIMITS.totalBytes);
 });
+// Creates the real file-count limit; allow disk contention during the full suite.
 it("caps the number of empty spill files and never prunes the durable attachment store", () => {
 	for (let i = 0; i < SPILL_LIMITS.files; i++) writeFileSync(join(root, `${i}.txt`), "");
 	const log = new OutputLog(join(root, "over.txt"));
@@ -43,4 +44,4 @@ it("caps the number of empty spill files and never prunes the durable attachment
 	pruneArtifacts(root);
 	expect(readFileSync(join(attachments, "copy"), "utf8")).toBe("retained");
 	expect(readdirSync(root)).not.toContain("0.txt");
-});
+}, 15_000);

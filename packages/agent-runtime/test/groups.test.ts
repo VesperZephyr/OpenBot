@@ -209,3 +209,15 @@ it("member removal cancels its delegated descendants without leaving an orphan r
 	await runtime.groups().reconcile(8);
 	expect((await runtime.groups().deliveries()).some((d) => d.state === "pending")).toBe(false);
 });
+it("reserves background completion inside the existing group budget and rejects overflow",async()=>{
+ const source=await startTask();await runtime.ensureChannel("a","group_g");const conversationId=await runtime.conversationKey("a","group_g");
+ await runtime.runsStore().put({runId:"background-source",botId:"a",channelId:"group_g",origin:"user",state:"running",createdAt:2,requestIds:[`delivery:${source.deliveryId}`],messages:[],inputs:[]});
+ for(let i=0;i<11;i++)await runtime.groups().dispatch(`pre${i}`,`hash${i}`,source.deliveryId,"b","Task","Result",false,3+i);
+ const record={invocationId:"command",argsDigest:"hash",targetId:"local",sourceRunId:"background-source",botId:"a",conversationId,channelId:"group_g",createdAt:20,state:"reserved" as const};
+ await runtime.background().reserve(record);const bound=await runtime.background().bind("command","task_one");
+ expect((await runtime.groups().roots("group_g"))[0]?.automaticDeliveries).toBe(12);
+ const delivery=(await runtime.groups().deliveries()).find(d=>d.deliveryId===bound?.deliveryId)!;expect(delivery).toMatchObject({origin:"background",backgroundReady:false,backgroundSourceId:source.deliveryId,postId:source.postId});expect(delivery.parentId).toBeUndefined();
+ await runtime.background().bind("command","task_one");expect((await runtime.groups().roots("group_g"))[0]?.automaticDeliveries).toBe(12);
+ await runtime.background().reserve({...record,invocationId:"overflow"});expect((await runtime.background().bind("overflow","task_two"))?.state).toBe("suppressed");
+ await runtime.groups().stop(source.rootId!);await runtime.groups().reconcile(30);expect((await runtime.groups().deliveries()).find(d=>d.deliveryId===bound?.deliveryId)?.state).toBe("cancelled");
+});

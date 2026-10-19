@@ -45,6 +45,12 @@ describe("ReceiptLedger", () => {
 		await rm(root, { recursive: true, force: true });
 	});
 
+    it("migrates legacy background rows without inventing output or completion provenance",()=>{
+        const db=new DatabaseSync(path);db.exec(`create table background_tasks(task_id text primary key,invocation_id text not null,conversation_id text not null,pgid integer,leader_started text,status text not null,exit text,started_at integer not null,finished_at integer)`);
+        db.prepare("insert into background_tasks values(?,?,?,?,?,?,?,?,?)").run("legacy","invocation","conversation",null,null,"succeeded",null,Date.now(),Date.now());db.close();
+        const row=openLedger().task("legacy");expect(row).toMatchObject({status:"succeeded",consumed:false});expect(row?.runId).toBeUndefined();expect(row?.output).toBeUndefined();
+    });
+
 	it("repeated invocation returns recorded outcome", async () => {
 		const invocation = exec("echo run >> count.txt; echo done");
 		const first = await executorOver(openLedger()).invoke(invocation, () => {});

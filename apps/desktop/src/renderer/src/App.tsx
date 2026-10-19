@@ -1,3 +1,4 @@
+import { BackgroundTask } from "./BackgroundTask";
 import { SkillLibrary } from "./Skills";
 import { UsagePanel } from "./UsagePanel";
 import { ArtifactCard } from "./ArtifactCard";
@@ -462,6 +463,7 @@ function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 			<ToolCard
 				key={entry.id}
 				item={entry}
+				background={snapshot.backgroundTasks?.find(record=>record.taskId===entry.taskId)}
 				approval={approvals.get(entry.id)}
 				childApprovals={entry.execution?.children.flatMap((c) => (approvals.get(c.callId) ? [approvals.get(c.callId)!] : [])) ?? []}
 			/>
@@ -518,10 +520,10 @@ function Message(props: {
 	if (item.kind === "other") return null;
 	if (item.kind === "stopped") return <StoppedNote />;
 	return (
-		<li data-message-id={item.id} className={`message message-${item.kind}`}>
+		<li data-message-id={item.id} className={`message message-${item.kind==="user"&&item.source==="background"?"background":item.kind}`}>
 			<MessageTime at={item.at} />
 			{item.kind === "assistant" && item.thinking !== undefined && <Thinking text={item.thinking} />}
-			<MessageText parts={item.parts} markdown={item.kind === "assistant"} />
+			{item.kind==="user"&&item.source==="background"?<details><summary>{t("Background task result")}</summary><MessageText parts={item.parts}/></details>:<MessageText parts={item.parts} markdown={item.kind === "assistant"} />}
 			{item.kind === "user" && item.skills?.map(skill=><span className="skill-chip" key={skill.name}>/{skill.name} <small>v{skill.revision}</small></span>)}
  {item.kind === "user" && item.attachments?.map((ref) => <ArtifactCard key={ref.artifactId} artifact={ref} />)}
 			{item.kind === "user" && item.error && <p className="message-error">{t(item.error)}</p>}
@@ -583,10 +585,12 @@ const TOOL_VERBS: Record<string, readonly [running: string, done: string, action
 /** One row per tool call: a verb and subject, expandable to the arguments and output; failures open by default. */
 function ToolCard({
 	item,
+	background,
 	approval,
 	childApprovals = [],
 }: {
 	readonly item: Extract<TranscriptItem, { kind: "tool" }>;
+	readonly background?:import("@openbot/protocol").BackgroundRecord|undefined;
 	readonly approval: PendingApproval | undefined;
 	readonly childApprovals?: readonly PendingApproval[];
 }) {
@@ -660,6 +664,7 @@ function ToolCard({
 				{item.tool === "local_exec" && typeof args.command === "string" && <pre className="tool-command">$ {args.command}</pre>}
 				{output !== undefined && output !== "" && <pre className="tool-output">{output}</pre>}
 			</details>
+			{background&&<BackgroundTask record={background}/>}
 			{item.artifact && item.status === "succeeded" && <ArtifactCard artifact={item.artifact} />}
 			{approval !== undefined && <ApprovalCard approval={approval} />}
 			{childApprovals.map((child) => (

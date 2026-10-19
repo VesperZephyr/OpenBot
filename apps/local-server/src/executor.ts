@@ -1,3 +1,4 @@
+import type { BackgroundTaskKey, BackgroundTaskReceipt } from "@openbot/protocol";
 import { SkillOperationError } from "@openbot/protocol";
 import type { SkillOperation, SkillResult } from "@openbot/protocol";
 import { randomUUID } from "node:crypto";
@@ -17,6 +18,7 @@ export class ExecutorProcess implements ExecutorTransport {
 	readonly #entry: string;
 	readonly #env: NodeJS.ProcessEnv;
 	readonly #targetId: string;
+	readonly #taskWaiters = new Map<string,{resolve:(value:readonly BackgroundTaskReceipt[])=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
 	readonly #skillWaiters = new Map<string,{resolve:(result:SkillResult)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
  readonly #artifactWaiters = new Map<
 		string,
@@ -94,6 +96,16 @@ export class ExecutorProcess implements ExecutorTransport {
 		return waiting.promise;
 	}
 
+
+	async inspectTasks(keys:readonly BackgroundTaskKey[],acknowledge=false):Promise<readonly BackgroundTaskReceipt[]> {
+		await this.#start();
+		if(this.#taskWaiters.size>=1)throw new Error("Background receipt request is already pending");
+		const messageId=randomUUID(),waiting=Promise.withResolvers<readonly BackgroundTaskReceipt[]>();
+		const timer=setTimeout(()=>{this.#taskWaiters.delete(messageId);waiting.reject(new Error("Background receipt request timed out"));},10000);
+		this.#taskWaiters.set(messageId,{...waiting,timer});
+		this.#send({kind:"tasks.inspect",messageId,targetId:this.#targetId,keys:keys.map(({taskId,invocationId})=>({taskId,invocationId})),acknowledge});
+		return waiting.promise;
+	}
  async skillRequest(requestId:string,operation:SkillOperation,authorityRevision?:number,signal?:AbortSignal):Promise<SkillResult>{
   await this.#start();
   if(authorityRevision!==undefined){await this.synchronize(authorityRevision);this.#assertAllowed();signal?.throwIfAborted();}
@@ -178,6 +190,11 @@ export class ExecutorProcess implements ExecutorTransport {
     const control=this.#controls.get(message.messageId);if(control){clearTimeout(control.timer);this.#controls.delete(message.messageId);if(message.confirmed)control.resolve();else control.reject(new Error("Permission reconciliation needs attention"));return;}
    }
 			switch (message.kind) {
+				case "tasks.inspected": {
+					const waiting=this.#taskWaiters.get(message.messageId);if(!waiting)return;
+					this.#taskWaiters.delete(message.messageId);clearTimeout(waiting.timer);
+					if(message.error||!message.receipts)waiting.reject(new Error(message.error??"Background receipt unavailable"));else waiting.resolve(message.receipts);return;
+				}
 				case "skill.response": {
  const waiting=this.#skillWaiters.get(message.messageId);if(!waiting)return;this.#skillWaiters.delete(message.messageId);clearTimeout(waiting.timer);
  if(message.error||!message.result)waiting.reject(new SkillOperationError(message.error??"Skill result is unavailable",message.uncertain===true));else waiting.resolve(message.result);return;
@@ -222,6 +239,7 @@ export class ExecutorProcess implements ExecutorTransport {
 		});
 		child.on("exit", (code, signal) => {
 			if (this.#child !== child) return;
+			for(const waiting of this.#taskWaiters.values()){clearTimeout(waiting.timer);waiting.reject(new Error("Background receipt interrupted"));}this.#taskWaiters.clear();
 			for(const pending of this.#skillWaiters.values()){clearTimeout(pending.timer);pending.reject(new SkillOperationError("Skill operation was interrupted; retry the same request to reconcile",true));}this.#skillWaiters.clear();
  for (const pending of this.#artifactWaiters.values()) {
 				clearTimeout(pending.timer);

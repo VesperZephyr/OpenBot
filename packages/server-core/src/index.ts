@@ -1,3 +1,4 @@
+import { BackgroundTasks, type BackgroundPort } from "./background.ts";
 import { Skills, type SkillPort } from "./skills.ts";
 import { Observation } from "./observation.ts";
 import { ARTIFACT_LIMITS } from "@openbot/protocol";
@@ -62,7 +63,8 @@ export interface ModelConfigFile {
 
 export type OperationAudit = {
 	readonly operationId: string;
-	readonly operation: HostMethod | "core.ensure";
+	readonly operation: HostMethod | "core.ensure" | "background.delivery";
+	readonly background?: import("./background.ts").BackgroundAudit;
 	readonly at: number;
 	readonly durationMs: number;
 	readonly outcome: "succeeded" | "failed";
@@ -72,6 +74,7 @@ export interface ArtifactPort {
 	request(requestId: string, operation: ArtifactOperation): Promise<ArtifactOperationResult>;
 }
 export type HostServiceOptions = {
+	readonly background?:BackgroundPort;
 	readonly artifacts?: ArtifactPort;
  readonly skills?:SkillPort;
  readonly authorityExecutor?:AuthorityExecutor;
@@ -113,6 +116,7 @@ export class HostService {
 	readonly capabilities: AppCapabilities;
 	readonly #artifacts: ArtifactPort | undefined;
 	readonly management: BotManagement;
+	readonly background: BackgroundTasks;
 	readonly groups: Groups;
 	#botChanges: Promise<unknown> = Promise.resolve();
 	readonly #observation = new Observation();
@@ -180,7 +184,7 @@ export class HostService {
 			changed: (botId) => this.#republish(botId),
 			now: this.#now,
 			stopping: (botId, channelId, runId) => this.#conversationStopped(botId, channelId, runId),
-			admissible: (run) => this.groups.admissible(run),
+			admissible: async (run) => await this.groups.admissible(run) && await this.background.admissible(run),
 		});
 		this.groups = new Groups({
 			canRun: () => !this.lifecycle.state.blocked,
@@ -209,6 +213,7 @@ export class HostService {
 			},
 		});
 
+		this.background=new BackgroundTasks({audit:event=>this.#audit({operationId:randomUUID(),operation:"background.delivery",at:Date.now(),durationMs:event.durationMs,outcome:event.state==="attention"?"failed":"succeeded",background:event}),runtime:this.#runtime,runs:this.#runs,...(options.background?{port:options.background}:{}),targetId:this.#status.targetId,canRun:()=>!this.lifecycle.state.blocked,groupAdmissible:run=>this.groups.admissible(run),changed:botId=>{this.#republish(botId);this.#emit({type:"groups.changed",payload:{}});}});
 		this.capabilities = new AppCapabilities(this.#runtime, this.#status.targetId, (run) => this.groups.admissible(run));
 		this.management.appGuard = (call) => this.capabilities.authorizeManagement(call);
 		this.authority=new AuthorityCoordinator({dataDirectory:this.#dataDirectory,runtime:this.#runtime,workspace:this.#workspace,targetId:this.#status.targetId,approvals:this.#approvals,executor:options.authorityExecutor??{synchronize:async()=>{},revoke:async()=>{}},interrupt:async(ids,stop)=>{await this.#runs.interruptSelected(ids,stop);await this.groups.interruptActive();}});
@@ -221,6 +226,7 @@ export class HostService {
 		this.skills=new Skills({runtime:this.#runtime,...(options.skills?{port:options.skills}:{}),targetId:this.#status.targetId,assertAllowed:()=>this.lifecycle.assertAllowed(),changed:()=>this.#observation.changed(8)});
  const skillChange=(requestId:string,change:import("@openbot/protocol").SkillChange)=>this.authority.change(async()=>this.skills.change(`desktop:${requestId}`,change,(await this.#runtime.policy().snapshot()).settings.revision));
  this.#handlers = {
+			"background.stop":({invocationId})=>this.background.stop(invocationId),
  "skills.list":()=>this.skills.list(),
  "skills.get":({name,revision})=>this.skills.get(name,revision),
  "skills.save":({requestId,...change})=>skillChange(requestId,{action:"save",...change}),
@@ -239,7 +245,7 @@ export class HostService {
 			"runs.continue": ({ runId, requestId }) => this.#runs.continue(runId, requestId),
 			"collaboration.stop": ({ rootId }) => this.groups.stopTree(rootId),
 			"groups.list": () => this.#runtime.groups().list(),
-			"groups.snapshot": ({ groupId }) => this.groups.snapshot(groupId),
+			"groups.snapshot": async ({ groupId }) => ({...await this.groups.snapshot(groupId),backgroundTasks:this.background.view(undefined,undefined,groupId)}),
 			"groups.change": (change) => this.groups.change(change),
 			"groups.send": ({ groupId, requestId, text, recipientIds }) => this.groups.send(groupId, requestId, text, recipientIds),
 			"host.status": async () => this.#status,
@@ -317,6 +323,8 @@ export class HostService {
 			"bots.memory.update": ({ botId, content, expectedRevision }) => this.#runtime.setMemory(botId, content, expectedRevision),
 			"bots.memory.restore": ({ botId, revision, expectedRevision }) => this.#runtime.restoreMemory(botId, revision, expectedRevision),
 			"conversations.reset": async ({ botId }) => {
+                await this.#runs.cancelMatching(run=>run.botId===botId&&(!run.channelId||run.channelId==="direct"));
+                await this.background.stopConversation(botId,await this.#runtime.conversationKey(botId));
 				await this.#runtime.reset(botId);
 				return null;
 			},
@@ -442,11 +450,13 @@ export class HostService {
   await this.#runs.start();
 		if (this.lifecycle.state.needsResume) await this.lifecycle.pause("recovery").catch(() => {});
 		await this.groups.start();
+		await this.background.start();
 		if (!this.lifecycle.state.blocked) this.#runtime.resume();
 	}
 
 	/** Call before the runtime closes: the shutdown aborts waiting calls, and their approvals must stay pending. */
 	async stop(): Promise<void> {
+		await this.background.close();
 		this.#observation.close();
 		await this.groups.stop();
 		this.#approvals.close();
@@ -660,7 +670,7 @@ export class HostService {
 
 	/** The runtime's snapshot with what the Host adds: pending approvals and the Bot's current Run. */
 	#view(snapshot: ConversationSnapshot): ConversationSnapshot {
-		return this.#withRun(this.#withApprovals(snapshot));
+		return {...this.#withRun(this.#withApprovals(snapshot)),backgroundTasks:this.background.view(snapshot.botId,snapshot.conversationId)};
 	}
 
 	#withApprovals(snapshot: ConversationSnapshot): ConversationSnapshot {
@@ -678,6 +688,7 @@ export class HostService {
 		if (run.state !== "queued") return { ...snapshot, run };
 		const queued = messages.map(({ requestId, text, attachments, skills }) => ({
 			id: requestId,
+            ...(stored.origin==="background"?{source:"background" as const}:{}),
 			parts: [{ type: "text" as const, text }],
 			...(attachments ? { attachments } : {}),
  ...(skills?{skills:skills.map(({name,revision,sha256})=>({name,revision,sha256}))}:{}),

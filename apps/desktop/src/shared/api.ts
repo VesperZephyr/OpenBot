@@ -28,6 +28,7 @@ export const RENDERER_METHODS = [
 	"conversations.markRead",
 	"messages.submit",
 	"runs.cancel",
+	"background.stop",
 	"approvals.decide",
 	"usage.get",
 	"settings.get",
