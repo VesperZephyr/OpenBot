@@ -155,7 +155,7 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | [B15b: Durable background command completion](b15b-background-completion.md) | done (#36) |
 
 | [B9a: Supervised local stdio connectors](b9a-stdio-connectors.md) | done (#37) |
-| [B9b: HTTPS MCP sessions](b9b-https-connectors.md) | implemented; ready for review; 461 unit/Host and 120 hidden e2e tests |
+| [B9b: HTTPS MCP sessions](b9b-https-connectors.md) | in review (#39); 461 unit/Host and 120 hidden e2e tests |
 
 ## Credential ownership
 
