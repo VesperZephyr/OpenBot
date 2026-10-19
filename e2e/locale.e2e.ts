@@ -51,9 +51,11 @@ it("preserves user names, instructions and memory while switching languages", as
  await page.evaluate(async () => {
   await (window as any).openbot.methods["settings.update"]({ language: "zh-CN" });
  });
- // The Host setting is authoritative; reopen Settings to refresh the renderer.
- await page.getByRole("button", { name: "Save profile" }).click();
- await page.getByRole("button", { name: /^Settings/ }).click();
+ // The Host setting is authoritative and the renderer applies it live; the open draft must survive the switch.
+ await page.waitForFunction(() => document.documentElement.lang === "zh-CN");
+ expect(await page.getByLabel("提示词", { exact: true }).inputValue()).toBe("Prompt 保持原样");
+ await page.getByRole("button", { name: "保存资料" }).click();
+ await page.getByRole("button", { name: /^设置/ }).click();
  await page.getByRole("heading", { name: "设置", exact: true }).waitFor();
  await page.getByRole("button", { name: /Cedar 研究/ }).click();
  await page.getByRole("button", { name: "•••" }).click();
