@@ -61,45 +61,47 @@ Product design (not an implementation task): [D1: Core Bot, Specialist Bots, and
 
 Interaction research: [D2: Grok Bot UI](d2-grok-ui-research.md), **research complete**. Official documentation, the supplied screenshot and installed-client inspection inform [B21](b21-conversation-experience.md), the conversation-experience spec merged in PR #17, and [B22](b22-conversation-list.md), the conversation-list increment. D2 remains the research record.
 
-Architecture design: [D3: Application Capabilities and Local Code Mode](d3-app-capabilities.md), **accepted direction**. Defines a shared authorized Host capability surface and reuse of vendored Pi Code Mode. B24 and B25 are merged into `main`; B26 implements exact-approved management composition with its recovery acceptance matrix.
+Delivery planning: [D4: Post-B26 Delivery Plan](d4-delivery-plan.md), **in review, documentation only**. The [development roadmap](../development-roadmap.md) orders remaining work against merged `main` through B26, with execution packets, dependencies and acceptance gates. Unimplemented packets are planning briefs, not ready specs.
 
-Phase 1 (MVP). Every batch is implemented on `feat/mvp` and in review until the owner's acceptance run.
+Architecture design: [D3: Application Capabilities and Local Code Mode](d3-app-capabilities.md), **accepted direction**. Defines a shared authorized Host capability surface and reuse of vendored Pi Code Mode. B24 and B25 are merged into `main`; B26 is merged in PR #27 with exact-approved management composition and its recovery acceptance matrix.
+
+Phase 1 (MVP) implementation is merged into `main`. Historical verification is recorded in the specs; native packaged release evidence remains separate in G0 of the roadmap.
 
 | ID                            | Title                                   | Status        |
 | ----------------------------- | --------------------------------------- | ------------- |
-| [B1](b1-durable-approvals.md) | Durable approvals and executor receipts | in review     |
-| [B2](b2-runs.md)              | Runs, queue, cancellation, and steering | in review     |
-| [B3](b3-coding-tools.md)      | Coding-agent tools                      | in review     |
-| [B4](b4-web-research.md)      | Web research                            | in review     |
-| [B5](b5-always-allow.md)      | Always allow and folder grants          | in review     |
-| [B6](b6-bot-quality.md)       | Bot quality and memory                  | in review     |
-| [B7](b7-desktop-mvp.md)       | Desktop MVP                             | in review     |
-| [B8](b8-installable-build.md) | Installable build                       | in review     |
-| [B7a](b7a-background-e2e.md) | Background desktop tests                | in review     |
-| [B8a](b8a-login-path.md) | Login shell command path | in review |
+| [B1](b1-durable-approvals.md) | Durable approvals and executor receipts | done     |
+| [B2](b2-runs.md)              | Runs, queue, cancellation, and steering | done     |
+| [B3](b3-coding-tools.md)      | Coding-agent tools                      | done     |
+| [B4](b4-web-research.md)      | Web research                            | done     |
+| [B5](b5-always-allow.md)      | Always allow and folder grants          | done     |
+| [B6](b6-bot-quality.md)       | Bot quality and memory                  | done     |
+| [B7](b7-desktop-mvp.md)       | Desktop MVP                             | done     |
+| [B8](b8-installable-build.md) | Installable build                       | done     |
+| [B7a](b7a-background-e2e.md) | Background desktop tests                | done     |
+| [B8a](b8a-login-path.md) | Login shell command path | done |
 
 ## Product foundation
 
-Current increment: B13a channel contexts and B13b group lifecycle follow merged B18/B19. B13c bounded group collaboration is implemented and in review; agent mechanisms continue to reuse Pi. Only ready specs may start.
+The listed foundation increments are merged into `main` through B26. Remaining work follows D4; agent mechanisms continue to reuse Pi. Only ready implementation specs may start.
 
 | Task | Status |
 | --- | --- |
-| [B16](b16-model-sources.md) | in review |
-| [B17](b17-core-bot.md) | in review |
-| [B20](b20-desktop-experience.md) | in review |
+| [B16](b16-model-sources.md) | done |
+| [B17](b17-core-bot.md) | done |
+| [B20](b20-desktop-experience.md) | done |
 | [B18](b18-core-management.md) | done (PR #11) |
-| [B19](b19-memory-controls.md) | in review |
+| [B19](b19-memory-controls.md) | done |
 | [B13A](b13a-channel-contexts.md) | done (PR #13) |
-| [B13B](b13b-group-lifecycle.md) | in review |
-| [B13C](b13c-collaboration.md) | in review |
+| [B13B](b13b-group-lifecycle.md) | done |
+| [B13C](b13c-collaboration.md) | done |
 | [B21](b21-conversation-experience.md) | done (PR #17) |
-| [B22](b22-conversation-list.md) | in review |
-| [B23](b23-conversation-search.md) | in review |
+| [B22](b22-conversation-list.md) | done |
+| [B23](b23-conversation-search.md) | done |
 
 ## Application capabilities
 
 | Task | Status |
 | --- | --- |
-| [B24: Authorized application API](b24-app-capability-api.md) | in review (PR #23) |
-| [B25: Local app Code Mode](b25-local-app-code-mode.md) | implemented, in review |
-| [B26: Code Mode management](b26-code-mode-management.md) | done; in review in [PR #27](https://github.com/VesperZephyr/OpenBot/pull/27) |
+| [B24: Authorized application API](b24-app-capability-api.md) | done (PR #23, merged into main) |
+| [B25: Local app Code Mode](b25-local-app-code-mode.md) | done (PR #24, merged into main) |
+| [B26: Code Mode management](b26-code-mode-management.md) | done ([PR #27](https://github.com/VesperZephyr/OpenBot/pull/27), merged into main) |

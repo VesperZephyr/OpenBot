@@ -4,10 +4,12 @@ Work after the tools demo, cut into batches that can each be finished and verifi
 
 The [architecture](architecture.md) defines the target design; the [technical plan](technical-plan.md) records current state. When a batch lands, move it to the plan's current-state table and delete it here.
 
+Current delivery order: [Post-B26 development roadmap](development-roadmap.md), with the first four execution packets and subsequent workflow gates. Baseline `main` includes B26 (PR #27); no planned feature is authorized merely by its place in this queue. All new PRs target `main`.
+
 References:
 
 - **MCode**: `~/minimax-ai/minimax-code` (MiniMax Code). Study, do not copy.
-- **Grok Bot**: [docs.x.ai/grok-bot](https://docs.x.ai/grok-bot/overview) and the leaked prompt at `~/github/system_prompts_leaks/xAI/grok-bot.md`.
+- **Grok Bot**: [source-backed research snapshot](research/grok-bot.md) and [client interaction research](tasks/d2-grok-ui-research.md); distinguish official facts, observations and inference.
 - **Pi**: `~/github/pi/packages/coding-agent` for the reference coding-agent tools.
 
 ## Phases
@@ -43,7 +45,7 @@ Release follow-up: [B7a — Background desktop tests](tasks/b7a-background-e2e.m
 
 The MVP is done when all of these pass on a packaged build installed on a Mac that never ran the development setup:
 
-1. First launch walks through choosing a model and creating a first Bot; the API key lands in the Keychain.
+1. First launch creates only the protected Core, offers built-in/custom model setup or skip, and stores a supplied API key in Keychain. Specialists require user creation.
 2. A Bot searches a repository in the workspace with `rg` or `grep` (no approval card), edits code, runs its tests in the background after **Allow once**, and reports the result.
 3. A Bot researches a question with `web_search` and `web_fetch`, cites the pages it opened, and saves a report in the workspace.
 4. **Always allow** on a command card stops later identical commands from asking; the rule is visible and deletable in Settings.
@@ -93,6 +95,6 @@ Owner-requested architecture increment: expose selected current application capa
 
 1. [B24: Authorized application API](tasks/b24-app-capability-api.md) — merged into `main` via PR #23; five shared typed read services, scoped search/history and Core routed tools. 246 unit tests, 68 background e2e and isolated real-model private/group/restart verification.
 2. [B25: Local app Code Mode](tasks/b25-local-app-code-mode.md) — merged into `main` via PR #24; bounded Pi QuickJS/discovery/replay adapter, original Run authorization, durable bilingual activity and packaged worker assets. 259 unit tests, 69 background e2e, ad-hoc package and isolated real-model private/group/restart acceptance.
-3. [B26: Code Mode management](tasks/b26-code-mode-management.md) — done, in review in PR #27 targeting `main`; eight direct-Core management aliases, exact nested approvals, transactional receipt checks, failure latching, expiry and bilingual partial-completion activity. Acceptance is recorded in the spec.
+3. [B26: Code Mode management](tasks/b26-code-mode-management.md) — merged into `main` in PR #27; eight direct-Core management aliases, exact nested approvals, transactional receipt checks, failure latching, expiry and bilingual partial-completion activity. Acceptance is recorded in the spec.
 
 Attention-state mutation, UI navigation, cross-Bot memory operations, new dispatch surfaces and external API transports remain separately specified follow-ups. Existing desktop method availability never automatically confers model authority.
