@@ -164,7 +164,8 @@ it("disconnects and removes the endpoint and its credential without remote rollb
 	const count = fixture.state.deleted;
 	await h.page().getByRole("button", { name: "Disconnect", exact: true }).click();
 	await poll(async () => (await profile()).state).toBe("disconnected");
-	expect(fixture.state.deleted).toBeGreaterThan(count);
+	// The Host invalidates local state before the executor finishes remote session cleanup.
+	await expect.poll(() => fixture.state.deleted, { timeout: 15000 }).toBeGreaterThan(count);
 	await h.page().getByRole("button", { name: "Remove connector", exact: true }).click();
 	await h.page().getByRole("button", { name: "Confirm removal", exact: true }).click();
 	await poll(() => api("connectors.list")).toEqual([]);
