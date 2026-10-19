@@ -58,7 +58,7 @@ export function retryTarget(
 	const failed = items[errorIndex];
 	if (failed?.kind !== "assistant" || failed.error === undefined) return undefined;
 	const user = items.slice(0, errorIndex).findLast((item) => item.kind === "user");
-	if (user?.kind !== "user") return undefined;
+	if (user?.kind !== "user" || user.source === "background") return undefined;
 	const text = user.parts.map((part) => part.text).join("\n\n");
 	return text.trim() === "" && !user.attachments?.length && !user.skills?.length
 		? undefined

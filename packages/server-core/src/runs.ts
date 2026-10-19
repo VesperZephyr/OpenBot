@@ -258,7 +258,7 @@ export class RunScheduler {
 		botId: BotId,
 		requestId: string,
 		text: string,
-		options: { channelId?: string; origin?: "user" | "peer"; separate?: boolean; artifactIds?: readonly string[];skills?:readonly import("@openbot/protocol").SkillRef[] } = {},
+		options: { channelId?: string; origin?: "user" | "peer" | "background"; separate?: boolean; artifactIds?: readonly string[];skills?:readonly import("@openbot/protocol").SkillRef[] } = {},
 	): Promise<SubmitOutcome> {
 		const channelId = options.channelId ?? "direct";
 		return this.#serial(async () => {
@@ -279,7 +279,8 @@ export class RunScheduler {
 			const attachments = options.artifactIds?.length ? await this.#resolveAttachments(botId, options.artifactIds) : [];
 			const skills=await this.#resolveSkills(options.skills??[]);
  const message = { requestId, text, ...(skills.length?{skills}:{}), ...(attachments.length ? { attachments } : {}) };
-			const current = options.separate ? undefined : this.active(botId, channelId);
+			const candidate = options.separate ? undefined : this.active(botId, channelId);
+			const current = (candidate?.origin ?? "user") === (options.origin ?? "user") ? candidate : undefined;
 			if (current?.state === "queued") {
 				const joined = { ...current, requestIds: [...current.requestIds, requestId], messages: [...current.messages, message] };
 				await this.#put(joined);
@@ -438,7 +439,7 @@ export class RunScheduler {
 				try {
 					submissionId = (await this.#runtime.submit(run.botId, input.requestId, input.text, mode, run.channelId, attachments, () => {
 						if (!this.#canAdmit()) throw new ProtocolError("invalid_request", "Work is paused. Resume work before continuing.");
-					}, input.skills)).submissionId;
+					}, input.skills, run.origin==="background")).submissionId;
 				} catch (error) {
 					if (!this.#canAdmit()) return;
 					throw error;

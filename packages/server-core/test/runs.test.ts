@@ -118,6 +118,16 @@ describe("RunScheduler", () => {
 		await rm(directory, { recursive: true, force: true });
 	});
 
+    it("keeps a user message separate from an active unattended completion",async()=>{
+        await open(WAIT,"Background finished","User reply");await createBots("a");
+        const automatic=await scheduler.submit("a","completion","Summarize output",{origin:"background",separate:true});await gates.entered("a");
+        const human=await scheduler.submit("a","human","A new request",{origin:"user"});
+        expect(human.runId).not.toBe(automatic.runId);expect(human.steered).toBe(false);
+        expect((await runtime.runsStore().get(human.runId))?.origin).toBe("user");
+        gates.release("a");await reaches("a",human.runId,"completed");
+        expect((await runtime.runsStore().get(automatic.runId))?.messages).toHaveLength(1);await close();
+    });
+
 	async function createBots(...botIds: BotId[]): Promise<void> {
 		for (const botId of botIds) await runtime.createBot({ botId, name: botId, model: SCRIPTED_MODEL, createdAt: 0 });
 	}

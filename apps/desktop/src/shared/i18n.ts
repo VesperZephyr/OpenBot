@@ -1,6 +1,27 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
+	"Background task": "后台任务",
+	"Starting background task": "正在启动后台任务",
+	"Command running": "命令运行中",
+	"Waiting to deliver": "等待返回结果",
+	"Delivering result": "正在整理结果",
+	"Result delivered": "结果已返回",
+	"Automatic follow-up stopped": "自动续接已停止",
+	"Stop background task": "停止后台任务",
+	"Final command output": "命令最终输出",
+	"Background task result": "后台任务结果",
+	"No output": "无输出",
+	"Final output already read": "最终输出已读取",
+	"The originating task is no longer eligible": "原任务已不允许继续",
+	"The originating group task is no longer eligible": "原群聊任务已不允许继续",
+	"Background task receipt is unavailable": "后台任务记录不可用",
+	"Background task receipt identity changed": "后台任务记录身份不一致",
+	"Command outcome needs attention; inspect effects before retrying": "命令结果需要确认，请检查执行效果后再重试",
+	"Background continuation was stopped": "后台续接已停止",
+	"Background task is unavailable": "后台任务不可用",
+	"Background task capacity reached; stop pending work or review local history before starting another command": "后台任务容量已满，请停止待处理任务或检查本地历史后再启动命令",
+
  "Skills": "技能",
  "Refresh": "刷新",
  "Deleted": "已删除",

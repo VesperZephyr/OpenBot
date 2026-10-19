@@ -70,6 +70,11 @@ export interface ExecutorTransport {
 export type HostToolHandler = (args: Readonly<Record<string, unknown>>, signal: AbortSignal, call: ToolCall) => Promise<ToolOutcome>;
 
 export type ToolRouterOptions = {
+	readonly assertCallAllowed?:(call:ToolCall)=>Promise<void>;
+	readonly trackCommand?: {
+		prepare:(call:ToolCall,argsDigest:string)=>Promise<boolean>;
+		settle:(call:ToolCall,outcome:ToolOutcome)=>Promise<ToolOutcome>;
+	};
 	readonly assertExecutionAllowed?: () => void;
 	readonly target: ExecutionTarget;
 	readonly policy: PolicyPort;
@@ -158,7 +163,7 @@ export class ToolRouter {
 			return appFailure("invalid_request", "Invalid application arguments");
 		const definition = toolDefinition(call.tool);
 		if (definition === undefined) return { status: "failed", output: `Unknown tool: ${call.tool}` };
-		if(definition.destination==="executor"&&this.#options.executor.receipt){const receipt=await this.#options.executor.receipt(`${call.conversationId}:${call.callId}`,digest(call.args),call.tool);if(receipt)return receipt;}
+		if(definition.destination==="executor"&&this.#options.executor.receipt){const receipt=await this.#options.executor.receipt(`${call.conversationId}:${call.callId}`,digest(call.args),call.tool);if(receipt)return this.#options.trackCommand?.settle(call,receipt)??receipt;}
   const binding=await this.#options.policy.binding?.(call,digest(call.args));
   const decision = await this.#options.policy.decide(call, definition);
 		this.#options.assertExecutionAllowed?.();
@@ -199,7 +204,10 @@ export class ToolRouter {
 		call.signal.throwIfAborted();
 
 		this.#options.assertExecutionAllowed?.();
-  const dispatch=(invoke:(revision?:number)=>Promise<ToolOutcome>)=>binding&&this.#options.policy.dispatch?this.#options.policy.dispatch(call,approvedOnce,binding,invoke):invoke();
+  const dispatch=(invoke:(revision?:number)=>Promise<ToolOutcome>)=>{
+			const guarded=async(revision?:number)=>{await this.#options.assertCallAllowed?.(call);call.signal.throwIfAborted();return invoke(revision);};
+			return binding&&this.#options.policy.dispatch?this.#options.policy.dispatch(call,approvedOnce,binding,guarded):guarded();
+		};
 		if (definition.destination === "host") {
 			const handler = this.#options.hostTools[definition.name];
 			if (handler === undefined) return { status: "failed", output: `No handler for ${definition.name}` };
@@ -242,7 +250,12 @@ export class ToolRouter {
 			readGrants: grants.read,
 			deadline: (this.#options.now ?? Date.now)() + (this.#options.deadlineMs ?? 60_000),
 		};
-		return dispatch(revision=>this.#options.executor.invoke({...invocation,...(revision===undefined?{}:{authorityRevision:revision})}, call.onProgress, call.signal));
+		const outcome=await dispatch(async revision=>{
+			const completionTracking=call.tool==="local_exec" ? await this.#options.trackCommand?.prepare(call,invocation.argsDigest) : false;
+			call.signal.throwIfAborted();this.#options.assertExecutionAllowed?.();
+			return this.#options.executor.invoke({...invocation,...(completionTracking?{completionTracking:true}:{}),...(revision===undefined?{}:{authorityRevision:revision})},call.onProgress,call.signal);
+		});
+		return this.#options.trackCommand?.settle(call,outcome)??outcome;
 	}
 }
 

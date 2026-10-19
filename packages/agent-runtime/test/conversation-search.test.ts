@@ -37,6 +37,7 @@ it("keeps paging deterministic with tied timestamps, newly inserted messages and
 it("excludes tools, reasoning, live fragments and group coordination receipts", () => {
 	const index = new ConversationSearchIndex();
 	index.project("bot:a", directMessages({ botId: "a", approvals: [], live: {state:"running",partial:[{type:"text",text:"private token"}]}, items: [
+		{kind:"user",id:"wake",source:"background",parts:[{type:"text",text:"private completion output"}]},
 		{kind:"user",id:"u",parts:[{type:"text",text:"Visible input"}]},
 		{kind:"assistant",id:"a",parts:[{type:"text",text:"Visible answer"}],thinking:"private thoughts"},
 		{kind:"tool",id:"t",tool:"local_read",status:"succeeded",args:{},output:"private output"},

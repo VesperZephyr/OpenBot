@@ -1,3 +1,4 @@
+export * from "./background.ts";
 export * from "./skills.ts";
 import type { SkillChange, SkillSummary, SkillDetail, SkillVersion, SkillRef, SkillAttachment, SkillOperation, SkillResult } from "./skills.ts";
 import type { ArtifactRef, ArtifactContent, ArtifactOperation, ArtifactOperationResult } from "./artifacts.ts";
@@ -136,7 +137,9 @@ export type GroupPost = {
 export type GroupDelivery = {
 	readonly rootId?: string;
 	readonly parentId?: string;
-	readonly origin?: "user" | "peer" | "result";
+	readonly origin?: "user" | "peer" | "result" | "background";
+	readonly backgroundSourceId?: string;
+	readonly backgroundReady?: boolean;
 	readonly depth?: number;
 	readonly ancestry?: readonly string[];
 	readonly expectedResult?: string;
@@ -152,7 +155,7 @@ export type GroupDelivery = {
 	readonly state: "pending" | "completed" | "failed" | "cancelled";
 	readonly runId?: string;
 };
-export type GroupSnapshot = CollaborationSnapshot & { readonly group: Group; readonly readCursor?: number };
+export type GroupSnapshot = CollaborationSnapshot & { readonly backgroundTasks?:readonly import("./background.ts").BackgroundRecord[]; readonly group: Group; readonly readCursor?: number };
 
 export type BotId = string;
 export type RunId = string;
@@ -247,6 +250,7 @@ export type ToolCallStatus = "pending" | "running" | "succeeded" | "failed" | "i
 export type TranscriptItem =
 	| {
 			readonly kind: "user";
+			readonly source?:"background";
 			readonly id: string;
 			readonly parts: readonly MessagePart[];
 			readonly at?: number;
@@ -307,6 +311,7 @@ export type LiveRun = {
 };
 
 export type ConversationSnapshot = {
+	readonly backgroundTasks?:readonly import("./background.ts").BackgroundRecord[];
 	/** Incoming committed messages present in this snapshot; safe upper bound for a read acknowledgement. */
 	readonly readCursor?: number;
 	readonly conversationId?: string;
@@ -325,7 +330,7 @@ export type ConversationSnapshot = {
 	readonly pending?: readonly PendingMessage[];
 };
 
-export type PendingMessage = { readonly id: string; readonly parts: readonly MessagePart[]; readonly attachments?: readonly ArtifactRef[]; readonly skills?:readonly SkillRef[] };
+export type PendingMessage = { readonly source?:"background"; readonly id: string; readonly parts: readonly MessagePart[]; readonly attachments?: readonly ArtifactRef[]; readonly skills?:readonly SkillRef[] };
 
 /**
  * The work one message starts (Section 7.2). Messages sent while a Run is queued or running join it. A Run counts
@@ -549,6 +554,7 @@ export type HostMethods = {
 		};
 		result: BotProfile;
 	};
+	"background.stop": {params:{readonly invocationId:string};result:null};
 	"conversations.snapshot": { params: { readonly botId: BotId }; result: ConversationSnapshot };
 	"conversations.search": {
 		params: {
@@ -646,6 +652,7 @@ export type HostParams<M extends HostMethod> = HostMethods[M]["params"];
 export type HostResult<M extends HostMethod> = HostMethods[M]["result"];
 
 export const HOST_METHODS = [
+	"background.stop",
 	"observation.wait",
 	"artifacts.import",
 	"artifacts.export",
@@ -796,6 +803,7 @@ export function isRequestEnvelope(
 
 /** Executor-protocol invocation, identical for the local executor and any future target. */
 export type ToolInvocation = {
+	readonly completionTracking?: boolean;
  readonly authorityRevision?: number;
 	readonly runId?: string;
 	readonly invocationId: string;
@@ -832,6 +840,7 @@ export type ToolOutcome = {
 
 /** Host to executor. */
 export type ExecutorRequest =
+ | {readonly kind:"tasks.inspect";readonly messageId:string;readonly targetId:string;readonly keys:readonly import("./background.ts").BackgroundTaskKey[];readonly acknowledge?:boolean}
  | {readonly kind:"skill.request"; readonly messageId:string; readonly requestId:string; readonly targetId:string; readonly operation:SkillOperation; readonly authorityRevision?:number}
 	| {
 			readonly kind: "artifact.request";
@@ -854,6 +863,7 @@ export type ExecutorRequest =
 
 /** Executor to Host. */
 export type ExecutorMessage =
+ | {readonly kind:"tasks.inspected";readonly messageId:string;readonly receipts?:readonly import("./background.ts").BackgroundTaskReceipt[];readonly error?:string}
  | {readonly kind:"skill.response"; readonly messageId:string; readonly result?:SkillResult; readonly error?:string; readonly uncertain?:boolean}
 	| { readonly kind: "artifact.response"; readonly messageId: string; readonly result: ArtifactOperationResult; readonly error?: never }
 	| { readonly kind: "artifact.response"; readonly messageId: string; readonly error: string; readonly result?: never }

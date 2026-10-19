@@ -117,6 +117,7 @@ export const HOST_PARAM_SCHEMAS = {
 		text: Type.String(),
 		artifactIds: Type.Optional(Type.Array(ArtifactId, { maxItems: 4, uniqueItems: true })),
 	}),
+	"background.stop": strict({invocationId:Type.String({minLength:1,maxLength:2048})}),
 	"runs.cancel": strict({ runId: Id }),
 	"approvals.decide": strict({
 		approvalId: Id,

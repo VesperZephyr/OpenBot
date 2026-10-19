@@ -3,7 +3,7 @@
  * bound local target over the receipt ledger in `<data>/executor/receipts.sqlite`, saves cut tool output under
  * `<data>/artifacts`, and exits when the Host goes away, stopping the commands it supervises.
  */
-import { validSkillOperation } from "@openbot/protocol";
+import { validBackgroundKeys, validSkillOperation } from "@openbot/protocol";
 import { SkillStore } from "@openbot/local-executor";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, realpathSync } from "node:fs";
@@ -51,6 +51,18 @@ const send = (message: ExecutorMessage): void => {
 
 process.on("message", (message: ExecutorRequest) => {
 	switch (message.kind) {
+		case "tasks.inspect": {
+			if (Object.keys(message).some(key=>!["kind","messageId","targetId","keys","acknowledge"].includes(key)) || message.targetId !== targetId || typeof message.messageId !== "string" || !message.messageId || message.messageId.length > 256 || !validBackgroundKeys(message.keys) || (message.acknowledge !== undefined && typeof message.acknowledge !== "boolean")) {
+				send({kind:"tasks.inspected",messageId:message.messageId,error:"Invalid background receipt request"}); return;
+			}
+			const receipts = message.keys.flatMap(key => {
+				const receipt = ledger.task(key.taskId);
+				if (!receipt || receipt.invocationId !== key.invocationId) return [];
+				if (message.acknowledge) ledger.ackTask(key.taskId,key.invocationId);
+				return [receipt];
+			});
+			send({kind:"tasks.inspected",messageId:message.messageId,receipts}); return;
+		}
  case "skill.request": {
   const started=Date.now();
   try {

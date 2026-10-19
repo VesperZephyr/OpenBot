@@ -71,6 +71,26 @@ describe("coding tools", () => {
 		await rm(root, { recursive: true, force: true });
 	});
 
+	it("retains bounded completion receipts, trusted provenance and consumed status across restart",async()=>{
+		const exec=executor();
+		const request={...invocation("local_exec",{command:"sleep 0.1; printf 'COMPLETED 13'",background:true,description:"receipt"}),runId:"source",completionTracking:true};
+		const result=await exec.invoke(request,()=>{});
+		const ledger=ledgers.at(-1)!;
+		await expect.poll(()=>ledger.task(result.taskId!)?.status).toBe("succeeded");
+		expect(ledger.task(result.taskId!)).toMatchObject({runId:"source",botId:"bot",output:"COMPLETED 13",consumed:false,status:"succeeded"});
+		await run(exec,"task_output",{taskId:result.taskId});expect(ledger.task(result.taskId!)?.consumed).toBe(true);
+		const later=ReceiptLedger.open(ledgerPath,()=>Date.now()+8*24*60*60*1000);ledgers.push(later);
+		expect(later.task(result.taskId!)?.output).toBe("COMPLETED 13");
+		later.ackTask(result.taskId!,request.invocationId);
+        const cleaned=ReceiptLedger.open(ledgerPath,()=>Date.now()+9*24*60*60*1000);ledgers.push(cleaned);expect(cleaned.task(result.taskId!)).toBeUndefined();
+	});
+
+    it("caps completion output by UTF-8 bytes without splitting characters",async()=>{
+        const exec=executor();const result=await exec.invoke({...invocation("local_exec",{command:"awk 'BEGIN { for(i=0;i<12000;i++) printf \"界\" }'",description:"Unicode receipt",background:true}),runId:"source",completionTracking:true},()=>{});
+        const ledger=ledgers.at(-1)!;await expect.poll(()=>ledger.task(result.taskId!)?.status).toBe("succeeded");
+        const record=ledger.task(result.taskId!)!;expect(record.truncated).toBe(true);expect(Buffer.byteLength(record.output!)).toBeLessThanOrEqual(16384);expect(record.output).not.toContain("�");expect(record.output).toContain("界");
+    });
+
 	it("cuts long output to head and tail, spills it, and continues with local_read offset", async () => {
 		const exec = executor();
 		const outcome = await run(exec, "local_exec", { command: "seq 1 3000", description: "count" });

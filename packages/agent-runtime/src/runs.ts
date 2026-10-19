@@ -1,3 +1,4 @@
+import { BackgroundDoc, backgroundTerminal } from "./background.ts";
 /**
  * Durable Run records (Section 7.2), stored as a session document next to Pi's own state so a Run and the Pi
  * submissions it maps to survive a restart together. Scheduling lives in `server-core`; this module only stores.
@@ -33,7 +34,7 @@ export type RunInput = {
 };
 
 export type StoredRun = RunRecord & {
-	readonly origin?: "user" | "peer";
+	readonly origin?: "user" | "peer" | "background";
 	readonly messages: readonly RunMessage[];
 	readonly inputs: readonly RunInput[];
 };
@@ -82,7 +83,8 @@ export function runStore(harness: Harness, context: Context, capture?: (run: Sto
 				await captureUsage(tx, run, doc.runs[run.runId], usage);
 				doc.runs[run.runId] = value;
 				if (isTerminal(run.state)) {
-					prune(doc.runs, run.botId);
+					const pending = Object.values((await tx.doc(BackgroundDoc)).records).filter(record => !backgroundTerminal(record));
+					prune(doc.runs, run.botId, new Set(pending.flatMap(record => [record.sourceRunId,...(record.continuationRunId ? [record.continuationRunId] : [])])));
 					await pruneUsage(tx, new Set(Object.keys(doc.runs)));
 				}
 			}, context);
@@ -94,9 +96,9 @@ export function runStore(harness: Harness, context: Context, capture?: (run: Sto
 	};
 }
 
-function prune(runs: Record<string, Stored<StoredRun>>, botId: BotId): void {
+function prune(runs: Record<string, Stored<StoredRun>>, botId: BotId, pinned: ReadonlySet<string>): void {
 	const ended = Object.values(runs)
 		.filter((run) => run.botId === botId && !run.channelId && isTerminal(run.state) && (run.state !== "needs_attention" || run.interruption?.settledAt !== undefined))
 		.sort((a, b) => b.createdAt - a.createdAt);
-	for (const run of ended.slice(KEPT_TERMINAL_RUNS)) delete runs[run.runId];
+	for (const run of ended.slice(KEPT_TERMINAL_RUNS)) if (!pinned.has(run.runId)) delete runs[run.runId];
 }

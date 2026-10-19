@@ -82,3 +82,48 @@ it("an approval granted after pause never dispatches its action", async () => {
 	await expect(pending).rejects.toThrow("paused");
 	expect(invoke).not.toHaveBeenCalled();
 });
+it("reserves background tracking before dispatch and settles a replay without executing it again", async () => {
+	const f = fixture(),
+		order: string[] = [];
+	const outcome = { status: "succeeded" as const, output: "Started", taskId: "task_one" };
+	let completed = false;
+	const trackCommand = {
+		prepare: vi.fn(async () => {
+			order.push("reserve");
+			return true;
+		}),
+		settle: vi.fn(async (_call: ToolCall, result: import("@openbot/protocol").ToolOutcome) => {
+			order.push("settle");
+			return result;
+		}),
+	};
+	const invoke = vi.fn(async (request: any) => {
+		order.push("invoke");
+		expect(request.completionTracking).toBe(true);
+		completed = true;
+		return outcome;
+	});
+	const router = new ToolRouter({
+		...f.options,
+		executor: { invoke, receipt: async () => (completed ? outcome : undefined) },
+		trackCommand,
+	});
+	const command = { ...call("local_exec"), runId: "source", args: { command: "sleep 1", description: "job", background: true } };
+	expect(await router.invoke(command)).toEqual(outcome);
+	expect(order).toEqual(["reserve", "invoke", "settle"]);
+	expect(await router.invoke(command)).toEqual(outcome);
+	expect(invoke).toHaveBeenCalledTimes(1);
+	expect(trackCommand.prepare).toHaveBeenCalledTimes(1);
+	expect(trackCommand.settle).toHaveBeenCalledTimes(2);
+});
+it("refuses an executor call when background eligibility changes during approval", async () => {
+	const f = fixture();
+	const router = new ToolRouter({
+		...f.options,
+		assertCallAllowed: async () => {
+			throw Error("Background continuation was stopped");
+		},
+	});
+	await expect(router.invoke(call())).rejects.toThrow("stopped");
+	expect(f.invoke).not.toHaveBeenCalled();
+});

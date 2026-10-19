@@ -397,6 +397,10 @@ export function groupStore(
 							d.closed = true;
 							continue;
 						}
+						if(d.backgroundSourceId){
+							const source=doc.deliveries[d.backgroundSourceId];
+							if(!source||source.transferId||["failed","cancelled"].includes(source.state)){d.state="cancelled";d.closed=true;continue;}
+						}
 						if (d.parentId) {
 							const parent = doc.deliveries[d.parentId];
 							if (!parent || parent.state === "failed" || parent.state === "cancelled") {

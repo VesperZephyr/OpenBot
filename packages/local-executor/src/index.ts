@@ -36,7 +36,7 @@ export const EXECUTOR_TOOLS: readonly ExecutorToolName[] = [
 export type ExecutorLedger = Pick<
 	ReceiptLedger,
 	"get" | "accept" | "recordGroup" | "finish" | "ack" | "recordTask" | "finishTask" | "task"
-> & Partial<Pick<ReceiptLedger, "reconcileArtifact" | "confirmStopped">>;
+> & Partial<Pick<ReceiptLedger, "reconcileArtifact" | "confirmStopped" | "consumeTask">>;
 
 export type ExecutorOptions = {
 	readonly requireAuthority?:boolean;
