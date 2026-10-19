@@ -146,4 +146,4 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Task | Status |
 | --- | --- |
-| [B10: Reviewed reusable skills](b10-reviewed-skills.md) | in progress (#35); depends on #34; targets main |
+| [B10: Reviewed reusable skills](b10-reviewed-skills.md) | in review (#35); depends on #34; targets main |

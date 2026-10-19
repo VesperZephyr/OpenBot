@@ -1,6 +1,6 @@
 # B10: Reviewed Reusable Skills
 
-Status: in progress
+Status: in review (#35)
 Branch: task/b10-reviewed-skills; PR target: main
 Depends on: verified I1 candidate `63fb9bc397e9cbfeba30df95e73d3a1e63bc6f34` (#34), including #28–#33
 Architecture: Sections 3, 5.3, 5.8, 6 and 8
@@ -55,3 +55,14 @@ Shared local library, structured metadata, canonical SKILL.md, list/load, review
 ## Open questions
 
 None for this increment. Stop and record a contract gap here before changing this design.
+
+
+## Verification evidence
+
+Candidate `cd6fab4` passed `pnpm run check` (370 tests / 59 files), the full hidden `pnpm run e2e` (103 tests / 29 files), and targeted skill/application-read regressions (8 tests / 2 files). The bundled Host and executor started successfully with isolated state. English and Chinese library/review screenshots and the attached-skill transcript were inspected; the dark-message skill chip also has an automated minimum 4.5:1 text-contrast check.
+
+The real-model fixture created one reviewed profit-report skill, restarted the hidden desktop, and reused revision 1 with a second Bot on changed input. The actual file and immutable published artifact both contained the expected profit 13. Verification checked the exact reference/hash, one successful skill load, one reuse write, preserved approval and version records, 45,165 recorded reuse tokens, an inactive window and metadata-only operational logs. A final reopen on this candidate rechecked durable evidence without repeating inference or side effects. Temporary model configuration was removed. Raw screenshots, transcripts and local model details remain outside Git.
+
+The expanded regression found and fixed a refresh-cleared conflict message, a dark-message contrast issue, an application-read test that selected the previous turn, and a private IPC pipe-close race. Interrupted skill writes now report unknown outcomes; failed IPC sends enter existing quiescent shutdown. Final regression passed after those corrections.
+
+PR #35 targets `main` and depends on I1 #34. No merge or release occurred. Native signing, TCC identity, physical sleep/lock delivery and provider billing reconciliation remain separate release gates.
