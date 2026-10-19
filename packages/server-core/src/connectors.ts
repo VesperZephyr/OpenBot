@@ -6,6 +6,7 @@ import {
 	CONNECTOR_SEARCH_DEFINITION,
 	ProtocolError,
 	connectorToolName,
+	connectorNeedsCredential,
 	validConnectorArguments,
 	validConnectorDefinition,
 	type ConnectorChange,
@@ -39,11 +40,11 @@ const fail = (message: string): never => {
 const definition = (record: ConnectorDefinition): ConnectorDefinition => ({
 	connectorId: record.connectorId,
 	name: record.name,
-	command: record.command,
-	args: record.args,
+	...(record.transport === "https"
+		? { transport: "https" as const, endpoint: record.endpoint, auth: record.auth }
+		: { command: record.command, args: record.args, ...(record.credentialEnv ? { credentialEnv: record.credentialEnv } : {}) }),
 	revision: record.revision,
 	targetId: record.targetId,
-	...(record.credentialEnv ? { credentialEnv: record.credentialEnv } : {}),
 	...(record.removed ? { removed: true } : {}),
 });
 export class Connectors {
@@ -62,6 +63,22 @@ export class Connectors {
 		return next;
 	}
 	async start() {
+		// Inspection restores executor cooldown metadata without starting a remote session.
+		if (this.#options.port)
+			for (const record of await this.#options.runtime.connectors().list()) {
+				if (record.transport === "https" && !record.removed) {
+					try {
+						this.#states.set(record.connectorId, await this.#control({ action: "inspect", connectorId: record.connectorId }));
+					} catch {
+						this.#states.set(record.connectorId, {
+							connectorId: record.connectorId,
+							state: "needs_attention",
+							tools: [],
+							error: "Connector change could not be confirmed. Review its state before reconnecting.",
+						});
+					}
+				}
+			}
 		await this.#publish();
 	}
 	async close() {
@@ -156,15 +173,7 @@ export class Connectors {
 			if (existing?.removed && action === "connect") fail("Removed connectors cannot reconnect");
 			const record =
 				action === "install"
-					? {
-							connectorId: input.connectorId,
-							name: (input as ConnectorInstall).name,
-							command: (input as ConnectorInstall).command,
-							args: (input as ConnectorInstall).args,
-							...((input as ConnectorInstall).credentialEnv ? { credentialEnv: (input as ConnectorInstall).credentialEnv } : {}),
-							revision: 1,
-							targetId: this.#options.targetId,
-						}
+					? definition({ ...(input as ConnectorInstall), revision: 1, targetId: this.#options.targetId })
 					: existing
 						? { ...definition(existing), revision: existing.revision + 1, ...(action === "remove" ? { removed: true } : {}) }
 						: undefined;
@@ -176,7 +185,7 @@ export class Connectors {
 				await this.#invalidate(input.connectorId);
 				try {
 					if (action === "connect" || action === "install") {
-						const credential = record.credentialEnv
+						const credential = connectorNeedsCredential(record)
 							? await this.#options.secrets.getApiKey(CONNECTOR_CREDENTIAL_PREFIX + input.connectorId)
 							: undefined;
 						this.#options.assertAllowed();
@@ -216,7 +225,7 @@ export class Connectors {
 				fail("Invalid connector credential");
 			const store = this.#options.runtime.connectors(),
 				record = await store.get(input.connectorId);
-			if (!record || record.removed || !record.credentialEnv) fail("Connector does not declare a credential variable");
+			if (!record || record.removed || !connectorNeedsCredential(record)) fail("Connector does not use a credential");
 			const requestId = `credential:${randomUUID()}`;
 			await this.#options.change(() =>
 				store.begin(requestId, requestId, { ...definition(record!), revision: record!.revision + 1 }, input.expectedRevision),

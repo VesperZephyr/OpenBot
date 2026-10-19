@@ -47,7 +47,9 @@ const ConnectorRevision=Type.Integer({minimum:1,maximum:Number.MAX_SAFE_INTEGER}
 const ConnectorChange=strict({requestId:Id,connectorId:ConnectorId,expectedRevision:ConnectorRevision});
 export const HOST_PARAM_SCHEMAS = {
  "connectors.list":NoParams,
- "connectors.install":strict({requestId:Id,connectorId:ConnectorId,name:Type.String({minLength:1,maxLength:80}),command:Type.String({minLength:1,maxLength:4096,pattern:"^/"}),args:Type.Array(Type.String({maxLength:2048}),{maxItems:32}),credentialEnv:Type.Optional(Type.String({pattern:"^[A-Z][A-Z0-9_]{0,63}$"}))}),
+ "connectors.install":Type.Union([
+ strict({requestId:Id,connectorId:ConnectorId,name:Type.String({minLength:1,maxLength:80}),transport:Type.Optional(Type.Literal("stdio")),command:Type.String({minLength:1,maxLength:4096,pattern:"^/"}),args:Type.Array(Type.String({maxLength:2048}),{maxItems:32}),credentialEnv:Type.Optional(Type.String({pattern:"^[A-Z][A-Z0-9_]{0,63}$"}))}),
+ strict({requestId:Id,connectorId:ConnectorId,name:Type.String({minLength:1,maxLength:80}),transport:Type.Literal("https"),endpoint:Type.String({minLength:9,maxLength:2048,pattern:"^https://"}),auth:Type.Union([Type.Literal("none"),Type.Literal("bearer")])})]),
  "connectors.connect":ConnectorChange,
  "connectors.disconnect":ConnectorChange,
  "connectors.remove":ConnectorChange,

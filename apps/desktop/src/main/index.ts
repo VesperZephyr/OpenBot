@@ -72,6 +72,8 @@ const hostEnvironment: NodeJS.ProcessEnv = {
 	...(runtime.executorEntry === undefined ? {} : { OPENBOT_EXECUTOR_ENTRY: runtime.executorEntry }),
 	// Where data and the model configuration live may be moved in any build.
 	...forwarded(["OPENBOT_DATA_DIR", "OPENBOT_HOME"]),
+	// Trust only the isolated fixture CA during explicit, unpackaged test runs.
+	...(testMode ? forwarded(["NODE_EXTRA_CA_CERTS"]) : {}),
 	...(app.isPackaged ? {} : forwarded(DEV_OVERRIDES)),
 };
 

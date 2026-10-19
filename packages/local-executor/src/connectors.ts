@@ -5,6 +5,7 @@ import {
 	CONNECTOR_LIMITS,
 	boundedConnectorJson,
 	connectorToolName,
+	connectorNeedsCredential,
 	validConnectorArguments,
 	validConnectorDefinition,
 	validConnectorSchema,
@@ -16,7 +17,9 @@ import {
 	type ToolOutcome,
 } from "@openbot/protocol";
 import { killOrphanGroup, processStartTime } from "./ledger.ts";
-import { McpError, McpStdio } from "./mcp-stdio.ts";
+import { McpStdio } from "./mcp-stdio.ts";
+import { McpError, type McpSession } from "./mcp-session.ts";
+import { McpHttps } from "./mcp-https.ts";
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 const canonical = (value: unknown): string =>
 	JSON.stringify(value, (_key, item) =>
@@ -31,7 +34,7 @@ const canonical = (value: unknown): string =>
 type Entry = {
 	definition: ConnectorDefinition;
 	connection: ConnectorConnection;
-	session: McpStdio;
+	session: McpSession;
 	credential?: string;
 	valid: boolean;
 	epoch: number;
@@ -50,6 +53,7 @@ export class ConnectorSupervisor {
 	readonly #targetId: string;
 	readonly #workspace: string;
 	readonly #changed: (id: string) => void;
+	readonly #ca: string | undefined;
 	#closed = false;
 	#generation = 0;
 	#line: Promise<unknown> = Promise.resolve();
@@ -58,18 +62,26 @@ export class ConnectorSupervisor {
 		this.#line = next;
 		return next;
 	}
-	constructor(path: string, targetId: string, workspace: string, changed: (id: string) => void = () => {}) {
+	constructor(path: string, targetId: string, workspace: string, changed: (id: string) => void = () => {}, ca?: string) {
+		this.#ca = ca;
 		this.#targetId = targetId;
 		this.#workspace = workspace;
 		this.#changed = changed;
 		this.#db = new DatabaseSync(path);
 		this.#db.exec(
-			"pragma journal_mode=wal; pragma synchronous=full; create table if not exists connector_processes(connector_id text primary key,pgid integer not null,started text not null)",
+			"pragma journal_mode=wal; pragma synchronous=full; create table if not exists connector_processes(connector_id text primary key,pgid integer not null,started text not null); create table if not exists connector_backoff(connector_id text primary key,retry_until integer not null)",
 		);
 		for (const row of this.#db.prepare("select * from connector_processes").all() as ProcessRow[]) killOrphanGroup(row.pgid, row.started);
 	}
 	inspect(id: string): ConnectorConnection {
-		return this.#entries.get(id)?.connection ?? { connectorId: id, state: "disconnected", tools: [] };
+		const retryAt = this.#retryAt(id);
+		return this.#entries.get(id)?.connection ?? { connectorId: id, state: "disconnected", tools: [], ...(retryAt ? { retryAt } : {}) };
+	}
+	#retryAt(id: string): number | undefined {
+		const row = this.#db.prepare("select retry_until from connector_backoff where connector_id=?").get(id) as
+			| { retry_until: number }
+			| undefined;
+		return row && row.retry_until > Date.now() ? row.retry_until : undefined;
 	}
 	connect(definition: ConnectorDefinition, credential?: string, authorized: () => boolean = () => true): Promise<ConnectorConnection> {
 		const generation = this.#generation;
@@ -85,7 +97,16 @@ export class ConnectorSupervisor {
 		if (credential !== undefined && (credential.length < 8 || credential.length > 8192 || /[\r\n\0]/.test(credential)))
 			throw Error("Invalid connector credential");
 		if (!(await this.#disconnect(id))) throw Error("Connector termination needs attention");
-		if (definition.credentialEnv && !credential)
+		const retryAt = this.#retryAt(id);
+		if (retryAt)
+			return {
+				connectorId: id,
+				state: "needs_attention",
+				tools: [],
+				error: "HTTPS connector is rate limited. Wait until the retry time, then connect again.",
+				retryAt,
+			};
+		if (connectorNeedsCredential(definition) && !credential)
 			return { connectorId: id, state: "needs_attention", tools: [], error: "Add the connector credential before connecting" };
 		if (this.#entries.size >= CONNECTOR_LIMITS.installed) throw Error("Connector capacity reached");
 		const orphan = this.#db.prepare("select * from connector_processes where connector_id=?").get(id) as ProcessRow | undefined;
@@ -100,27 +121,35 @@ export class ConnectorSupervisor {
 			this.#db.prepare("delete from connector_processes where connector_id=?").run(id);
 		}
 		if (!authorized()) throw Error("Connector authority changed");
-		const session = new McpStdio(
-			definition.command,
-			definition.args,
-			this.#workspace,
-			connectorEnvironment(definition.credentialEnv, credential),
-			() => {
-				const entry = this.#entries.get(id);
-				if (entry?.session !== session) return;
-				entry.epoch++;
-				if (!entry.valid && entry.connection.state === "needs_attention") return;
-				entry.valid = false;
-				entry.connection = {
-					connectorId: id,
-					state: "needs_attention",
-					tools: [],
-					error: "Connector changed or disconnected. Connect again to review its tools.",
-				};
-				this.#changed(id);
-				void session.stop();
-			},
-		);
+		const changed = (error?: McpError) => {
+			const entry = this.#entries.get(id);
+			if (entry?.session !== session) return;
+			entry.epoch++;
+			if (!entry.valid && entry.connection.state === "needs_attention") return;
+			entry.valid = false;
+			if (error?.retryAt) this.#db.prepare("insert or replace into connector_backoff values(?,?)").run(id, error.retryAt);
+			entry.connection = {
+				connectorId: id,
+				state: "needs_attention",
+				tools: [],
+				error: error?.message ?? "Connector changed or disconnected. Connect again to review its tools.",
+				...(error?.retryAt ? { retryAt: error.retryAt } : {}),
+			};
+			this.#changed(id);
+			void session.stop().then(() => {
+				delete entry.credential;
+			});
+		};
+		const session: McpSession =
+			definition.transport === "https"
+				? new McpHttps(definition.endpoint, definition.auth === "bearer" ? credential : undefined, changed, this.#ca)
+				: new McpStdio(
+						definition.command,
+						definition.args,
+						this.#workspace,
+						connectorEnvironment(definition.credentialEnv, credential),
+						changed,
+					);
 		const entry: Entry = {
 			definition,
 			session,
@@ -131,10 +160,12 @@ export class ConnectorSupervisor {
 		};
 		this.#entries.set(id, entry);
 		try {
-			const pid = session.child.pid,
-				started = pid ? processStartTime(pid) : undefined;
-			if (!pid || !started) throw Error("Connector did not start");
-			this.#db.prepare("insert or replace into connector_processes values(?,?,?)").run(id, pid, started);
+			if (session instanceof McpStdio) {
+				const pid = session.child.pid,
+					started = pid ? processStartTime(pid) : undefined;
+				if (!pid || !started) throw Error("Connector did not start");
+				this.#db.prepare("insert or replace into connector_processes values(?,?,?)").run(id, pid, started);
+			}
 			const deadline = Date.now() + CONNECTOR_LIMITS.handshakeMs;
 			const remaining = () => {
 				const ms = deadline - Date.now();
@@ -153,13 +184,16 @@ export class ConnectorSupervisor {
 				!object(initialized.capabilities.tools)
 			)
 				throw Error("Unsupported connector protocol");
-			session.notify("notifications/initialized");
+			await session.notify("notifications/initialized", undefined, remaining());
 			const epoch = entry.epoch;
 			const tools: ConnectorTool[] = [];
 			let cursor: string | undefined;
 			const cursors = new Set<string>();
 			for (let page = 0; page < CONNECTOR_LIMITS.pages; page++) {
-				const response = this.#redact(await session.request("tools/list", cursor ? { cursor } : {}, remaining()), credential);
+				const response = this.#redact(await session.request("tools/list", cursor ? { cursor } : {}, remaining()), [
+					credential,
+					...(entry.session.sensitiveValues ?? []),
+				]);
 				if (!object(response) || !Array.isArray(response.tools)) throw Error("Invalid connector catalog");
 				for (const item of response.tools) {
 					if (
@@ -193,7 +227,7 @@ export class ConnectorSupervisor {
 			entry.connection = { connectorId: id, state: "connected", tools };
 			this.#changed(id);
 			return entry.connection;
-		} catch {
+		} catch (error) {
 			const stopped = await session.stop();
 			if (stopped) this.#db.prepare("delete from connector_processes where connector_id=?").run(id);
 			entry.valid = false;
@@ -202,9 +236,15 @@ export class ConnectorSupervisor {
 				connectorId: id,
 				state: "needs_attention",
 				tools: [],
-				error: stopped
-					? "Connector could not connect. Check its executable, credential and supported tools."
-					: "Connector termination needs attention",
+				...(this.#retryAt(id) ? { retryAt: this.#retryAt(id)! } : {}),
+				error:
+					definition.transport === "https"
+						? error instanceof McpError
+							? error.message
+							: "HTTPS connector returned unsupported tools or protocol. Review the service before reconnecting."
+						: stopped
+							? "Connector could not connect. Check its executable, credential and supported tools."
+							: "Connector termination needs attention",
 			};
 			this.#changed(id);
 			return entry.connection;
@@ -224,7 +264,7 @@ export class ConnectorSupervisor {
 		try {
 			const result = this.#redact(
 				await entry.session.request("tools/call", { name: tool.name, arguments: args }, CONNECTOR_LIMITS.callMs, signal),
-				entry.credential,
+				[entry.credential, ...(entry.session.sensitiveValues ?? [])],
 			);
 			if (
 				!object(result) ||
@@ -232,8 +272,11 @@ export class ConnectorSupervisor {
 				result.content.some((item) => !object(item) || item.type !== "text" || typeof item.text !== "string") ||
 				(result.isError !== undefined && typeof result.isError !== "boolean") ||
 				(result.structuredContent !== undefined && !boundedConnectorJson(result.structuredContent, CONNECTOR_LIMITS.frameBytes))
-			)
+			) {
+				if (entry.definition.transport === "https")
+					throw new McpError(true, "HTTPS connector returned an unsupported response. Review the service before reconnecting.");
 				return { status: "unknown", output: "Unsupported connector result; inspect effects before retrying" };
+			}
 			const text = [
 				...result.content.map((item) => (item as { text: string }).text),
 				...(result.structuredContent !== undefined ? [JSON.stringify(result.structuredContent)] : []),
@@ -248,28 +291,46 @@ export class ConnectorSupervisor {
 				...(truncated ? { truncated: true } : {}),
 			};
 		} catch (error) {
+			if (entry.definition.transport === "https" && entry.valid && !(error instanceof McpError && !error.sent)) {
+				entry.valid = false;
+				entry.epoch++;
+				entry.connection = {
+					connectorId: binding.connectorId,
+					state: "needs_attention",
+					tools: [],
+					error: "HTTPS connector returned an unsupported response. Review the service before reconnecting.",
+				};
+				this.#changed(binding.connectorId);
+				await entry.session.stop();
+				delete entry.credential;
+			}
 			return {
 				status: error instanceof McpError && !error.sent ? "failed" : "unknown",
 				output: "Connector call did not produce a confirmed result; inspect effects before retrying",
 			};
 		}
 	}
-	#redact(value: unknown, secret?: string): unknown {
+	#redact(value: unknown, secrets: readonly (string | undefined)[]): unknown {
+		const redact = (text: string) =>
+			secrets.reduce<string>((value, secret) => (secret ? value.replaceAll(secret, "[redacted]") : value), text);
 		let nodes = 0;
 		const walk = (item: unknown, depth: number): unknown => {
 			if (++nodes > 20000 || depth > 32) throw Error("Connector response exceeds limits");
-			if (typeof item === "string") return secret ? item.replaceAll(secret, "[redacted]") : item;
+			if (typeof item === "string") return redact(item);
 			if (Array.isArray(item)) return item.map((entry) => walk(entry, depth + 1));
-			if (object(item))
-				return Object.fromEntries(
-					Object.entries(item).map(([key, entry]) => [secret ? key.replaceAll(secret, "[redacted]") : key, walk(entry, depth + 1)]),
-				);
+			if (object(item)) return Object.fromEntries(Object.entries(item).map(([key, entry]) => [redact(key), walk(entry, depth + 1)]));
 			return item;
 		};
 		return walk(value, 0);
 	}
 
 	disconnect(id: string): Promise<boolean> {
+		const entry = this.#entries.get(id);
+		if (entry) {
+			entry.valid = false;
+			entry.epoch++;
+			void entry.session.stop();
+		}
 		return this.#serial(() => this.#disconnect(id));
 	}
 	async #disconnect(id: string): Promise<boolean> {
@@ -301,6 +362,11 @@ export class ConnectorSupervisor {
 	}
 	async stopAll(): Promise<boolean> {
 		this.#generation++;
+		for (const entry of this.#entries.values()) {
+			entry.valid = false;
+			entry.epoch++;
+			void entry.session.stop();
+		}
 		await this.#line.catch(() => {});
 		const ids = new Set([
 			...this.#entries.keys(),

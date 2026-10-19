@@ -83,6 +83,7 @@
 	font-size: 12px;
 }
 .connector-field input,
+.connector-field select,
 .connector-argument input {
 	width: 100%;
 	padding: 10px 12px;

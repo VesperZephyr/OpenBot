@@ -151,3 +151,66 @@ it("keeps failed removal visible across restart and allows cleanup without reviv
 	expect(await service.list()).toEqual([]);
 	expect(await secrets.getApiKey(CONNECTOR_CREDENTIAL_PREFIX + "notes")).toBeUndefined();
 });
+it("persists HTTPS definitions, routes only bearer credentials and never permits endpoint edits through reconnect", async () => {
+	const input = {
+		requestId: "https-install",
+		connectorId: "https",
+		name: "HTTPS",
+		transport: "https" as const,
+		endpoint: "https://service.example/mcp",
+		auth: "bearer" as const,
+	};
+	await service.install(input);
+	await service.credential({ connectorId: "https", expectedRevision: 1, value: "SYNTHETIC_BEARER_TOKEN" });
+	await service.connect({ connectorId: "https", expectedRevision: 2, requestId: "https-connect" });
+	expect(request.mock.calls.at(-1)?.[1]).toMatchObject({
+		action: "connect",
+		definition: { endpoint: input.endpoint, transport: "https", auth: "bearer", revision: 3 },
+		credential: "SYNTHETIC_BEARER_TOKEN",
+	});
+	expect(JSON.stringify(await runtime.connectors().get("https"))).not.toContain("SYNTHETIC_BEARER_TOKEN");
+	await service.install({ ...input, connectorId: "public", requestId: "public-install", auth: "none" });
+	expect(request.mock.calls.at(-1)?.[1]).not.toHaveProperty("credential");
+	await expect(service.credential({ connectorId: "public", expectedRevision: 1, value: "not-allowed-token" })).rejects.toThrow(
+		"does not use a credential",
+	);
+	await expect(service.install({ ...input, endpoint: "https://other.example/mcp", requestId: "https-replace" })).rejects.toThrow("Reload");
+	await service.close();
+	await runtime.close();
+	runtime = await BotRuntime.open({ databasePath: join(root, "pi.sqlite"), models: scriptedModels("Done").models });
+	expect(await runtime.connectors().get("https")).toMatchObject({
+		transport: "https",
+		endpoint: input.endpoint,
+		auth: "bearer",
+		revision: 3,
+	});
+});
+
+it("restores an HTTPS reconnect cooldown on startup through inspection only", async () => {
+	await service.install({
+		requestId: "install-https",
+		connectorId: "https",
+		name: "HTTPS",
+		transport: "https",
+		endpoint: "https://service.example/mcp",
+		auth: "none",
+	});
+	await service.close();
+	const retryAt = Date.now() + 60000;
+	request.mockClear();
+	request.mockResolvedValueOnce({ connectorId: "https", state: "disconnected", tools: [], retryAt });
+	service = new Connectors({
+		runtime,
+		targetId: "mac",
+		port: { request },
+		secrets,
+		approvals: new ApprovalBook(() => {}),
+		assertAllowed: () => {},
+		change: (fn) => fn(),
+		publish: async () => {},
+		changed: () => {},
+	});
+	await service.start();
+	expect(request.mock.calls.map((call) => call[1])).toEqual([{ action: "inspect", connectorId: "https" }]);
+	expect((await service.list())[0]).toMatchObject({ state: "disconnected", retryAt });
+});

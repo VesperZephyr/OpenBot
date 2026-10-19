@@ -10,13 +10,7 @@ type Pending = {
 	abort?: () => void;
 	signal?: AbortSignal;
 };
-export class McpError extends Error {
-	readonly sent: boolean;
-	constructor(sent: boolean, message = "Connector response is unavailable") {
-		super(message);
-		this.sent = sent;
-	}
-}
+import { McpError } from "./mcp-session.ts";
 export class McpStdio {
 	readonly child: ChildProcessWithoutNullStreams;
 	readonly #pending = new Map<string, Pending>();

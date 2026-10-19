@@ -16,12 +16,26 @@ export const CONNECTOR_LIMITS = {
 } as const;
 export const CONNECTOR_CREDENTIAL_PREFIX = "connector:";
 export type ConnectorBinding = { readonly connectorId: string; readonly revision: number; readonly schemaHash: string };
-export type ConnectorDefinition = {
+export type ConnectorTransport =
+	| {
+			readonly transport?: "stdio";
+			readonly command: string;
+			readonly args: readonly string[];
+			readonly credentialEnv?: string;
+			readonly endpoint?: never;
+			readonly auth?: never;
+	  }
+	| {
+			readonly transport: "https";
+			readonly endpoint: string;
+			readonly auth: "none" | "bearer";
+			readonly command?: never;
+			readonly args?: never;
+			readonly credentialEnv?: never;
+	  };
+export type ConnectorDefinition = ConnectorTransport & {
 	readonly connectorId: string;
 	readonly name: string;
-	readonly command: string;
-	readonly args: readonly string[];
-	readonly credentialEnv?: string;
 	readonly revision: number;
 	readonly targetId: string;
 	readonly removed?: boolean;
@@ -37,6 +51,7 @@ export type ConnectorConnection = {
 	readonly state: "disconnected" | "connected" | "needs_attention";
 	readonly tools: readonly ConnectorTool[];
 	readonly error?: string;
+	readonly retryAt?: number;
 };
 export type ConnectorProfile = ConnectorDefinition & ConnectorConnection & { readonly credentialConfigured: boolean };
 export type ConnectorControl =
@@ -55,32 +70,60 @@ export function isConnectorEnvironment(value: unknown): value is string {
 	return (
 		typeof value === "string" &&
 		/^[A-Z][A-Z0-9_]{0,63}$/.test(value) &&
-		!/^(PATH|HOME|USER|LOGNAME|SHELL|TMPDIR|LANG|LC_.*|TERM|BASH_ENV|ENV|ZDOTDIR|SHELLOPTS|BASHOPTS|PYTHON.*|RUBY.*|PERL.*|JAVA_TOOL_OPTIONS|JDK_JAVA_OPTIONS|_JAVA_OPTIONS|CLASSPATH|OPENSSL_CONF|SSL_CERT_FILE|SSL_CERT_DIR|NODE_.*|ELECTRON_.*|DYLD_.*|LD_.*|OPENBOT_.*)$/.test(value)
+		!/^(PATH|HOME|USER|LOGNAME|SHELL|TMPDIR|LANG|LC_.*|TERM|BASH_ENV|ENV|ZDOTDIR|SHELLOPTS|BASHOPTS|PYTHON.*|RUBY.*|PERL.*|JAVA_TOOL_OPTIONS|JDK_JAVA_OPTIONS|_JAVA_OPTIONS|CLASSPATH|OPENSSL_CONF|SSL_CERT_FILE|SSL_CERT_DIR|NODE_.*|ELECTRON_.*|DYLD_.*|LD_.*|OPENBOT_.*)$/.test(
+			value,
+		)
 	);
 }
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
-export function validConnectorDefinition(value: unknown): value is ConnectorDefinition {
+export function isConnectorEndpoint(value: unknown): value is string {
 	if (
-		!object(value) ||
-		Object.keys(value).some(
-			(key) => !["connectorId", "name", "command", "args", "credentialEnv", "revision", "targetId", "removed"].includes(key),
-		)
+		typeof value !== "string" ||
+		value.length > 2048 ||
+		!/^https:\/\//.test(value) ||
+		/^https:\/\/[^/]*@/.test(value) ||
+		/[\s\\?#]/.test(value) ||
+		/[\u0000-\u001f\u007f]/.test(value)
 	)
 		return false;
+	try {
+		const url = new URL(value);
+		return url.protocol === "https:" && !!url.hostname && !url.username && !url.password && !url.search && !url.hash;
+	} catch {
+		return false;
+	}
+}
+export function connectorNeedsCredential(value: ConnectorTransport): boolean {
+	return value.transport === "https" ? value.auth === "bearer" : !!value.credentialEnv;
+}
+export function validConnectorDefinition(value: unknown): value is ConnectorDefinition {
+	if (!object(value)) return false;
+	const fields = ["connectorId", "name", "revision", "targetId", "removed", "transport"];
+	if (value.transport === "https") {
+		fields.push("endpoint", "auth");
+		if (!isConnectorEndpoint(value.endpoint) || (value.auth !== "none" && value.auth !== "bearer")) return false;
+	} else {
+		fields.push("command", "args", "credentialEnv");
+		if (value.transport !== undefined && value.transport !== "stdio") return false;
+		if (
+			typeof value.command !== "string" ||
+			!value.command.startsWith("/") ||
+			value.command.length > 4096 ||
+			value.command.includes("\0") ||
+			!Array.isArray(value.args) ||
+			value.args.length > 32 ||
+			!value.args.every((arg) => typeof arg === "string" && arg.length <= 2048 && !arg.includes("\0")) ||
+			new TextEncoder().encode(value.args.join("")).length > 16384 ||
+			(value.credentialEnv !== undefined && !isConnectorEnvironment(value.credentialEnv))
+		)
+			return false;
+	}
 	return (
+		Object.keys(value).every((key) => fields.includes(key)) &&
 		isConnectorId(value.connectorId) &&
 		typeof value.name === "string" &&
 		value.name.trim().length > 0 &&
 		value.name.length <= 80 &&
-		typeof value.command === "string" &&
-		value.command.startsWith("/") &&
-		value.command.length <= 4096 &&
-		!value.command.includes("\0") &&
-		Array.isArray(value.args) &&
-		value.args.length <= 32 &&
-		value.args.every((arg) => typeof arg === "string" && arg.length <= 2048 && !arg.includes("\0")) &&
-		new TextEncoder().encode(value.args.join("")).length <= 16384 &&
-		(value.credentialEnv === undefined || isConnectorEnvironment(value.credentialEnv)) &&
 		Number.isSafeInteger(value.revision) &&
 		(value.revision as number) > 0 &&
 		typeof value.targetId === "string" &&
@@ -218,13 +261,10 @@ export function validConnectorArguments(schema: Readonly<Record<string, unknown>
 	return check(schema, value);
 }
 
-export type ConnectorInstall = {
+export type ConnectorInstall = ConnectorTransport & {
 	readonly requestId: string;
 	readonly connectorId: string;
 	readonly name: string;
-	readonly command: string;
-	readonly args: readonly string[];
-	readonly credentialEnv?: string;
 };
 export type ConnectorChange = { readonly requestId: string; readonly connectorId: string; readonly expectedRevision: number };
 export const CONNECTOR_SEARCH_DEFINITION = {
