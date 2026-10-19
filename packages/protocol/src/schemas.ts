@@ -42,7 +42,17 @@ const ArtifactId = Type.String({ pattern: "^artifact_[a-f0-9]{32}$" });
 const ArtifactPath = Type.String({ minLength: 1, maxLength: 4096 });
 const SkillName=Type.String({pattern:"^[a-z0-9]+(?:-[a-z0-9]+)*$",maxLength:64});
 const SkillDocument=strict({name:SkillName,description:Type.String({minLength:1,maxLength:300}),inputs:Type.String({minLength:1,maxLength:32768}),requirements:Type.String({minLength:1,maxLength:32768}),steps:Type.String({minLength:1,maxLength:32768}),validation:Type.String({minLength:1,maxLength:32768}),output:Type.String({minLength:1,maxLength:32768}),approvalBoundaries:Type.String({minLength:1,maxLength:32768})});
+const ConnectorId=Type.String({pattern:"^[a-z][a-z0-9-]{0,31}$"});
+const ConnectorRevision=Type.Integer({minimum:1,maximum:Number.MAX_SAFE_INTEGER});
+const ConnectorChange=strict({requestId:Id,connectorId:ConnectorId,expectedRevision:ConnectorRevision});
 export const HOST_PARAM_SCHEMAS = {
+ "connectors.list":NoParams,
+ "connectors.install":strict({requestId:Id,connectorId:ConnectorId,name:Type.String({minLength:1,maxLength:80}),command:Type.String({minLength:1,maxLength:4096,pattern:"^/"}),args:Type.Array(Type.String({maxLength:2048}),{maxItems:32}),credentialEnv:Type.Optional(Type.String({pattern:"^[A-Z][A-Z0-9_]{0,63}$"}))}),
+ "connectors.connect":ConnectorChange,
+ "connectors.disconnect":ConnectorChange,
+ "connectors.remove":ConnectorChange,
+ "connectors.credential.set":strict({connectorId:ConnectorId,expectedRevision:ConnectorRevision,value:Type.String({minLength:8,maxLength:8192})}),
+ "connectors.credential.delete":strict({connectorId:ConnectorId,expectedRevision:ConnectorRevision}),
  "skills.list":NoParams,
  "skills.get":strict({name:SkillName,revision:Type.Optional(Type.Integer({minimum:1}))}),
  "skills.save":strict({requestId:Id,name:SkillName,expectedRevision:Type.Integer({minimum:0}),document:SkillDocument}),

@@ -1,3 +1,5 @@
+import type {ConnectorInstall,ConnectorChange,ConnectorProfile} from "./connectors.ts";
+export * from "./connectors.ts";
 export * from "./background.ts";
 export * from "./skills.ts";
 import type { SkillChange, SkillSummary, SkillDetail, SkillVersion, SkillRef, SkillAttachment, SkillOperation, SkillResult } from "./skills.ts";
@@ -505,6 +507,13 @@ export type ObservationCursor = { readonly streamId: string; readonly seq: numbe
 export type ObservationUpdate = ObservationCursor & { readonly changes: number };
 
 export type HostMethods = {
+ "connectors.list":{params:Record<string,never>;result:readonly ConnectorProfile[]};
+ "connectors.install":{params:ConnectorInstall;result:ConnectorProfile};
+ "connectors.connect":{params:ConnectorChange;result:ConnectorProfile};
+ "connectors.disconnect":{params:ConnectorChange;result:ConnectorProfile};
+ "connectors.remove":{params:ConnectorChange;result:ConnectorProfile};
+ "connectors.credential.set":{params:{connectorId:string;expectedRevision:number;value:string};result:ConnectorProfile};
+ "connectors.credential.delete":{params:{connectorId:string;expectedRevision:number};result:ConnectorProfile};
  "skills.list": {params: Record<string,never>; result: readonly SkillSummary[]};
  "skills.get": {params: {name:string; revision?:number}; result:SkillDetail};
  "skills.save": {params: {requestId:string; name:string; expectedRevision:number; document:import("./skills.ts").SkillDocument}; result:SkillVersion};
@@ -657,6 +666,7 @@ export const HOST_METHODS = [
 	"artifacts.import",
 	"artifacts.export",
 	"artifacts.get",
+ "connectors.list","connectors.install","connectors.connect","connectors.disconnect","connectors.remove","connectors.credential.set","connectors.credential.delete",
  "skills.list","skills.get","skills.save","skills.delete",
 	"artifacts.preview",
 	"artifacts.remove",
@@ -803,6 +813,7 @@ export function isRequestEnvelope(
 
 /** Executor-protocol invocation, identical for the local executor and any future target. */
 export type ToolInvocation = {
+ readonly connector?:import("./connectors.ts").ConnectorBinding;
 	readonly completionTracking?: boolean;
  readonly authorityRevision?: number;
 	readonly runId?: string;
@@ -840,6 +851,7 @@ export type ToolOutcome = {
 
 /** Host to executor. */
 export type ExecutorRequest =
+ | {readonly kind:"connector.control";readonly messageId:string;readonly requestId:string;readonly targetId:string;readonly authorityRevision:number;readonly operation:import("./connectors.ts").ConnectorControl}
  | {readonly kind:"tasks.inspect";readonly messageId:string;readonly targetId:string;readonly keys:readonly import("./background.ts").BackgroundTaskKey[];readonly acknowledge?:boolean}
  | {readonly kind:"skill.request"; readonly messageId:string; readonly requestId:string; readonly targetId:string; readonly operation:SkillOperation; readonly authorityRevision?:number}
 	| {
@@ -863,6 +875,8 @@ export type ExecutorRequest =
 
 /** Executor to Host. */
 export type ExecutorMessage =
+ | {readonly kind:"connector.response";readonly messageId:string;readonly result?:import("./connectors.ts").ConnectorConnection;readonly error?:string}
+ | {readonly kind:"connector.changed";readonly connectorId:string}
  | {readonly kind:"tasks.inspected";readonly messageId:string;readonly receipts?:readonly import("./background.ts").BackgroundTaskReceipt[];readonly error?:string}
  | {readonly kind:"skill.response"; readonly messageId:string; readonly result?:SkillResult; readonly error?:string; readonly uncertain?:boolean}
 	| { readonly kind: "artifact.response"; readonly messageId: string; readonly result: ArtifactOperationResult; readonly error?: never }
@@ -892,6 +906,8 @@ export type ExecutorMessage =
 // Tool catalog: what the model is offered. Schemas are plain JSON Schema, which Pi validates tool arguments against.
 
 export type ToolCapability =
+ | "connectors"
+ | "connectors.discovery"
 	| "app.orchestrate"
 	| "app.read"
 	| "files.read"
@@ -906,6 +922,8 @@ export type ToolCapability =
 	| "collaboration";
 
 export type ToolDefinition = {
+ readonly connector?:import("./connectors.ts").ConnectorBinding;
+ readonly deferred?:boolean;
 	readonly name: string;
 	readonly description: string;
 	readonly parameters: Readonly<Record<string, unknown>>;
@@ -1108,7 +1126,7 @@ export const TOOL_CATALOG = [
 ] as const satisfies readonly ToolDefinition[];
 
 export type ToolName = (typeof TOOL_CATALOG)[number]["name"];
-export type ExecutorToolName = Extract<(typeof TOOL_CATALOG)[number], { destination: "executor" }>["name"];
+export type ExecutorToolName = Extract<(typeof TOOL_CATALOG)[number], { destination: "executor" }>["name"] | `mcp__${string}`;
 
 export function toolDefinition(name: string): ToolDefinition | undefined {
 	return TOOL_CATALOG.find((tool) => tool.name === name);

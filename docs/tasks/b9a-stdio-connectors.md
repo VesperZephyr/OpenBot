@@ -1,6 +1,6 @@
 # B9a: Supervised Local Stdio Connectors
 
-Status: in progress
+Status: implemented, in review ([PR #37](https://github.com/VesperZephyr/OpenBot/pull/37))
 Branch: task/b9a-stdio-connectors; PR target: main
 Depends on: verified B15b `2dfdc1c` (#36), including B12a, B14b and B10
 Architecture: Sections 5.1–5.3, 5.6, 5.9 and 6.2
@@ -15,7 +15,7 @@ Local stdio MCP tools, explicit desktop setup, supervised child processes, token
 
 ## Protocol baseline and Pi reuse
 
-Pin the supported MCP tools subset to protocol revision `2025-11-25`; reject incompatible initialization instead of claiming full MCP support. A bounded stdio client belongs in `local-executor`, not in Pi or the Host. No Pi vendor changes. `agent-runtime` installs a named connector extension with deferred `mcp__<connectorId>__<toolName>` registrations, replacing that extension when the validated catalog changes. Existing configured conversations refer to its stable extension name. Unavailable or removed registrations cannot dispatch a fresh call.
+Pin the supported MCP tools subset to protocol revision `2025-11-25`; reject incompatible initialization instead of claiming full MCP support. A bounded stdio client belongs in `local-executor`, not in Pi or the Host. No Pi vendor changes. `agent-runtime` installs a named connector extension with deferred `mcp__<connectorId>__<toolName>` registrations, replacing that extension when the validated catalog changes. Existing configured conversations refer to its stable extension name. Unavailable or removed registrations cannot dispatch a fresh call. Retain their last validated registration for durable receipt recovery; discovery filters them out, and Host policy denies fresh dispatch even when a schema was previously loaded in the conversation.
 
 Reuse Pi's `createToolSearchTool`/`createToolSearchExtension` behavior and registry notifications. Wrap discovery through the regular OpenBot tool invocation path before running Pi's metadata search/control operation. Query length is at most 512 characters; at most eight tools load per search. Discovery is a local metadata operation and grants no execution permission. Each deferred tool uses the ordinary routed adapter and memoizes the connector revision/schema identity before its first invocation. No unrestricted Pi environment or CodingTools.
 
@@ -28,7 +28,7 @@ Sources, checked 2026-10-19: [MCP stdio transport](https://modelcontextprotocol.
 - Limits: 10 installed connectors, 512 retained identities/removal tombstones and 4,096 configuration-operation receipts. Fail closed at capacity. Reinstalling a removed ID requires a new ID; namespace reuse cannot revive approvals. No credentials, raw tool output or process stderr enter this document.
 - Explicit methods: `connectors.list`, `connectors.install`, `connectors.connect`, `connectors.disconnect`, `connectors.remove`, and `connectors.credential.set/delete`. Mutations validate exact fields, local target and expected revision. Install/remove/connect/disconnect have stable request IDs and fingerprinted intent/result records; conflicting retries fail. Credential set is a reversible revision-checked replacement with no stored secret fingerprint. It never starts a server implicitly.
 - Installation records the reviewed definition before starting its first connection. A lost/failed startup remains disconnected/needs attention; replay returns the same configuration receipt and does not blindly relaunch. Reconnect is an explicit user operation. After Host/executor restart, persisted definitions/catalog remain inspectable, but fresh calls require explicit Connect and a new validated session. Existing invocation receipts remain readable before considering fresh dispatch. A queued old call is never silently redirected to a new server revision.
-- Disconnect/remove first invalidate the durable definition, cancel pending approvals and fence executor dispatch, then stop the supervised session. Removal retains its identity tombstone and deletes its namespaced Keychain credential. A failure to confirm process termination is visible as needs attention, not successful rollback. Stop/quit/lifecycle quiescence also stop connector sessions and reconcile in-flight calls.
+- Disconnect/remove first invalidate the durable definition, cancel pending approvals and fence executor dispatch, then stop the supervised session. Removal retains its identity tombstone and deletes its namespaced Keychain credential. A failure to confirm process termination or credential deletion remains visible as a cleanup-pending tombstone across restart; retrying removal can finish cleanup, but never reconnect or reuse that identity. It is not successful rollback. Stop/quit/lifecycle quiescence also stop connector sessions and reconcile in-flight calls.
 
 ## Credentials and process supervision
 
@@ -82,3 +82,18 @@ Tool activity/approval cards show connector/tool identity and normal Deny/Allow 
 ## Open questions
 
 None for this bounded tools-only increment. Record a contract problem here before changing the design.
+
+## Implementation and acceptance evidence
+
+Implemented on `task/b9a-stdio-connectors`, targeting `main`, based on verified B15b `2dfdc1c` / #36. Pi vendor sources and dependencies are unchanged. The Host/API, credential namespace, executor process journal, bounded MCP session, routed deferred discovery and bilingual Connect apps panel follow the contracts above.
+
+- `pnpm run check`: **409 tests in 65 files passed**, including connector schema/launch limits, exact target/revision checks, credential namespace exclusion from Pi, failed-removal cleanup after reopen, lost-response uncertainty, durable receipt replay, cancellation and orphan PID-start identity checks.
+- `pnpm run e2e`: **112 tests in 31 files passed** with hidden/non-focusable windows. A final rebuilt connector suite passed all **four** scenarios after cleanup/error-path hardening: install and private credential entry, deferred discovery and deny/allow, Chinese restart/reconnect, removal during pending approval. No headed mode or owner-data app was used.
+- Inspected `e2e/.run/connectors/01-install-en.png`, `02-connected-en.png`, `03-approval-en.png` and `04-disconnected-zh.png`. Synthetic credential text is absent from profiles, transcripts and recorded scripted-model requests, including deliberate connector echoes.
+- `node apps/desktop/scripts/stage-runtime.mjs`: bundled Host/executor startup passed from an unrelated temporary directory with isolated state.
+- Isolated real-model desktop verification passed with the user's configured provider: Run `run_bc847758-e44a-4338-86a4-63601eec5f98`, one `tool_search`, one exact approved connector write, no file before approval, exact profit-13 output, English/Chinese review, disconnected state after restart, no repeated write and credential cleanup. Recorded usage: **22,394 tokens**. Window visibility/focus checks remained false; local audit contained metadata without the sentinel or output text.
+- Initial connector UI tests used the wrong default-Bot label; their selector was corrected to the actual roster row. One concurrent full check hit the existing thousand-file spill-test cleanup hook timeout under filesystem contention. The final isolated complete check passed unchanged spill assertions and deadlines.
+
+Local verification logs are `/tmp/b9a-check-verified.log`, `/tmp/b9a-e2e-full.log`, `/tmp/b9a-e2e-verified.log`, `/tmp/b9a-bundle-verified.log`, and `/tmp/b9a-real-first.log`. Real-model artifacts are under the private temporary directory recorded by `/tmp/openbot-b9a-real-path`; its copied model configuration was deleted. Temporary output, credentials and diagnostic logs are not committed.
+
+Remaining release limits: tools-only local stdio; no HTTP/OAuth, automatic grants, model installation or connector Code Mode bridge. A trusted local program has the user's OS access. B14e must establish packaged credential ownership and consistent signature identity before live-credential release; this increment does not claim TCC or responsibility-disclaiming helper verification.

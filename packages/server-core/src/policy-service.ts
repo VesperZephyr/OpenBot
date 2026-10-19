@@ -14,6 +14,7 @@ import { canonicalPath, loadPolicy } from "./policy.ts";
 
 export class PolicyService {
 	readonly #runtime: BotRuntime;
+ readonly #resolve:(name:string)=>import("@openbot/protocol").ToolDefinition|undefined;
 	readonly #approvals: ApprovalBook;
 	readonly #workspace: string;
 	readonly #now: () => number;
@@ -22,6 +23,7 @@ export class PolicyService {
 
 	constructor(options: {
 		runtime: BotRuntime;
+ resolveTool?:(name:string)=>import("@openbot/protocol").ToolDefinition|undefined;
 		approvals: ApprovalBook;
 		workspace: string;
 		now: () => number;
@@ -29,6 +31,7 @@ export class PolicyService {
 		change?: <T>(fn: () => Promise<T>) => Promise<T>;
 	}) {
 		this.#runtime = options.runtime;
+ this.#resolve=options.resolveTool??(()=>undefined);
 		this.#approvals = options.approvals;
 		this.#workspace = options.workspace;
 		this.#now = options.now;
@@ -120,7 +123,7 @@ export class PolicyService {
 	async reevaluate(): Promise<void> {
 		const policy = await loadPolicy(this.#runtime.policy(), this.#workspace);
 		await this.#approvals.reevaluate((approval) => {
-			const definition = toolDefinition(approval.tool);
+			const definition = toolDefinition(approval.tool)??this.#resolve(approval.tool);
 			if (definition === undefined) return { kind: "deny", reason: `Unknown tool: ${approval.tool}` };
 			if (definition.destination !== "executor")
 				return {

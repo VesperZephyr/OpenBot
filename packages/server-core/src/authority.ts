@@ -22,13 +22,17 @@ export class AuthorityCoordinator {
 	#reconciling: Promise<void> | undefined;
 	readonly #artifacts: string;
 	readonly #runtime: BotRuntime;
+ readonly #resolve:(name:string)=>import("@openbot/protocol").ToolDefinition|undefined;
+ readonly #assertCall:(call:Call)=>Promise<void>;
 	readonly #workspace: string;
 	readonly #targetId: string;
 	readonly #approvals: ApprovalBook;
 	readonly #executor: AuthorityExecutor;
 	readonly #interrupt: (ids: readonly string[], stop: () => Promise<void>) => Promise<void>;
 	constructor(options: {
-		dataDirectory: string;
+		resolveTool?:(name:string)=>import("@openbot/protocol").ToolDefinition|undefined;
+ assertCall?:(call:Call)=>Promise<void>;
+ dataDirectory: string;
 		runtime: BotRuntime;
 		workspace: string;
 		targetId: string;
@@ -38,6 +42,7 @@ export class AuthorityCoordinator {
 	}) {
 		this.#artifacts = canonicalPath(join(options.dataDirectory, "artifacts"), options.workspace);
 		this.#runtime = options.runtime;
+ this.#resolve=options.resolveTool??(()=>undefined);this.#assertCall=options.assertCall??(async()=>{});
 		this.#workspace = options.workspace;
 		this.#targetId = options.targetId;
 		this.#approvals = options.approvals;
@@ -84,7 +89,9 @@ export class AuthorityCoordinator {
 				);
 			const store = this.#runtime.policy(),
 				policy = await loadPolicy(store, this.#workspace),
-				definition = toolDefinition(call.tool);
+				definition = toolDefinition(call.tool)??this.#resolve(call.tool);
+   if(!definition)throw new ProtocolError("permission_revoked","Tool is unavailable");
+   await this.#assertCall(call);
 			const pending = await store.pendingChange();
 			if (pending && affected(pending.before, await store.snapshot(), call, this.#workspace))
 				throw new ProtocolError("permission_revoked", "permission_revoked: reconciliation is pending");

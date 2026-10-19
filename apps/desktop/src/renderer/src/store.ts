@@ -23,11 +23,13 @@ export type View =
 	| { readonly kind: "bot"; readonly botId: string }
 	| { readonly kind: "settings" }
  | { readonly kind:"skills" }
+ | {readonly kind:"connectors"}
 	| { readonly kind: "home" };
 
 export type SearchTarget = { conversationKey: ConversationKey; messageId: string; nonce: string };
 
 type State = {
+ connectors:readonly import("@openbot/protocol").ConnectorProfile[]|undefined;
  skills:readonly import("@openbot/protocol").SkillSummary[]|undefined;
 	groupSnapshots: Readonly<Record<string, GroupSnapshot>>;
 	lifecycle: LifecycleState | undefined;
@@ -48,7 +50,8 @@ type State = {
 };
 
 export const useStore = create<State>(() => ({
-	skills:undefined,
+	connectors:undefined,
+ skills:undefined,
  groupSnapshots: {},
 	lifecycle: undefined,
 	searchTarget: undefined,
@@ -130,9 +133,11 @@ const lifecycleRead = new LatestRead(
 	() => api["lifecycle.get"]({}),
 	(lifecycle) => useStore.setState({ lifecycle }),
 );
+const connectorsRead=new LatestRead(()=>api["connectors.list"]({}),connectors=>useStore.setState({connectors}));
+export const refreshConnectors=()=>connectorsRead.request();
 const skillsRead=new LatestRead(()=>api["skills.list"]({}),skills=>useStore.setState({skills}));
 export const refreshSkills=()=>skillsRead.request();
-const readers = [skillsRead,summariesRead, groupsRead, botsRead, settingsRead, conversationRead, groupRead, lifecycleRead];
+const readers = [connectorsRead,skillsRead,summariesRead, groupsRead, botsRead, settingsRead, conversationRead, groupRead, lifecycleRead];
 let readGeneration = 0;
 function resetReads() {
 	readGeneration++;
@@ -233,7 +238,7 @@ async function loadAll(changes: number): Promise<void> {
 	await Promise.all([
 		...(changes & 1 ? [refreshBots()] : []),
 		...(changes & 3 ? [refreshGroups(), refreshSummaries()] : []),
-		...(changes & 8 ? [refreshSettings(), refreshLifecycle(), refreshSkills()] : []),
+		...(changes & 8 ? [refreshSettings(), refreshLifecycle(), refreshSkills(),refreshConnectors()] : []),
 	]);
 	if (generation !== readGeneration || useStore.getState().host.status !== "ready") return;
 	const { view, onboarding, settings, bots } = useStore.getState();
