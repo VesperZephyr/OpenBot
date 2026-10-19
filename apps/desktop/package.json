@@ -5,10 +5,10 @@
 	"type": "module",
 	"main": "./out/main/index.js",
 	"scripts": {
-		"dev": "electron-vite dev",
-		"build": "electron-vite build",
+		"dev": "node scripts/build-keychain.mjs && electron-vite dev",
+		"build": "node scripts/build-keychain.mjs && electron-vite build",
 		"start": "electron-vite preview",
-		"package": "electron-vite build && node scripts/stage-runtime.mjs && node scripts/package.mjs"
+		"package": "pnpm run build && node scripts/stage-runtime.mjs && node scripts/package.mjs"
 	},
 	"dependencies": {
 		"@openbot/protocol": "workspace:*"
@@ -23,6 +23,7 @@
 		"electron-vite": "5.0.0",
 		"esbuild": "0.28.2",
 		"marked": "18.1.1",
+		"node-api-headers": "1.9.0",
 		"react": "19.3.1",
 		"react-dom": "19.3.1",
 		"vite": "7.3.7",

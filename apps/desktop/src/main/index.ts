@@ -1,3 +1,6 @@
+import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
+import { DesktopCredentials, type NativeKeychain } from "./credentials";
 import { NativeLifecycleBridge } from "./lifecycle";
 /**
  * Electron main: application lifecycle, the single window, the menu-bar item, and the only connection to the Host
@@ -57,13 +60,7 @@ let language: Language = "en";
 let quitting = false;
 
 /** Development and test overrides; a packaged app ignores them, so the environment cannot redirect its keys or limits. */
-const DEV_OVERRIDES = [
-	"OPENBOT_KEYCHAIN_SERVICE",
-	"OPENBOT_WORKSPACE",
-	"OPENBOT_TAVILY_BASE_URL",
-	"OPENBOT_MAX_ACTIVE_RUNS",
-	"OPENBOT_EXEC_YIELD_MS",
-] as const;
+const DEV_OVERRIDES = ["OPENBOT_WORKSPACE", "OPENBOT_TAVILY_BASE_URL", "OPENBOT_MAX_ACTIVE_RUNS", "OPENBOT_EXEC_YIELD_MS"] as const;
 const forwarded = (names: readonly string[]): Record<string, string> =>
 	Object.fromEntries(names.flatMap((name) => (process.env[name] === undefined ? [] : [[name, process.env[name]]])));
 
@@ -79,7 +76,25 @@ const hostEnvironment: NodeJS.ProcessEnv = {
 	...(app.isPackaged ? {} : forwarded(DEV_OVERRIDES)),
 };
 
+const keychainService = app.isPackaged
+	? "ai.openbot.desktop.credentials"
+	: (process.env.OPENBOT_KEYCHAIN_SERVICE ??
+		`ai.openbot.development.${createHash("sha256").update(dataDirectory).digest("hex").slice(0, 12)}`);
+if (!app.isPackaged && keychainService.startsWith("ai.openbot.desktop.credentials"))
+	throw new Error("Development requires an isolated credential service");
+const nativeKeychain = createRequire(import.meta.url)(
+	app.isPackaged ? join(process.resourcesPath, "native/keychain.node") : join(app.getAppPath(), "out/native/keychain.node"),
+) as NativeKeychain;
+const credentials = new DesktopCredentials(dataDirectory, keychainService, {
+	access: (operation, service, account, value) => {
+		if (testMode && process.env.OPENBOT_TEST_KEYCHAIN_DENIED === "1") return Promise.reject(new Error("denied"));
+		return operation === "set"
+			? nativeKeychain.access(operation, service, account, value)
+			: nativeKeychain.access(operation, service, account);
+	},
+});
 const host = new HostProcess({
+	credentials,
 	node: runtime.node,
 	entry: runtime.hostEntry,
 	env: hostEnvironment,

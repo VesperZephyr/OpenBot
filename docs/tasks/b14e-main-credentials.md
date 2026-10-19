@@ -1,6 +1,6 @@
 # B14e: Desktop-Owned Keychain Credentials
 
-Status: in progress
+Status: in review ([PR #38](https://github.com/VesperZephyr/OpenBot/pull/38))
 Branch: task/b14e-main-credentials; PR target: main
 Depends on: verified B9a `f37c673` (#37), including lifecycle/policy gates
 Architecture: Sections 3, 5.9, 6.2 and 6.4
@@ -56,4 +56,19 @@ Checked 2026-10-19: [Apple SecAccessCreate](https://developer.apple.com/document
 
 ## Open questions
 
-None for implementation. Developer ID release acceptance is blocked by the absent signing identity and must remain an explicit release gate, not an implicit claim of this PR.
+- 2026-10-19: The installed product deliberately ignores test-mode/service overrides. Native ACL acceptance therefore uses a separately sealed, ad-hoc signed probe application with the exact native module, fuses and entitlements, plus the separately built OpenBot DMG and bundled Host/executor startup verification. This proves write/read/relaunch/cleanup and denial from ordinary Node for the probe identity; it does **not** prove release-signed OpenBot identity or continuity across product updates. Keep that portion of acceptance item 3 and item 5 gated on a Developer ID build; no production test bypass or weakened ACL was added.
+- 2026-10-19: This Mac reports zero valid signing identities. Developer ID/notarized update acceptance remains unverified; B9b may develop against synthetic credentials after the automated implementation gate.
+
+
+## Implementation and acceptance evidence (2026-10-19)
+
+- Main owns async Security.framework access; pinned `node-api-headers@1.9.0` builds locally through Xcode command-line tools. Packaging includes the native module and header license. Host has no `security` CLI fallback. Development defaults to an isolated service and refuses the production service name.
+- Private protocol validation rejects unknown fields/operations, reserved or malformed IDs, malformed Unicode and secrets exceeding 16 KiB UTF-8. The broker accepts eight pending requests with a ten-second deadline; main bounds and serializes eight operations, checks queued deadlines/current child, and never sends an old child's result to its replacement.
+- `credentials-v2.json` and legacy index changes use 0600 atomic replacement plus file/directory sync. A durable initialization marker detects indexes missing after initialization. New storage is verified before index commit; legacy deletion follows both. Migration prefers existing new values, preserves blocked entries and retains cleanup counts even if deletion commits before index replacement fails. No secret, digest or native error text is written to metadata/logs.
+- Acceptance 1: `pnpm run check` passed **431 tests across 68 suites**, including strict responses, namespace isolation, queue overflow/expiry, stale child, timeout/disconnect, concurrent provider writes, corruption/missing metadata, verify/delete interruptions and legacy cleanup index failure. A first run's unrelated spill cleanup hook timed out during concurrent packaging; the full isolated rerun passed. Final atomic recovery tests also passed separately.
+- Acceptance 2: Full background `pnpm run e2e` passed **115 tests across 32 suites**. New credential flows verify native model/search save/delete, model Authorization use without recording its value, renderer/model/log redaction, Host and application restart, explicit migration preserving model selection, bilingual controls and injected denied access. Existing connector scenarios verify own-token injection and echo redaction. Services are isolated per checkout and suite; cleanup uses the same native owner. English/Chinese and denial screenshots in `e2e/.run/` were inspected. Agent-browser inspected the new Settings controls in an isolated hidden app.
+- Acceptance 3 (partial, see Open questions): ad-hoc OpenBot arm64 DMG built; bundled Host/executor startup passed with an explicit empty diagnostic credential parent. `node apps/desktop/scripts/verify-keychain.mjs` packaged a separate sealed probe and verified same-process write/read, relaunch read, ordinary Node denial without interaction, and confirmed synthetic-item deletion. Its deep/strict ad-hoc signature check passed. This is native evidence, not a mocked test and not Developer ID continuity evidence.
+- Acceptance 4: an isolated real request using the configured OpenAI-compatible gateway and `gpt-6.1-sol` passed through the broker-held test credential. The isolated models file contained no key; the response marker, redacted transcript/audit, restart preservation and confirmed deletion were checked. Run `run_a19abfd8-e7f0-42b9-8183-e0d14b511c50` recorded **9,898 tokens**. All windows remained hidden and unfocused; copied test configuration was removed.
+- Acceptance 5: **not passed** for Developer ID signing, notarization and update identity. No release was published.
+
+Local-only evidence: `/tmp/b14e-check-final.log`, `/tmp/b14e-e2e-final.log`, `/tmp/b14e-final-focused.log`, `/tmp/b14e-atomic-tests.log`, `/tmp/b14e-real.log`; the isolated real-model directory is recorded by `/tmp/openbot-b14e-real-path`. Native evidence is `/var/folders/hn/zzh_bwgj201cxv4kdpwl51h00000gn/T/openbot-keychain-native-npHynA/evidence.json`. Temporary transcripts, screenshots, credentials and diagnostic artifacts are excluded from Git.

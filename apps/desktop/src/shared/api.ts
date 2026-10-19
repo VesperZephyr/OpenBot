@@ -35,6 +35,8 @@ export const RENDERER_METHODS = [
 	"settings.get",
 	"settings.update",
 	"models.list",
+	"credentials.status",
+	"credentials.migrate",
 	"credentials.set",
 	"credentials.delete",
 	"bots.memory.get",

@@ -7,6 +7,13 @@ export async function verifyRuntime(stage) {
  const root=await mkdtemp(join(tmpdir(),"openbot-bundle-check-"));
  await mkdir(join(root,"home"));await mkdir(join(root,"workspace"));
  const host=fork(resolve(stage,"host/host.mjs"),[],{execPath:resolve(stage,"node"),execArgv:[],cwd:root,silent:true,env:{PATH:process.env.PATH,HOME:process.env.HOME,OPENBOT_HOME:join(root,"home"),OPENBOT_DATA_DIR:join(root,"data"),OPENBOT_WORKSPACE:join(root,"workspace"),OPENBOT_KEYCHAIN_SERVICE:`ai.openbot.bundle-check.${process.pid}`,OPENBOT_EXECUTOR_ENTRY:resolve(stage,"host/executor.mjs")}});
+ host.on("message", message => {
+  if (message.kind !== "credential.request") return;
+  const status = {owner:"desktop-main",availability:"ready",configuredCount:0,legacyCount:0,migrationRequired:0};
+  // Explicitly empty diagnostic parent: this process has no access to any real Keychain item.
+  const result = message.operation === "list" ? {ids:[],status} : message.operation === "status" ? status : message.operation === "get" ? {value:null} : undefined;
+  if(host.connected) host.send(result === undefined ? {kind:"credential.response",requestId:message.requestId,ok:false,code:"unavailable"} : {kind:"credential.response",requestId:message.requestId,ok:true,result});
+ });
  let stderr="";host.stderr.on("data",chunk=>{stderr=(stderr+chunk).slice(-4000);});host.stdout.resume();
  try {
   await new Promise((resolve,reject)=>{

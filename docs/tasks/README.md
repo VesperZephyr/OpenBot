@@ -61,7 +61,7 @@ Product design (not an implementation task): [D1: Core Bot, Specialist Bots, and
 
 Interaction research: [D2: Grok Bot UI](d2-grok-ui-research.md), **research complete**. Official documentation, the supplied screenshot and installed-client inspection inform [B21](b21-conversation-experience.md), the conversation-experience spec merged in PR #17, and [B22](b22-conversation-list.md), the conversation-list increment. D2 remains the research record.
 
-Delivery planning: [D4: Post-B26 Delivery Plan](d4-delivery-plan.md), **in review, documentation only**. The [development roadmap](../development-roadmap.md) orders remaining work against merged `main` through B26, with execution packets, dependencies and acceptance gates. Unimplemented packets are planning briefs, not ready specs.
+Delivery planning: [D4: Post-B26 Delivery Plan](d4-delivery-plan.md), **done, documentation only**. The [development roadmap](../development-roadmap.md) orders remaining work against merged `main` through B26, with execution packets, dependencies and acceptance gates. Unimplemented packets are planning briefs, not ready specs.
 
 Architecture design: [D3: Application Capabilities and Local Code Mode](d3-app-capabilities.md), **accepted direction**. Defines a shared authorized Host capability surface and reuse of vendored Pi Code Mode. B24 and B25 are merged into `main`; B26 is merged in PR #27 with exact-approved management composition and its recovery acceptance matrix.
 
@@ -140,24 +140,24 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Task | Status |
 | --- | --- |
-| [I1: Integrated product foundation](i1-product-foundation.md) | in review (#34); prerequisite PRs #28–#33; targets main |
+| [I1: Integrated product foundation](i1-product-foundation.md) | done (#34); integrates the reviewed PR #29–#33 implementations |
 
 ## Reusable procedures
 
 | Task | Status |
 | --- | --- |
-| [B10: Reviewed reusable skills](b10-reviewed-skills.md) | in review (#35); depends on #34; targets main |
+| [B10: Reviewed reusable skills](b10-reviewed-skills.md) | done (#35) |
 
 ## Background completion
 
 | Spec | Status |
 | --- | --- |
-| [B15b: Durable background command completion](b15b-background-completion.md) | in review (#36); depends on #35; targets main |
+| [B15b: Durable background command completion](b15b-background-completion.md) | done (#36) |
 
-| [B9a: Supervised local stdio connectors](b9a-stdio-connectors.md) | implemented, in review (#37); depends on #36; targets main |
+| [B9a: Supervised local stdio connectors](b9a-stdio-connectors.md) | done (#37) |
 
 ## Credential ownership
 
 | Spec | Status |
 | --- | --- |
-| [B14e: Desktop-owned Keychain credentials](b14e-main-credentials.md) | in progress; depends on #37; targets main; Developer ID release evidence remains gated |
+| [B14e: Desktop-owned Keychain credentials](b14e-main-credentials.md) | in review (#38); 431 unit/Host and 115 hidden e2e tests; native/real-model evidence in the spec; Developer ID gate open |

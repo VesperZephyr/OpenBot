@@ -21,7 +21,7 @@ import {
 import { paramsError } from "@openbot/protocol/schemas";
 import { ApprovalBook, DEFAULT_MAX_ACTIVE_RUNS, HostService } from "@openbot/server-core";
 import { ExecutorProcess } from "./executor.ts";
-import { KeychainCredentials } from "./keychain.ts";
+import { CredentialBroker, KeychainCredentials } from "./keychain.ts";
 import { modelConfigFile, openBotHome } from "./model-config-file.ts";
 import { createToolRouter, TOOL_DEFINITIONS } from "./tools.ts";
 
@@ -49,10 +49,12 @@ const lock = await open(lockPath, "wx").catch(async (error: NodeJS.ErrnoExceptio
 });
 await lock.writeFile(`${process.pid}\n`);
 
-const credentials = new KeychainCredentials({
-	service: process.env.OPENBOT_KEYCHAIN_SERVICE ?? "ai.openbot.desktop.credentials",
-	indexPath: join(dataDirectory, "credentials.json"),
+// Attach the response listener before opening Pi, which may request credentials during startup.
+const credentialBroker = new CredentialBroker({
+ send: message => { if (!process.send || !process.connected) throw new Error("Credential parent unavailable"); process.send(message, error => { if (error) credentialBroker.close(); }); },
+ on: (event, listener) => process.on(event, listener),
 });
+const credentials = new KeychainCredentials(credentialBroker);
 
 const target: ExecutionTarget = { kind: "local", targetId: `local:${process.env.USER ?? "user"}` };
 
@@ -169,6 +171,7 @@ await service.start();
 serviceReady=true;
 
 process.on("message", async (message: unknown) => {
+ if (message && typeof message === "object" && "kind" in message && message.kind === "credential.response") return;
 	if (!isRequestEnvelope(message)) return;
 	let response: ResponseEnvelope;
 	try {

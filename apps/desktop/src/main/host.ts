@@ -1,3 +1,4 @@
+import { isCredentialRequest, type CredentialRequest, type CredentialResponse } from "@openbot/protocol";
 import { observe } from "../shared/observation";
 /**
  * Starts and supervises the Host Runtime as a child process with an IPC channel, correlates requests and responses,
@@ -19,6 +20,7 @@ import type { HostState } from "../shared/api";
 export type HostProcessOptions = {
 	/** Node binary that runs the Host. Development uses Node from PATH; packaging bundles a pinned, signed Node. */
 	readonly node: string;
+	readonly credentials: { handle(message: CredentialRequest, active: () => boolean): Promise<CredentialResponse> };
 	/** Host entry script. */
 	readonly entry: string;
 	readonly env: NodeJS.ProcessEnv;
@@ -73,7 +75,16 @@ export class HostProcess {
 			this.#options.onOutput(chunk);
 		});
 		child.on("message", (message: HostToDesktop) => {
-			if (this.#child === child) this.#receive(message);
+			if (this.#child !== child) return;
+			if (isCredentialRequest(message)) {
+				void this.#options.credentials
+					.handle(message, () => this.#child === child && child.connected)
+					.then((response) => {
+						if (this.#child === child && child.connected) child.send(response, () => {});
+					});
+				return;
+			}
+			this.#receive(message);
 		});
 		child.on("error", (error) => this.#exited(child, `Could not start the Host Runtime: ${error.message}`));
 		child.on("exit", (code, signal) => this.#exited(child, `Host Runtime exited (${signal ?? `code ${code}`})`));

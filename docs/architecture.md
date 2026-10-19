@@ -1,6 +1,6 @@
 # OpenBot Architecture
 
-Status: first-release design baseline. Last updated: 2026-10-15.
+Status: first-release design baseline. Last updated: 2026-10-19.
 
 This document defines the target product shape, repository layout, module boundaries, interfaces, source dependencies, and development sequence. M0 is complete; the Host Runtime and a chat-only desktop shell exist ahead of their milestones. [The technical plan](technical-plan.md) tracks which parts are implemented and how each milestone is broken down; everything else below requires implementation and validation.
 
@@ -175,7 +175,7 @@ flowchart TB
     TR <-->|Private IPC| EX
     RT <--> DB
     CORE <--> ART
-    CORE <--> KC
+    MAIN <--> KC
     EX <--> RECEIPTS
     ENV <--> FILES
     BR <-->|CDP over pipe| CHROME
@@ -213,7 +213,7 @@ OpenBot is a pnpm workspace TypeScript monorepo. Package boundaries follow Host 
 OpenBot/
   apps/
     desktop/          # Electron main, preload, and React renderer
-    local-server/     # Host Runtime entry: composition, Keychain, IPC transport, startup recovery
+    local-server/     # Host Runtime entry: composition, credential broker, IPC transport, startup recovery
     local-executor/   # Executor process entry: adapters, browser, native helper, connector processes
   packages/
     protocol/         # Versioned IPC and execution envelopes including targetId; data contracts only
@@ -237,7 +237,7 @@ Product packages are published within the workspace as `@openbot/*`. Pi packages
 | Module | Responsibility | Boundary |
 | --- | --- | --- |
 | `apps/desktop` | Bot roster, conversations, group chats, streamed output, approval and takeover cards, settings, notifications, menu bar, and application lifecycle | Depends only on `protocol` |
-| `apps/local-server` | Compose the Host: own the store, wire ports, implement the Keychain secret store, bind IPC, supervise the executor, and run startup recovery | Process entry point; little product logic |
+| `apps/local-server` | Compose the Host: own the store, wire ports, implement the private credential adapter, bind IPC, supervise the executor, and run startup recovery | Process entry point; little product logic |
 | `apps/local-executor` | Compose executor adapters, bind the parent IPC channel, and own child processes and the browser instance | Process entry point |
 | `packages/protocol` | Requests, responses, events, errors, execution envelopes, and one TypeBox parameter schema per Host method | No Pi, Electron, or Node-specific implementation dependencies; TypeBox is its only dependency |
 | `packages/server-core` | Transport-independent application methods, scheduling, policy evaluation, approvals, grants, routines, skill library, Bot memory, and host tool handlers | Defines `SecretStore` and other infrastructure ports |
@@ -507,7 +507,7 @@ Direct messages may attach two exact skill references. Host resolution stores bo
 
 [B16](tasks/b16-model-sources.md) presents built-in and custom setup over one registry, with override metadata and explicit connection tests. UI authentication is API-key-only; OAuth is not implied by catalog support. Custom creation preserves JSONC and refuses existing IDs. Display endpoints expose origins only; provider test failures use safe fixed messages. Credential precedence is unchanged.
 
-Model, search, and connector credentials are stored in the macOS Keychain and loaded by the Host as needed. Renderers receive redacted settings.
+Model, search, and connector credentials are stored in the macOS Keychain by Electron main and supplied to the Host as needed over its private parent IPC channel. Renderers receive redacted settings. [B14e](tasks/b14e-main-credentials.md) defines the native binding, bounded broker and explicit legacy migration.
 
 **Bring your own key.** The user configures endpoints in `~/.openbot/models.json` (or `$OPENBOT_HOME/models.json`), which has the shape and meaning of Pi's `models.json`, restricted to the `openai-completions`, `openai-responses`, and `anthropic-messages` APIs. Only this user-level file exists; no project or workspace file can add providers or commands. The file may use `//` comments and trailing commas; unknown properties are errors.
 
@@ -519,8 +519,10 @@ Model, search, and connector credentials are stored in the macOS Keychain and lo
 
 Credential handling:
 
-- The Host implements pi-ai's `CredentialStore` over the Keychain. pi-ai consults environment variables only when no stored credential exists, so the Host removes provider key variables such as `OPENAI_API_KEY` from its own environment at startup. A developer shell variable is therefore never used silently or inherited by child processes; only a `$NAME` reference the user wrote in `models.json` reads the launch environment.
-- Keychain access control follows the code signature of the process that reads an item. Because the Host runs on a general-purpose Node binary, any script started with that binary would share its Keychain identity. Keychain reads and writes therefore happen in a dedicated signed helper or in Electron main, which passes values to the Host over the private IPC channel; the final placement is decided in M2 and verified on a signed build.
+- The Host implements pi-ai's `CredentialStore` over the private Desktop credential broker. Reserved search and connector namespaces are excluded from all model credential operations. pi-ai consults environment variables only when no stored credential exists, so the Host removes provider key variables such as `OPENAI_API_KEY` from its own environment at startup. A developer shell variable is therefore never used silently or inherited by child processes; only a `$NAME` reference the user wrote in `models.json` reads the launch environment.
+- Electron main owns Keychain access through a fixed-path, async Node-API binding to Security.framework. Native code disables interaction, validates bounded UTF-8 input, clears temporary native secret buffers, and creates items trusting only the calling application. JavaScript strings are not claimed to be securely erased. No command-line Keychain fallback exists.
+- Main stores new items under the versioned `.v2` service and owns atomic, 0600 ID indexes. Explicit migration verifies the new item and commits its index before removing legacy data; blocked ACLs and incomplete cleanup remain visible and retryable. Missing/corrupt indexes fail closed. Development/test builds require an isolated service and do not establish a supported live-credential identity.
+- A consistent Developer ID identity across application updates remains required for release. Local ad-hoc probe evidence verifies native access denial for an ordinary Node process, but does not establish production identity continuity or notarization.
 - Executor and command environments exclude credentials by default. Connector credentials are injected only into their own server.
 - **Secret requests.** When a Bot needs a value it must not see, such as a password for a site field or an API key for a connector, it raises a secret request. The user enters the value in a masked field. The value is stored in the Keychain or used once, never added to the transcript, and never sent to the model. `browser_fill_secret` uses a secret reference.
 - For form steps that are not secrets, `request_user_input` presents one form per step and the Bot fills the answers into the page.
@@ -568,7 +570,10 @@ The transport is private IPC with versioned request, response, and event envelop
 | `inputs.provide` | Answer a structured question or form step |
 | `artifacts.import`, `artifacts.export` | Main-only selected-path copy operations; named preload pickers never accept renderer paths |
 | `artifacts.get`, `artifacts.preview`, `artifacts.remove` | Bounded immutable metadata/content and explicit local-copy removal; removal retains a tombstone |
+| `credentials.status`, `credentials.migrate` | User-only redacted storage state and explicit bounded migration; no public credential read method |
 | `settings.get`, `settings.update`, `usage.get` | Read redacted settings, update configuration (including local `language: en \| zh-CN`, default English), and read per-Bot usage |
+
+Private `credential.request` / `credential.response` messages are separate from Host methods. Only the currently supervised Host child can request list/status/get/set/delete/migrate; no request selects a service or path. Both endpoints validate exact bounded shapes. Main serializes up to eight operations; Host caps eight pending requests with a ten-second deadline. Disconnects and write timeouts return unconfirmed outcomes; late replies cannot reach a replacement Host. Renderers, model tools and the executor have no broker channel.
 
 A request carries `protocolVersion`, `messageId`, `method`, and `params`. Electron main and the Host both validate `params` against the method's TypeBox schema (`@openbot/protocol/schemas`) and answer `invalid_request` otherwise. Mutating operations include a stable application request identity where retries could otherwise create duplicate work. `messages.submit` returns the same Run for the same request ID and content; different content under that ID is a conflict. Durable receipt does not mean model generation has started. A Bot's queued Run collects messages sent while it waits. Text-only messages combine into one input; when attachments are present, original messages remain separate bounded inputs with immutable ordered refs. Pi admission replays its stable request ID before hydrating files.
 
@@ -696,7 +701,7 @@ B21 implements a shared private/group conversation shell, name/role filtering, u
 | Disposable command output | `artifacts/`, 10 MiB/file, 64 MiB total, 4096 files, seven-day startup expiry; bounded head/tail and honest loss markers |
 | Managed-browser profile, cookies, and logins | The browser's user-data directory owned by OpenBot |
 | User files | The shared workspace and user-selected directories |
-| Credentials and stored secrets | The macOS Keychain; transient use by the Host |
+| Credentials and stored secrets | The macOS Keychain, owned by Electron main; transient private IPC use by the Host; main-owned ID indexes |
 | Capture and input readiness | Live macOS observations and an expiring control epoch |
 
 ### 7.2 Scheduling
