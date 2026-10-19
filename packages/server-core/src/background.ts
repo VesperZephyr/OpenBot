@@ -67,16 +67,13 @@ export class BackgroundTasks {
 		for (const botId of new Set(this.#records.map((r) => r.botId))) this.options.changed(botId);
 	}
 	view(botId?: string, conversationId?: string, groupId?: string): BackgroundRecord[] {
-		return this.#records
-			.filter(
-				(r) =>
-					r.taskId &&
-					(!botId || r.botId === botId) &&
-					(!conversationId || r.conversationId === conversationId) &&
-					(!groupId || r.channelId === groupId),
-			)
-			.slice(-64);
-	}
+        const records=this.#records.filter(r=>r.taskId&&(!botId||r.botId===botId)&&(!conversationId||r.conversationId===conversationId)&&(!groupId||r.channelId===groupId));
+        const pending=records.filter(r=>!backgroundTerminal(r)), remaining=Math.max(0,64-pending.length);
+        const recent=remaining?records.filter(backgroundTerminal).slice(-remaining):[];
+        const visible=new Set([...pending,...recent].map(r=>r.invocationId));
+        return records.filter(r=>visible.has(r.invocationId));
+    }
+
 	async start() {
 		await this.#refresh();
 		await this.sweep();

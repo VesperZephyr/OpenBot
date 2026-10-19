@@ -245,3 +245,9 @@ it("records metadata transitions without command output", async () => {
 	expect(JSON.stringify(audit.mock.calls)).not.toContain("FINAL 13");
 	expect(audit.mock.calls.some(([event]) => event.state === "queued")).toBe(true);
 });
+
+it("keeps an old pending command visible when newer completed history fills the snapshot",async()=>{
+ await subscribe();receipt={...receipt,status:"running"};const record=(await runtime.background().get(receipt.invocationId))!;
+ for(let i=0;i<70;i++)await runtime.background().reserve({...record,invocationId:`history${i}`,taskId:`task_history${i}`,state:"delivered"});
+ await service.sweep();const visible=service.view("bot",call.conversationId);expect(visible).toHaveLength(64);expect(visible[0]?.invocationId).toBe(receipt.invocationId);expect(visible.at(-1)?.invocationId).toBe("history69");
+});
