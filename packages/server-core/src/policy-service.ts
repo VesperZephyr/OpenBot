@@ -1,3 +1,4 @@
+import { normalizeAsk } from "./ask-first.ts";
 /**
  * Host methods for command policy and folder grants. Every change re-checks pending approvals against the new policy
  * (Section 5.3): revoking a grant or deleting a rule can never leave a card whose **Always allow** options came from
@@ -7,14 +8,7 @@ import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import type { BotRuntime } from "@openbot/agent-runtime";
-import {
-	type FolderGrant,
-	type GrantAccess,
-	type HostParams,
-	type PolicySettings,
-	ProtocolError,
-	toolDefinition,
-} from "@openbot/protocol";
+import { type FolderGrant, type GrantAccess, type HostParams, type PolicySettings, ProtocolError, toolDefinition } from "@openbot/protocol";
 import { type ApprovalBook, decide } from "./approvals.ts";
 import { canonicalPath, loadPolicy } from "./policy.ts";
 
@@ -23,12 +17,28 @@ export class PolicyService {
 	readonly #approvals: ApprovalBook;
 	readonly #workspace: string;
 	readonly #now: () => number;
+	readonly #reconcile: () => Promise<void>;
+	readonly #change: <T>(fn: () => Promise<T>) => Promise<T>;
 
-	constructor(options: { runtime: BotRuntime; approvals: ApprovalBook; workspace: string; now: () => number }) {
+	constructor(options: {
+		runtime: BotRuntime;
+		approvals: ApprovalBook;
+		workspace: string;
+		now: () => number;
+		reconcile?: () => Promise<void>;
+		change?: <T>(fn: () => Promise<T>) => Promise<T>;
+	}) {
 		this.#runtime = options.runtime;
 		this.#approvals = options.approvals;
 		this.#workspace = options.workspace;
 		this.#now = options.now;
+		this.#change = options.change ?? ((fn) => fn());
+		this.#reconcile =
+			options.reconcile ??
+			(async () => {
+				const change = await this.#runtime.policy().pendingChange();
+				if (change) await this.#runtime.policy().settleChange(change.reconciliation.id, true);
+			});
 	}
 
 	get(): Promise<PolicySettings> {
@@ -36,14 +46,14 @@ export class PolicyService {
 	}
 
 	async update(change: HostParams<"policy.update">): Promise<PolicySettings> {
-		const settings = await this.#runtime.policy().update(change);
-		await this.reevaluate();
-		return settings;
+		await this.#change(() => this.#runtime.policy().update(change));
+		return this.reconcile();
 	}
 
 	async deleteRule(id: string): Promise<PolicySettings> {
-		if (!(await this.#runtime.policy().deleteRule(id))) throw new ProtocolError("not_found", "This rule no longer exists");
-		await this.reevaluate();
+		if (!(await this.#change(() => this.#runtime.policy().deleteRule(id))))
+			throw new ProtocolError("not_found", "This rule no longer exists");
+		await this.reconcile();
 		return this.get();
 	}
 
@@ -52,8 +62,9 @@ export class PolicyService {
 	}
 
 	async revoke(id: string): Promise<readonly FolderGrant[]> {
-		if (!(await this.#runtime.policy().revokeGrant(id))) throw new ProtocolError("not_found", "This folder is no longer granted");
-		await this.reevaluate();
+		if (!(await this.#change(() => this.#runtime.policy().revokeGrant(id))))
+			throw new ProtocolError("not_found", "This folder is no longer granted");
+		await this.reconcile();
 		return this.grants();
 	}
 
@@ -63,9 +74,46 @@ export class PolicyService {
 		const canonical = canonicalPath(path, this.#workspace);
 		const info = await stat(canonical).catch(() => undefined);
 		if (info?.isDirectory() !== true) throw new ProtocolError("invalid_request", `${canonical} is not a folder`);
-		await this.#runtime.policy().addGrant({ id: randomUUID(), path: canonical, access, createdAt: this.#now() });
-		await this.reevaluate();
+		await this.#change(() => this.#runtime.policy().addGrant({ id: randomUUID(), path: canonical, access, createdAt: this.#now() }));
+		await this.reconcile();
 		return this.grants();
+	}
+
+	async createAsk(input: HostParams<"policy.ask.create">): Promise<PolicySettings> {
+		const { requestId, expectedRevision, ...scope } = input;
+		if (scope.botId) {
+			const bot = await this.#runtime.getBot(scope.botId);
+			if (!bot || bot.status === "deleted") throw new ProtocolError("not_found", "This Bot no longer exists");
+		}
+		const settings = await this.get();
+		if (!settings.targetId) throw new ProtocolError("invalid_request", "Policy has no local target");
+		await this.#change(() =>
+			this.#runtime
+				.policy()
+				.createAsk(
+					{
+						...normalizeAsk(scope, this.#workspace),
+						id: randomUUID(),
+						targetId: settings.targetId!,
+						revision: expectedRevision + 1,
+						createdAt: this.#now(),
+					},
+					requestId,
+					expectedRevision,
+				),
+		);
+		await this.reconcile();
+		return this.get();
+	}
+	async deleteAsk(input: HostParams<"policy.ask.delete">): Promise<PolicySettings> {
+		await this.#change(() => this.#runtime.policy().deleteAsk(input.id, input.requestId, input.expectedRevision));
+		await this.reconcile();
+		return this.get();
+	}
+	async reconcile(): Promise<PolicySettings> {
+		await this.#reconcile();
+		await this.reevaluate();
+		return this.get();
 	}
 
 	/** Decide every pending approval again under the current policy. */
@@ -74,8 +122,14 @@ export class PolicyService {
 		await this.#approvals.reevaluate((approval) => {
 			const definition = toolDefinition(approval.tool);
 			if (definition === undefined) return { kind: "deny", reason: `Unknown tool: ${approval.tool}` };
+			if (definition.destination !== "executor")
+				return {
+					kind: "ask",
+					reason: approval.reason,
+					...(approval.alwaysAllowOptions ? { alwaysAllowOptions: approval.alwaysAllowOptions } : {}),
+				};
 			const args = typeof approval.args === "object" && approval.args !== null ? (approval.args as Record<string, unknown>) : {};
-			return decide({ tool: approval.tool, args }, definition, policy);
-		});
+			return decide({ tool: approval.tool, args, botId: approval.botId }, definition, policy);
+		}, policy.revision);
 	}
 }

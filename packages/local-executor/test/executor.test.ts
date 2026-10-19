@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolInvocation } from "@openbot/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { LocalExecutor, ReceiptLedger } from "../src/index.ts";
+import { ArtifactStore, LocalExecutor, ReceiptLedger } from "../src/index.ts";
 
 describe("LocalExecutor", () => {
 	let root: string;
@@ -13,7 +13,11 @@ describe("LocalExecutor", () => {
 	let ledger: ReceiptLedger;
 	let next = 0;
 
-	const invocation = (tool: ToolInvocation["tool"], args: Record<string, unknown>, overrides: Partial<ToolInvocation> = {}): ToolInvocation => ({
+	const invocation = (
+		tool: ToolInvocation["tool"],
+		args: Record<string, unknown>,
+		overrides: Partial<ToolInvocation> = {},
+	): ToolInvocation => ({
 		invocationId: `inv-${++next}`,
 		botId: "bot",
 		conversationId: "1",
@@ -42,6 +46,75 @@ describe("LocalExecutor", () => {
 	afterEach(async () => {
 		ledger.close();
 		await rm(root, { recursive: true, force: true });
+	});
+
+	it("publishes only granted files and reconciles a committed artifact after a lost tool receipt", async () => {
+		const store = new ArtifactStore(join(root, "attachments"));
+		executor = new LocalExecutor({ targetId: "mac", workspace, ledger, artifactStore: store, artifactsDirectory: join(root, "artifacts") });
+		try {
+			const denied = await run(invocation("artifact_publish", { path: join(outside, "secret.txt") }));
+			expect(denied.status).toBe("failed");
+			expect(denied.artifact).toBeUndefined();
+			const source = join(workspace, "result.txt");
+			await writeFile(source, "immutable result");
+			const call = invocation("artifact_publish", { path: source });
+			ledger.accept(call);
+			const saved = store.capture(call.invocationId, source, "result");
+			await rm(source);
+			ledger.close();
+			ledger = ReceiptLedger.open(join(root, "receipts.sqlite"));
+			executor = new LocalExecutor({
+				targetId: "mac",
+				workspace,
+				ledger,
+				artifactStore: store,
+				artifactsDirectory: join(root, "artifacts"),
+			});
+			expect((await run({ ...call, target: { kind: "local", targetId: "wrong" } })).status).toBe("failed");
+			expect(ledger.get(call.invocationId)?.status).toBe("unknown");
+			expect(executor.receipt(call.invocationId)).toMatchObject({ status: "succeeded", outcome: { artifact: saved } });
+			expect(await run(call)).toMatchObject({ status: "succeeded", artifact: saved });
+			expect(ledger.get(call.invocationId)?.status).toBe("succeeded");
+			expect((await run({ ...call, argsDigest: "changed" })).status).toBe("failed");
+			expect(store.content(saved.artifactId).text).toBe("immutable result");
+		} finally {
+			store.close();
+		}
+	});
+
+	it("fences new publications while reconciling committed copies without renewed source authority", async () => {
+		const store = new ArtifactStore(join(root, "attachments"));
+		const options = () => ({
+			targetId: "mac",
+			workspace,
+			ledger,
+			artifactStore: store,
+			artifactsDirectory: join(root, "artifacts"),
+			requireAuthority: true,
+		});
+		executor = new LocalExecutor(options());
+		try {
+			executor.synchronize(1);
+			const call = invocation("artifact_publish", { path: join(outside, "secret.txt") }, { authorityRevision: 1, readGrants: [outside] });
+			ledger.accept(call);
+			const artifact = store.capture(call.invocationId, join(outside, "secret.txt"), "result");
+			await rm(join(outside, "secret.txt"));
+			ledger.close();
+			ledger = ReceiptLedger.open(join(root, "receipts.sqlite"));
+			executor = new LocalExecutor(options());
+			executor.synchronize(2);
+			expect(await run({ ...call, readGrants: [] })).toMatchObject({ status: "succeeded", artifact });
+			const stale = invocation("artifact_publish", { path: join(outside, "secret.txt") }, { authorityRevision: 1, readGrants: [outside] });
+			expect((await run(stale)).output).toContain("stale execution authority");
+			expect(ledger.get(stale.invocationId)).toBeUndefined();
+			await writeFile(join(outside, "new.txt"), "not authorized");
+			const denied = invocation("artifact_publish", { path: join(outside, "new.txt") }, { authorityRevision: 2 });
+			expect((await run(denied)).status).toBe("failed");
+			expect(store.published(denied.invocationId)).toBeUndefined();
+			expect(store.content(artifact.artifactId).text).toBe("secret");
+		} finally {
+			store.close();
+		}
 	});
 
 	it("refuses paths outside the grants, including through a symbolic link", async () => {
@@ -104,6 +177,43 @@ describe("LocalExecutor", () => {
 		const settled = await outcome;
 		expect(settled.status).toBe("cancelled");
 		expect(settled.output).not.toContain("never");
+	});
+
+	it("rejects stale authority while preserving terminal receipts and unrelated work", async () => {
+		expect(executor.synchronize(2)).toBe(true);
+		expect(executor.synchronize(1)).toBe(false);
+		const command = invocation(
+			"local_exec",
+			{ command: "printf once >> authority.txt", description: "authority" },
+			{ authorityRevision: 2 },
+		);
+		expect((await run(command)).status).toBe("succeeded");
+		executor.synchronize(3);
+		expect((await run(command)).status).toBe("succeeded");
+		expect((await run({ ...command, invocationId: "stale" })).output).toContain("permission_revoked");
+		expect(await readFile(join(workspace, "authority.txt"), "utf8")).toBe("once");
+		const first = invocation("local_exec", { command: "sleep 30", description: "affected", background: true }, { authorityRevision: 3 });
+		const second = invocation("local_exec", { command: "sleep 30", description: "unrelated", background: true }, { authorityRevision: 3 });
+		const a = await run(first),
+			b = await run(second);
+		expect(a.taskId).toBeDefined();
+		expect(b.taskId).toBeDefined();
+		expect(await executor.revoke([first.invocationId])).toBe(true);
+		expect((await run(invocation("task_output", { taskId: b.taskId, wait_seconds: 0 }, { authorityRevision: 3 }))).output).toContain(
+			"running",
+		);
+		expect((await run(invocation("task_output", { taskId: a.taskId, wait_seconds: 0 }, { authorityRevision: 3 }))).output).toContain(
+			"stopped",
+		);
+		await executor.cancelAll();
+	});
+
+	it("cancels a file mutation while asynchronous path authorization is pending", async () => {
+		const write = invocation("local_write", { path: "cancelled-write.txt", content: "must not be written" });
+		const result = run(write);
+		executor.cancel(write.invocationId);
+		expect((await result).status).toBe("cancelled");
+		await expect(readFile(join(workspace, "cancelled-write.txt"), "utf8")).rejects.toThrow();
 	});
 
 	it("does not pass credentials to commands", async () => {

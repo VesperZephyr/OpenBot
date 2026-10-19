@@ -1,3 +1,4 @@
+import { AskFirstSettings, PermissionStatus } from "./AskFirstSettings";
 import { t } from "./i18n";
 import type { CommandRule, CommandSetting, FolderGrant, PolicySettings as Policy } from "@openbot/protocol";
 import { useEffect, useState } from "react";
@@ -18,6 +19,7 @@ function ruleText(rule: CommandRule): string {
 /** Settings → Commands: the command setting, the read-only default, and saved rules. */
 export function CommandSettings() {
 	const [policy, setPolicy] = useState<Policy | undefined>(undefined);
+	const [busy, setBusy] = useState(false);
 	useEffect(() => {
 		let current = true;
 		api["policy.get"]({})
@@ -28,14 +30,24 @@ export function CommandSettings() {
 		};
 	}, []);
 	if (policy === undefined) return null;
-	const update = (change: { commandSetting?: CommandSetting; readOnlyDefault?: boolean }): void =>
-		void api["policy.update"](change).then(setPolicy).catch(report);
+	const change = (action: () => Promise<Policy>): void => {
+		setBusy(true);
+		void action()
+			.then(setPolicy)
+			.catch((error) => {
+				report(error);
+				void api["policy.get"]({}).then(setPolicy).catch(report);
+			})
+			.finally(() => setBusy(false));
+	};
+	const update = (value: { commandSetting?: CommandSetting; readOnlyDefault?: boolean }) => change(() => api["policy.update"](value));
 
 	return (
 		<div className="settings-group" aria-label={t("Commands")}>
 			<h2>{t("Commands")}</h2>
 			<p className="muted">{t("How Bots may run shell commands on this Mac.")}</p>
 			<select
+				disabled={busy}
 				value={policy.commandSetting}
 				onChange={(event) => update({ commandSetting: event.target.value as CommandSetting })}
 				aria-label={t("Command setting")}
@@ -49,11 +61,13 @@ export function CommandSettings() {
 			<label className="toggle">
 				<input
 					type="checkbox"
+					disabled={busy}
 					checked={policy.readOnlyDefault}
 					onChange={(event) => update({ readOnlyDefault: event.target.checked })}
 				/>
-				<span>{t("Run read-only commands inside granted folders without asking (")}<code>rg</code>, <code>grep</code>, <code>ls</code>,{" "}
-					<code>cat</code>, <code>git status</code>, …)
+				<span>
+					{t("Run read-only commands inside granted folders without asking (")}
+					<code>rg</code>, <code>grep</code>, <code>ls</code>, <code>cat</code>, …)
 				</span>
 			</label>
 			<ul className="provider-list" aria-label={t("Command rules")}>
@@ -63,18 +77,25 @@ export function CommandSettings() {
 						<code>{ruleText(rule)}</code>
 						<button
 							type="button"
-							aria-label={t("Delete rule {rule}", {rule: ruleText(rule)})}
-							onClick={() => void api["policy.rules.delete"]({ id: rule.id }).then(setPolicy).catch(report)}
-						>{t("Delete")}</button>
+							aria-label={t("Delete rule {rule}", { rule: ruleText(rule) })}
+							disabled={busy}
+							onClick={() => change(() => api["policy.rules.delete"]({ id: rule.id }))}
+						>
+							{t("Delete")}
+						</button>
 					</li>
 				))}
 			</ul>
+			<PermissionStatus policy={policy} busy={busy} reload={setPolicy} />
+			<AskFirstSettings policy={policy} update={change} busy={busy} />
 		</div>
 	);
 }
 
 /** Settings → Folders: granted folders with revoke, and Add folder through the native picker. */
 export function FolderSettings({ workspace }: { readonly workspace: string }) {
+	const [policy, setPolicy] = useState<Policy>();
+	const [busy, setBusy] = useState(false);
 	const [grants, setGrants] = useState<readonly FolderGrant[] | undefined>(undefined);
 	useEffect(() => {
 		let current = true;
@@ -86,6 +107,16 @@ export function FolderSettings({ workspace }: { readonly workspace: string }) {
 		};
 	}, []);
 
+	const revoke = (id: string) => {
+		setBusy(true);
+		void api["grants.revoke"]({ id })
+			.then(setGrants)
+			.catch(report)
+			.finally(async () => {
+				await Promise.all([api["policy.get"]({}).then(setPolicy), api["grants.list"]({}).then(setGrants)]).catch(report);
+				setBusy(false);
+			});
+	};
 	const add = async (): Promise<void> => {
 		try {
 			const picked = await window.openbot.pickFolder();
@@ -109,15 +140,16 @@ export function FolderSettings({ workspace }: { readonly workspace: string }) {
 					<li key={grant.id}>
 						<code>{grant.path}</code>
 						<span className="muted">{t(grant.access === "read" ? "Read" : "Read and write")}</span>
-						<button
-							type="button"
-							aria-label={t("Revoke {path}", {path: grant.path})}
-							onClick={() => void api["grants.revoke"]({ id: grant.id }).then(setGrants).catch(report)}
-						>{t("Revoke")}</button>
+						<button type="button" aria-label={t("Revoke {path}", { path: grant.path })} disabled={busy} onClick={() => revoke(grant.id)}>
+							{t("Revoke")}
+						</button>
 					</li>
 				))}
 			</ul>
-			<button type="button" onClick={() => void add()}>{t("Add folder")}</button>
+			<PermissionStatus policy={policy} busy={busy} reload={setPolicy} />
+			<button type="button" disabled={busy} onClick={() => void add()}>
+				{t("Add folder")}
+			</button>
 		</div>
 	);
 }

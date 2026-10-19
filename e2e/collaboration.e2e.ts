@@ -105,6 +105,7 @@ it("structured @ chooses a member, while cycles pause durably in Chinese", async
 it("stops the full tree and approval after restart while preserving an unrelated task", async () => {
 	await api("settings.update", { language: "en" });
 	await h.relaunch();
+	if ((await api("lifecycle.get")).blocked) await api("lifecycle.resume");
 	await open();
 	h.model.script(
 		{ tool: "bot_delegate", args: { botId: "bot_alpha", task: "Run a command", expectedResult: "Command result" } },
@@ -114,7 +115,7 @@ it("stops the full tree and approval after restart while preserving an unrelated
 	await send("Do the command task.");
 	await h.page().getByRole("group", { name: "Approval request" }).waitFor();
 	const taskRoot = (await snapshot()).roots.at(-1).rootId;
-	await h.relaunch();
+	await h.crashHost();
 	await open();
 	await h.page().getByRole("group", { name: "Approval request" }).waitFor();
 	// A separate user request waits for the active Bot; stopping this tree must preserve it.
@@ -136,7 +137,7 @@ it("stops the full tree and approval after restart while preserving an unrelated
 });
 
 it("tree stop preserves another root's background command in the same Bot and group", async () => {
-	await api("policy.update", { commandSetting: "allow" });
+	await api("policy.update", { commandSetting: "ask" });
 	let firstTask = "";
 	let secondTask = "";
 	const capture = (which: "first" | "second") => (request: any) => {
@@ -157,10 +158,12 @@ it("tree stop preserves another root's background command in the same Bot and gr
 		text: "Start unrelated background work",
 		recipientIds: ["bot_alpha"],
 	});
+	const firstApproval = h.page().getByRole("group", { name: "Approval request" }).filter({ hasText: "sleep 60" });
+	await firstApproval.getByRole("button", { name: "Always allow", exact: true }).click();
+	await firstApproval.getByRole("button", { name: "Save rule and allow", exact: true }).click();
 	await until(async () => (await snapshot()).posts.at(-1)?.text).toBe("Independent background task started.");
-	await api("policy.update", { commandSetting: "ask" });
 	h.model.script(
-		{ tool: "local_exec", args: { command: "sleep 60", description: "Tree background work", background: true } },
+		{ tool: "local_exec", args: { command: "sleep 61", description: "Tree background work", background: true } },
 		{ tool: "task_output", args: capture("second") },
 		{ tool: "bot_delegate", args: { botId: "bot_beta", task: "Wait for command approval", expectedResult: "Approved result" } },
 		{ text: "Tree background work assigned." },
@@ -172,7 +175,12 @@ it("tree stop preserves another root's background command in the same Bot and gr
 		text: "Start a task tree with background work",
 		recipientIds: ["bot_alpha"],
 	});
-	await h.page().getByRole("group", { name: "Approval request" }).getByRole("button", { name: "Allow once", exact: true }).click();
+	await h
+		.page()
+		.getByRole("group", { name: "Approval request" })
+		.filter({ hasText: "sleep 61" })
+		.getByRole("button", { name: "Allow once", exact: true })
+		.click();
 	await until(async () => (await snapshot()).tasks.some((d: any) => d.botId === "bot_beta" && d.conversation?.approvals.length)).toBe(true);
 	await h
 		.page()

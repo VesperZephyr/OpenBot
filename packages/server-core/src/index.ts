@@ -1,3 +1,8 @@
+import { Observation } from "./observation.ts";
+import { ARTIFACT_LIMITS } from "@openbot/protocol";
+import type { ArtifactRef, ArtifactContent, ArtifactOperation, ArtifactOperationResult } from "@openbot/protocol";
+import { AuthorityCoordinator, type AuthorityExecutor } from "./authority.ts";
+import {LifecycleController} from "./lifecycle.ts";
 import { legacyManagementName } from "@openbot/protocol";
 /**
  * Transport-independent application methods for the Host Runtime. Process composition, credential storage, and IPC
@@ -62,7 +67,14 @@ export type OperationAudit = {
 	readonly outcome: "succeeded" | "failed";
 };
 
+export interface ArtifactPort {
+	request(requestId: string, operation: ArtifactOperation): Promise<ArtifactOperationResult>;
+}
 export type HostServiceOptions = {
+	readonly artifacts?: ArtifactPort;
+ readonly authorityExecutor?:AuthorityExecutor;
+ readonly nativeLifecycleRequired?:boolean;
+ readonly quiesce?:()=>Promise<void>;
 	/** Content-free diagnostics; authoritative action state stays in its own durable store. */
 	readonly audit?: (event: OperationAudit) => void;
 	readonly runtime: BotRuntime;
@@ -93,10 +105,14 @@ export type HostServiceOptions = {
 type Handlers = { [M in HostMethod]: (params: HostParams<M>) => Promise<HostResult<M>> };
 
 export class HostService {
+ readonly authority:AuthorityCoordinator;
+ readonly lifecycle:LifecycleController;
 	readonly capabilities: AppCapabilities;
+	readonly #artifacts: ArtifactPort | undefined;
 	readonly management: BotManagement;
 	readonly groups: Groups;
 	#botChanges: Promise<unknown> = Promise.resolve();
+	readonly #observation = new Observation();
 	readonly #audit: (event: OperationAudit) => void;
 	#configWrites: Promise<unknown> = Promise.resolve();
 	readonly #runtime: BotRuntime;
@@ -120,6 +136,7 @@ export class HostService {
 	#configStatus: ModelConfigStatus = { providers: [], errors: [] };
 
 	constructor(options: HostServiceOptions) {
+		this.#artifacts = options.artifacts;
 		this.#audit = options.audit ?? (() => {});
 		this.#runtime = options.runtime;
 		this.#secrets = options.secrets;
@@ -130,11 +147,31 @@ export class HostService {
 		this.#toolSettled = options.toolSettled ?? (() => {});
 		this.#conversationStopped = options.conversationStopped ?? (() => {});
 		this.#workspace = options.workspace;
-		this.#emit = options.emit;
+		this.#emit = (event) => {
+			this.#observation.changed(event.type === "bots.changed" ? 1 : event.type === "groups.changed" ? 2 : event.type === "lifecycle.changed" ? 8 : 4);
+			options.emit(event);
+		};
 		this.#now = options.now ?? Date.now;
 		this.management = new BotManagement(this.#runtime, this.#status.targetId, this.#now);
 		this.#runs = new RunScheduler({
+			resolveAttachments: (botId, ids) => this.#resolveAttachments(botId, ids),
+			hydrateAttachments: async (botId, refs) => {
+				const current = await this.#resolveAttachments(
+					botId,
+					refs.map((ref) => ref.artifactId),
+				);
+				if (current.some((ref, i) => ref.sha256 !== refs[i]?.sha256))
+					throw new ProtocolError("invalid_request", "Attachment content changed");
+				const content: ArtifactContent[] = [];
+				for (const ref of refs) {
+					const item = (await this.#artifact(randomUUID(), { action: "content", artifactId: ref.artifactId })) as ArtifactContent;
+					if (item.artifact.availability !== "available") throw new ProtocolError("invalid_request", "Attachment content is unavailable");
+					content.push(item);
+				}
+				return content;
+			},
 			runtime: this.#runtime,
+			canAdmit: () => !this.lifecycle.state.blocked,
 			maxActiveRuns: options.maxActiveRuns ?? DEFAULT_MAX_ACTIVE_RUNS,
 			changed: (botId) => this.#republish(botId),
 			now: this.#now,
@@ -142,6 +179,7 @@ export class HostService {
 			admissible: (run) => this.groups.admissible(run),
 		});
 		this.groups = new Groups({
+			canRun: () => !this.lifecycle.state.blocked,
 			runtime: this.#runtime,
 			authority: this.management,
 			runs: this.#runs,
@@ -150,15 +188,45 @@ export class HostService {
 			settled: this.#toolSettled,
 			stopping: (botId, channelId, runId) => this.#conversationStopped(botId, channelId, runId),
 		});
+		this.lifecycle = new LifecycleController({
+			hasWork: async () => this.#runs.hasWork() || (await this.#runtime.groups().deliveries()).some((delivery) => delivery.state === "pending"),
+			store: this.#runtime.lifecycle(),
+			targetId: this.#status.targetId,
+			...(options.nativeLifecycleRequired ? { nativeRequired: true } : {}),
+			changed: (state) => this.#emit({ type: "lifecycle.changed", payload: state }),
+			suspend: async (reason) => {
+				await this.#runs.interruptAll(reason, options.quiesce);
+				await this.groups.interruptActive();
+			},
+			resume: async () => {
+				await this.#runs.resume();
+				await this.groups.sweep();
+				if (!this.lifecycle.state.blocked) this.#runtime.resume();
+			},
+		});
+
 		this.capabilities = new AppCapabilities(this.#runtime, this.#status.targetId, (run) => this.groups.admissible(run));
 		this.management.appGuard = (call) => this.capabilities.authorizeManagement(call);
-		this.#policy = new PolicyService({ runtime: this.#runtime, approvals: this.#approvals, workspace: this.#workspace, now: this.#now });
+		this.authority=new AuthorityCoordinator({dataDirectory:this.#dataDirectory,runtime:this.#runtime,workspace:this.#workspace,targetId:this.#status.targetId,approvals:this.#approvals,executor:options.authorityExecutor??{synchronize:async()=>{},revoke:async()=>{}},interrupt:async(ids,stop)=>{await this.#runs.interruptSelected(ids,stop);await this.groups.interruptActive();}});
+  this.#policy = new PolicyService({ runtime: this.#runtime, approvals: this.#approvals, workspace: this.#workspace, now: this.#now,change:fn=>this.authority.change(fn),reconcile:()=>this.authority.reconcile() });
 		this.#feed = new ConversationFeed({
 			deliver: (snapshot) => this.#emit({ type: "conversation.updated", payload: snapshot }),
 			...(options.coalesce?.windowMs === undefined ? {} : { windowMs: options.coalesce.windowMs }),
 			...(options.coalesce?.timers === undefined ? {} : { timers: options.coalesce.timers }),
 		});
 		this.#handlers = {
+			"observation.wait": ({ cursor, waitMs }) => this.#observation.wait(cursor, waitMs),
+			"artifacts.import": ({ requestId, path }) => this.#artifact(requestId, { action: "import", path }) as Promise<ArtifactRef>,
+			"artifacts.export": ({ requestId, artifactId, path }) =>
+				this.#artifact(requestId, { action: "export", artifactId, path }) as Promise<null>,
+			"artifacts.remove": ({ requestId, artifactId }) => this.#artifact(requestId, { action: "remove", artifactId }) as Promise<null>,
+			"artifacts.get": ({ artifactId }) => this.#artifact(randomUUID(), { action: "get", artifactId }) as Promise<ArtifactRef>,
+			"artifacts.preview": ({ artifactId }) => this.#artifact(randomUUID(), { action: "preview", artifactId }) as Promise<ArtifactContent>,
+			"lifecycle.get": async () => this.lifecycle.state,
+			"lifecycle.pause": () => this.lifecycle.pause(),
+			"lifecycle.resume": () => this.lifecycle.resume(),
+			"lifecycle.native": (params) => this.lifecycle.native(params),
+			"runs.continue": ({ runId, requestId }) => this.#runs.continue(runId, requestId),
 			"collaboration.stop": ({ rootId }) => this.groups.stopTree(rootId),
 			"groups.list": () => this.#runtime.groups().list(),
 			"groups.snapshot": ({ groupId }) => this.groups.snapshot(groupId),
@@ -197,23 +265,24 @@ export class HostService {
 					this.#emit({ type: conversationKey.startsWith("bot:") ? "bots.changed" : "groups.changed", payload: {} });
 				return null;
 			},
-			"messages.submit": async ({ botId, requestId, text }) => {
-				if (text.trim() === "") throw new ProtocolError("invalid_request", "Message is empty");
+			"messages.submit": async ({ botId, requestId, text, artifactIds }) => {
+				if (text.trim() === "" && !artifactIds?.length) throw new ProtocolError("invalid_request", "Message is empty");
 				const bot = await this.#liveBot(botId);
 				if (bot.model === undefined && (await this.#runtime.defaultModel()) === undefined) {
 					throw new ProtocolError("invalid_request", "Choose a model in Settings before messaging a Bot");
 				}
-				return this.#runs.submit(botId, requestId, text);
+				return this.#runs.submit(botId, requestId, text, artifactIds ? { artifactIds } : {});
 			},
 			"runs.cancel": async ({ runId }) => ({ state: await this.#runs.cancel(runId) }),
 			"approvals.decide": async ({ approvalId, decision }) => {
-				if (!(await this.#approvals.decide(approvalId, decision))) {
+				if (!(await this.authority.change(()=>this.#approvals.decide(approvalId, decision)))) {
 					throw new ProtocolError("not_found", "This request was already answered or its task ended");
 				}
 				// The new rule or grant may cover other waiting calls too.
 				if (typeof decision !== "string") await this.#policy.reevaluate();
 				return null;
 			},
+			"usage.get": ({botId,limit}) => this.#runtime.usage(botId,limit),
 			"settings.get": () => this.#settings(),
 			"settings.update": async ({ defaultModel, setupComplete, language }) => {
 				if (language !== undefined) await this.#runtime.setLanguage(language);
@@ -242,6 +311,9 @@ export class HostService {
 				return null;
 			},
 			"policy.get": () => this.#policy.get(),
+ "policy.ask.create":input=>this.#policy.createAsk(input),
+ "policy.ask.delete":input=>this.#policy.deleteAsk(input),
+ "policy.reconcile":()=>this.#policy.reconcile(),
 			"policy.update": (change) => this.#policy.update(change),
 			"policy.rules.delete": ({ id }) => this.#policy.deleteRule(id),
 			"grants.list": () => this.#policy.grants(),
@@ -309,12 +381,42 @@ export class HostService {
 		};
 	}
 
+	async #resolveAttachments(botId: string, ids: readonly string[]): Promise<ArtifactRef[]> {
+		if (ids.length > ARTIFACT_LIMITS.count || new Set(ids).size !== ids.length)
+			throw new ProtocolError("invalid_request", "Too many or duplicate attachments");
+		const refs: ArtifactRef[] = [];
+		for (const artifactId of ids) {
+			const ref = (await this.#artifact(randomUUID(), { action: "get", artifactId })) as ArtifactRef;
+			if (ref.availability !== "available") throw new ProtocolError("invalid_request", "Attachment content is unavailable");
+			refs.push(ref);
+		}
+		if (
+			refs.some((ref) => ref.mediaType === "text/html") ||
+			refs.reduce((n, ref) => n + ref.bytes, 0) > ARTIFACT_LIMITS.messageBytes ||
+			refs.filter((ref) => ref.mediaType.startsWith("text/")).reduce((n, ref) => n + ref.bytes, 0) > ARTIFACT_LIMITS.textBytes
+		)
+			throw new ProtocolError("invalid_request", "Attachments exceed the message limits");
+		if (refs.some((ref) => ref.mediaType.startsWith("image/"))) {
+			const bot = await this.#liveBot(botId),
+				model = bot.model ?? (await this.#runtime.defaultModel());
+			if (!model || !this.#runtime.listChatModels().find((m) => m.provider === model.provider && m.modelId === model.modelId)?.images)
+				throw new ProtocolError("invalid_request", "This model does not support image attachments");
+		}
+		return refs;
+	}
+
+	#artifact(requestId: string, operation: ArtifactOperation): Promise<ArtifactOperationResult> {
+		if (!this.#artifacts) throw new ProtocolError("invalid_request", "Artifact storage is unavailable");
+		return this.#artifacts.request(requestId, operation);
+	}
+
 	/**
 	 * Load the model configuration and pending approvals, attach observers to every existing Bot, then sweep Runs left
 	 * by the last shutdown. Call once after the runtime opened and before it resumes, so approvals from before a
 	 * restart show before Pi reruns.
 	 */
 	async start(): Promise<void> {
+		await this.lifecycle.start();
 		await this.#reloadModelConfig();
 		const at = this.#now();
 		await this.#runtime.ensureCoreBot(at);
@@ -323,14 +425,19 @@ export class HostService {
 		} catch {
 			/* Keep diagnostics independent of startup. */
 		}
+		await this.#runtime.policy().bind(this.#status.targetId);
 		await this.#approvals.start(this.#runtime.approvals());
 		for (const bot of await this.#runtime.listBots()) if (bot.status !== "deleted") await this.#observe(bot.botId);
-		await this.#runs.start();
+		await this.authority.reconcile();
+  await this.#runs.start();
+		if (this.lifecycle.state.needsResume) await this.lifecycle.pause("recovery").catch(() => {});
 		await this.groups.start();
+		if (!this.lifecycle.state.blocked) this.#runtime.resume();
 	}
 
 	/** Call before the runtime closes: the shutdown aborts waiting calls, and their approvals must stay pending. */
 	async stop(): Promise<void> {
+		this.#observation.close();
 		await this.groups.stop();
 		this.#approvals.close();
 		this.#runs.stop();
@@ -365,6 +472,8 @@ export class HostService {
 				!method.endsWith(".list") &&
 				!method.endsWith(".history") &&
 				![
+					"observation.wait",
+					"artifacts.preview",
 					"host.status",
 					"groups.snapshot",
 					"conversations.snapshot",
@@ -375,6 +484,7 @@ export class HostService {
 				].includes(method)
 			) {
 				try {
+					if (outcome === "succeeded") this.#observation.changed(8);
 					this.#audit({ operationId: randomUUID(), operation: method, at, durationMs: this.#now() - at, outcome });
 				} catch {
 					/* Diagnostics must not undo a committed action. */
@@ -552,11 +662,15 @@ export class HostService {
 
 	/** A queued Run's messages are not in Pi yet; they show as pending until the Run starts. */
 	#withRun(snapshot: ConversationSnapshot): ConversationSnapshot {
-		const stored = this.#runs.active(snapshot.botId, snapshot.channelId);
+		const stored = this.#runs.active(snapshot.botId, snapshot.channelId) ?? this.#runs.attention(snapshot.botId, snapshot.channelId);
 		if (stored === undefined) return snapshot;
 		const { messages, inputs: _inputs, ...run } = stored;
 		if (run.state !== "queued") return { ...snapshot, run };
-		const queued = messages.map(({ requestId, text }) => ({ id: requestId, parts: [{ type: "text" as const, text }] }));
+		const queued = messages.map(({ requestId, text, attachments }) => ({
+			id: requestId,
+			parts: [{ type: "text" as const, text }],
+			...(attachments ? { attachments } : {}),
+		}));
 		return { ...snapshot, run, pending: [...(snapshot.pending ?? []), ...queued] };
 	}
 
@@ -613,7 +727,7 @@ type ObserverState = {
 
 /** Live attention is separate from the durable unread cursor used by the roster. */
 function nextActivity(snapshot: ConversationSnapshot): BotActivity {
-	if (snapshot.approvals.length > 0) return "needs_attention";
+	if (snapshot.approvals.length > 0 || snapshot.run?.state==="needs_attention") return "needs_attention";
 	const sinceUser = snapshot.items.slice(snapshot.items.findLastIndex((item) => item.kind === "user") + 1);
 	if (sinceUser.some((item) => item.kind === "tool" && item.status === "interrupted")) return "needs_attention";
 	if (snapshot.live !== undefined) return "working";

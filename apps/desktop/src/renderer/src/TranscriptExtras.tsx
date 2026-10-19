@@ -27,9 +27,19 @@ export function Thinking({ text }: { readonly text: string }) {
 }
 
 /** Resubmits `text` as a new message, under a new request ID, after a model error. */
-export function RetryButton({ botId, text }: { readonly botId: string; readonly text: string }) {
+export function RetryButton({
+	botId,
+	text,
+	artifactIds,
+}: {
+	readonly botId: string;
+	readonly text: string;
+	readonly artifactIds?: readonly string[];
+}) {
 	return (
-		<button type="button" className="retry" onClick={() => void sendMessage(botId, text).catch(report)}>{t("Retry")}</button>
+		<button type="button" className="retry" onClick={() => void sendMessage(botId, text, undefined, artifactIds).catch(report)}>
+			{t("Retry")}
+		</button>
 	);
 }
 
@@ -37,7 +47,10 @@ export function RetryButton({ botId, text }: { readonly botId: string; readonly 
  * The text Retry resubmits: offered only on the newest assistant error while no Run is live, and it is the last user
  * message before that error.
  */
-export function retryTarget(items: readonly TranscriptItem[], live: boolean): { readonly id: string; readonly text: string } | undefined {
+export function retryTarget(
+	items: readonly TranscriptItem[],
+	live: boolean,
+): { readonly id: string; readonly text: string; readonly artifactIds?: readonly string[] } | undefined {
 	if (live) return undefined;
 	const errorIndex = items.findLastIndex((item) => item.kind === "assistant");
 	const failed = items[errorIndex];
@@ -45,5 +58,7 @@ export function retryTarget(items: readonly TranscriptItem[], live: boolean): { 
 	const user = items.slice(0, errorIndex).findLast((item) => item.kind === "user");
 	if (user?.kind !== "user") return undefined;
 	const text = user.parts.map((part) => part.text).join("\n\n");
-	return text.trim() === "" ? undefined : { id: failed.id, text };
+	return text.trim() === "" && !user.attachments?.length
+		? undefined
+		: { id: failed.id, text, ...(user.attachments?.length ? { artifactIds: user.attachments.map((a) => a.artifactId) } : {}) };
 }

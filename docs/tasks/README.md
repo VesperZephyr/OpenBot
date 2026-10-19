@@ -105,3 +105,39 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | [B24: Authorized application API](b24-app-capability-api.md) | done (PR #23, merged into main) |
 | [B25: Local app Code Mode](b25-local-app-code-mode.md) | done (PR #24, merged into main) |
 | [B26: Code Mode management](b26-code-mode-management.md) | done ([PR #27](https://github.com/VesperZephyr/OpenBot/pull/27), merged into main) |
+
+## Usage and execution evidence
+
+| Task | Status |
+| --- | --- |
+| [B13d: Local usage and execution evidence](b13d-usage-evidence.md) | in review ([PR #33](https://github.com/VesperZephyr/OpenBot/pull/33)); acceptance passed |
+
+## Desktop reliability
+
+| Task | Status |
+| --- | --- |
+| [B14a: Reliable, bounded observation](b14a-reliable-observation.md) | implemented, in review |
+
+## Post-B26 delivery
+
+| Task | Status |
+| --- | --- |
+| [B15a: Bounded file inputs and result artifacts](b15a-bounded-artifacts.md) | in review ([PR #30](https://github.com/VesperZephyr/OpenBot/pull/30)); acceptance recorded in the spec |
+
+## Lifecycle foundation
+
+| Task | Status |
+| --- | --- |
+| [B14b: Lifecycle gates and explicit continuation](b14b-lifecycle-gates.md) | implemented, in review; targets main |
+
+## Deterministic permissions
+
+| Task | Status |
+| --- | --- |
+| [B12a: Deterministic policy, revocation and approval expiry](b12a-deterministic-policy.md) | in review; depends on B14b, targets main |
+
+## Integration gates
+
+| Task | Status |
+| --- | --- |
+| [I1: Integrated product foundation](i1-product-foundation.md) | in review (#34); prerequisite PRs #28–#33; targets main |

@@ -1,9 +1,12 @@
+import { randomUUID } from "node:crypto";
+import { translate } from "../shared/i18n";
+import type { ArtifactRef } from "@openbot/protocol";
 /**
  * The renderer's only path to the Host. Each call is checked against the method allowlist, the sending frame, and the
  * method's parameter schema before it is forwarded. Errors keep their protocol code so the renderer can show actionable
  * messages. Two desktop-only channels need main's privileges: writing the clipboard and revealing a file in Finder.
  */
-import { BrowserWindow, clipboard, ipcMain, type IpcMainInvokeEvent, shell } from "electron";
+import { BrowserWindow, clipboard, dialog, ipcMain, type IpcMainInvokeEvent, shell } from "electron";
 import type { RedactedSettings } from "@openbot/protocol";
 import type { Language } from "../shared/i18n";
 import { ProtocolError } from "@openbot/protocol";
@@ -60,6 +63,91 @@ export function registerIpc({ host, isTrustedFrame, language, onSettings }: IpcO
 			// Electron serializes only the message across IPC, so the code travels as a prefix.
 			if (error instanceof ProtocolError) throw new Error(`[${error.code}] ${error.message}`);
 			throw error;
+		}
+	});
+
+	ipcMain.handle(CHANNELS.attachFiles, async (event) => {
+		checkFrame(event);
+		const frame = event.senderFrame;
+		const window = BrowserWindow.fromWebContents(event.sender);
+		if (!window) throw Error("No application window");
+		let expired = false;
+		const expire = () => {
+			expired = true;
+		};
+		event.sender.on("did-start-navigation", expire);
+		let selected;
+		try {
+			selected = await dialog.showOpenDialog(window, {
+				title: translate(language?.() ?? "en", "Attach files"),
+				properties: ["openFile", "multiSelections"],
+				filters: [{ name: translate(language?.() ?? "en", "Text and images"), extensions: ["txt", "md", "csv", "png", "jpg", "jpeg"] }],
+			});
+		} finally {
+			event.sender.removeListener("did-start-navigation", expire);
+		}
+		if (selected.canceled) return { attachments: [], errors: [] };
+		if (
+			expired ||
+			event.sender.isDestroyed() ||
+			frame?.isDestroyed() ||
+			event.sender.mainFrame !== frame ||
+			BrowserWindow.fromWebContents(event.sender) !== window
+		)
+			throw Error("The file selection expired");
+		if (selected.filePaths.length > 4) throw Error("Choose at most four attachments");
+		const attachments: ArtifactRef[] = [],
+			errors: string[] = [];
+		for (const path of selected.filePaths) {
+			try {
+				attachments.push(await host.call("artifacts.import", { requestId: randomUUID(), path }));
+			} catch (error) {
+				errors.push(error instanceof Error ? error.message : "Could not import attachment");
+			}
+		}
+		return { attachments, errors };
+	});
+	ipcMain.handle(CHANNELS.exportArtifact, async (event, params: unknown) => {
+		checkFrame(event);
+		const frame = event.senderFrame,
+			window = BrowserWindow.fromWebContents(event.sender);
+		if (!window) throw Error("No application window");
+		if (!params || typeof params !== "object" || Object.keys(params).some((key) => !["artifactId", "requestId"].includes(key)))
+			throw Error("Invalid export request");
+		const { artifactId, requestId } = params as { artifactId: string; requestId: string };
+		const error = paramsError("artifacts.remove", { artifactId, requestId });
+		if (error) throw Error(error);
+		let expired = false;
+		const expire = () => {
+			expired = true;
+		};
+		const assertSelection = () => {
+			if (
+				expired ||
+				event.sender.isDestroyed() ||
+				frame?.isDestroyed() ||
+				event.sender.mainFrame !== frame ||
+				BrowserWindow.fromWebContents(event.sender) !== window
+			)
+				throw Error("The file selection expired");
+		};
+		event.sender.on("did-start-navigation", expire);
+		try {
+			const artifact = await host.call("artifacts.get", { artifactId });
+			assertSelection();
+			const selected = await dialog.showSaveDialog(window, {
+				title: translate(language?.() ?? "en", "Export copy"),
+				defaultPath: artifact.name,
+			});
+			if (selected.canceled || !selected.filePath) return false;
+			assertSelection();
+			await host.call("artifacts.export", { requestId, artifactId, path: selected.filePath });
+			return true;
+		} catch (error) {
+			if (error instanceof ProtocolError) throw new Error(`[${error.code}] ${error.message}`);
+			throw error;
+		} finally {
+			event.sender.removeListener("did-start-navigation", expire);
 		}
 	});
 

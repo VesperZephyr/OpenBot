@@ -1,0 +1,62 @@
+.usage-panel {
+	border-bottom: 1px solid var(--border);
+	padding: 16px 0;
+	margin-bottom: 20px;
+}
+.usage-panel > summary {
+	cursor: pointer;
+	font-weight: 600;
+}
+.usage-panel .muted {
+	font-size: 12px;
+	line-height: 1.5;
+}
+.usage-numbers {
+	display: grid;
+	gap: 6px;
+	margin: 12px 0;
+	font-variant-numeric: tabular-nums;
+}
+.usage-numbers > span,
+.usage-model > span {
+	color: var(--muted);
+	font-size: 12px;
+}
+.usage-run {
+	border-top: 1px solid var(--border);
+	padding: 12px 0;
+}
+.usage-run > summary {
+	cursor: pointer;
+	font-size: 13px;
+}
+.usage-run time {
+	display: block;
+	color: var(--muted);
+	font-size: 11px;
+	margin: 4px 0;
+}
+.usage-id {
+	display: block;
+	overflow-wrap: anywhere;
+	color: var(--muted);
+	margin-top: 10px;
+}
+.usage-model {
+	display: grid;
+	gap: 5px;
+	margin: 12px 0;
+	overflow-wrap: anywhere;
+}
+.usage-model strong {
+	font-size: 12px;
+}
+.usage-links {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 12px 0;
+}
+.usage-links button {
+	font-size: 12px;
+}

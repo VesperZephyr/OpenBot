@@ -1,6 +1,7 @@
+import { observe } from "../shared/observation";
 /**
  * Starts and supervises the Host Runtime as a child process with an IPC channel, correlates requests and responses,
- * and forwards Host events. Main is the only process that holds this connection.
+ * and observes bounded state invalidations. Main is the only process that holds this connection.
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import {
@@ -45,6 +46,7 @@ export class HostProcess {
 	#state: HostState = { status: "starting" };
 	#stopping = false;
 	#nextId = 0;
+	#stopObservation: (() => void) | undefined;
 
 	constructor(options: HostProcessOptions) {
 		this.#options = options;
@@ -70,7 +72,9 @@ export class HostProcess {
 			process.stderr.write(chunk);
 			this.#options.onOutput(chunk);
 		});
-		child.on("message", (message: HostToDesktop) => this.#receive(message));
+		child.on("message", (message: HostToDesktop) => {
+			if (this.#child === child) this.#receive(message);
+		});
 		child.on("error", (error) => this.#exited(child, `Could not start the Host Runtime: ${error.message}`));
 		child.on("exit", (code, signal) => this.#exited(child, `Host Runtime exited (${signal ?? `code ${code}`})`));
 	}
@@ -96,6 +100,7 @@ export class HostProcess {
 	/** Disconnect the IPC channel, which makes the Host flush and exit; force it after a timeout. */
 	async stop(): Promise<void> {
 		this.#stopping = true;
+		this.#stopObservation?.();
 		const child = this.#child;
 		if (child === undefined || child.exitCode !== null || child.signalCode !== null) return;
 		const exited = Promise.withResolvers<void>();
@@ -112,6 +117,14 @@ export class HostProcess {
 			case "ready":
 				this.#setState({ status: "ready" });
 				this.#ready.resolve();
+				this.#stopObservation?.();
+				this.#stopObservation = observe({
+					wait: (cursor) => this.call("observation.wait", cursor ? { cursor } : {}),
+					changed: async (reset, changes) => {
+						if (reset || changes & 1) this.#options.onEvent({ type: "bots.changed", payload: {} });
+					},
+					error: () => {},
+				});
 				return;
 			case "event":
 				this.#options.onEvent(message);
@@ -129,6 +142,7 @@ export class HostProcess {
 
 	#exited(child: ChildProcess, detail: string): void {
 		if (this.#child !== child) return;
+		this.#stopObservation?.();
 		this.#child = undefined;
 		for (const [id, pending] of this.#pending) {
 			clearTimeout(pending.timer);

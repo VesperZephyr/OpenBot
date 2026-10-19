@@ -11,6 +11,7 @@ import {
 	CODEMODE_DEFINITION,
 	appToolCapability,
 	type ApprovalDecision,
+ ProtocolError,
 	type ExecutionTarget,
 	type ExecutorToolName,
 	type PendingApproval,
@@ -44,6 +45,8 @@ export type PolicyDecision =
 	| { readonly kind: "deny"; readonly reason: string };
 
 export interface PolicyPort {
+ binding?(call:ToolCall,argsDigest:string):Promise<import("@openbot/protocol").ApprovalBinding>;
+ dispatch?(call:ToolCall,approved:boolean,binding:import("@openbot/protocol").ApprovalBinding,invoke:(revision:number)=>Promise<ToolOutcome>):Promise<ToolOutcome>;
 	decide(call: ToolCall, definition: ToolDefinition): Promise<PolicyDecision>;
 	/**
 	 * Folders file tools may touch for this call once it is allowed, read from the current grants: `readwrite` folders
@@ -58,6 +61,7 @@ export interface ApprovalPort {
 }
 
 export interface ExecutorTransport {
+ receipt?(invocationId:string,argsDigest:string,tool:string):Promise<ToolOutcome|undefined>;
 	invoke(invocation: ToolInvocation, onProgress: (output: string) => void, signal: AbortSignal): Promise<ToolOutcome>;
 }
 
@@ -65,6 +69,7 @@ export interface ExecutorTransport {
 export type HostToolHandler = (args: Readonly<Record<string, unknown>>, signal: AbortSignal, call: ToolCall) => Promise<ToolOutcome>;
 
 export type ToolRouterOptions = {
+	readonly assertExecutionAllowed?: () => void;
 	readonly target: ExecutionTarget;
 	readonly policy: PolicyPort;
 	readonly approvals: ApprovalPort;
@@ -88,6 +93,7 @@ export class ToolRouter {
 
 	/** Parent admission deliberately does not take the leaf mutex. */
 	async admitOrchestration(call: ToolCall): Promise<ExecutionTarget> {
+		this.#options.assertExecutionAllowed?.();
 		call.signal.throwIfAborted();
 		if (
 			call.tool !== "codemode" ||
@@ -101,6 +107,7 @@ export class ToolRouter {
 			throw new Error("Code Mode is not authorized");
 		const decision = await this.#options.policy.decide({ ...call, target: this.#options.target }, CODEMODE_DEFINITION);
 		call.signal.throwIfAborted();
+		this.#options.assertExecutionAllowed?.();
 		if (decision.kind !== "allow") throw new Error("Code Mode is not authorized");
 		return this.#options.target;
 	}
@@ -119,7 +126,8 @@ export class ToolRouter {
 					return outcome;
 				} catch (error) {
 					if (management && !call.signal.aborted) await this.#options.closeAppManagement!(call);
-					throw error;
+					if(error instanceof ProtocolError&&["approval_expired","permission_revoked","approval_denied"].includes(error.code))return {status:"failed" as const,output:error.message,failureReason:error.code as import("@openbot/protocol").ToolFailureReason};
+     throw error;
 				}
 			});
 		this.#active.set(call.conversationId, current);
@@ -131,6 +139,7 @@ export class ToolRouter {
 	}
 
 	async #route(call: ToolCall): Promise<ToolOutcome> {
+		this.#options.assertExecutionAllowed?.();
 		const management = appManagementCapability(call.tool);
 		const app = appToolCapability(call.tool);
 		if (app && call.signal.aborted) return appFailure("cancelled", "Application read was cancelled");
@@ -148,7 +157,10 @@ export class ToolRouter {
 			return appFailure("invalid_request", "Invalid application arguments");
 		const definition = toolDefinition(call.tool);
 		if (definition === undefined) return { status: "failed", output: `Unknown tool: ${call.tool}` };
-		const decision = await this.#options.policy.decide(call, definition);
+		if(definition.destination==="executor"&&this.#options.executor.receipt){const receipt=await this.#options.executor.receipt(`${call.conversationId}:${call.callId}`,digest(call.args),call.tool);if(receipt)return receipt;}
+  const binding=await this.#options.policy.binding?.(call,digest(call.args));
+  const decision = await this.#options.policy.decide(call, definition);
+		this.#options.assertExecutionAllowed?.();
 		if (decision.kind === "deny")
 			return app || management
 				? appFailure("permission_denied", "Application access is not authorized")
@@ -161,6 +173,7 @@ export class ToolRouter {
 				{
 					// The call ID makes the approval stable across reruns: a rerun waits on the same approval.
 					approvalId: `approval:${call.conversationId}:${call.callId}`,
+     ...(binding?{binding}:{}),
 					conversationId: call.conversationId,
 					botId: call.botId,
 					callId: call.callId,
@@ -177,20 +190,23 @@ export class ToolRouter {
 			if (verdict === "deny") {
 				return management
 					? appFailure("permission_denied", "The user denied this management action. Do not retry it.")
-					: { status: "failed", output: "The user denied this action. Do not retry it unchanged; ask or try another way." };
+					: { status: "failed", failureReason:"approval_denied", output: "The user denied this action. Do not retry it unchanged; ask or try another way." };
 			}
 			approvedOnce = true;
 		}
 		if (app && call.signal.aborted) return appFailure("cancelled", "Application read was cancelled");
 		call.signal.throwIfAborted();
 
+		this.#options.assertExecutionAllowed?.();
+  const dispatch=(invoke:(revision?:number)=>Promise<ToolOutcome>)=>binding&&this.#options.policy.dispatch?this.#options.policy.dispatch(call,approvedOnce,binding,invoke):invoke();
 		if (definition.destination === "host") {
 			const handler = this.#options.hostTools[definition.name];
 			if (handler === undefined) return { status: "failed", output: `No handler for ${definition.name}` };
 			if (management) {
 				const current = await this.#options.policy.decide(call, definition);
 				if (current.kind === "deny") return appFailure("permission_denied", "Application management is not authorized");
-				const outcome = await handler(call.args, call.signal, call);
+				this.#options.assertExecutionAllowed?.();
+				const outcome = await dispatch(()=>handler(call.args, call.signal, call));
 				if (outcome.status !== "succeeded")
 					return appFailure(
 						outcome.status === "unknown" ? "outcome_unknown" : "conflict",
@@ -207,9 +223,11 @@ export class ToolRouter {
 				if (!validManagementOutput(management.id, value)) return appFailure("outcome_unknown", "Management outcome needs attention");
 				return { ...outcome, output: JSON.stringify(value), value };
 			}
-			return handler(call.args, call.signal, call);
+			return dispatch(()=>handler(call.args, call.signal, call));
 		}
 		const grants = await this.#options.policy.grants(call, approvedOnce);
+		this.#options.assertExecutionAllowed?.();
+		call.signal.throwIfAborted();
 		const invocation: ToolInvocation = {
 			...(call.runId ? { runId: call.runId } : {}),
 			invocationId: `${call.conversationId}:${call.callId}`,
@@ -223,7 +241,7 @@ export class ToolRouter {
 			readGrants: grants.read,
 			deadline: (this.#options.now ?? Date.now)() + (this.#options.deadlineMs ?? 60_000),
 		};
-		return this.#options.executor.invoke(invocation, call.onProgress, call.signal);
+		return dispatch(revision=>this.#options.executor.invoke({...invocation,...(revision===undefined?{}:{authorityRevision:revision})}, call.onProgress, call.signal));
 	}
 }
 

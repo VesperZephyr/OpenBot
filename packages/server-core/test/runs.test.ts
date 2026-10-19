@@ -56,11 +56,13 @@ describe("RunScheduler", () => {
 	let gates: Gates;
 	let scheduler: RunScheduler;
 	let clock: number;
+	let admitted = true;
 	/** Bots whose running Run was stopped, as reported to the `stopping` hook. */
 	let stopped: BotId[];
 	/** Resolves when the Run reaches the state; checked after every change the scheduler reports. */
 	let reaches: (botId: BotId, runId: string, state: RunRecord["state"]) => Promise<void>;
 	let changed: () => void;
+	let attachments: Pick<import("../src/runs.ts").RunSchedulerOptions, "resolveAttachments" | "hydrateAttachments"> = {};
 
 	async function open(...turns: Parameters<typeof scriptedModels>): Promise<void> {
 		scripted = scriptedModels(...turns);
@@ -89,6 +91,8 @@ describe("RunScheduler", () => {
 		scheduler = new RunScheduler({
 			runtime,
 			maxActiveRuns: 1,
+			...attachments,
+			canAdmit: () => admitted,
 			changed: () => changed(),
 			now: () => ++clock,
 			stopping: (botId) => stopped.push(botId),
@@ -105,7 +109,9 @@ describe("RunScheduler", () => {
 		directory = await mkdtemp(join(tmpdir(), "openbot-scheduler-"));
 		databasePath = join(directory, "openbot.sqlite");
 		clock = 0;
+		admitted = true;
 		stopped = [];
+		attachments = {};
 	});
 
 	afterEach(async () => {
@@ -116,42 +122,317 @@ describe("RunScheduler", () => {
 		for (const botId of botIds) await runtime.createBot({ botId, name: botId, model: SCRIPTED_MODEL, createdAt: 0 });
 	}
 
- it("keeps channels queued separately, prioritizes direct work and cancels only the selected channel", async () => {
-  await open(WAIT, "Group done", "Direct done");
-  await createBots("a");await runtime.ensureChannel("a","group");await runtime.ensureChannel("a","other");await scheduler.start();
-  const first=await scheduler.submit("a","g1","Group task",{channelId:"group",separate:true});await gates.entered("a");
-  const queued=await scheduler.submit("a","g2","Other task",{channelId:"other",separate:true});
-  const direct=await scheduler.submit("a","dm","Direct task");expect(direct.steered).toBe(false);expect(direct.state).toBe("queued");
-  await expect(scheduler.submit("a","dm","Direct task",{channelId:"group"})).rejects.toThrow("another message");
-  await scheduler.cancelMatching(run=>run.channelId==="other");
-  expect((await runtime.runsStore().get(queued.runId))?.state).toBe("cancelled");
-  gates.release("a");await reaches("a",first.runId,"completed");await reaches("a",direct.runId,"completed");
-  expect(JSON.stringify((await runtime.snapshot("a")).items)).toContain("Direct task");
-  expect(JSON.stringify((await runtime.snapshot("a")).items)).not.toContain("Group task");
-  expect((await runtime.snapshot("a","other")).items).toEqual([]);await close();
- });
+	it("fails unavailable accepted attachments visibly without admitting empty model input", async () => {
+		const ref = {
+			artifactId: `artifact_${"a".repeat(32)}`,
+			name: "input.txt",
+			bytes: 4,
+			mediaType: "text/plain",
+			sha256: "a".repeat(64),
+			createdAt: 1,
+			source: "input" as const,
+			availability: "available" as const,
+		};
+		attachments = {
+			resolveAttachments: async () => [ref],
+			hydrateAttachments: async () => {
+				throw Error("Attachment content is unavailable");
+			},
+		};
+		await open();
+		await createBots("a");
+		const accepted = await scheduler.submit("a", "file-request", "Use this input", { artifactIds: [ref.artifactId] });
+		await reaches("a", accepted.runId, "failed");
+		expect(scripted.requests()).toBe(0);
+		const snapshot = await runtime.snapshot("a");
+		expect(snapshot.items).toEqual(
+			expect.arrayContaining([expect.objectContaining({ kind: "user", error: "Attachment content is unavailable", attachments: [ref] })]),
+		);
+		await close();
+		await open();
+		await scheduler.start();
+		expect((await scheduler.submit("a", "file-request", "Use this input", { artifactIds: [ref.artifactId] })).runId).toBe(accepted.runId);
+		expect(scripted.requests()).toBe(0);
+		await close();
+	});
+	it("recovers Pi-admitted attachments without reading a missing copy or sending twice", async () => {
+		const ref = {
+			artifactId: `artifact_${"b".repeat(32)}`,
+			name: "accepted.txt",
+			bytes: 4,
+			mediaType: "text/plain",
+			sha256: "b".repeat(64),
+			createdAt: 1,
+			source: "input" as const,
+			availability: "available" as const,
+		};
+		let hydrated = 0;
+		attachments = {
+			resolveAttachments: async () => [ref],
+			hydrateAttachments: async () => {
+				hydrated++;
+				throw Error("missing");
+			},
+		};
+		await open("Already answered");
+		await createBots("a");
+		await runtime.submit("a", "admitted", "Read attached input", "start", undefined, [{ artifact: ref, text: "data", truncated: false }]);
+		const id = await runtime.findSubmission("a", "admitted");
+		await runtime.waitSubmission("a", id!);
+		await runtime
+			.runsStore()
+			.put({
+				runId: "saved-file",
+				botId: "a",
+				origin: "user",
+				state: "running",
+				requestIds: ["admitted"],
+				createdAt: 1,
+				messages: [{ requestId: "admitted", text: "Read attached input", attachments: [ref] }],
+				inputs: [{ requestId: "admitted", text: "Read attached input", attachments: [ref] }],
+			});
+		await close();
+		await open();
+		await scheduler.start();
+		await reaches("a", "saved-file", "completed");
+		expect(hydrated).toBe(0);
+		expect(scripted.requests()).toBe(0);
+		await close();
+	});
 
- it("admits aged channel work before newer direct work across restart", async () => {
-  await open(WAIT,"Blocker done","Aged group done","Direct done");await createBots("a","b");await runtime.ensureChannel("a","group");await scheduler.start();
-  const blocker=await scheduler.submit("b","block","Block");await gates.entered("b");
-  const group=await scheduler.submit("a","g","Group",{channelId:"group",separate:true});clock+=30_001;
-  const direct=await scheduler.submit("a","dm","Direct");gates.release("b");
-  await reaches("b",blocker.runId,"completed");await reaches("a",group.runId,"completed");await reaches("a",direct.runId,"completed");
-  expect((await runtime.runsStore().get(group.runId))!.startedAt).toBeLessThan((await runtime.runsStore().get(direct.runId))!.startedAt!);
-  const key=await runtime.conversationKey("a","group");await close();await open("After restart");await scheduler.start();
-  expect(await runtime.conversationKey("a","group")).toBe(key);
-  expect((await scheduler.submit("a","g","Group",{channelId:"group",separate:true})).runId).toBe(group.runId);
-  await close();
- });
+	it("continues immutable attachments interrupted before Pi admission without joining unrelated work", async () => {
+		const ref = { artifactId: `artifact_${"c".repeat(32)}`, name: "saved.txt", bytes: 4, mediaType: "text/plain", sha256: "c".repeat(64), createdAt: 1, source: "input" as const, availability: "available" as const };
+		const hydrated: string[][] = [];
+		attachments = { hydrateAttachments: async (_bot, refs) => { hydrated.push(refs.map(r => r.artifactId)); return refs.map(artifact => ({ artifact, text: "data", truncated: false })); } };
+		await open(WAIT, "Unrelated answer", "Continued attachment answer");
+		await createBots("a");
+		await runtime.runsStore().put({ runId: "interrupted-file", botId: "a", origin: "user", state: "needs_attention", createdAt: 1, requestIds: ["original"], messages: [{ requestId: "original", text: "Use the file", attachments: [ref] }], inputs: [], interruption: { reason: "user", requestedAt: 2, settledAt: 3 } });
+		await scheduler.start();
+		const unrelated = await scheduler.submit("a", "other", "Unrelated task");
+		await gates.entered("a");
+		const continued = await scheduler.continue("interrupted-file", "explicit");
+		expect(continued).toMatchObject({ state: "queued", steered: false });
+		expect(continued.runId).not.toBe(unrelated.runId);
+		expect((await scheduler.continue("interrupted-file", "explicit")).runId).toBe(continued.runId);
+		gates.release("a");
+		await reaches("a", continued.runId, "completed");
+		expect(hydrated).toEqual([[ref.artifactId]]);
+		const saved = await runtime.runsStore().get(continued.runId);
+		expect(saved?.messages[0]?.attachments).toEqual([ref]);
+		expect(saved?.inputs[0]?.attachments).toEqual([ref]);
+		await close();
+	});
 
- it("recovers an unadmitted channel Run with its original identity", async () => {
- await open();await createBots("a");await runtime.ensureChannel("a","group");
- await runtime.runsStore().put({runId:"saved",botId:"a",channelId:"group",origin:"user",state:"queued",requestIds:["saved-request"],createdAt:1,messages:[{requestId:"saved-request",text:"Recovered group task"}],inputs:[]});
- await close();await open("Recovered answer");await scheduler.start();await reaches("a","saved","completed");
- expect((await runtime.snapshot("a")).items).toEqual([]);
- expect(JSON.stringify((await runtime.snapshot("a","group")).items)).toContain("Recovered answer");
- await close();
- });
+	it("interrupts active work, preserves the queue and continues with a fresh stable request", async () => {
+		await open(WAIT, "Queued answer", "Continued answer");
+		await createBots("a", "b");
+		await scheduler.start();
+		const first = await scheduler.submit("a", "one", "Original task");
+		await gates.entered("a");
+		const queued = await scheduler.submit("b", "two", "Queued task");
+		admitted = false;
+		await scheduler.interruptAll("user");
+		expect(scripted.requests()).toBe(1);
+		expect(scheduler.attention("a")).toMatchObject({
+			runId: first.runId,
+			state: "needs_attention",
+			interruption: { reason: "user", settledAt: expect.any(Number) },
+		});
+		expect((await runtime.runsStore().get(queued.runId))?.state).toBe("queued");
+		await expect(scheduler.continue(first.runId, "continued")).rejects.toThrow("paused");
+		admitted = true;
+		await scheduler.resume();
+		await reaches("b", queued.runId, "completed");
+		const continued = await scheduler.continue(first.runId, "continued");
+		expect(continued.runId).not.toBe(first.runId);
+		await reaches("a", continued.runId, "completed");
+		expect((await scheduler.continue(first.runId, "continued")).runId).toBe(continued.runId);
+		expect(scripted.requests()).toBe(3);
+		expect(scheduler.attention("a")).toBeUndefined();
+		await close();
+	});
+	it("keeps an unconfirmed interruption unavailable for continuation until reconciliation succeeds", async () => {
+		await open(WAIT);
+		await createBots("a");
+		await scheduler.start();
+		const first = await scheduler.submit("a", "one", "Work");
+		await gates.entered("a");
+		admitted = false;
+		await expect(
+			scheduler.interruptAll("suspended", async () => {
+				throw Error("unknown");
+			}),
+		).rejects.toThrow("unknown");
+		expect((await runtime.runsStore().get(first.runId))?.interruption?.settledAt).toBeUndefined();
+		admitted = true;
+		await expect(scheduler.continue(first.runId, "continued")).rejects.toThrow("Only an interrupted");
+		admitted = false;
+		await scheduler.interruptAll("recovery");
+		expect(scheduler.attention("a")?.interruption?.settledAt).toBeDefined();
+		await close();
+	});
+	it("does not submit crash-recovered work before native readiness, even when its channel is no longer admissible", async () => {
+		await open("Must not run");
+		await createBots("a");
+		await runtime.runsStore().put({
+			runId: "saved",
+			botId: "a",
+			state: "running",
+			requestIds: ["saved-request"],
+			createdAt: 1,
+			messages: [{ requestId: "saved-request", text: "Work" }],
+			inputs: [{ requestId: "saved-request", text: "Work" }],
+		});
+		admitted = false;
+		scheduler = new RunScheduler({
+			runtime,
+			maxActiveRuns: 1,
+			canAdmit: () => admitted,
+			admissible: async () => false,
+			changed: () => changed(),
+			now: () => ++clock,
+		});
+		await scheduler.start();
+		expect(scripted.requests()).toBe(0);
+		await scheduler.interruptAll("recovery");
+		expect(scripted.requests()).toBe(0);
+		expect(scheduler.attention("a")?.state).toBe("needs_attention");
+		await close();
+	});
+
+	it("preserves a committed answer when startup observation was interrupted", async () => {
+		await open("Already answered");
+		await createBots("a");
+		const input = await runtime.submit("a", "one", "Work", "start");
+		await runtime.waitSubmission("a", input.submissionId);
+		await runtime
+			.runsStore()
+			.put({
+				runId: "saved-answer",
+				botId: "a",
+				state: "running",
+				requestIds: ["one"],
+				createdAt: 1,
+				messages: [{ requestId: "one", text: "Work" }],
+				inputs: [{ requestId: "one", text: "Work", submissionId: input.submissionId }],
+			});
+		admitted = false;
+		await scheduler.start();
+		await scheduler.interruptAll("recovery");
+		expect((await runtime.runsStore().get("saved-answer"))?.state).toBe("completed");
+		expect(scheduler.attention("a")).toBeUndefined();
+		expect(scripted.requests()).toBe(1);
+		await close();
+	});
+
+	it("keeps channels queued separately, prioritizes direct work and cancels only the selected channel", async () => {
+		await open(WAIT, "Group done", "Direct done");
+		await createBots("a");
+		await runtime.ensureChannel("a", "group");
+		await runtime.ensureChannel("a", "other");
+		await scheduler.start();
+		const first = await scheduler.submit("a", "g1", "Group task", { channelId: "group", separate: true });
+		await gates.entered("a");
+		const queued = await scheduler.submit("a", "g2", "Other task", { channelId: "other", separate: true });
+		const direct = await scheduler.submit("a", "dm", "Direct task");
+		expect(direct.steered).toBe(false);
+		expect(direct.state).toBe("queued");
+		await expect(scheduler.submit("a", "dm", "Direct task", { channelId: "group" })).rejects.toThrow("another message");
+		await scheduler.cancelMatching((run) => run.channelId === "other");
+		expect((await runtime.runsStore().get(queued.runId))?.state).toBe("cancelled");
+		gates.release("a");
+		await reaches("a", first.runId, "completed");
+		await reaches("a", direct.runId, "completed");
+		expect(JSON.stringify((await runtime.snapshot("a")).items)).toContain("Direct task");
+		expect(JSON.stringify((await runtime.snapshot("a")).items)).not.toContain("Group task");
+		expect((await runtime.snapshot("a", "other")).items).toEqual([]);
+		await close();
+	});
+
+	it("admits aged channel work before newer direct work across restart", async () => {
+		await open(WAIT, "Blocker done", "Aged group done", "Direct done");
+		await createBots("a", "b");
+		await runtime.ensureChannel("a", "group");
+		await scheduler.start();
+		const blocker = await scheduler.submit("b", "block", "Block");
+		await gates.entered("b");
+		const group = await scheduler.submit("a", "g", "Group", { channelId: "group", separate: true });
+		clock += 30_001;
+		const direct = await scheduler.submit("a", "dm", "Direct");
+		gates.release("b");
+		await reaches("b", blocker.runId, "completed");
+		await reaches("a", group.runId, "completed");
+		await reaches("a", direct.runId, "completed");
+		expect((await runtime.runsStore().get(group.runId))!.startedAt).toBeLessThan((await runtime.runsStore().get(direct.runId))!.startedAt!);
+		const key = await runtime.conversationKey("a", "group");
+		await close();
+		await open("After restart");
+		await scheduler.start();
+		expect(await runtime.conversationKey("a", "group")).toBe(key);
+		expect((await scheduler.submit("a", "g", "Group", { channelId: "group", separate: true })).runId).toBe(group.runId);
+		await close();
+	});
+
+	it("recovers an unadmitted channel Run with its original identity", async () => {
+		await open();
+		await createBots("a");
+		await runtime.ensureChannel("a", "group");
+		await runtime
+			.runsStore()
+			.put({
+				runId: "saved",
+				botId: "a",
+				channelId: "group",
+				origin: "user",
+				state: "queued",
+				requestIds: ["saved-request"],
+				createdAt: 1,
+				messages: [{ requestId: "saved-request", text: "Recovered group task" }],
+				inputs: [],
+			});
+		await close();
+		await open("Recovered answer");
+		await scheduler.start();
+		await reaches("a", "saved", "completed");
+		expect((await runtime.snapshot("a")).items).toEqual([]);
+		expect(JSON.stringify((await runtime.snapshot("a", "group")).items)).toContain("Recovered answer");
+		await close();
+	});
+
+	it("preserves separate bounded attachment inputs when queued messages join and steer", async () => {
+		const refs = ["a", "b"].map((c) => ({
+			artifactId: `artifact_${c.repeat(32)}`,
+			name: `${c}.txt`,
+			bytes: 4,
+			mediaType: "text/plain",
+			sha256: c.repeat(64),
+			createdAt: 1,
+			source: "input" as const,
+			availability: "available" as const,
+		}));
+		const hydrated: string[][] = [];
+		attachments = {
+			resolveAttachments: async (_bot, ids) => ids.map((id) => refs.find((ref) => ref.artifactId === id)!),
+			hydrateAttachments: async (_bot, selected) => {
+				hydrated.push(selected.map((ref) => ref.artifactId));
+				return selected.map((artifact) => ({ artifact, text: "data", truncated: false }));
+			},
+		};
+		await open(WAIT, "A done.", "First attachment read.", "Second attachment read.");
+		await createBots("a", "b");
+		await scheduler.start();
+		await scheduler.submit("a", "block", "Work");
+		await gates.entered("a");
+		const first = await scheduler.submit("b", "file-one", "First", { artifactIds: [refs[0]!.artifactId] });
+		await scheduler.submit("b", "file-two", "Second", { artifactIds: [refs[1]!.artifactId] });
+		expect(hydrated).toEqual([]);
+		gates.release("a");
+		await reaches("b", first.runId, "completed");
+		expect(hydrated).toEqual(refs.map((ref) => [ref.artifactId]));
+		const users = (await runtime.snapshot("b")).items.filter((item) => item.kind === "user");
+		expect(users.map((item) => item.attachments?.map((ref) => ref.artifactId))).toEqual(refs.map((ref) => [ref.artifactId]));
+		await close();
+	});
 
 	it("queues a second Bot's message at the cap and starts it when the first Run ends", async () => {
 		await open(WAIT, "A done.", "B done.");

@@ -7,12 +7,14 @@
  * which `local_read` may read as an implicit grant. Commands that run long move to the background (`tasks.ts`).
  */
 import { assertLocalTarget, type ExecutorToolName, type ToolInvocation, type ToolOutcome } from "@openbot/protocol";
+import { ArtifactStore, selectedPath } from "./artifacts.ts";
 import { editText, type FileContext, listDirectory, readText, writeText } from "./files.ts";
-import type { ReceiptLedger } from "./ledger.ts";
+import type { Receipt, ReceiptLedger } from "./ledger.ts";
 import { artifactPath, limitText } from "./output.ts";
 import { AccessDenied, absolutePath, grantedPath } from "./paths.ts";
 import { CommandTasks, DEFAULT_YIELD_MS } from "./tasks.ts";
 
+export { ArtifactStore } from "./artifacts.ts";
 export { commandEnvironment } from "./command.ts";
 export { INTERRUPTED_OUTCOME, type Receipt, ReceiptLedger, type ReceiptStatus, type TaskRecord, type TaskStatus } from "./ledger.ts";
 export { OUTPUT_LIMITS, pruneArtifacts } from "./output.ts";
@@ -20,6 +22,7 @@ export { canonicalPath } from "./paths.ts";
 export { DEFAULT_YIELD_MS } from "./tasks.ts";
 
 export const EXECUTOR_TOOLS: readonly ExecutorToolName[] = [
+	"artifact_publish",
 	"local_read",
 	"local_list",
 	"local_write",
@@ -30,10 +33,14 @@ export const EXECUTOR_TOOLS: readonly ExecutorToolName[] = [
 ];
 
 /** The ledger operations the executor needs; tests wrap a real ledger to simulate a crash between steps. */
-export type ExecutorLedger = Pick<ReceiptLedger, "get" | "accept" | "recordGroup" | "finish" | "ack" | "recordTask" | "finishTask" | "task">;
+export type ExecutorLedger = Pick<
+	ReceiptLedger,
+	"get" | "accept" | "recordGroup" | "finish" | "ack" | "recordTask" | "finishTask" | "task"
+> & Partial<Pick<ReceiptLedger, "reconcileArtifact" | "confirmStopped">>;
 
 export type ExecutorOptions = {
-	readonly targetId: string;
+	readonly requireAuthority?:boolean;
+ readonly targetId: string;
 	/** Default directory for relative paths and commands. */
 	readonly workspace: string;
 	readonly ledger: ExecutorLedger;
@@ -41,6 +48,7 @@ export type ExecutorOptions = {
 	readonly artifactsDirectory: string;
 	/** How long a foreground command runs before it moves to the background. */
 	readonly yieldMs?: number;
+	readonly artifactStore?: ArtifactStore;
 };
 
 type Running = { readonly argsDigest: string; outcome: Promise<ToolOutcome>; readonly abort: AbortController };
@@ -52,10 +60,23 @@ export class LocalExecutor {
 	/** Invocations this process is running, so a repeat joins the run and `cancel` reaches it. */
 	readonly #running = new Map<string, Running>();
 	readonly #tasks: CommandTasks;
+ #revision=-1;
+ readonly #revoked=new Set<string>();
 
 	constructor(options: ExecutorOptions) {
 		this.#options = options;
 		this.#tasks = new CommandTasks(options.ledger, options.yieldMs ?? DEFAULT_YIELD_MS);
+	}
+
+	/** Reconcile only executor-owned immutable publication; never repeat an uncertain external side effect. */
+	receipt(invocationId: string): Receipt | undefined {
+		const { ledger, artifactStore } = this.#options,
+			receipt = ledger.get(invocationId);
+		if (receipt?.status !== "unknown" || receipt.tool !== "artifact_publish" || !ledger.reconcileArtifact) return receipt;
+		const artifact = artifactStore?.published(invocationId);
+		if (!artifact) return receipt;
+		ledger.reconcileArtifact(invocationId, receipt.argsDigest, { status: "succeeded", output: JSON.stringify(artifact), artifact });
+		return ledger.get(invocationId);
 	}
 
 	/**
@@ -63,19 +84,30 @@ export class LocalExecutor {
 	 * executor accepted it and died before recording one; a different digest is refused.
 	 */
 	invoke(invocation: ToolInvocation, onProgress: (output: string) => void): Promise<ToolOutcome> {
+		try {
+			assertLocalTarget(invocation.target, this.#options.targetId);
+		} catch {
+			return Promise.resolve({ status: "failed", output: "Refused: wrong execution target" });
+		}
 		const running = this.#running.get(invocation.invocationId);
 		if (running !== undefined) return running.argsDigest === invocation.argsDigest ? running.outcome : Promise.resolve(DIGEST_MISMATCH);
 		const { ledger } = this.#options;
 		let receipt;
 		try {
 			receipt = ledger.get(invocation.invocationId);
-			if (receipt === undefined) ledger.accept(invocation);
+			if (receipt === undefined) {
+    if(this.#revoked.has(invocation.invocationId)||(this.#options.requireAuthority&&invocation.authorityRevision!==this.#revision)|| (invocation.authorityRevision!==undefined&&invocation.authorityRevision!==this.#revision))return Promise.resolve({status:"failed",output:"permission_revoked: stale execution authority"});
+    ledger.accept(invocation);
+   }
 		} catch (error) {
 			// Nothing ran: the side effect starts only after `accepted` is committed.
 			return Promise.resolve({ status: "failed", output: `The executor could not record the invocation: ${errorText(error)}` });
 		}
 		if (receipt !== undefined) {
 			if (receipt.argsDigest !== invocation.argsDigest) return Promise.resolve(DIGEST_MISMATCH);
+			if (receipt.status === "unknown" && invocation.tool === "artifact_publish")
+				receipt = this.receipt(invocation.invocationId) ?? receipt;
+
 			// `accepted` without a run in this process cannot happen after open, which turns such rows `unknown`.
 			return Promise.resolve(receipt.outcome ?? { status: "unknown", output: "This action's outcome was not recorded" });
 		}
@@ -84,10 +116,12 @@ export class LocalExecutor {
 		const entry: Running = { argsDigest: invocation.argsDigest, outcome: Promise.resolve(DIGEST_MISMATCH), abort: new AbortController() };
 		this.#running.set(invocation.invocationId, entry);
 		const outcome = this.#run(invocation, entry.abort.signal, onProgress)
-			.catch((error: unknown): ToolOutcome => ({
-				status: "failed",
-				output: error instanceof AccessDenied ? `Access denied: ${errorText(error)}` : errorText(error),
-			}))
+			.catch(
+				(error: unknown): ToolOutcome => ({
+					status: entry.abort.signal.aborted?"cancelled":"failed",
+					output: error instanceof AccessDenied ? `Access denied: ${errorText(error)}` : errorText(error),
+				}),
+			)
 			.then((result) => {
 				this.#running.delete(invocation.invocationId);
 				ledger.finish(invocation.invocationId, result);
@@ -97,6 +131,15 @@ export class LocalExecutor {
 		entry.outcome = outcome;
 		return outcome;
 	}
+
+ synchronize(revision:number):boolean {if(!Number.isSafeInteger(revision)||revision<0||revision<this.#revision)return false;this.#revision=revision;return true;}
+ async revoke(ids:readonly string[]):Promise<boolean>{
+  const selected=new Set(ids);for(const id of selected)this.#revoked.add(id);
+  const running=[...this.#running].filter(([id])=>selected.has(id)).map(([,entry])=>{entry.abort.abort();return entry.outcome;});
+  const [outcomes,tasks]=await Promise.all([Promise.all(running),this.#tasks.stopInvocations(selected)]);
+  const late=await this.#tasks.stopInvocations(selected);
+  return outcomes.every(outcome=>outcome.status!=="unknown")&&[...tasks,...late].every(exit=>exit.groupGone!==false)&&(this.#options.ledger.confirmStopped?.(ids)??!this.#options.requireAuthority);
+ }
 
 	/** Cancel a running invocation. A command already in the background is stopped with `task_stop` instead. */
 	cancel(invocationId: string): void {
@@ -109,12 +152,14 @@ export class LocalExecutor {
 	}
 
 	/** Cancel everything this process runs, for shutdown: no command outlives the executor that started it. */
-	cancelAll(): Promise<unknown> {
+	async cancelAll(): Promise<boolean> {
 		const outcomes = [...this.#running.values()].map((entry) => {
 			entry.abort.abort();
 			return entry.outcome;
 		});
-		return Promise.all([...outcomes, this.#tasks.stopAll()]);
+		const [finished, tasks] = await Promise.all([Promise.all(outcomes), this.#tasks.stopAll()]);
+		const lateTasks = await this.#tasks.stopAll();
+		return finished.every((outcome) => outcome.status !== "unknown") && [...tasks, ...lateTasks].every((exit) => exit.groupGone !== false);
 	}
 
 	/** The Host committed the outcome; the receipt may be pruned after the retention period. */
@@ -125,7 +170,8 @@ export class LocalExecutor {
 	async #run(invocation: ToolInvocation, signal: AbortSignal, onProgress: (output: string) => void): Promise<ToolOutcome> {
 		assertLocalTarget(invocation.target, this.#options.targetId);
 		if (Date.now() > invocation.deadline) return { status: "failed", output: "Refused: the invocation's deadline passed" };
-		const context: FileContext = { workspace: this.#options.workspace, grants: invocation.grants, readGrants: invocation.readGrants };
+		signal.throwIfAborted();
+  const context: FileContext = { signal, workspace: this.#options.workspace, grants: invocation.grants, readGrants: invocation.readGrants };
 		const spill = artifactPath(this.#options.artifactsDirectory, invocation.invocationId);
 		const limited = (output: string): ToolOutcome => {
 			const { text, truncated } = limitText(output, spill);
@@ -134,6 +180,16 @@ export class LocalExecutor {
 		// Pi validated the arguments against the catalog schema before the call reached the router.
 		const args = invocation.args as never;
 		switch (invocation.tool) {
+			case "artifact_publish": {
+				const input = invocation.args as { path: string; name?: string };
+				const original = selectedPath(absolutePath(input.path, context.workspace));
+				const path = await grantedPath(original, context.workspace, [...context.grants, ...context.readGrants]);
+				signal.throwIfAborted();
+				const store = this.#options.artifactStore;
+				if (!store) throw new Error("Artifact storage is unavailable");
+				const artifact = store.capture(invocation.invocationId, path, "result", input.name);
+				return { status: "succeeded", output: JSON.stringify(artifact), artifact };
+			}
 			case "local_read": {
 				// Spilled output is the executor's own; reading it back needs no grant, and only `local_read` gets it.
 				const readContext = { ...context, readGrants: [...context.readGrants, this.#options.artifactsDirectory] };

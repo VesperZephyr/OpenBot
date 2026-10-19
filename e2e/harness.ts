@@ -5,7 +5,7 @@
  * `relaunch()` restarts the app on the same state, for recovery tests.
  */
 import { createHash } from "node:crypto";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright-core";
 import { ScriptedModel } from "./scripted-model.ts";
@@ -29,6 +29,8 @@ export type AppHarness = {
 	send(text: string): Promise<void>;
 	/** Close the app (clean quit) and start it again on the same state. */
 	relaunch(): Promise<void>;
+	/** Simulate an unexpected Host crash, preserving the desktop session and durable pending approvals. */
+	crashHost(): Promise<void>;
 	close(): Promise<void>;
 };
 
@@ -119,6 +121,24 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 			await app?.close();
 			await start();
 		},
+		crashHost: async () => {
+			const lock = join(dataDirectory, "host.lock"),
+				previous = Number((await readFile(lock, "utf8")).trim());
+			process.kill(previous, "SIGKILL");
+			const deadline = Date.now() + 20000;
+			for (;;) {
+				const current = Number((await readFile(lock, "utf8").catch(() => "0")).trim());
+				if (current && current !== previous) break;
+				if (Date.now() > deadline) throw Error("Host did not recover after the simulated crash");
+				await new Promise((resolve) => setTimeout(resolve, 50));
+			}
+			await requirePage().evaluate(() =>
+				(window as unknown as { openbot: { methods: { "host.status": (params: object) => Promise<unknown> } } }).openbot.methods[
+					"host.status"
+				]({}),
+			);
+		},
+
 		close: async () => {
 			await app?.close();
 			app = undefined;
@@ -137,7 +157,7 @@ export async function createBot(harness: AppHarness, name: string): Promise<void
 		() => (document.querySelector(".settings-group select") as HTMLSelectElement | null)?.value === "scripted/scripted",
 	);
 	await page.getByRole("button", { name: /^New/ }).click();
- await page.getByRole("button", { name: /^Create new Bot/ }).click();
+	await page.getByRole("button", { name: /^Create new Bot/ }).click();
 	await page.getByPlaceholder("Piper").fill(name);
 	await page.getByPlaceholder("Piper").press("Enter");
 	await page.getByRole("textbox", { name: `Message ${name}` }).waitFor();

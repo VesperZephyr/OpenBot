@@ -63,9 +63,9 @@ Accepted product direction: [D1](tasks/d1-bot-product-design.md). B16/B17 establ
 - **B9. MCP connectors** (architecture M7). Executor-supervised stdio servers and HTTP sessions, credentials from the Keychain injected only into their own server, tools named `mcp__<server>__<tool>` through Tool Router with receipts, a Connect apps page. OAuth through the default browser comes after the first token-based connectors work.
 - **B10. Skills.** Library at `<data>/skills/<name>/SKILL.md`, a `skills` prompt section listing names and descriptions, `skill_load`, `skill_save` with user confirmation, `/` in the composer to attach one.
 - **B11. Routines** (after B2). Scheduler in `server-core` with occurrence request IDs `routine:<id>:<scheduledAt>`, a fresh conversation per occurrence admitted through B2's queue, test run, coalesced catch-up after sleep, Grok Bot limits (50 per Bot, 5-minute spacing, 20 runs of history), `routine_propose` with a confirmation card.
-- **B12. Full Auto Review.** Ask-first rules (always win), argument predicates for URL origins and connector tools, an optional model reviewer that can only escalate, 10-minute expiry for approvals raised by unattended work.
+- **B12b. Optional Auto Review.** Remaining: URL/connector predicates and a model reviewer that can only escalate. B12a supplies deterministic command/file Ask first rules, scoped revocation and unattended expiry; see its spec and acceptance evidence.
 - **B13. Bots together** (architecture M4). Core-coordinated group chats, explicit mentions, bounded delegation and ownership transfer (B13a–c); remaining work: templates (export and import without memory, history, credentials, or grants), usage per Bot from `pi.usage`.
-- **B14. Desktop completion** (architecture M2 rest). Subscriptions with `seq`, gap detection and backpressure, `Cmd+K` search, menu-bar app with running Bots and **Pause all**, Normal and Verbose tool detail, transcript virtualization, login item, Keychain moved out of the `security` CLI, auto-update with electron-updater.
+- **B14. Desktop completion** (architecture M2 rest). [B14a](tasks/b14a-reliable-observation.md) implements bounded observation and reconnect recovery (in review). B23 provides `Cmd+K` history search. B14b adds sidebar Pause all and lifecycle gates. Remaining: richer menu-bar status, Normal and Verbose tool detail, transcript virtualization, login item, Keychain moved out of the `security` CLI, auto-update with electron-updater.
 - **B15. Agent extras.** Image results from `local_read` for vision models, waking the Bot when a background task finishes, attachments in the composer, background subagents for parallel research within one Bot.
 
 ## Phase 3: Computer control
@@ -82,7 +82,7 @@ Architecture M3 (managed browser, takeover, secret requests), M6 (desktop comput
 - [B13a: Channel contexts](tasks/b13a-channel-contexts.md): merged in PR #13; shared Bot identity with isolated channel context, scoped lifecycle and durable Run mapping. B13b supplies group UX.
 - [B13b: Group lifecycle](tasks/b13b-group-lifecycle.md): implemented, awaiting review; local group records, exact Core approvals, participant-only group contexts, durable delivery/recovery and bilingual desktop controls.
 - [B13c: Bounded collaboration](tasks/b13c-collaboration.md): implemented, awaiting review; Core-default group entry, explicit @, delegate/transfer/result receipts, two-hop/twelve-delivery limits, tree cancellation, local state and bilingual UI. 223 unit tests and 49 background e2e; isolated real-model collaboration and recovery.
-- Remaining B13 work: Bot templates and usage. Cross-group/direct-chat peer dispatch, selective memory transfer and full data purge require separate specs; agent execution continues to reuse Pi.
+- Remaining B13 work: Bot templates. B13d usage evidence is implemented in its independent review branch. Cross-group/direct-chat peer dispatch, selective memory transfer and full data purge require separate specs; agent execution continues to reuse Pi.
 - [D2: Grok UI research](tasks/d2-grok-ui-research.md): complete, including installed 0.71.2 client inspection.
 - [B21: Conversation experience](tasks/b21-conversation-experience.md): merged in PR #17; shared private/group shell, contextual details, local filtering/New, durable local drafts and send recovery, keyboard mentions, scroll preservation and compact task activity. English/Chinese; 229 unit tests and 54 background e2e; isolated real-model private chat, Core delegation/result return and explicit @.
 - [B22: Conversation list previews and unread state](tasks/b22-conversation-list.md): implemented, awaiting review; 234 unit tests and 59 background e2e; isolated real-model private/group replies and full restart verification; local Host index, snapshot-bound durable read cursors, bilingual previews/time/counts, draft/activity precedence and recency within protected Core/pinned sections.
@@ -98,3 +98,24 @@ Owner-requested architecture increment: expose selected current application capa
 3. [B26: Code Mode management](tasks/b26-code-mode-management.md) — merged into `main` in PR #27; eight direct-Core management aliases, exact nested approvals, transactional receipt checks, failure latching, expiry and bilingual partial-completion activity. Acceptance is recorded in the spec.
 
 Attention-state mutation, UI navigation, cross-Bot memory operations, new dispatch surfaces and external API transports remain separately specified follow-ups. Existing desktop method availability never automatically confers model authority.
+
+## Usage delivery
+
+- [B13d: Usage and execution evidence](tasks/b13d-usage-evidence.md): in review in [PR #33](https://github.com/VesperZephyr/OpenBot/pull/33), independently based on merged `main`. Reads Pi's model ledger without counting Code Mode children again, freezes Run intervals with admission/settlement, preserves known-price estimates and distinguishes unavailable prices, and links private/group results and approvals from bilingual Bot details. Final acceptance is recorded in the spec.
+## Post-B26 artifact delivery
+
+- [B15a: Bounded file inputs and result artifacts](tasks/b15a-bounded-artifacts.md): implemented, in review in [PR #30](https://github.com/VesperZephyr/OpenBot/pull/30), targeting `main`. 293 unit/Host tests, 79 full background e2e tests, six final artifact scenarios and isolated real-model text/image/publication/export/restart acceptance. Private text/image input, durable local copies, result cards, exact group result publication, safe preview/export/removal and spill quotas. B14a PR #29 remains independent.
+- Native packaged evidence remains a release gate; validation stays in isolated background apps.
+## Post-B26 implementation
+
+- [B14b: Lifecycle gates](tasks/b14b-lifecycle-gates.md): implemented on `task/b14b-lifecycle-gates`, in review. 301 unit/Host tests, 80 full background e2e tests, seven final lifecycle scenarios, bundled runtime startup and isolated real-model interruption/continuation passed. Global sidebar Pause all, durable queue retention, native handshake and lock/sleep/quit gating, executor quiescence, explicit private continuation, and group-chain interruption. Unexpected Host crashes preserve the existing replay contract; intentional quitting withdraws active approvals. Packaged native lock/sleep acceptance remains a release gate.
+- I1 integrates the independently reviewed B14a/B15a/B14b/B12a/B13d heads while preserving observation guards, immutable attachment references and interruption settlement.
+
+## Deterministic policy delivery
+
+- [B12a](tasks/b12a-deterministic-policy.md): implemented on `task/b12a-deterministic-policy`, dependent on B14b / PR #31. Target-bound revisions, atomic approval scopes, exact approval identity, conservative scoped revocation, unattended expiry and English/Chinese settings. 319 unit/Host tests and 84 full background e2e tests passed, with bundled startup and isolated real-model acceptance. Evidence is recorded in the task spec; the PR targets `main`, with prerequisite B14b merged first.
+
+## Current integration gate
+
+- [I1: Integrated product foundation](tasks/i1-product-foundation.md) is in review in PR #34 on `task/i1-product-foundation`, validated with 358 unit/Host tests, 99 hidden e2e tests, bundled startup and an isolated real-model workflow. PRs #28–#33 remain unmerged; this local candidate combines their exact reviewed heads. It adds combined acceptance for interruption usage settlement, immutable attachment continuation, publication policy/revocation and bounded lifecycle observation.
+- Next: B10 shared reviewed skills, then B15b background completion delivery, following the roadmap. Each starts from a verified prerequisite candidate with its own spec and PR targeting main.

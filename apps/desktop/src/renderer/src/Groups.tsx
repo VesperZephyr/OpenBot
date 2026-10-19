@@ -1,9 +1,10 @@
+import { ArtifactCard } from "./ArtifactCard";
 import { ChatComposer } from "./ChatComposer";
 import { ConversationShell, DetailsPanel, Timeline } from "./ConversationUI";
 import { MarkReadButton, RosterPreview, recentTime } from "./RosterPreview";
 import { useEffect, useRef, useState } from "react";
-import type { Group, GroupSnapshot } from "@openbot/protocol";
-import { api, refreshGroups, report, useStore } from "./store";
+import type { Group } from "@openbot/protocol";
+import { refreshGroupSnapshot, api, refreshGroups, report, useStore } from "./store";
 import { t } from "./i18n";
 import { Markdown } from "./markdown";
 import { ApprovalCard } from "./ApprovalCard";
@@ -12,12 +13,23 @@ import "./groups.css";
 export function GroupSidebar({ query = "", unreadOnly = false }: { query?: string; unreadOnly?: boolean }) {
 	const groups = useStore((s) => s.groups);
 	const summaries = useStore((s) => s.summaries);
-	const visible = groups.filter((g) => (!unreadOnly || (summaries[`group:${g.groupId}`]?.unreadCount ?? 0) > 0) && `${g.name} ${g.objective}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
-		.toSorted((a, b) => recentTime(`group:${b.groupId}`, summaries, b.createdAt) - recentTime(`group:${a.groupId}`, summaries, a.createdAt) || a.groupId.localeCompare(b.groupId));
+	const visible = groups
+		.filter(
+			(g) =>
+				(!unreadOnly || (summaries[`group:${g.groupId}`]?.unreadCount ?? 0) > 0) &&
+				`${g.name} ${g.objective}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+		)
+		.toSorted(
+			(a, b) =>
+				recentTime(`group:${b.groupId}`, summaries, b.createdAt) - recentTime(`group:${a.groupId}`, summaries, a.createdAt) ||
+				a.groupId.localeCompare(b.groupId),
+		);
 	return visible.length > 0 ? (
 		<div className="section group-sidebar">
 			<span className="section-title">{t("Groups")}</span>
-			{visible.map((g) => <GroupRow key={g.groupId} group={g} />)}
+			{visible.map((g) => (
+				<GroupRow key={g.groupId} group={g} />
+			))}
 		</div>
 	) : null;
 }
@@ -162,29 +174,13 @@ export function GroupEditor({ group: liveGroup, onClose }: { group?: Group; onCl
 }
 export function GroupView({ groupId }: { groupId: string }) {
 	const bots = useStore((s) => s.bots);
-	const [snapshot, setSnapshot] = useState<GroupSnapshot>();
+	const snapshot = useStore((s) => s.groupSnapshots[groupId]);
 	const [editing, setEditing] = useState(false);
 	const [dissolving, setDissolving] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [details, setDetails] = useState(false);
 	useEffect(() => {
-		let alive = true;
-		let timer: ReturnType<typeof setTimeout>;
-		const refresh = async () => {
-			try {
-				const next = await api["groups.snapshot"]({ groupId });
-				if (alive) setSnapshot(next);
-			} catch (error) {
-				if (alive) report(error);
-			} finally {
-				if (alive) timer = setTimeout(refresh, 700);
-			}
-		};
-		void refresh();
-		return () => {
-			alive = false;
-			clearTimeout(timer);
-		};
+		void refreshGroupSnapshot().catch(report);
 	}, [groupId]);
 
 	if (!snapshot) return <div className="empty-state">{t("Loading…")}</div>;
@@ -280,6 +276,9 @@ export function GroupView({ groupId }: { groupId: string }) {
 								</small>
 							)}
 							<Markdown text={post.text} />
+							{post.attachments?.map((artifact) => (
+								<ArtifactCard key={artifact.artifactId} artifact={artifact} />
+							))}
 						</article>
 					))}
 				{roots
@@ -389,7 +388,7 @@ export function GroupView({ groupId }: { groupId: string }) {
 											groupId,
 											expectedRevision: group.revision,
 										});
-										setSnapshot(await api["groups.snapshot"]({ groupId }));
+										await refreshGroupSnapshot();
 										await refreshGroups();
 										setDissolving(false);
 									} catch (error) {

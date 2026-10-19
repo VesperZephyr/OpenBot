@@ -148,6 +148,15 @@ export class ReceiptLedger {
 			.run(outcome.status, JSON.stringify(outcome), this.#now(), invocationId);
 	}
 
+	/** Only a committed artifact-store receipt can resolve an interrupted publication. No external operation is repeated. */
+	reconcileArtifact(invocationId: string, argsDigest: string, outcome: ToolOutcome): void {
+		this.#db
+			.prepare(
+				"update receipts set status=?,outcome=?,finished_at=? where invocation_id=? and args_digest=? and tool='artifact_publish' and status='unknown'",
+			)
+			.run(outcome.status, JSON.stringify(outcome), this.#now(), invocationId, argsDigest);
+	}
+
 	/** The Host committed the outcome; the row is pruned after the retention period. */
 	ack(invocationId: string): void {
 		this.#db
@@ -187,15 +196,25 @@ export class ReceiptLedger {
 		};
 	}
 
+ /** Recovery can stop a process without knowing its earlier effects; acknowledge only confirmed quiescence. */
+ confirmStopped(ids:readonly string[]):boolean {
+  for(const id of ids){
+   const rows=this.#db.prepare("select pgid, tool from receipts where invocation_id = ? and status in ('accepted','unknown')").all(id) as {pgid:number|null;tool:string}[];
+   const tasks=this.#db.prepare("select pgid from background_tasks where invocation_id = ? and status in ('running','unknown')").all(id) as {pgid:number|null}[];
+   for(const row of [...rows.filter(row=>row.tool==="local_exec"),...tasks]){
+    if(row.pgid===null)return false;
+    try{process.kill(-row.pgid,0);return false;}catch(error){if((error as NodeJS.ErrnoException).code!=="ESRCH")return false;}
+   }
+  }return true;
+ }
+
 	#recover(): void {
 		const stale = this.#db.prepare("select invocation_id, pgid, leader_started from receipts where status = 'accepted'").all() as {
 			invocation_id: string;
 			pgid: number | null;
 			leader_started: string | null;
 		}[];
-		const markUnknown = this.#db.prepare(
-			"update receipts set status = 'unknown', outcome = ?, finished_at = ? where invocation_id = ?",
-		);
+		const markUnknown = this.#db.prepare("update receipts set status = 'unknown', outcome = ?, finished_at = ? where invocation_id = ?");
 		for (const row of stale) {
 			markUnknown.run(JSON.stringify(INTERRUPTED_OUTCOME), this.#now(), row.invocation_id);
 			if (row.pgid !== null && row.leader_started !== null) killOrphanGroup(row.pgid, row.leader_started);
