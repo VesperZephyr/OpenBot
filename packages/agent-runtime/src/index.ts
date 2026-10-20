@@ -1,3 +1,5 @@
+import { routineStore } from "./routines.ts";
+export type { RoutineState } from "./routines.ts";
 import { createToolSearchTool } from "@earendil-works/pi-durable/tool-search";
 import { CONNECTOR_SEARCH_DEFINITION } from "@openbot/protocol";
 import { connectorStore } from "./connectors.ts";
@@ -196,6 +198,7 @@ export type SubmitResult =
 	| { readonly status: "unanswered"; readonly reason: string };
 
 export class BotRuntime {
+ routines() { return routineStore(this.#harness, this.#context); }
 	lifecycle() {
 		return lifecycleStore(this.#harness, this.#context);
 	}
@@ -343,7 +346,7 @@ export class BotRuntime {
 			const bots = (await tx.doc(BotsDoc)).bots;
 			for (const channel of Object.values(channels.channels))
 				await configure(tx, channel.conversationId as PiConversationId, {
-					extensions: [bot, connectors, group, ...(bots[channel.botId]?.kind === "core" ? [app] : [])],
+					extensions: [bot, connectors, ...(channel.channelId.startsWith("routine_") ? [] : [group, ...(bots[channel.botId]?.kind === "core" ? [app] : [])])],
 				});
 		}, context);
 		return new BotRuntime(harness, models, context, { bot, core, group, app, connectors }, registry, options.tools?.invoke);
@@ -429,8 +432,7 @@ export class BotRuntime {
 				extensions: [
 					this.#extensions.connectors,
 					this.#extensions.bot,
-					this.#extensions.group,
-					...(bot.kind === "core" ? [this.#extensions.app] : []),
+					...(channelId.startsWith("routine_") ? [] : [this.#extensions.group, ...(bot.kind === "core" ? [this.#extensions.app] : [])]),
 				],
 			});
 			channels.channels[key] = { botId, channelId, conversationId: conversation.id };
@@ -606,7 +608,7 @@ export class BotRuntime {
 		attachments: readonly ArtifactContent[] = [],
 		assertAllowed?: () => void,
  skills:readonly import("@openbot/protocol").SkillAttachment[]=[],
-	backgroundInput=false,
+	backgroundInput: boolean | "routine"=false,
 	): Promise<{ submissionId: string }> {
 		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [{ type: "text", text }];
@@ -623,7 +625,7 @@ export class BotRuntime {
 			? {
 					entry: {
 						kind: "openbot.user-input",
-						data: JSON.parse(JSON.stringify({ text,...(backgroundInput?{source:"background"}:{}), attachments: attachments.map((a) => a.artifact),skills:skills.map(({name,revision,sha256})=>({name,revision,sha256})) })),
+						data: JSON.parse(JSON.stringify({ text,...(backgroundInput?{source:backgroundInput==="routine"?"routine":"background"}:{}), attachments: attachments.map((a) => a.artifact),skills:skills.map(({name,revision,sha256})=>({name,revision,sha256})) })),
 					},
 				}
 			: {};
@@ -785,6 +787,11 @@ export class BotRuntime {
 		const answer = page.items[0];
 		return { status: "answered", answer: answer === undefined ? [] : textParts(answer) };
 	}
+
+	async publishRoutineReport(botId: string, occurrence: import("@openbot/protocol").RoutineOccurrence): Promise<void> {
+  const conversation = await this.#conversation(await this.#contextRecord(botId));
+  await conversation.submit({type:"write",requestId:`routine-report:${occurrence.occurrenceId}`,entry:{kind:"openbot.routine-report",data:JSON.parse(JSON.stringify(occurrence))}},this.#context);
+ }
 
 	/** Read the exact answer of a settled delivery, even after later channel tasks have run. */
 	async submissionAnswer(botId: string, submissionId: string, channelId: string): Promise<string> {
@@ -1272,8 +1279,13 @@ function toTranscript(entries: readonly EntryRecord[]): TranscriptItem[] {
 	for (const entry of entries) {
 		const id = String(entry.id);
 		switch (entry.kind) {
-			case "openbot.user-input": {
-				const data = entry.data as { text: string; source?:"background"; attachments: ArtifactRef[]; skills?:import("@openbot/protocol").SkillRef[]; error?: string; at?: number };
+			case "openbot.routine-report": {
+    const data = entry.data as unknown as import("@openbot/protocol").RoutineOccurrence;
+    items.push({kind:"assistant",id,parts:[{type:"text",text:data.report ?? data.reason ?? "Routine finished without a report"}],at:data.endedAt ?? data.createdAt,routine:{occurrenceId:data.occurrenceId,routineId:data.routineId,name:data.name,scheduledAt:data.scheduledAt,test:data.test,state:data.state},...(data.artifacts?.length?{artifacts:data.artifacts}:{})});
+    break;
+   }
+   case "openbot.user-input": {
+				const data = entry.data as { text: string; source?:"background" | "routine"; attachments: ArtifactRef[]; skills?:import("@openbot/protocol").SkillRef[]; error?: string; at?: number };
 				const at = timestampOf(entry) ?? data.at;
 				items.push({
 					kind: "user",

@@ -141,7 +141,7 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Task | Status |
 | --- | --- |
 | [I1: Integrated product foundation](i1-product-foundation.md) | done (#34); integrates the reviewed PR #29–#33 implementations |
-| [I2: MVP acceptance and bilingual introduction](i2-mvp-acceptance.md) | in review (#40); 461 unit/Host and 122 hidden e2e tests; real-model and packaging evidence recorded |
+| [I2: MVP acceptance and bilingual introduction](i2-mvp-acceptance.md) | done (#40); 461 unit/Host and 122 hidden e2e tests; real-model and packaging evidence recorded |
 
 ## Reusable procedures
 
@@ -160,10 +160,16 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Spec | Status |
 | --- | --- |
 | [B9a: Supervised local stdio connectors](b9a-stdio-connectors.md) | done (#37) |
-| [B9b: HTTPS MCP sessions](b9b-https-connectors.md) | in review (#39); 461 unit/Host and 120 hidden e2e tests |
+| [B9b: HTTPS MCP sessions](b9b-https-connectors.md) | done (#39); 461 unit/Host and 120 hidden e2e tests |
 
 ## Credential ownership
 
 | Spec | Status |
 | --- | --- |
 | [B14e: Desktop-owned Keychain credentials](b14e-main-credentials.md) | done (#38); 433 unit/Host and 115 hidden e2e tests; native/real-model evidence in the spec; Developer ID gate open |
+
+## Local scheduling
+
+| Spec | Status |
+| --- | --- |
+| [B11a: Local scheduled routines](b11a-local-routines.md) | implemented; awaiting review; 477 unit/Host and 127 hidden desktop tests |

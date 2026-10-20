@@ -24,11 +24,13 @@ export type View =
 	| { readonly kind: "settings" }
  | { readonly kind:"skills" }
  | {readonly kind:"connectors"}
+ | {readonly kind:"routines"; readonly routineId?:string; readonly occurrenceId?:string}
 	| { readonly kind: "home" };
 
 export type SearchTarget = { conversationKey: ConversationKey; messageId: string; nonce: string };
 
 type State = {
+ routines:import("@openbot/protocol").RoutineList|undefined;
  connectors:readonly import("@openbot/protocol").ConnectorProfile[]|undefined;
  skills:readonly import("@openbot/protocol").SkillSummary[]|undefined;
 	groupSnapshots: Readonly<Record<string, GroupSnapshot>>;
@@ -50,6 +52,7 @@ type State = {
 };
 
 export const useStore = create<State>(() => ({
+ routines:undefined,
 	connectors:undefined,
  skills:undefined,
  groupSnapshots: {},
@@ -137,7 +140,9 @@ const connectorsRead=new LatestRead(()=>api["connectors.list"]({}),connectors=>u
 export const refreshConnectors=()=>connectorsRead.request();
 const skillsRead=new LatestRead(()=>api["skills.list"]({}),skills=>useStore.setState({skills}));
 export const refreshSkills=()=>skillsRead.request();
-const readers = [connectorsRead,skillsRead,summariesRead, groupsRead, botsRead, settingsRead, conversationRead, groupRead, lifecycleRead];
+const routinesRead=new LatestRead(()=>api["routines.list"]({}),routines=>useStore.setState({routines}));
+export const refreshRoutines=()=>routinesRead.request();
+const readers = [routinesRead,connectorsRead,skillsRead,summariesRead, groupsRead, botsRead, settingsRead, conversationRead, groupRead, lifecycleRead];
 let readGeneration = 0;
 function resetReads() {
 	readGeneration++;
@@ -175,6 +180,13 @@ export async function sendMessage(
 }
 
 export function connect(): () => void {
+ let lastActivity = 0;
+ const recordActivity = (event:Event) => {
+  if(!event.isTrusted || !useStore.getState().windowActive || useStore.getState().host.status!=="ready" || Date.now()-lastActivity<60000)return;
+  lastActivity=Date.now();void api["routines.activity"]({}).catch(report);
+ };
+ window.addEventListener("pointerdown",recordActivity);
+ window.addEventListener("keydown",recordActivity);
 	let activityEvent = false;
 	const stopActivity = window.openbot.onWindowActive((windowActive) => {
 		activityEvent = true;
@@ -224,6 +236,8 @@ export function connect(): () => void {
 	const stopOpenBot = window.openbot.onOpenBot((botId) => void openBot(botId).catch(report));
 	return () => {
 		stopActivity();
+ window.removeEventListener("pointerdown",recordActivity);
+ window.removeEventListener("keydown",recordActivity);
 		disposed = true;
 		stopObservation?.();
 		stopSelection();
@@ -238,7 +252,7 @@ async function loadAll(changes: number): Promise<void> {
 	await Promise.all([
 		...(changes & 1 ? [refreshBots()] : []),
 		...(changes & 3 ? [refreshGroups(), refreshSummaries()] : []),
-		...(changes & 8 ? [refreshSettings(), refreshLifecycle(), refreshSkills(),refreshConnectors()] : []),
+		...(changes & 8 ? [refreshSettings(), refreshLifecycle(), refreshSkills(),refreshConnectors(),refreshRoutines()] : []),
 	]);
 	if (generation !== readGeneration || useStore.getState().host.status !== "ready") return;
 	const { view, onboarding, settings, bots } = useStore.getState();

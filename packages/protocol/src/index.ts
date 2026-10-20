@@ -1,3 +1,4 @@
+export * from "./routines.ts";
 import type { CredentialStatus, CredentialMigration } from "./credentials.ts";
 export * from "./credentials.ts";
 import type {ConnectorInstall,ConnectorChange,ConnectorProfile} from "./connectors.ts";
@@ -254,7 +255,7 @@ export type ToolCallStatus = "pending" | "running" | "succeeded" | "failed" | "i
 export type TranscriptItem =
 	| {
 			readonly kind: "user";
-			readonly source?:"background";
+			readonly source?:"background" | "routine";
 			readonly id: string;
 			readonly parts: readonly MessagePart[];
 			readonly at?: number;
@@ -264,6 +265,8 @@ export type TranscriptItem =
 	  }
 	| {
 			readonly kind: "assistant";
+ readonly routine?: import("./routines.ts").RoutineReport;
+ readonly artifacts?: readonly ArtifactRef[];
 			readonly id: string;
 			readonly parts: readonly MessagePart[];
 			/** The model's visible reasoning, when it returned any. */
@@ -334,7 +337,7 @@ export type ConversationSnapshot = {
 	readonly pending?: readonly PendingMessage[];
 };
 
-export type PendingMessage = { readonly source?:"background"; readonly id: string; readonly parts: readonly MessagePart[]; readonly attachments?: readonly ArtifactRef[]; readonly skills?:readonly SkillRef[] };
+export type PendingMessage = { readonly source?:"background" | "routine"; readonly id: string; readonly parts: readonly MessagePart[]; readonly attachments?: readonly ArtifactRef[]; readonly skills?:readonly SkillRef[] };
 
 /**
  * The work one message starts (Section 7.2). Messages sent while a Run is queued or running join it. A Run counts
@@ -509,6 +512,13 @@ export type ObservationCursor = { readonly streamId: string; readonly seq: numbe
 export type ObservationUpdate = ObservationCursor & { readonly changes: number };
 
 export type HostMethods = {
+ "routines.list": {params:Record<string,never>;result:import("./routines.ts").RoutineList};
+ "routines.get": {params:{routineId:string;occurrenceId?:string};result:import("./routines.ts").RoutineDetail};
+ "routines.change": {params:import("./routines.ts").RoutineChange;result:import("./routines.ts").Routine};
+ "routines.test": {params:{routineId:string;expectedRevision:number;requestId:string};result:import("./routines.ts").RoutineOccurrence};
+ "routines.stop": {params:{occurrenceId:string};result:null};
+ "routines.activity": {params:Record<string,never>;result:null};
+ "routines.presence": {params:{absenceDays:number;resume:boolean};result:null};
  "connectors.list":{params:Record<string,never>;result:readonly ConnectorProfile[]};
  "connectors.install":{params:ConnectorInstall;result:ConnectorProfile};
  "connectors.connect":{params:ConnectorChange;result:ConnectorProfile};
@@ -670,6 +680,7 @@ export const HOST_METHODS = [
 	"artifacts.import",
 	"artifacts.export",
 	"artifacts.get",
+ "routines.list","routines.get","routines.change","routines.test","routines.stop","routines.activity","routines.presence",
  "connectors.list","connectors.install","connectors.connect","connectors.disconnect","connectors.remove","connectors.credential.set","connectors.credential.delete",
  "skills.list","skills.get","skills.save","skills.delete",
 	"artifacts.preview",

@@ -34,7 +34,7 @@ export type RunInput = {
 };
 
 export type StoredRun = RunRecord & {
-	readonly origin?: "user" | "peer" | "background";
+	readonly origin?: "user" | "peer" | "background" | "routine";
 	readonly messages: readonly RunMessage[];
 	readonly inputs: readonly RunInput[];
 };

@@ -23,6 +23,7 @@ Give a Bot a task, let it work with your files and tools, and keep the result. O
 | **Research the web** | Search with a configured Tavily key and fetch pages as readable text. |
 | **Build your own Bot roster** | Start with the protected Core assistant, then create named Specialists with their own instructions, model and memory. |
 | **Remember and reuse** | Inspect, edit and restore memory. Review reusable `SKILL.md` procedures and select them for later tasks. |
+| **Schedule repeatable work** | Review interval, daily or weekly routines, pin skill versions, test them and receive reports in chat. Pause, catch-up and inactivity protection are built in. |
 | **Coordinate in groups** | Let Core route group tasks, choose explicit recipients, and follow bounded delegation and handoffs. |
 | **Connect tools** | Configure local stdio or HTTPS MCP servers, discover their tools, and approve calls under the same policy. |
 | **Stay in control** | Allow once, Always allow or Deny; configure Ask first rules and folder grants; stop a task or pause all work. |
@@ -30,7 +31,7 @@ Give a Bot a task, let it work with your files and tools, and keep the result. O
 
 The interface supports English and Simplified Chinese, with light and dark appearance. Closing the window leaves the menu-bar app running while the Mac is awake. Sleep, lock, quit and interruption have explicit recovery states; they do not mean a task finished.
 
-**Not implemented yet:** scheduled routines, managed browser control, desktop computer use, voice, OAuth sign-in and remote execution targets. MCP support is a bounded subset, not a claim of compatibility with every server; see the [stdio](docs/tasks/b9a-stdio-connectors.md) and [HTTPS](docs/tasks/b9b-https-connectors.md) contracts.
+**Not implemented yet:** managed browser control, desktop computer use, voice, OAuth sign-in and remote execution targets. MCP support is a bounded subset, not a claim of compatibility with every server; see the [stdio](docs/tasks/b9a-stdio-connectors.md) and [HTTPS](docs/tasks/b9b-https-connectors.md) contracts.
 
 ## Get started
 
@@ -74,6 +75,12 @@ Other tasks to try:
 - “Inspect this repository, explain its structure, and ask before running its test suite.”
 - “Research these three options, cite the pages you opened, and save a comparison in my workspace.” Requires web-search configuration for search.
 - “Remember that my weekly reports use USD and end with one next step.” Inspect the saved text in the Bot's Memory editor.
+
+### Schedule a trusted workflow
+
+Open **Routines**, choose a Bot and describe the source files, steps and expected output. Review the schedule and pinned skill versions before confirming. **Test run** performs real work with the same permissions and ten-minute unattended approval expiry. Reports return to the Bot's chat; execution details and the latest 20 finished runs stay in the panel.
+
+OpenBot must be running and the Mac awake. After sleep or restart, at most one eligible missed run is caught up; overlapping work is skipped. Seven days without interaction pauses scheduling until you explicitly resume. Both the catch-up window and inactivity limit are configurable. [Routine contract and verification](docs/tasks/b11a-local-routines.md).
 
 ### Build a local app
 

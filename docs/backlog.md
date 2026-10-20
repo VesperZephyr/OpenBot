@@ -1,5 +1,8 @@
 # OpenBot Backlog
 
+
+Active delivery scope (2026-10-20): B9c OAuth and B12b optional model review are excluded. Phase 3 is deferred. B9b (#39) and I2 (#40) are merged. [B11a local routines](tasks/b11a-local-routines.md) is implemented and verified on its task branch, awaiting review. The remaining delivery order is the P1 workflow gate, B14d backup/restore, B14c history scaling, B13e templates and B14f signed updates. Historical planning sections below do not authorize excluded or deferred work.
+
 Work after the tools demo, cut into batches that can each be finished and verified on their own. Each batch states its approach, key decisions, and the acceptance that closes it. A batch gets a full task spec in [`tasks/`](tasks/README.md) before execution starts; batches here without a spec link are approach only.
 
 The [architecture](architecture.md) defines the target design; the [technical plan](technical-plan.md) records current state. When a batch lands, move it to the plan's current-state table and delete it here.
@@ -17,8 +20,8 @@ References:
 | Phase | Goal | Batches |
 | --- | --- | --- |
 | **1. MVP** | A standard agent Bot you can install and use every day: chat with any configured model, work in files and the terminal, research the web, ask before risky actions, remember the user, survive restarts | B1–B8 |
-| 2. Enhancements | Connectors, skills, routines, full Auto Review, Bots working together, desktop completion | B9–B15 |
-| 3. Computer control | Managed browser with takeover and secrets, desktop computer use, voice and teach-a-task | Architecture M3 (browser part), M6, M8 |
+| 2. Enhancements | Connectors, skills, routines, deterministic permissions, Bots working together, desktop completion | B9–B15 |
+| 3. Computer control (deferred) | Managed browser with takeover and secrets, desktop computer use, voice and teach-a-task | Architecture M3 (browser part), M6, M8 |
 
 The MVP deliberately leaves out the managed browser, computer use, connectors, skills, routines, and group chats. The architecture keeps their seams (`targetId`, Tool Router, executor capabilities), so they attach later without reworking Phase 1.
 
@@ -60,15 +63,14 @@ Remaining work needs its own ready spec. Current implemented enhancements are re
 
 Accepted product direction: [D1](tasks/d1-bot-product-design.md). B16/B17 establish model entry and permanent Core identity; B20 refines the desktop and adds English/Chinese. Core management (B18) adds chat-driven Specialist lifecycle with explicit approvals. Prompt and memory controls (B19) are merged. Channel contexts (B13a) are merged; group lifecycle (B13b) and bounded collaboration (B13c) are merged. Existing agent mechanisms continue to reuse Pi. Connectors, routines and computer control are not prerequisites for this foundation.
 
-- **B9. MCP connectors** (architecture M7). Executor-supervised stdio servers and HTTP sessions, credentials from the Keychain injected only into their own server, tools named `mcp__<server>__<tool>` through Tool Router with receipts, a Connect apps page. OAuth through the default browser comes after the first token-based connectors work.
+- **B9. MCP connectors** (architecture M7). Executor-supervised stdio servers and HTTP sessions, credentials from the Keychain injected only into their own server, tools named `mcp__<server>__<tool>` through Tool Router with receipts, a Connect apps page.
 - **B10. Skills.** Library at `<data>/skills/<name>/SKILL.md`, a `skills` prompt section listing names and descriptions, `skill_load`, `skill_save` with user confirmation, `/` in the composer to attach one.
-- **B11. Routines** (after B2). Scheduler in `server-core` with occurrence request IDs `routine:<id>:<scheduledAt>`, a fresh conversation per occurrence admitted through B2's queue, test run, coalesced catch-up after sleep, Grok Bot limits (50 per Bot, 5-minute spacing, 20 runs of history), `routine_propose` with a confirmation card.
-- **B12b. Optional Auto Review.** Remaining: URL/connector predicates and a model reviewer that can only escalate. B12a supplies deterministic command/file Ask first rules, scoped revocation and unattended expiry; see its spec and acceptance evidence.
+- **B11a. Local routines:** implementation and acceptance on `task/b11a-local-routines`; see the [spec](tasks/b11a-local-routines.md). Confirmed panel management, isolated occurrences, exact reports, catch-up and absence protection. Model-driven proposals are a separate follow-up without a ready spec.
 - **B13. Bots together** (architecture M4). Core-coordinated group chats, explicit mentions, bounded delegation and ownership transfer (B13a–c); remaining work: templates (export and import without memory, history, credentials, or grants), usage per Bot from `pi.usage`.
 - **B14. Desktop completion** (architecture M2 rest). [B14a](tasks/b14a-reliable-observation.md) implements bounded observation and reconnect recovery (in review). B23 provides `Cmd+K` history search. B14b adds sidebar Pause all and lifecycle gates. Remaining: richer menu-bar status, Normal and Verbose tool detail, transcript virtualization, login item, auto-update with electron-updater.
 - **B15. Agent extras.** Image results from `local_read` for vision models, waking the Bot when a background task finishes, attachments in the composer, background subagents for parallel research within one Bot.
 
-## Phase 3: Computer control
+## Phase 3: Computer control (deferred)
 
 Architecture M3 (managed browser, takeover, secret requests), M6 (desktop computer use with the signed Swift helper and control lease), and M8 (dictation, teach-a-task). These need packaging and signing from B8 for TCC attribution; start with spikes before specs: two Bots' browser windows not throttled in the background, and the disclaimed helper receiving Screen Recording and Accessibility grants.
 
@@ -119,6 +121,6 @@ Attention-state mutation, UI navigation, cross-Bot memory operations, new dispat
 
 - **Done:** [I1](tasks/i1-product-foundation.md), [B10](tasks/b10-reviewed-skills.md), [B15b](tasks/b15b-background-completion.md) and [B9a](tasks/b9a-stdio-connectors.md) are merged in PRs #34–#37. I1 includes the reviewed B14a/B15a/B14b/B12a/B13d implementations. Their specs retain historical verification evidence.
 - **B14e:** [Desktop-owned credentials](tasks/b14e-main-credentials.md) is merged in PR #38. It replaces Host command-line Keychain access with a native main-process owner, private broker, explicit migration and bilingual status. Automated/native acceptance and release limitations are recorded in the spec.
-- **B9b:** [HTTPS MCP sessions](tasks/b9b-https-connectors.md) is implemented on `task/b9b-https-connectors`, in review in [PR #39](https://github.com/VesperZephyr/OpenBot/pull/39). 461 unit/Host and 120 hidden e2e tests, nine final connector scenarios and isolated real-model one-write/restart acceptance passed. Explicit TLS endpoints and private bearer credentials, bounded JSON/SSE, durable retry cooldown, honest unknown writes and bilingual connection/recovery controls.
-- **I2:** [MVP acceptance and bilingual introduction](tasks/i2-mvp-acceptance.md) is in review in PR #40. The candidate including B9b passed 461 unit/Host and 122 hidden e2e tests, useful real-model report/memory/recovery checks, and an ad-hoc DMG build with signature and checksum verification. It includes a public product screenshot and English/Chinese README. It is an acceptance increment, not an expansion of the MVP feature scope.
-- **Next feature packet:** B11a local routines needs its own ready specification for occurrence identities, scheduling, absence/overlap and report delivery. Developer ID identity, update continuity, native lifecycle and TCC remain separate release gates.
+- **B9b:** [HTTPS MCP sessions](tasks/b9b-https-connectors.md) is merged in [PR #39](https://github.com/VesperZephyr/OpenBot/pull/39). 461 unit/Host and 120 hidden e2e tests, nine final connector scenarios and isolated real-model one-write/restart acceptance passed. Explicit TLS endpoints and private bearer credentials, bounded JSON/SSE, durable retry cooldown, honest unknown writes and bilingual connection/recovery controls.
+- **I2:** [MVP acceptance and bilingual introduction](tasks/i2-mvp-acceptance.md) is merged in PR #40. The candidate including B9b passed 461 unit/Host and 122 hidden e2e tests, useful real-model report/memory/recovery checks, and an ad-hoc DMG build with signature and checksum verification. It includes a public product screenshot and English/Chinese README. It is an acceptance increment, not an expansion of the MVP feature scope.
+- **Ready for review:** [B11a local routines](tasks/b11a-local-routines.md) implements the confirmed scheduling contract. Next: the P1 workflow integration gate, then backup/restore, history scaling, templates and signed updates, each with its own spec. Developer ID identity, update continuity, native lifecycle and TCC remain separate release gates.

@@ -189,6 +189,7 @@ export class RunScheduler {
  }
 
 	#rememberChannel(run: StoredRun): void {
+  if(run.origin==="routine")return;
 		const key = JSON.stringify([run.botId, run.channelId ?? "direct"]),
 			previous = this.#latestChannel.get(key);
 		if (!previous || previous.runId === run.runId || previous.createdAt <= run.createdAt) this.#latestChannel.set(key, run);
@@ -258,7 +259,7 @@ export class RunScheduler {
 		botId: BotId,
 		requestId: string,
 		text: string,
-		options: { channelId?: string; origin?: "user" | "peer" | "background"; separate?: boolean; artifactIds?: readonly string[];skills?:readonly import("@openbot/protocol").SkillRef[] } = {},
+		options: { channelId?: string; origin?: "user" | "peer" | "background" | "routine"; separate?: boolean; artifactIds?: readonly string[];skills?:readonly import("@openbot/protocol").SkillRef[] } = {},
 	): Promise<SubmitOutcome> {
 		const channelId = options.channelId ?? "direct";
 		return this.#serial(async () => {
@@ -439,7 +440,7 @@ export class RunScheduler {
 				try {
 					submissionId = (await this.#runtime.submit(run.botId, input.requestId, input.text, mode, run.channelId, attachments, () => {
 						if (!this.#canAdmit()) throw new ProtocolError("invalid_request", "Work is paused. Resume work before continuing.");
-					}, input.skills, run.origin==="background")).submissionId;
+					}, input.skills, run.origin==="routine"?"routine":run.origin==="background")).submissionId;
 				} catch (error) {
 					if (!this.#canAdmit()) return;
 					throw error;

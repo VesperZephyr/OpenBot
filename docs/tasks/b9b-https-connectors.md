@@ -1,6 +1,6 @@
 # B9b: HTTPS MCP Sessions
 
-Status: in review ([PR #39](https://github.com/VesperZephyr/OpenBot/pull/39))
+Status: done (#39)
 Branch: task/b9b-https-connectors; PR target: main
 Depends on: merged B9a (#37) and B14e (#38), baseline `b95ade7`
 Architecture: Sections 5.3, 5.6, 5.9 and 6.2
