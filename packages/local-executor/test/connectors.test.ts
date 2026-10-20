@@ -14,7 +14,7 @@ afterEach(async () => {
 	await supervisor.close();
 	await rm(root, { recursive: true, force: true });
 });
-const definition = (mode = "normal", id = "notes"): ConnectorDefinition => ({
+const definition = (mode = "normal", id = "notes"): Extract<ConnectorDefinition, {command: string}> => ({
 	connectorId: id,
 	name: "Notes",
 	command: process.execPath,

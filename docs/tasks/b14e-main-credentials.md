@@ -1,6 +1,6 @@
 # B14e: Desktop-Owned Keychain Credentials
 
-Status: in review ([PR #38](https://github.com/VesperZephyr/OpenBot/pull/38))
+Status: done ([PR #38](https://github.com/VesperZephyr/OpenBot/pull/38))
 Branch: task/b14e-main-credentials; PR target: main
 Depends on: verified B9a `f37c673` (#37), including lifecycle/policy gates
 Architecture: Sections 3, 5.9, 6.2 and 6.4

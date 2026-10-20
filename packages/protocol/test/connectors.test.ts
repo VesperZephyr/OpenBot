@@ -13,8 +13,8 @@ it("bounds literal launch configuration and keeps private credentials off public
 	for (const change of [
 		{ command: "node" },
 		{ credentialEnv: "NODE_OPTIONS" },
- {credentialEnv:"BASH_ENV"},
- {credentialEnv:"PYTHONPATH"},
+		{ credentialEnv: "BASH_ENV" },
+		{ credentialEnv: "PYTHONPATH" },
 		{ args: Array(9).fill("界".repeat(2048)) },
 		{ targetId: "" },
 		{ shell: true },
@@ -62,4 +62,33 @@ it("rejects reference/regex/prototype schemas and validates finite bounded input
 	expect(boundedConnectorJson(JSON.parse('{"__proto__":{}}'))).toBe(false);
 	expect(boundedConnectorJson({ text: "x".repeat(33000) })).toBe(false);
 	expect(boundedConnectorJson({ value: Infinity })).toBe(false);
+});
+it("accepts explicit HTTPS configuration but rejects mixed transports and credential-bearing URLs", () => {
+	const input = {
+		connectorId: "remote",
+		name: "Remote",
+		transport: "https",
+		endpoint: "https://service.example/mcp",
+		auth: "bearer",
+		revision: 1,
+		targetId: "local",
+	};
+	expect(validConnectorDefinition(input)).toBe(true);
+	for (const change of [
+		{ endpoint: "http://localhost/mcp" },
+		{ endpoint: "https://user:token@service.example/mcp" },
+		{ endpoint: "https://service.example/mcp?token=secret" },
+		{ endpoint: "https://service.example/mcp#secret" },
+		{ endpoint: "https://service.example/\\other" },
+		{ endpoint: "https://service.example/\npath" },
+		{ command: "/bin/true" },
+		{ args: [] },
+		{ credentialEnv: "TOKEN" },
+		{ auth: "oauth" },
+	])
+		expect(validConnectorDefinition({ ...input, ...change })).toBe(false);
+	const { revision: _revision, targetId: _targetId, ...install } = input;
+	expect(paramsError("connectors.install", { ...install, requestId: "r" })).toBeUndefined();
+	expect(paramsError("connectors.install", { ...install, requestId: "r", command: "/bin/true" })).toBeDefined();
+	expect(paramsError("connectors.install", { ...install, requestId: "r", credential: "token" })).toBeDefined();
 });
