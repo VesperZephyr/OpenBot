@@ -4,7 +4,11 @@ import { readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:https";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
-export async function httpsFixture(root: string) {
+export async function httpsFixture(root: string, adapter?: {
+	tools: readonly object[];
+	/** Undefined deliberately loses the response after the adapter applies its effect. */
+	call: (name: string, args: Record<string, unknown>) => unknown;
+}) {
 	const certPath = join(root, "fixture-cert.pem"),
 		keyPath = join(root, "fixture-key.pem"),
 		config = join(root, "fixture.cnf");
@@ -140,6 +144,10 @@ export async function httpsFixture(root: string) {
 				return;
 			}
 			if (body.method === "tools/list") {
+				if (adapter) {
+					reply({ tools: adapter.tools });
+					return;
+				}
 				reply({
 					tools: ["read_note", "write_note", "lose_response", "wait_forever", "echo_token", "invalidate"].map((name) => ({
 						name,
@@ -158,6 +166,12 @@ export async function httpsFixture(root: string) {
 				return;
 			}
 			if (body.method === "tools/call") {
+				if (adapter) {
+					const result = adapter.call(body.params.name, body.params.arguments);
+					if (result === undefined) req.socket.destroy();
+					else reply(result);
+					return;
+				}
 				const name = body.params.name;
 				if (state.mode === "bad-result") {
 					reply({ content: [{ type: "image", data: "unsupported" }] });

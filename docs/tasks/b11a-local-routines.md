@@ -1,6 +1,6 @@
 # B11a: Local Scheduled Routines
 
-Status: implemented; awaiting review
+Status: done (#41)
 Branch: task/b11a-local-routines; PR target: main
 Depends on: merged main `4267def` (I2), B10, B12a, B14a/b, B15a/b
 Architecture: Sections 5.8, 7.1–7.2 and 8

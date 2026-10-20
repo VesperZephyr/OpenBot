@@ -143,6 +143,8 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | [I1: Integrated product foundation](i1-product-foundation.md) | done (#34); integrates the reviewed PR #29–#33 implementations |
 | [I2: MVP acceptance and bilingual introduction](i2-mvp-acceptance.md) | done (#40); 461 unit/Host and 122 hidden e2e tests; real-model and packaging evidence recorded |
 
+| [I3: Repeatable workflow acceptance](i3-workflow-acceptance.md) | in review (#42); 477 unit/Host and 131 hidden e2e tests; real-model workflow evidence |
+
 ## Reusable procedures
 
 | Task | Status |
@@ -172,4 +174,4 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Spec | Status |
 | --- | --- |
-| [B11a: Local scheduled routines](b11a-local-routines.md) | implemented; awaiting review; 477 unit/Host and 127 hidden desktop tests |
+| [B11a: Local scheduled routines](b11a-local-routines.md) | done (#41); 477 unit/Host and 127 hidden desktop tests |
