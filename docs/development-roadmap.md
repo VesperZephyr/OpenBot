@@ -1,5 +1,8 @@
 # OpenBot Development Roadmap
 
+
+Active delivery scope (2026-10-20): B9c OAuth and B12b optional model review are excluded. Phase 3 is deferred. B9b (#39) and I2 (#40) are merged. The next implementation is [B11a local routines](tasks/b11a-local-routines.md), followed by the P1 workflow gate, B14d backup/restore, B14c history scaling, B13e templates and B14f signed updates. Historical planning sections below do not authorize excluded or deferred work.
+
 Status: owner-authorized sequential delivery after B26; implementation evidence remains per task.
 Design record: [D4: Post-B26 Delivery Plan](tasks/d4-delivery-plan.md).
 Reviewed: 2026-10-18.

@@ -1,6 +1,6 @@
 # I2: MVP Acceptance Candidate and Bilingual Introduction
 
-Status: in review (#40)
+Status: done (#40)
 Branch: task/i2-mvp-acceptance; PR target: main
 Depends on: merged main through B14e (#38), B9b (#39, candidate `488ee67`)
 Architecture: Sections 1–3 and 6; G0 in the development roadmap
