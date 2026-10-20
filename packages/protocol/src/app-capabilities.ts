@@ -49,4 +49,4 @@ export const APP_TOOL_DEFINITIONS = APP_CAPABILITIES.map(d => ({
 })) satisfies readonly ToolDefinition[];
 
 /** Host-derived provenance persisted by the runtime adapter, never accepted as tool arguments. */
-export type AppReadAuthority = { runId: string; channelId: string; origin: "user" | "peer" | "background"; rootRequestId: string };
+export type AppReadAuthority = { runId: string; channelId: string; origin: "user" | "peer" | "background" | "routine"; rootRequestId: string };

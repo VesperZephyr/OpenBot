@@ -51,7 +51,7 @@ export function createToolRouter(options: {
 	};
 	return new ToolRouter({
 		resolveTool:name=>options.service().connectors.resolve(name),
- assertCallAllowed:async call=>{await options.service().background.assertExecution(call);await options.service().connectors.assertExecution(call);},
+ assertCallAllowed:async call=>{await options.service().routines.assertExecution(call);await options.service().background.assertExecution(call);await options.service().connectors.assertExecution(call);},
 		trackCommand:{prepare:(call,digest)=>options.service().background.prepare(call,digest),settle:(call,outcome)=>options.service().background.settle(call,outcome)},
   assertExecutionAllowed:()=>options.service().lifecycle.assertAllowed(),
 		target: options.target,

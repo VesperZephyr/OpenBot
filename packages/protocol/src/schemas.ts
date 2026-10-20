@@ -1,3 +1,4 @@
+import { ROUTINE_SCHEMAS } from "./routine-schemas.ts";
 /**
  * Runtime schemas for the params of every Host method. Desktop main checks a renderer call before forwarding it, and
  * the Host checks every request before dispatch, so a handler only ever sees params of its declared shape. Handlers
@@ -46,6 +47,7 @@ const ConnectorId=Type.String({pattern:"^[a-z][a-z0-9-]{0,31}$"});
 const ConnectorRevision=Type.Integer({minimum:1,maximum:Number.MAX_SAFE_INTEGER});
 const ConnectorChange=strict({requestId:Id,connectorId:ConnectorId,expectedRevision:ConnectorRevision});
 export const HOST_PARAM_SCHEMAS = {
+ ...ROUTINE_SCHEMAS,
  "connectors.list":NoParams,
  "connectors.install":Type.Union([
  strict({requestId:Id,connectorId:ConnectorId,name:Type.String({minLength:1,maxLength:80}),transport:Type.Optional(Type.Literal("stdio")),command:Type.String({minLength:1,maxLength:4096,pattern:"^/"}),args:Type.Array(Type.String({maxLength:2048}),{maxItems:32}),credentialEnv:Type.Optional(Type.String({pattern:"^[A-Z][A-Z0-9_]{0,63}$"}))}),

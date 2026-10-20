@@ -172,4 +172,4 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Spec | Status |
 | --- | --- |
-| [B11a: Local scheduled routines](b11a-local-routines.md) | in progress |
+| [B11a: Local scheduled routines](b11a-local-routines.md) | implemented; awaiting review; 477 unit/Host and 127 hidden desktop tests |

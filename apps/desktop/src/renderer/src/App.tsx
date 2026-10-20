@@ -1,3 +1,4 @@
+import {RoutinesPanel} from "./Routines";
 import { CredentialStorage } from "./CredentialStorage";
 import {ConnectorsPanel} from "./Connectors";
 import { BackgroundTask } from "./BackgroundTask";
@@ -98,6 +99,7 @@ export function App() {
 						{view.kind === "settings" && <Settings />}
  {view.kind === "skills" && <SkillLibrary />}
  {view.kind==="connectors"&&<ConnectorsPanel/>}
+ {view.kind==="routines"&&<RoutinesPanel renderTranscript={snapshot=><Transcript snapshot={snapshot}/>}/>}
 						{view.kind === "group" && <GroupView key={view.groupId} groupId={view.groupId} />}
 						{view.kind === "home" && <Home onNew={() => setCreating(true)} />}
 					</>
@@ -243,6 +245,7 @@ function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; 
  <LifecycleControls/>
 			<ConversationSearch query={query} unreadOnly={unreadOnly} />
 			<div className="sidebar-footer">
+ <button type="button" className={`nav-item ${view.kind==="routines"?"is-selected":""}`} onClick={()=>useStore.setState({view:{kind:"routines"}})}>{t("Routines")}</button>
  <button type="button" className={`nav-item ${view.kind==="connectors"?"is-selected":""}`} onClick={()=>useStore.setState({view:{kind:"connectors"}})}>{t("Connect apps")}</button>
  <button type="button" className={`nav-item ${view.kind === "skills" ? "is-selected" : ""}`} onClick={()=>useStore.setState({view:{kind:"skills"}})}>{t("Skills")}</button>
 				<button
@@ -461,7 +464,7 @@ function EmptyConversation({ bot }: { readonly bot: BotSummary }) {
 
 function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 	const approvals = new Map(snapshot.approvals.map((approval) => [approval.callId, approval]));
-	const retry = retryTarget(snapshot.items, snapshot.live !== undefined);
+	const retry = snapshot.channelId?.startsWith("routine_") ? undefined : retryTarget(snapshot.items, snapshot.live !== undefined);
 	const item = (entry: TranscriptItem) =>
 		entry.kind === "tool" ? (
 			<ToolCard
@@ -496,7 +499,7 @@ function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 				),
 			)}
 			<PendingMessages snapshot={snapshot} />
- {snapshot.run?.state==="needs_attention"&&<InterruptedRun key={snapshot.run.runId} run={snapshot.run}/>}
+ {!snapshot.channelId?.startsWith("routine_")&&snapshot.run?.state==="needs_attention"&&<InterruptedRun key={snapshot.run.runId} run={snapshot.run}/>}
 			{snapshot.live !== undefined && snapshot.live.state !== "waiting_approval" && (
 				<li className="message message-assistant is-live">
 					{snapshot.live.partial === undefined ? (
@@ -524,10 +527,12 @@ function Message(props: {
 	if (item.kind === "other") return null;
 	if (item.kind === "stopped") return <StoppedNote />;
 	return (
-		<li data-message-id={item.id} className={`message message-${item.kind==="user"&&item.source==="background"?"background":item.kind}`}>
+		<li data-message-id={item.id} className={`message message-${item.kind==="user"&&!!item.source?"background":item.kind}`}>
 			<MessageTime at={item.at} />
+ {item.kind==="assistant"&&item.routine&&<div className="routine-report-label"><span>{t("Routine report")} · {item.routine.name} · {t(item.routine.state==="needs_attention"?"Needs attention":item.routine.state[0]!.toUpperCase()+item.routine.state.slice(1))}</span><button onClick={()=>useStore.setState({view:{kind:"routines",routineId:item.routine!.routineId,occurrenceId:item.routine!.occurrenceId}})}>{t("View routine")}</button></div>}
+ {item.kind==="assistant"&&item.artifacts?.map(ref=><ArtifactCard key={ref.artifactId} artifact={ref}/>)}
 			{item.kind === "assistant" && item.thinking !== undefined && <Thinking text={item.thinking} />}
-			{item.kind==="user"&&item.source==="background"?<details><summary>{t("Background task result")}</summary><MessageText parts={item.parts}/></details>:<MessageText parts={item.parts} markdown={item.kind === "assistant"} />}
+			{item.kind==="user"&&!!item.source?<details><summary>{t(item.kind==="user"&&item.source==="routine"?"Scheduled workflow":"Background task result")}</summary><MessageText parts={item.parts}/></details>:<MessageText parts={item.parts} markdown={item.kind === "assistant"} />}
 			{item.kind === "user" && item.skills?.map(skill=><span className="skill-chip" key={skill.name}>/{skill.name} <small>v{skill.revision}</small></span>)}
  {item.kind === "user" && item.attachments?.map((ref) => <ArtifactCard key={ref.artifactId} artifact={ref} />)}
 			{item.kind === "user" && item.error && <p className="message-error">{t(item.error)}</p>}

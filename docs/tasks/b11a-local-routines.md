@@ -1,6 +1,6 @@
 # B11a: Local Scheduled Routines
 
-Status: in progress
+Status: implemented; awaiting review
 Branch: task/b11a-local-routines; PR target: main
 Depends on: merged main `4267def` (I2), B10, B12a, B14a/b, B15a/b
 Architecture: Sections 5.8, 7.1–7.2 and 8
@@ -48,3 +48,21 @@ Out: model-driven routine proposals (a separate follow-up), event triggers, new 
 ## Open questions
 
 None for this increment. Add a contract gap before changing this design.
+
+## Verification — 2026-10-20
+
+| Acceptance | Evidence |
+| --- | --- |
+| 1. Confirmed configuration and deterministic scheduling | `server-core/test/routine-schedule.test.ts` and `routines.test.ts`: UTC anchors, daily/weekly DST gaps and folds (including half-hour offsets), exact mutation/test replay, stale revisions, coalesced catch-up, overlap, persistent absence and per-Bot capacity. Desktop create/edit review is checked before persistence. |
+| 2. Isolated unattended authority and stopping | Runtime tests exclude private input and Core/collaboration/application tools, including after reopen. Host guards bind active Run, Bot, channel, target, routine revision and stop state. Desktop tests deny commands, pause and stop pending writes, and verify absent output files. The ten-minute unattended deadline survives a Host crash; the shared B12a clock tests exercise actual expiry. |
+| 3. Recovery and exact reports | Lost admission and publication responses reopen the actual Pi store and produce one logical Run/report. Non-model reports make no inference request and do not enter later private prompts. Desktop checks report search/unread, model failure and complete relaunch. |
+| 4. Pinned skills, partial artifacts and retention | Scripted desktop inference receives the exact selected skill snapshot. Host tests surface a missing revision, retain confirmed artifacts after a later failure, bound UTF-8 report bytes, keep 20 outcomes/Run projections and preserve replay receipts/cursors after pruning. |
+| 5. Complete application verification | `pnpm run check`: 477 tests passed. `pnpm run e2e`: 127 hidden desktop tests passed. The five routine scenarios also passed a final focused rerun, including automatic real-clock scheduling and a missing source. English results/approvals and Chinese minimum-size editor/history screenshots were inspected under `e2e/.run/routines/`. |
+
+`node apps/desktop/scripts/stage-runtime.mjs` verified startup of the bundled Host and executor with isolated state.
+
+A separate hidden real-model spot check used the configured `mafia/gpt-6.1-sol` provider, synthetic `sales.csv` (350 and 480), and only ordinary local tools. It created and published `morning-sales.md`; total 830 and regional shares 42.17% / 57.83% were checked against the source. One report and one artifact survived full application relaunch. agent-browser inspected the result, history and file preview. Local evidence is under `e2e/.run/routines-real/`; no credentials, runtime logs or test state are committed.
+
+Transaction results are detached before returning across IPC; pausing no longer leaks Pi draft proxies. Terminal Run projections are pruned with old occurrence history, while the durable schedule cursor and replay receipts remain. Confirmed files survive partial failure; cancellation does not claim rollback.
+
+Developer ID signing, notarization, clean-install acceptance and physical lock/sleep tests remain the separate native release gates recorded in I2. This increment verifies simulated recovery and a running local clock, and does not establish those release claims.

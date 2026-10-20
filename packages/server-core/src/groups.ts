@@ -59,7 +59,7 @@ export class Groups {
 		this.#stopping = options.stopping;
 	}
 	async admissible(run: StoredRun): Promise<boolean> {
-		if (!run.channelId || run.channelId === "direct") return true;
+		if (!run.channelId || run.channelId === "direct" || run.origin === "routine") return true;
 		const group = await this.runtime.groups().get(run.channelId);
 		const d = (await this.runtime.groups().deliveries()).find(
 			(d) => d.groupId === run.channelId && d.botId === run.botId && run.requestIds.includes(`delivery:${d.deliveryId}`),
@@ -88,6 +88,7 @@ export class Groups {
 	async start(): Promise<void> {
 		await this.runtime.groups().backfillIndex();
 		for (const channel of await this.runtime.channels()) {
+   if (channel.channelId.startsWith("routine_")) continue;
 			await this.#observe(channel.botId, channel.channelId);
 			const group = await this.runtime.groups().get(channel.channelId);
 			if (

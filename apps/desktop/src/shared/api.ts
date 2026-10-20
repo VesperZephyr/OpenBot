@@ -5,6 +5,7 @@
 import type { GrantAccess, HostMethod, HostParams, HostResult } from "@openbot/protocol";
 
 export const RENDERER_METHODS = [
+ "routines.list","routines.get","routines.change","routines.test","routines.stop","routines.activity","routines.presence",
 	"observation.wait",
 	"artifacts.get",
  "connectors.list","connectors.install","connectors.connect","connectors.disconnect","connectors.remove","connectors.credential.set","connectors.credential.delete",

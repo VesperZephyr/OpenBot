@@ -1,9 +1,9 @@
 # OpenBot Technical Plan
 
 
-Active delivery scope (2026-10-20): B9c OAuth and B12b optional model review are excluded. Phase 3 is deferred. B9b (#39) and I2 (#40) are merged. The next implementation is [B11a local routines](tasks/b11a-local-routines.md), followed by the P1 workflow gate, B14d backup/restore, B14c history scaling, B13e templates and B14f signed updates. Historical planning sections below do not authorize excluded or deferred work.
+Active delivery scope (2026-10-20): B9c OAuth and B12b optional model review are excluded. Phase 3 is deferred. B9b (#39) and I2 (#40) are merged. [B11a local routines](tasks/b11a-local-routines.md) is implemented and verified on its task branch, awaiting review. The remaining delivery order is the P1 workflow gate, B14d backup/restore, B14c history scaling, B13e templates and B14f signed updates. Historical planning sections below do not authorize excluded or deferred work.
 
-Last updated: 2026-10-19.
+Last updated: 2026-10-20.
 
 This plan turns [the architecture](architecture.md) into an ordered sequence of work. The architecture defines contracts and boundaries; this document records what exists, what each milestone builds, how each step is verified, and which decisions are still open. When the two disagree, fix the architecture first, then update this plan.
 
@@ -17,7 +17,7 @@ B15b is merged in PR #36: durable command completion receipts, separate unattend
 
 B9a is merged in PR #37: supervised local stdio MCP tools, explicit connector lifecycle and private credentials, routed Pi deferred discovery, exact revision/schema approvals and bilingual Connect apps. It passed 409 unit/Host tests, 112 hidden e2e tests, bundled startup and isolated real-model discovery/approved-write/restart verification.
 
-B14e is merged in PR #38: async native Keychain ownership in main, bounded private Host requests, durable explicit migration and bilingual storage controls. Native release limitations and acceptance evidence are recorded in [B14e](tasks/b14e-main-credentials.md). B9b is implemented on `task/b9b-https-connectors` against the merged credential owner, in review in PR #39 with 461 unit/Host tests, 120 hidden e2e tests and isolated real-model one-write/restart acceptance. B11a local routines is the next planning packet and needs its own ready spec.
+B14e is merged in PR #38: async native Keychain ownership in main, bounded private Host requests, durable explicit migration and bilingual storage controls. Native release limitations and acceptance evidence are recorded in [B14e](tasks/b14e-main-credentials.md). B9b is merged in PR #39 against the merged credential owner with 461 unit/Host tests, 120 hidden e2e tests and isolated real-model one-write/restart acceptance. B11a local routines is implemented on `task/b11a-local-routines`; verification is recorded in its [spec](tasks/b11a-local-routines.md).
 
 [I2](tasks/i2-mvp-acceptance.md) verifies the integrated MVP candidate including B9b and introduces the application through an English README, a complete Chinese translation and an authentic real-model screenshot. Its [acceptance record](acceptance/mvp-2026-10-19.md) separates current automated checks, practical tasks, packaging and outstanding native release gates.
 
@@ -27,6 +27,7 @@ B14e is merged in PR #38: async native Keychain ownership in main, bounded priva
 
 | Component | State | Verified by |
 | --- | --- | --- |
+| Local scheduled routines (B11a) | Confirmed bilingual panel, interval/daily/weekly calendar schedules, exact skills, isolated unattended contexts, durable catch-up/absence/overlap, one report per occurrence and twenty-record history | 477 unit/Host and 127 hidden e2e tests; real-clock trigger, Host-crash approval recovery, bundled startup and isolated real-model report/relaunch; [evidence](tasks/b11a-local-routines.md) |
 | MVP acceptance and bilingual introduction (I2, PR #40) | Candidate includes B9b; explicit publication filename guidance, observed-UI search assertions, executable sales example, English/Chinese README and actual app screenshot | Full check/e2e, useful CSV execution/export/denial/restart, real-model memory/report/recovery, ad-hoc DMG; see [current evidence](acceptance/mvp-2026-10-19.md) |
 | Workspace, boundary check, Pi vendor (`third_party/pi`, baseline `b45e0ebcc`) | Implemented (M0) | `pnpm run check`; provenance in `.openbot-vendor.json`, `BASELINE.json`, `OPENBOT_CHANGES.md` |
 | `packages/protocol` | Implemented: Host methods and events, envelopes, `ExecutionTarget`, transcript items (messages, tool calls with `interrupted`/`cancelled`, dividers, stopped notes, thinking, timestamps), Runs, approvals with Always allow scopes, policy and grants, executor envelopes (`tool.status`, `result.ack`, `tasks.stop`), tool catalog, and one TypeBox schema per Host method (`@openbot/protocol/schemas`) | `protocol/test/*.test.ts` |
@@ -111,8 +112,8 @@ The milestones below follow the architecture's capability areas. Delivery is pha
 | Phase | Milestone content it delivers |
 | --- | --- |
 | **1. MVP** (B1–B8) | M1 completion (B1, B2); coding tools beyond M1 (B3); `web_search` and `web_fetch` from M3 (B4); Always allow and folder grants from M5 (B5); memory from M4 and prompt quality (B6); the user-facing part of M2 (B7); a signed installable build from M9 (B8) |
-| 2. Enhancements (B9–B15) | M7 connectors; skills, routines, and the rest of Auto Review from M5; group chats, handoff, and templates from M4; the rest of M2 and M9 |
-| 3. Computer control | M3 managed browser, takeover, and secrets; M6 desktop computer use; M8 voice and teach-a-task |
+| 2. Enhancements (B9–B15) | M7 connectors; skills, routines, and deterministic policy from M5; group chats, handoff, and templates from M4; the rest of M2 and M9 |
+| 3. Computer control (deferred) | M3 managed browser, takeover, and secrets; M6 desktop computer use; M8 voice and teach-a-task |
 
 The milestone sections stay as the reference for what each area needs; where a phase-1 batch takes part of a milestone, the batch's spec is authoritative.
 
@@ -168,7 +169,7 @@ flowchart LR
 - OpenBot Run queue per conversation, stored as a versioned document: `queued` → `running` → terminal, a global active-Run cap (default 3), and `runId` returned from `messages.submit` after the durable receipt. Pi submission ID is associated with the Run; the stable request ID reconciles a crash in between.
 - Grants document: the shared workspace (`~/OpenBot`, created with consent) and user-selected directories, versioned; revocation invalidates pending approvals.
 - Policy evaluation for M1: hard rules, then capability defaults (`commands: ask` by default; file reads and writes inside a grant allowed). Ask first and Allow automatically rules arrive in M5 behind the same `PolicyPort`.
-- Approvals document: persisted before the Run waits, survive restart, decided by `approvals.decide`. Unattended expiry arrives with routines in M5.
+- Approvals document: persisted before the Run waits, survive restart, decided by `approvals.decide`. B12a implements ten-minute expiry for unattended approvals, reused by B11a routines.
 - Invocation records implementing `DispatchLedger`.
 - `needs_attention` activity when a Run waits for approval or holds an `unknown` outcome.
 
@@ -246,13 +247,13 @@ Goal: Bots work in parallel and cooperate. Architecture Section 5.7.
 - Templates: `bots.export` and `bots.import` without memory, history, credentials, or grants.
 - Usage per Bot from `pi.usage`.
 
-### M5: Skills, Routines, and Auto Review
+### M5: Skills, Routines, and Deterministic Policy
 
 Goal: reusable skills, scheduled work, and complete policy. Architecture Sections 5.3 and 5.8.
 
 - Skill library under `<data>/skills/<name>/SKILL.md`, `skills` prompt section, `skill_load`, `skill_save` with confirmation, `/` attachment.
 - Routine scheduler in `server-core` with request ID `routine:<routineId>:<scheduledAt>`, fresh ownerless conversation per occurrence, report entry, limits, test run, coalesced catch-up, pause after a long absence.
-- Policy rules: Ask first and Allow automatically with tool, target, optional Bot, and argument predicates; **Always allow** creating a confirmed rule; optional model reviewer that can only escalate; 10-minute expiry for unattended approvals.
+- Policy rules: Ask first and Allow automatically with tool, target, optional Bot, and argument predicates; **Always allow** creating a confirmed rule; 10-minute expiry for unattended approvals.
 
 ### M6: Desktop Computer Use
 

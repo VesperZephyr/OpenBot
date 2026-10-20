@@ -375,7 +375,7 @@ Tool Router dispatches every model-selected tool to one of two destinations. **E
 | `memory_update` | Host | Replace or append one section of the Bot's memory (8 KB of Markdown, session document `openbot.memory` keyed by Bot) | Allowed; visible and editable in the Bot's memory panel |
 | `skill_load`, `skill_save` | Host | Load a saved skill; save or revise a draft skill | Loading allowed; saving requires confirmation |
 | `bot_delegate`, `bot_handoff` | Host | Delegate a subtask or transfer ownership within the accepted group task | Active assigned Run, current membership, ancestry and root budget; local receipt and public handoff |
-| `routine_propose` | Host | Propose a new or changed routine for the user to confirm | Confirmation in the conversation |
+| `routine_propose` (planned follow-up) | Host | Propose a new or changed routine for the user to confirm | Confirmation in the conversation |
 | `request_user_input` | Host | Ask the user a structured question or present a form step | Always allowed; the Run waits for the user |
 
 Tool Router validates arguments, the target, grants, policy, deadlines, and Run and control state. It persists dispatch intent before sending an invocation to the executor. Any `targetId` other than the bound local target is a hard error.
@@ -495,15 +495,14 @@ The library admits 50 active skills, 1,024 immutable revisions, 4,096 mutation r
 
 Direct messages may attach two exact skill references. Host resolution stores bounded content snapshots with durable Run inputs and Pi submissions; queue/restart/steering/continuation never upgrade them after library changes. Transcript chips retain names and versions, and Retry retains exact references rather than silently omitting the method. Group skill attachment is not exposed. Skill changes invalidate the existing settings observation bit; no new event stream is introduced. See [B10](tasks/b10-reviewed-skills.md) for schemas, authority and acceptance.
 
-**Routines.** A routine belongs to one Bot and contains a schedule with time zone, the workflow (instructions and referenced skills), input sources, expected result, approval boundary, and missing-data behavior. Routines are created or changed only after user confirmation, either through `routine_propose` or the routines panel.
+**Routines (B11a).** The bilingual Routines panel reviews and confirms each configuration before saving. A routine binds one Bot and local target, revisioned instructions, up to two exact skill references, a schedule and a catch-up window. Model-driven `routine_propose` is a separate follow-up.
 
-- `server-core` owns the scheduler; Pi has no cron facility. Each occurrence submits with the request ID `routine:<routineId>:<scheduledAt>`, which makes duplicate firing and crash retries idempotent.
-- Each occurrence runs in a fresh ownerless conversation configured from the Bot's profile, so routine work does not grow the Bot's main context. The result is written to the Bot's main conversation as an `openbot.routine-report` entry and raises a notification.
-- Limits: at most 50 routines per Bot, at least five minutes between scheduled occurrences, and the 20 most recent run records per routine.
-- **Test run** performs real work immediately with the same policy.
-- Occurrences missed while the Mac slept or OpenBot was not running are coalesced: at most one catch-up occurrence runs after wake if it is within the routine's catch-up window; the others are recorded as skipped.
-- If the user has not interacted with OpenBot for a configurable period, routines pause and ask whether to continue.
-- Triggers are time-based in the first release. Event triggers require a local event source, such as a connector that supports polling or a file-system watch; there is no inbound webhook endpoint.
+- `server-core` schedules interval (5–10,080 minutes), daily and weekly workflows. Intervals keep a UTC anchor; calendar schedules use an IANA zone. DST gaps are skipped; folds select the first instant once. The persisted `nextAt` cursor and immutable occurrence input are committed before queue admission. Scheduled IDs are `routine:<routineId>:<scheduledAt>`; test IDs include the stable user request ID.
+- A hashed channel maps atomically to one fresh ownerless Pi context per occurrence. It shares the Bot profile, memory and selected model, but excludes private/group history, Core management, application Code Mode and collaboration extensions. Existing Run caps, lifecycle gates, current target policy and executor grants apply. Both scheduled and test Runs have unattended authority; write approvals expire after ten minutes. Routine work cannot create completion chains or save skills.
+- One pending occurrence per routine; overlap is skipped. Sleep/restart admits only the latest eligible occurrence within the selected 0–72 hour catch-up window, recording skipped ranges. Zero permits only a one-minute on-time grace. Pause/edit/delete invalidates authority before cancellation. A default seven days without real desktop interaction (configurable 1–30) persistently pauses schedules until explicit resume; polling does not count as activity.
+- Terminal results freeze before stable, idempotent publication of one non-model `openbot.routine-report` entry to the private chat. Reports participate in unread/search projection without inference or private steering. Actual failure/cancellation/uncertainty and confirmed artifacts remain visible. Publication-before-recording and lost-admission responses reconcile against original identities.
+- Limits: 50 live routines per Bot, 500 globally, 1,024 identities including tombstones and 4,096 mutation/test receipts. Keep the latest 20 finished occurrences plus current work; prune their terminal Run projections when no longer referenced. Cursors and replay receipts survive pruning. Underlying Pi history remains local; pruning is not erasure.
+- The panel exposes real-work test confirmation, selected occurrence approvals, Stop and transcript details. Scheduling runs only while OpenBot and the awake Mac are available. Event triggers, cloud scheduling and computer control are outside this increment. See [B11a](tasks/b11a-local-routines.md) for acceptance and limitations.
 
 ### 5.9 Credentials and Secrets
 

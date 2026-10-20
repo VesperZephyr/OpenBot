@@ -1,7 +1,7 @@
 # OpenBot Development Roadmap
 
 
-Active delivery scope (2026-10-20): B9c OAuth and B12b optional model review are excluded. Phase 3 is deferred. B9b (#39) and I2 (#40) are merged. The next implementation is [B11a local routines](tasks/b11a-local-routines.md), followed by the P1 workflow gate, B14d backup/restore, B14c history scaling, B13e templates and B14f signed updates. Historical planning sections below do not authorize excluded or deferred work.
+Active delivery scope (2026-10-20): B9c OAuth and B12b optional model review are excluded. Phase 3 is deferred. B9b (#39) and I2 (#40) are merged. [B11a local routines](tasks/b11a-local-routines.md) is implemented and verified on its task branch, awaiting review. The remaining delivery order is the P1 workflow gate, B14d backup/restore, B14c history scaling, B13e templates and B14f signed updates. Historical planning sections below do not authorize excluded or deferred work.
 
 Status: owner-authorized sequential delivery after B26; implementation evidence remains per task.
 Design record: [D4: Post-B26 Delivery Plan](tasks/d4-delivery-plan.md).
@@ -29,7 +29,7 @@ Deliver a personal Bot that completes a useful task, retains the approved method
 | Area | Evidence at the baseline | Remaining work |
 | --- | --- | --- |
 | Agent and execution | Pi adapter, configurable models, queue/cap, steering, cancellation, file/command tools, background tasks, web research | Completion wakeups, richer inputs/results, later subagents |
-| Policy and durability | Persistent approval, Always allow, folder grants, dispatch records, executor receipts and unknown outcomes | Ask-first rules, active-work revocation, unattended expiry, optional reviewer |
+| Policy and durability | Persistent approval, Always allow, folder grants, dispatch records, executor receipts and unknown outcomes | Ask-first rules, active-work revocation, unattended expiry |
 | Bot and memory | Protected Core, Specialist management, revisioned Prompt/memory, history/restore, fresh duplication | Templates, usage presentation, separately designed data purge |
 | Collaboration | B13a/b/c channel contexts, group lifecycle, bounded delegation, ownership transfer and tree stop | Do not reimplement groups; direct-chat/cross-group peer dispatch stays deferred |
 | Conversation UI | B21 shared shell/drafts/mentions; B22 previews/read cursors; B23 history search and unread filtering, all merged | Artifacts, large-history performance and organization |
@@ -48,7 +48,7 @@ Do not rebuild model entry, protected Core, Prompt/memory controls, groups, coll
 | --- | --- | --- |
 | P0 | Verify the merged baseline and make observation, stopping and permissions dependable | G0 automated gate; B14a, B14b, B12a |
 | P1 | Deliver useful files first, then a measurable repeatable workflow | B15a, B13d, B10, B15b, B9a/b, B11a; B14e gates live connector credentials |
-| P2 | Broaden access and complete production maintenance | B9c, B12b, B13e, B14c/d/f; signed release evidence |
+| P2 | Broaden access and complete production maintenance | B13e, B14c/d/f; signed release evidence |
 | P3 | Reach applications without a connector | M3-S/A/B, M6-S/A, M8-A/B |
 
 G0 has an automated development gate and a separate native release evidence ledger. Missing signing certificates or permission evidence blocks the affected release claim, not unrelated isolated development. New Phase 2 work still needs its own ready spec; this roadmap does not add it to MVP acceptance. Phase 3 remains gated on workflow evidence and its packaged spikes. The serial delivery order and exit criteria are in Section 11; dependency edges do not imply multiple agents or concurrent implementation.
@@ -197,7 +197,7 @@ The scheduler does not technically require a connector: B11a must also work with
 3. Background e2e creates a routine, performs an end-to-end test run through ScriptedModel, survives restart, shows its report/history, and expires an unattended write approval without execution.
 4. An occurrence cannot contaminate private/group context or gain Core management authority. A missing/stale source produces an explicit failure or partial result; no fabricated successful report.
 
-Before this becomes ready, resolve occurrence-context mapping with B13a, report publication receipts and B22 unread classification, schedule revision identity, skill-revision binding, catch-up/absence defaults and overlap policy. Preserve the architectural fresh-context rule through the runtime adapter; do not access Pi directly from the scheduler.
+The [B11a spec](tasks/b11a-local-routines.md) fixes occurrence mapping, publication receipts, unread projection, exact skill versions, catch-up, absence and overlap. Initial management is through the confirmed panel; model proposals remain a separately scoped follow-up. Host expiry uses deterministic clock tests; desktop tests verify unattended deadline presentation and disabled controls.
 
 ### P1 delivery gate — demonstrate the whole workflow
 
@@ -209,15 +209,13 @@ All rows require a separate ready spec; the acceptance methods are proposed test
 
 | Batch / prerequisites | In / out | Acceptance |
 | --- | --- | --- |
-| **B9c OAuth** — B9b, B14e | System-browser authorization, secure token refresh/revoke. No bundled login browser or inbound public callback service | Fake authorization server tests state/PKCE, expiry/cancel, restart and refresh races; e2e reconnects without exposing tokens; credentials cannot be reused for a different connector/origin. Choose a callback compatible with the no-listening-socket architecture or explicitly amend that contract before readiness |
-| **B12b optional reviewer** — B12a | Model review that can only make a decision stricter; visible reasons and unavailable state. No model-created grants | Tests cannot turn hard deny/Ask first into allow; malicious tool content cannot become user approval; timeout/malformed output never silently bypasses review; e2e distinguishes reviewer request from human decision |
 | **B13e templates** — B10 | Versioned local export/import of profile, instructions and skill references. No public marketplace or Team Bots | Import creates a new identity and preserves Core restrictions; exported fixtures contain no memory, history, credentials or grants; missing skills/models require explicit resolution; duplicate import behavior is defined and tested |
 | **B14c search scaling and long history** — B23/B24, B14a | Persistent/rebuildable indexing and bounded transcript rendering over existing literal search semantics. No new search syntax, group pin/hide or changed read semantics | A fixed 10,000-entry fixture renders a bounded viewport; search locates retained messages with navigation; e2e preserves scroll/read cursor during streaming and compaction; index rebuild cannot expose deleted identities |
 | **B14d consistent backup/restore** — G0, repeat for new persisted features | Versioned consistent snapshots of Host/executor state, artifact contents and metadata, and the skill library. Browser profiles and user-project files have a separately declared scope. No automatic cloud upload | Delete the original fixture data, restore, open artifacts and load skills with identical content/versions; Bot/approval/receipt relationships survive; incompatible/corrupt backups fail before replacing active data; uncertain work never reruns automatically; credentials are not exported as plaintext |
 | **B14e credential identity (live-connector release gate)** — G0 | Replace Host `/usr/bin/security` access with decided main-process or signed-helper ownership. No wider credential inheritance | Packaged real-Mac tests cover read/write/relaunch and signature identity; renderer APIs return only redacted metadata; connector/shell fixtures receive only authorized secrets; migration preserves existing settings without logging values |
 | **B14f signed updates** — B14d/e, certificates available | Verified update, migration failure handling and rollback-compatible data strategy. No release publication by an agent | Local update fixtures reject invalid artifacts; packaged upgrade/relaunch preserves state and credentials; failed migration retains a restorable snapshot; Developer ID/notarization evidence is recorded separately from ad-hoc builds |
 
-## 7. P3: browser, desktop and demonstration
+## 7. P3: browser, desktop and demonstration (deferred)
 
 | Batch / prerequisites | In / out | Acceptance |
 | --- | --- | --- |
@@ -251,7 +249,6 @@ A documentation update does not establish product acceptance. Native permissions
 | MCP transport/version, schema changes, credential binding and retry classification | B9a/b | Narrow supported matrix and provider-independent failure fixtures |
 | Skill revisions/attachments and artifact formats/quotas/retention | B10 / B15a | Exact reference formats and data migration/cleanup rules |
 | Routine occurrence context, scheduling, overlap and report delivery | B11a | B13a-compatible identities, persisted deadlines, catch-up and absence policies |
-| OAuth callback without opening a first-release listening service | B9c | Validated approach, or an explicit architecture amendment before execution |
 | Credential helper ownership, backup consistency and update compatibility | B14d/e/f | Packaged evidence, data-format migration and rollback constraints |
 | Browser launch support, helper TCC identity and protected-field capture | Phase 3 spikes | Reproducible feasibility reports before implementation specs |
 
@@ -278,8 +275,8 @@ Effort bands indicate scope only: **small** is a focused existing-surface change
 | 10 | B11a | Create, test, pause and inspect one reliable local scheduled workflow | B10 + B12a + B14a/b; occurrence/report identities, absence and overlap rules fixed | Large |
 | 11 | P1 workflow gate | Reuse and schedule a report, propose a connector update, recover failures honestly | B9a/b + B10 + B15a/b + B13d + B11a; evidence pack below | Integration gate |
 | 12 | B14d, B14c, B13e | Restore state, keep long histories responsive, then reuse Bot templates | Independent ready specs; backup/migration evidence required before destructive format changes | Separate large / large / medium PRs |
-| 13 | B9c, B12b, B14f | OAuth, optional review and signed updates | Relevant security and packaged prerequisites; no automatic release publication | Separate specs |
-| 14 | Phase 3 | Managed browser first; takeover/secrets; native desktop; optional dictation/teaching | P1 workflow evidence and each feasibility spike; see Section 7 | Separate spikes/specs |
+| 13 | B14f | Signed updates | Relevant security and packaged prerequisites; no automatic release publication | Separate specs |
+| Deferred | Phase 3 | Managed browser first; takeover/secrets; native desktop; optional dictation/teaching | P1 workflow evidence and each feasibility spike; see Section 7 | Separate spikes/specs |
 
 B14e and B14d are safety dependencies, not permission to postpone credential or migration checks: a batch that changes credential ownership or irreversibly changes storage must bring the relevant design/evidence forward. B9b is not needed to develop local routines, and no connector is needed for the first local report workflow.
 
@@ -373,6 +370,6 @@ A real provider may be unavailable or lack a required modality. Record that limi
 
 D4 (#28), I1 (#34), B10 (#35), B15b (#36), B9a (#37) and B14e (#38) are merged into main through `b95ade7`. I1 includes the reviewed B14a/B15a/B14b/B12a/B13d implementation heads. Their earlier evidence remains in the individual task specs.
 
-[B9b](tasks/b9b-https-connectors.md) is implemented in PR #39: bounded HTTPS MCP sessions, explicit reconnect, persistent retry cooldown, private token handling and honest unknown outcomes. It remains in review. [I2](tasks/i2-mvp-acceptance.md) verifies this integrated MVP candidate and supplies a bilingual introduction and authentic product screenshot; see the [acceptance record](acceptance/mvp-2026-10-19.md). I2 does not add routines or computer control to MVP acceptance.
+[B9b](tasks/b9b-https-connectors.md) is implemented in PR #39: bounded HTTPS MCP sessions, explicit reconnect, persistent retry cooldown, private token handling and honest unknown outcomes. It is merged. [I2](tasks/i2-mvp-acceptance.md) verifies this integrated MVP candidate and supplies a bilingual introduction and authentic product screenshot; see the [acceptance record](acceptance/mvp-2026-10-19.md). I2 does not add routines or computer control to MVP acceptance.
 
-B11a local routines is the next feature planning packet and still needs its own ready spec. Developer ID identity, notarization, update continuity, clean-install acceptance and physical native lifecycle evidence remain release gates.
+B11a local routines has an executable [spec](tasks/b11a-local-routines.md) and is implemented and verified on its task branch, awaiting review. The P1 workflow integration gate follows it. Developer ID identity, notarization, update continuity, clean-install acceptance and physical native lifecycle evidence remain release gates.
