@@ -1,7 +1,7 @@
 # OpenBot Development Roadmap
 
 
-Active delivery scope (2026-10-20): B9c OAuth and B12b optional model review are excluded. Phase 3 is deferred. B9b (#39), I2 (#40) and B11a (#41) are merged. [I3 workflow acceptance](tasks/i3-workflow-acceptance.md) is in progress. The remaining delivery order is I3, B14d backup/restore, B14c history scaling, B13e templates and B14f signed updates. Historical planning sections below do not authorize excluded or deferred work.
+Active delivery scope (2026-10-20): B9c OAuth and B12b optional model review are excluded. Phase 3 is deferred. B9b (#39), I2 (#40) and B11a (#41) are merged. [I3 workflow acceptance](tasks/i3-workflow-acceptance.md) is in review in PR #42, with 477 unit/Host and 131 hidden desktop tests plus a bounded real-model trial. The remaining delivery order is I3, B14d backup/restore, B14c history scaling, B13e templates and B14f signed updates. Historical planning sections below do not authorize excluded or deferred work.
 
 Status: owner-authorized sequential delivery after B26; implementation evidence remains per task.
 Design record: [D4: Post-B26 Delivery Plan](tasks/d4-delivery-plan.md).
@@ -201,7 +201,7 @@ The [B11a spec](tasks/b11a-local-routines.md) fixes occurrence mapping, publicat
 
 ### P1 delivery gate — demonstrate the whole workflow
 
-Use a deterministic CRM-style MCP fixture plus local source files: read current records, research a referenced public fixture page, create a report and proposed updates, obtain exact approval for a write, save the corrected method as a skill, then run it as a routine. Inject 429, revoked auth, a Host restart and a lost write result. Verify no unapproved write, no duplicate confirmed effect, and explicit partial/unknown results. This is an integration acceptance of the batches above, not a new orchestration framework.
+Use a deterministic CRM-style MCP fixture plus local source files: read current records, research a referenced public fixture page, create a report and proposed updates, obtain exact approval for a write, save the corrected method as a skill, then run it as a routine. Inject 429, revoked auth, a Host restart and a lost write result. Verify no unapproved write, no duplicate confirmed effect, and explicit partial/unknown results. This is an integration acceptance of the batches above, not a new orchestration framework. [I3](tasks/i3-workflow-acceptance.md) defines the reproducible capture-based CI path and a separate live-fetch spot check; [current evidence](acceptance/workflow-2026-10-20.md) records their distinct outcomes.
 
 ## 6. P2: broader access and maintainability
 
@@ -372,4 +372,4 @@ D4 (#28), I1 (#34), B10 (#35), B15b (#36), B9a (#37) and B14e (#38) are merged i
 
 [B9b](tasks/b9b-https-connectors.md) is implemented in PR #39: bounded HTTPS MCP sessions, explicit reconnect, persistent retry cooldown, private token handling and honest unknown outcomes. It is merged. [I2](tasks/i2-mvp-acceptance.md) verifies this integrated MVP candidate and supplies a bilingual introduction and authentic product screenshot; see the [acceptance record](acceptance/mvp-2026-10-19.md). I2 does not add routines or computer control to MVP acceptance.
 
-B11a local routines has an executable [spec](tasks/b11a-local-routines.md) and is implemented and verified on its task branch, awaiting review. The P1 workflow integration gate follows it. Developer ID identity, notarization, update continuity, clean-install acceptance and physical native lifecycle evidence remain release gates.
+B11a local routines is merged in PR #41. [I3](tasks/i3-workflow-acceptance.md) implements the P1 integration gate in PR #42; [evidence](acceptance/workflow-2026-10-20.md) records automated/real-model results and the unavailable live public fetch. Developer ID identity, notarization, update continuity, clean-install acceptance and physical native lifecycle evidence remain release gates.

@@ -1,7 +1,7 @@
 # OpenBot Technical Plan
 
 
-Active delivery scope (2026-10-20): B9c OAuth and B12b optional model review are excluded. Phase 3 is deferred. B9b (#39), I2 (#40) and B11a (#41) are merged. [I3 workflow acceptance](tasks/i3-workflow-acceptance.md) is in progress. The remaining delivery order is I3, B14d backup/restore, B14c history scaling, B13e templates and B14f signed updates. Historical planning sections below do not authorize excluded or deferred work.
+Active delivery scope (2026-10-20): B9c OAuth and B12b optional model review are excluded. Phase 3 is deferred. B9b (#39), I2 (#40) and B11a (#41) are merged. [I3 workflow acceptance](tasks/i3-workflow-acceptance.md) is in review in PR #42, with 477 unit/Host and 131 hidden desktop tests plus a bounded real-model trial. The remaining delivery order is I3, B14d backup/restore, B14c history scaling, B13e templates and B14f signed updates. Historical planning sections below do not authorize excluded or deferred work.
 
 Last updated: 2026-10-20.
 
@@ -27,6 +27,7 @@ B14e is merged in PR #38: async native Keychain ownership in main, bounded priva
 
 | Component | State | Verified by |
 | --- | --- | --- |
+| Repeatable workflow gate (I3) | Synthetic CRM + invoice/report + exact correction/approval + reviewed skill + pinned routine; Host restart, auth/rate errors and unknown remote effects | In review (#42); 477 unit/Host and 131 hidden e2e tests; two real-model approved updates, immutable reports and one routine publication; [evidence and live-retrieval limitation](acceptance/workflow-2026-10-20.md) |
 | Local scheduled routines (B11a) | Confirmed bilingual panel, interval/daily/weekly calendar schedules, exact skills, isolated unattended contexts, durable catch-up/absence/overlap, one report per occurrence and twenty-record history | 477 unit/Host and 127 hidden e2e tests; real-clock trigger, Host-crash approval recovery, bundled startup and isolated real-model report/relaunch; [evidence](tasks/b11a-local-routines.md) |
 | MVP acceptance and bilingual introduction (I2, PR #40) | Candidate includes B9b; explicit publication filename guidance, observed-UI search assertions, executable sales example, English/Chinese README and actual app screenshot | Full check/e2e, useful CSV execution/export/denial/restart, real-model memory/report/recovery, ad-hoc DMG; see [current evidence](acceptance/mvp-2026-10-19.md) |
 | Workspace, boundary check, Pi vendor (`third_party/pi`, baseline `b45e0ebcc`) | Implemented (M0) | `pnpm run check`; provenance in `.openbot-vendor.json`, `BASELINE.json`, `OPENBOT_CHANGES.md` |

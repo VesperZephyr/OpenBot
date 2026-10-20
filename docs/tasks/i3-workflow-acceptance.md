@@ -1,6 +1,6 @@
 # I3: Repeatable Workflow Acceptance
 
-Status: in progress
+Status: in review (#42)
 Branch: task/i3-workflow-acceptance; PR target: main
 Depends on: merged main `19893ac` (B11a, PR #41), B9a/b, B10, B12a, B13d, B14a/b/e, B15a/b
 Architecture: Sections 5.6, 5.8, 7 and 8; P1 delivery gate in the development roadmap
@@ -54,3 +54,7 @@ Native lock/sleep may interrupt background verification through the real lifecyc
 ## Open questions
 
 None.
+
+## Evidence
+
+[Acceptance record](../acceptance/workflow-2026-10-20.md): 477 unit/Host tests and 131 hidden desktop tests pass. Four integrated scenarios verify report arithmetic, correction/denial, reviewed skills, changed-input routine reuse, Host recovery and connector failure outcomes. A bounded real-model sequence verifies both report versions and exactly two approved updates; public reference retrieval failed visibly, with the supplied capture used explicitly. English/Chinese screenshots and agent-browser report previews were inspected. No production behavior or protocol changed.
