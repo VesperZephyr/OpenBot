@@ -1,6 +1,6 @@
 # B15a: Bounded File Inputs and Result Artifacts
 
-Status: in review
+Status: done (merged through I1, PR #34)
 Branch: task/b15a-bounded-artifacts; pull request: [#30](https://github.com/VesperZephyr/OpenBot/pull/30), target: main
 Depends on: G0, existing B3/B7/B21/B26 contracts
 Architecture: Sections 4.2, 5.1, 6.1–6.2 and 8.2

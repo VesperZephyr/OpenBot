@@ -957,7 +957,13 @@ export const TOOL_CATALOG = [
 		description:
 			"Publish an immutable local result file from an already authorized readable path. Supports text, Markdown, CSV, HTML (text preview only), PNG and JPEG. Maximum 8 MiB. This does not export, execute, or grant access to a file.",
 		parameters: object(
-			{ path: { type: "string", minLength: 1, maxLength: 4096 }, name: { type: "string", minLength: 1, maxLength: 180 } },
+			{
+				path: { type: "string", minLength: 1, maxLength: 4096 },
+				name: {
+					type: "string", minLength: 1, maxLength: 180,
+					description: "Optional output filename, not a title. Keep the source file's supported extension (for example Weekly brief.md or Summary.csv), or omit to use the source basename.",
+				},
+			},
 			["path"],
 		),
 	},

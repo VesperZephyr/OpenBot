@@ -1,6 +1,6 @@
 # B14a: Reliable, Bounded Desktop Observation
 
-Status: in review
+Status: done (merged through I1, PR #34)
 Branch: task/b14a-reliable-observation; pull request target: main
 Depends on: G0, merged B22–B26
 Architecture: Sections 6.1, 7.1 and 8.2

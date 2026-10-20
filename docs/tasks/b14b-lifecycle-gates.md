@@ -1,6 +1,6 @@
 # B14b: Lifecycle Gates and Explicit Continuation
 
-Status: implemented, in review
+Status: done (merged through I1, PR #34)
 Branch: task/b14b-lifecycle-gates; pull request target: main
 Depends on: G0, merged B1–B8/B13/B25/B26 contracts
 Architecture: Sections 5.1–5.3 and 8.1–8.2

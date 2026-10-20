@@ -1,6 +1,6 @@
 # B13d: Local Usage and Execution Evidence
 
-Status: in review ([PR #33](https://github.com/VesperZephyr/OpenBot/pull/33)); acceptance passed
+Status: done (merged through I1, PR #34)
 Branch: task/b13d-usage-evidence; PR target: main
 Depends on: merged Runs, B13c channels, B24–B26 receipts
 Architecture: Sections 2.3, 5.1, 6.2 and 8

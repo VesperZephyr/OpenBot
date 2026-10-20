@@ -22,9 +22,9 @@ References:
 
 The MVP deliberately leaves out the managed browser, computer use, connectors, skills, routines, and group chats. The architecture keeps their seams (`targetId`, Tool Router, executor capabilities), so they attach later without reworking Phase 1.
 
-## Phase 1: MVP (implemented, awaiting acceptance)
+## Phase 1: MVP (merged, integrated acceptance)
 
-All eight batches are implemented on `feat/mvp`. Each spec in [`tasks/`](tasks/README.md) holds the design, contracts, and as-built notes. Unit tests, Host-level smoke runs, and the e2e suites (in CI on macOS) pass. The acceptance list below still needs a real model and a packaged build.
+All eight batches are merged into `main`. Each spec in [`tasks/`](tasks/README.md) holds its contracts and historical evidence. [I2](tasks/i2-mvp-acceptance.md) verifies the current integrated candidate with complete automated checks, real-model file work and an ad-hoc packaged build. [The acceptance record](acceptance/mvp-2026-10-19.md) distinguishes these results from the clean-install and native release checks below.
 
 | Batch | What it delivers | Spec |
 | --- | --- | --- |
@@ -37,11 +37,11 @@ All eight batches are implemented on `feat/mvp`. Each spec in [`tasks/`](tasks/R
 | B7 | Onboarding, one subscribed and coalesced conversation feed, collapsed steps, Copy, Reveal, notifications, Duplicate and Delete, TypeBox IPC validation | [b7](tasks/b7-desktop-mvp.md) |
 | B8 | Signed or ad-hoc arm64 DMG with bundled Node and Host, fuses, `app://`, release workflow, Host log | [b8](tasks/b8-installable-build.md) |
 
-Release follow-up: [B8a — Login shell command path](tasks/b8a-login-path.md) resolves the user's login PATH once before Host startup, with bounded fallback and no other shell environment import. Implemented on `task/b8a-login-path` (stacked on B7a), awaiting merge; 178 unit tests, 25 background e2e tests, ad-hoc packaging, and bundled Host/executor smoke pass.
+Release follow-up: [B8a — Login shell command path](tasks/b8a-login-path.md) resolves the user's login PATH once before Host startup, with bounded fallback and no other shell environment import. Merged; its original evidence covers 178 unit tests, 25 background e2e tests, ad-hoc packaging and bundled Host/executor startup.
 
 ### MVP acceptance
 
-Release follow-up: [B7a — Background desktop tests](tasks/b7a-background-e2e.md) makes automated verification quiet by default, with explicitly enabled visible windows for debugging. Implemented on `task/b7a-background-e2e`, awaiting merge; 163 unit tests and 24 background e2e tests pass.
+Release follow-up: [B7a — Background desktop tests](tasks/b7a-background-e2e.md) makes automated verification quiet by default, with explicitly enabled visible windows for debugging. Merged; current automated acceptance continues to use its isolated background mode.
 
 The MVP is done when all of these pass on a packaged build installed on a Mac that never ran the development setup:
 
@@ -51,14 +51,14 @@ The MVP is done when all of these pass on a packaged build installed on a Mac th
 4. **Always allow** on a command card stops later identical commands from asking; the rule is visible and deletable in Settings.
 5. Telling a Bot a preference ("always answer in Chinese") persists in its memory and applies in a new topic after restart.
 6. Three Bots work at once; a fourth waits; Stop and redirect work while a Bot is busy.
-7. Quitting during a pending approval and relaunching shows the same approval; an interrupted command is reported, never repeated.
+7. An unexpected Host crash retains pending approvals and stable invocation identities. Intentional quitting withdraws active approvals under B14b; interrupted or uncertain effects remain visible and require explicit continuation rather than blind replay.
 8. A long conversation keeps working past the model's context window (compaction).
 
 ## Phase 2: Enhancements
 
-Approach only; each becomes a spec when Phase 1 lands.
+Remaining work needs its own ready spec. Current implemented enhancements are recorded in the technical plan and integration gate below.
 
-Accepted product direction: [D1](tasks/d1-bot-product-design.md). B16/B17 establish model entry and permanent Core identity; B20 refines the desktop and adds English/Chinese. Core management (B18) adds chat-driven Specialist lifecycle with explicit approvals. Prompt and memory controls (B19) are merged. Channel contexts (B13a) are merged; group lifecycle (B13b) and bounded collaboration (B13c) are implemented and in review. Existing agent mechanisms continue to reuse Pi. Connectors, routines and computer control are not prerequisites for this foundation.
+Accepted product direction: [D1](tasks/d1-bot-product-design.md). B16/B17 establish model entry and permanent Core identity; B20 refines the desktop and adds English/Chinese. Core management (B18) adds chat-driven Specialist lifecycle with explicit approvals. Prompt and memory controls (B19) are merged. Channel contexts (B13a) are merged; group lifecycle (B13b) and bounded collaboration (B13c) are merged. Existing agent mechanisms continue to reuse Pi. Connectors, routines and computer control are not prerequisites for this foundation.
 
 - **B9. MCP connectors** (architecture M7). Executor-supervised stdio servers and HTTP sessions, credentials from the Keychain injected only into their own server, tools named `mcp__<server>__<tool>` through Tool Router with receipts, a Connect apps page. OAuth through the default browser comes after the first token-based connectors work.
 - **B10. Skills.** Library at `<data>/skills/<name>/SKILL.md`, a `skills` prompt section listing names and descriptions, `skill_load`, `skill_save` with user confirmation, `/` in the composer to attach one.
@@ -120,4 +120,5 @@ Attention-state mutation, UI navigation, cross-Bot memory operations, new dispat
 - **Done:** [I1](tasks/i1-product-foundation.md), [B10](tasks/b10-reviewed-skills.md), [B15b](tasks/b15b-background-completion.md) and [B9a](tasks/b9a-stdio-connectors.md) are merged in PRs #34–#37. I1 includes the reviewed B14a/B15a/B14b/B12a/B13d implementations. Their specs retain historical verification evidence.
 - **B14e:** [Desktop-owned credentials](tasks/b14e-main-credentials.md) is merged in PR #38. It replaces Host command-line Keychain access with a native main-process owner, private broker, explicit migration and bilingual status. Automated/native acceptance and release limitations are recorded in the spec.
 - **B9b:** [HTTPS MCP sessions](tasks/b9b-https-connectors.md) is implemented on `task/b9b-https-connectors`, in review in [PR #39](https://github.com/VesperZephyr/OpenBot/pull/39). 461 unit/Host and 120 hidden e2e tests, nine final connector scenarios and isolated real-model one-write/restart acceptance passed. Explicit TLS endpoints and private bearer credentials, bounded JSON/SSE, durable retry cooldown, honest unknown writes and bilingual connection/recovery controls.
-- **Next:** B11a local routines needs its own ready specification for occurrence identities, scheduling, absence/overlap and report delivery. Developer ID identity, update continuity, native lifecycle and TCC remain separate release gates.
+- **I2:** [MVP acceptance and bilingual introduction](tasks/i2-mvp-acceptance.md) is in review in PR #40. The candidate including B9b passed 461 unit/Host and 122 hidden e2e tests, useful real-model report/memory/recovery checks, and an ad-hoc DMG build with signature and checksum verification. It includes a public product screenshot and English/Chinese README. It is an acceptance increment, not an expansion of the MVP feature scope.
+- **Next feature packet:** B11a local routines needs its own ready specification for occurrence identities, scheduling, absence/overlap and report delivery. Developer ID identity, update continuity, native lifecycle and TCC remain separate release gates.

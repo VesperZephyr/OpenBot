@@ -1,6 +1,6 @@
 # B12a: Deterministic Policy, Revocation, and Unattended Approval Expiry
 
-Status: in review
+Status: done (merged through I1, PR #34)
 Branch: task/b12a-deterministic-policy; pull request target: main
 Depends on: B14b lifecycle gates (PR #31), B5 policy, B13c Run provenance, B24–B26 application authority
 Architecture: Sections 5.1–5.3 and 8.1–8.2

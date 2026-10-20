@@ -368,6 +368,8 @@ A real provider may be unavailable or lack a required modality. Record that limi
 
 ## 14. Current delivery checkpoint
 
-D4 (#28), I1 (#34), B10 (#35), B15b (#36) and B9a (#37) are merged into main through `3d518df`. I1 includes the reviewed B14a/B15a/B14b/B12a/B13d implementation heads. Their earlier evidence remains in the individual task specs.
+D4 (#28), I1 (#34), B10 (#35), B15b (#36), B9a (#37) and B14e (#38) are merged into main through `b95ade7`. I1 includes the reviewed B14a/B15a/B14b/B12a/B13d implementation heads. Their earlier evidence remains in the individual task specs.
 
-[B14e](tasks/b14e-main-credentials.md) is implemented for PR #38: main owns native Keychain access, private Host requests are bounded, migration is explicit and interruption-safe, and Settings shows redacted storage state in English/Chinese. The task records unit, background e2e, packaged-runtime, native probe and real-model verification separately. B9b HTTPS sessions is next and remains a planning packet until its own spec fixes transport, authority and recovery contracts. Development may use synthetic credentials; native Developer ID identity and continuity across updates remain release gates.
+[B9b](tasks/b9b-https-connectors.md) is implemented in PR #39: bounded HTTPS MCP sessions, explicit reconnect, persistent retry cooldown, private token handling and honest unknown outcomes. It remains in review. [I2](tasks/i2-mvp-acceptance.md) verifies this integrated MVP candidate and supplies a bilingual introduction and authentic product screenshot; see the [acceptance record](acceptance/mvp-2026-10-19.md). I2 does not add routines or computer control to MVP acceptance.
+
+B11a local routines is the next feature planning packet and still needs its own ready spec. Developer ID identity, notarization, update continuity, clean-install acceptance and physical native lifecycle evidence remain release gates.

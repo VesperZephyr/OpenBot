@@ -66,8 +66,9 @@ it("combines unread filtering with group/private history and preserves selected 
 	await api("groups.send",{groupId:"group_search",requestId:"group-answer",text:"请核对",recipientIds:["bot_reviewer"]});
 	await poll(()=>unread("group:group_search")).toBe(1);
 	await h.page().getByRole("group",{name:"Conversation filter"}).getByRole("button",{name:"Unread",exact:true}).click();
-	expect(await row("Analyst").count()).toBe(0);
-	expect(await row("Research studio").count()).toBe(1);
+	// The Host projection can be ahead of the renderer's bounded observation refresh.
+	await poll(()=>row("Analyst").count()).toBe(0);
+	await poll(()=>row("Research studio").count()).toBe(1);
 	expect(await box().inputValue()).toBe("Keep my private draft");
 	await search().fill("cedar_needle");
 	await h.page().getByText("No matching messages in unread conversations",{exact:true}).waitFor();

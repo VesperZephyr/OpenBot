@@ -110,37 +110,38 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Task | Status |
 | --- | --- |
-| [B13d: Local usage and execution evidence](b13d-usage-evidence.md) | in review ([PR #33](https://github.com/VesperZephyr/OpenBot/pull/33)); acceptance passed |
+| [B13d: Local usage and execution evidence](b13d-usage-evidence.md) | done through I1 (#34); original evidence in the spec |
 
 ## Desktop reliability
 
 | Task | Status |
 | --- | --- |
-| [B14a: Reliable, bounded observation](b14a-reliable-observation.md) | implemented, in review |
+| [B14a: Reliable, bounded observation](b14a-reliable-observation.md) | done through I1 (#34) |
 
 ## Post-B26 delivery
 
 | Task | Status |
 | --- | --- |
-| [B15a: Bounded file inputs and result artifacts](b15a-bounded-artifacts.md) | in review ([PR #30](https://github.com/VesperZephyr/OpenBot/pull/30)); acceptance recorded in the spec |
+| [B15a: Bounded file inputs and result artifacts](b15a-bounded-artifacts.md) | done through I1 (#34); original evidence in the spec |
 
 ## Lifecycle foundation
 
 | Task | Status |
 | --- | --- |
-| [B14b: Lifecycle gates and explicit continuation](b14b-lifecycle-gates.md) | implemented, in review; targets main |
+| [B14b: Lifecycle gates and explicit continuation](b14b-lifecycle-gates.md) | done through I1 (#34) |
 
 ## Deterministic permissions
 
 | Task | Status |
 | --- | --- |
-| [B12a: Deterministic policy, revocation and approval expiry](b12a-deterministic-policy.md) | in review; depends on B14b, targets main |
+| [B12a: Deterministic policy, revocation and approval expiry](b12a-deterministic-policy.md) | done through I1 (#34) |
 
 ## Integration gates
 
 | Task | Status |
 | --- | --- |
 | [I1: Integrated product foundation](i1-product-foundation.md) | done (#34); integrates the reviewed PR #29–#33 implementations |
+| [I2: MVP acceptance and bilingual introduction](i2-mvp-acceptance.md) | in review (#40); 461 unit/Host and 122 hidden e2e tests; real-model and packaging evidence recorded |
 
 ## Reusable procedures
 
@@ -154,6 +155,10 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | --- | --- |
 | [B15b: Durable background command completion](b15b-background-completion.md) | done (#36) |
 
+## Connectors
+
+| Spec | Status |
+| --- | --- |
 | [B9a: Supervised local stdio connectors](b9a-stdio-connectors.md) | done (#37) |
 | [B9b: HTTPS MCP sessions](b9b-https-connectors.md) | in review (#39); 461 unit/Host and 120 hidden e2e tests |
 
