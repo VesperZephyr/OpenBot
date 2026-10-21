@@ -15,6 +15,10 @@ References:
 - **Grok Bot**: [source-backed research snapshot](research/grok-bot.md) and [client interaction research](tasks/d2-grok-ui-research.md); distinguish official facts, observations and inference.
 - **Pi**: `~/github/pi/packages/coding-agent` for the reference coding-agent tools.
 
+## Memory design research
+
+[D5: Local memory research](tasks/d5-memory-research.md) is in review in PR #44 as a separate research increment. The [report](research/memory-design.md) reviews current guarantees, primary sources, a bilingual lexical-search probe and proposed stages: record provenance/correction/forgetting, explicit shared facts, then bounded retrieval. These are proposals requiring ready implementation specs; no shared memory, new storage format or embedding service is enabled. Backup/restore (B14d) and history indexing (B14c) must inform any later migration/index design.
+
 ## Phases
 
 | Phase | Goal | Batches |

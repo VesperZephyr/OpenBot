@@ -63,6 +63,8 @@ Interaction research: [D2: Grok Bot UI](d2-grok-ui-research.md), **research comp
 
 Delivery planning: [D4: Post-B26 Delivery Plan](d4-delivery-plan.md), **done, documentation only**. The [development roadmap](../development-roadmap.md) orders remaining work against merged `main` through B26, with execution packets, dependencies and acceptance gates. Unimplemented packets are planning briefs, not ready specs.
 
+Memory research: [D5: Local Memory](d5-memory-research.md), **research complete, in review (#44)**. [Source-backed report](../research/memory-design.md), bilingual SQLite matching probe, and proposed implementation decisions; no product contract or schema changes.
+
 Architecture design: [D3: Application Capabilities and Local Code Mode](d3-app-capabilities.md), **accepted direction**. Defines a shared authorized Host capability surface and reuse of vendored Pi Code Mode. B24 and B25 are merged into `main`; B26 is merged in PR #27 with exact-approved management composition and its recovery acceptance matrix.
 
 Phase 1 (MVP) implementation is merged into `main`. Historical verification is recorded in the specs; native packaged release evidence remains separate in G0 of the roadmap.
