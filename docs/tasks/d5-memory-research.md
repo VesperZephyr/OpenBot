@@ -1,6 +1,6 @@
 # D5: Local Memory Research
 
-Status: in progress; research only
+Status: in review (#44); research complete, no product changes
 Branch: task/d5-memory-research; pull request target: main
 Depends on: merged B6, B19, B24/B25 and I3; independent of B6a implementation
 Architecture: Sections 4.1, 5.1, 5.7, 5.8 and 7.1
@@ -48,4 +48,7 @@ Implementation choices are recorded in the research report, especially sharing d
 
 ## Evidence
 
-Pending research record.
+- [Research report](../research/memory-design.md) distinguishes current B6/B19 behavior, primary external sources and recommended future contracts. Sources were retrieved on 2026-10-21.
+- [Standalone probe](../research/fixtures/memory-retrieval-probe.mjs): four synthetic records, seven queries; identical results under Node 22.22.2 / SQLite 3.51.2 and the existing packaged Node 24.22.0 / SQLite 3.53.4. Two-character Chinese queries miss under unicode61 and trigram MATCH; literal substring finds them. English vocabulary differences remain unresolved by all three literal strategies.
+- No personal data, model APIs or embeddings were used by the probe. LongMemEval was reviewed, not run. No package dependency, runtime policy, schema, Pi vendor or UI change.
+- Local Markdown targets and `git diff --check` validated. Product test results belong to the separate B6a PR.
