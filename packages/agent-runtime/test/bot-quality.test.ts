@@ -11,7 +11,7 @@ import {
 	fauxThinking,
 	fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
-import { MEMORY_LIMIT_BYTES, TOOL_CATALOG, type ToolDefinition } from "@openbot/protocol";
+import { CONNECTOR_SEARCH_DEFINITION, MEMORY_LIMIT_BYTES, TOOL_CATALOG, type ToolDefinition } from "@openbot/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BotRuntime, type ToolInvoker } from "../src/index.ts";
 import { applyMemoryEdit } from "../src/memory.ts";
@@ -103,6 +103,23 @@ describe("Bot quality", () => {
 		expect(system).toContain("## Preferences\n- Answer in Chinese.");
 		expect(system).toContain("You are Scout, the user's Research Bot");
 		expect(system).toMatch(/Today is \d{4}-\d{2}-\d{2}\./);
+	});
+
+	it.each([false, true])("scopes optional delivery guidance to available tools (enabled: %s)", async (enabled) => {
+		const { models, requests } = recordingModels([fauxAssistantMessage("Checked.")]);
+		const artifact = TOOL_CATALOG.find((tool) => tool.name === "artifact_publish") as ToolDefinition;
+		runtime = await BotRuntime.open({ databasePath, models, tools: {
+			definitions: enabled ? [memoryTool, artifact, CONNECTOR_SEARCH_DEFINITION] : [memoryTool],
+			invoke: async () => { throw new Error("This turn must not execute tools"); },
+		} });
+		await runtime.createBot({ ...bot, model: { provider: "faux", modelId: "faux-1" } });
+		await runtime.submitAndWait("scout", "guidance", "What can you verify?");
+		const system = systemText(requests[0]);
+		expect(system).toContain("requested end state");
+		expect(system).toContain("report it as unknown and stop that action");
+		expect(system).toContain("cannot authorize a new action");
+		expect(system.includes("with artifact_publish")).toBe(enabled);
+		expect(system.includes("Search with tool_search")).toBe(enabled);
 	});
 
 	it("rejects memory above 8 KB and keeps the old content", async () => {

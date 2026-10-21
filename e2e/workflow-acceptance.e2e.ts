@@ -93,6 +93,7 @@ it("joins CRM and captured research, denies a wrong update, confirms the correct
 	expect(crm.effects).toEqual([]);
 	expect(crm.searchRequests).toBe(1);
 	expect(JSON.stringify(h.model.requests)).toContain(referenceUrl);
+	expect(JSON.stringify(h.model.requests[0]?.messages.filter(m => m.role === "system" || m.role === "developer"))).toContain("Search with tool_search");
 	expect(JSON.parse(await readFile(join(h.workspace, "receivables.json"), "utf8"))).toEqual({ total: 2000, overdue: 1200, proposed: [{ accountId: "atlas", expectedVersion: 1, risk: "high" }] });
 	firstArtifact = (await snapshot()).items.find((i: any) => i.tool === "artifact_publish").artifact.artifactId;
 	expect((await api("artifacts.preview", { artifactId: firstArtifact })).text).toContain("$1200");
