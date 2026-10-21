@@ -1,6 +1,6 @@
 # I3: Repeatable Workflow Acceptance
 
-Status: in review (#42)
+Status: done (#42)
 Branch: task/i3-workflow-acceptance; PR target: main
 Depends on: merged main `19893ac` (B11a, PR #41), B9a/b, B10, B12a, B13d, B14a/b/e, B15a/b
 Architecture: Sections 5.6, 5.8, 7 and 8; P1 delivery gate in the development roadmap
