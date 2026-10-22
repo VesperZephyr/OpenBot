@@ -29,6 +29,7 @@ Desktop delivery (2026-10-22): [D6](tasks/d6-desktop-design.md) delivers the own
 
 | Component | State | Verified by |
 | --- | --- | --- |
+| Desktop regression efficiency (I5) | In review (#52): consolidated smoke coverage, due scheduling fixtures and two isolated background workers | 507 unit tests and 149 desktop cases pass twice; local 510.14s → 232.30s / 230.38s; [coverage audit](tasks/i5-e2e-audit.md) |
 | Focused chat interactions (D7) | In review: complete light/dark themes with persistent appearance, Settings navigation, Resume and continue, state-aware send/stop controls | 506 unit and 153 desktop tests pass; matched theme screenshots and isolated keyboard exploration inspected; [D7](tasks/d7-chat-interaction.md) |
 | Personal chat and Bot profiles (D6) | Merged (#49): shared plum/lilac tokens, ordinary protected Core row, author avatars, profile/memory draft preservation, generated recipes and bounded native image imports with transactional storage | 506 unit tests and 147 e2e scenarios passed; [D6](tasks/d6-desktop-design.md) records final checks and limits |
 | Attributable local/shared memory (B27a) | Merged (#46): topic provenance from bound direct user Runs; owner corrections and tombstones; atomic explicit sharing; shared facts apply to direct chats/routines, excluded from groups; bilingual note/source controls | 490 unit/Host and 135 hidden e2e tests; [spec and acceptance](tasks/b27a-memory-provenance.md); no semantic alias detection, embedding index or complete erasure |

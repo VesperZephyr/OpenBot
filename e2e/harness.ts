@@ -27,8 +27,8 @@ export type AppHarness = {
 	shot(name: string): Promise<void>;
 	/** Type into the composer of the open Bot and press Enter. */
 	send(text: string): Promise<void>;
-	/** Close the app (clean quit) and start it again on the same state. */
-	relaunch(): Promise<void>;
+	/** Close the app, optionally prepare an offline fixture, then reopen the same state. */
+	relaunch(prepareWhileClosed?: () => Promise<void>): Promise<void>;
 	/** Simulate an unexpected Host crash, preserving the desktop session and durable pending approvals. */
 	crashHost(): Promise<void>;
 	close(): Promise<void>;
@@ -119,8 +119,11 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 			await composer.fill(text);
 			await composer.press("Enter");
 		},
-		relaunch: async () => {
+		relaunch: async (prepareWhileClosed) => {
 			await app?.close();
+			app = undefined;
+			page = undefined;
+			await prepareWhileClosed?.();
 			await start();
 		},
 		crashHost: async () => {

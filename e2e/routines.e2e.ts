@@ -1,4 +1,6 @@
 /** B11a: hidden desktop confirms real work, enforces ordinary authority and restores durable reports. */
+import { BotRuntime } from "../packages/agent-runtime/src/index.ts";
+import { scriptedModels } from "../packages/agent-runtime/src/testing.ts";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { beforeAll, afterAll, afterEach, expect, it } from "vitest";
@@ -76,7 +78,6 @@ it("reviews before saving, pins a skill and runs an isolated report with a real 
 	await button("Confirm routine change").click();
 	await poll(async () => (await api("routines.list")).routines.length).toBe(1);
 	routine = (await api("routines.list")).routines[0];
-	await select();
 	await select();
 	await button("Edit routine").waitFor();
 	expect(routine.skills).toEqual([{ name: skill.name, revision: skill.revision, sha256: skill.sha256 }]);
@@ -203,8 +204,7 @@ it("edits through review, keeps a failed model outcome, stops an occurrence and 
 });
 it("fires a scheduled occurrence without Test run and reports missing source data honestly", async () => {
 	await api("settings.update", { language: "en" });
-	const next = new Date(Date.now() + 90000),
-		time = next.toISOString().slice(11, 16);
+	const time = "09:00";
 	routine = await api("routines.change", {
 		action: "create",
 		botId: core,
@@ -213,7 +213,7 @@ it("fires a scheduled occurrence without Test run and reports missing source dat
 			name: "Morning sales · source check",
 			instructions: "Read unavailable.csv. If it is missing, report that no total can be calculated.",
 			schedule: { kind: "daily", time, timezone: "UTC" },
-			catchUpHours: 0,
+			catchUpHours: 1,
 			skills: [],
 		},
 	});
@@ -221,8 +221,21 @@ it("fires a scheduled occurrence without Test run and reports missing source dat
 		{ tool: "local_read", args: { path: "unavailable.csv" } },
 		{ text: "The source unavailable.csv is missing. No revenue total can be calculated." },
 	);
+	// Seed a genuinely due schedule through the runtime store while the Host is closed.
+	// The real startup sweep must admit it; no Test run call or production clock override.
+	await h.relaunch(async () => {
+		const runtime = await BotRuntime.open({ databasePath: join(h.dataDirectory, "openbot.sqlite"), models: scriptedModels().models });
+		try {
+			const due = Date.now() - 1000;
+			await runtime.routines().change(state => {
+				const stored = state.routines[routine.routineId]!;
+				state.routines[routine.routineId] = { ...stored, schedule: { kind: "interval", minutes: 5 }, anchor: due - 300000, nextAt: due };
+			});
+			routine = { ...routine, nextAt: due };
+		} finally { await runtime.close(); }
+	});
 	await select();
-	await expect.poll(async () => (await detail()).history[0]?.published, { timeout: 105000, interval: 500 }).toBe(true);
+	await poll(async () => (await detail()).history[0]?.published).toBe(true);
 	const o = (await detail()).history[0];
 	expect(o.test).toBe(false);
 	expect(o.scheduledAt).toBe(routine.nextAt);
@@ -237,4 +250,4 @@ it("fires a scheduled occurrence without Test run and reports missing source dat
 		.waitFor();
 	await h.shot("08-scheduled-missing-source-en");
 	expect((await detail()).history).toHaveLength(1);
-}, 120000);
+});

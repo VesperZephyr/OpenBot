@@ -19,6 +19,8 @@ References:
 
 [D6: Personal assistant design](tasks/d6-desktop-design.md) is merged in PR #49, with automated acceptance complete. The owner approved chat styling, ordinary Bot rows with a protected identity star, and editable profiles with generated/uploaded avatars for every Bot together. README positioning and production screenshots are merged in PR #50. AI image generation, adjustable cropping, proactive greetings and new result grouping need separate specs.
 
+**I5, in review (#52):** [E2E coverage and execution efficiency](tasks/i5-e2e-efficiency.md). Four redundant smoke cases consolidated; 149 desktop cases pass twice with due scheduling fixtures and two isolated background workers. Local test time fell from 510.14s to 232.30s / 230.38s.
+
 **D7, in review:** [White chat canvas and focused interactions](tasks/d7-chat-interaction.md). Complete light and dark appearance, management inside Settings, understandable interruption continuation and a compact state-aware composer. All 506 unit and 153 desktop tests pass; bilingual README and screenshots are updated. Development stays in the original checkout.
 
 ## Memory design research
