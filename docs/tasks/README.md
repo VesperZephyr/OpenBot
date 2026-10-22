@@ -183,3 +183,9 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Spec | Status |
 | --- | --- |
 | [B6a: Evidence-based Bot delivery](b6a-prompt-reliability.md) | in review (#43); 479 unit/Host and 132 hidden e2e tests; real-model report and unknown-write trial |
+
+## Local role foundations
+
+| Spec | Status |
+| --- | --- |
+| [B27a: Attributable memory and explicit sharing](b27a-memory-provenance.md) | in review (#46); 490 unit/Host and 135 hidden desktop tests |

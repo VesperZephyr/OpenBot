@@ -345,6 +345,11 @@ export class HostService {
 				return this.#settings();
 			},
 			"bots.memory.get": ({ botId }) => this.#runtime.memoryState(botId),
+			"memory.shared.get": () => this.#runtime.sharedMemory(),
+			"memory.shared.update": ({ content, expectedRevision }) => this.#runtime.setSharedMemory(content, expectedRevision),
+			"memory.shared.restore": ({ revision, expectedRevision }) => this.#runtime.restoreSharedMemory(revision, expectedRevision),
+			"bots.memory.note": (input) => this.#runtime.changeMemoryNote(input),
+			"bots.memory.source": ({ botId, scope, noteId, which }) => this.#runtime.memorySource(botId, scope, noteId, which),
 			"bots.memory.update": ({ botId, content, expectedRevision }) => this.#runtime.setMemory(botId, content, expectedRevision),
 			"bots.memory.restore": ({ botId, revision, expectedRevision }) => this.#runtime.restoreMemory(botId, revision, expectedRevision),
 			"conversations.reset": async ({ botId }) => {

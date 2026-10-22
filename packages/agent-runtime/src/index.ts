@@ -43,8 +43,6 @@ import {
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import {
 	type MemoryState,
-	type MemorySnapshot,
-	MEMORY_HISTORY_LIMIT,
 	type BotManagementProposal,
 	type ManagementAuthority,
 	type BotId,
@@ -66,7 +64,8 @@ import { AppExecutionsDoc } from "./app-executions.ts";
 import { appCodemode, invokeAppChild, stopAppExecution, type OrchestrationAdmission } from "./codemode.ts";
 import { type ApprovalStore, approvalStore } from "./approvals.ts";
 import { type PolicyStore, policyStore } from "./policy.ts";
-import { applyMemoryEdit, checkMemorySize, type MemoryEdit, MemoryDoc, MemoryReceiptDoc, memoryState } from "./memory.ts";
+import { checkMemorySize, type MemoryEdit, type MemoryCallContext, MemoryDoc } from "./memory.ts";
+import { MemoryBook } from "./memory-book.ts";
 import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
 import { botSections } from "./prompt.ts";
 import { ConversationSearchIndex, normalizeQuery } from "./conversation-search.ts";
@@ -90,7 +89,7 @@ export type { Credential, CredentialInfo, CredentialStore } from "@earendil-work
 export type { ApprovalStore } from "./approvals.ts";
 export type { PolicyStore, SavedScope, AuthoritySnapshot, PolicyOperation } from "./policy.ts";
 export type { ConfigEnvironment, ConfiguredProviderStatus, ModelConfigStatus } from "./model-config.ts";
-export type { MemoryEdit } from "./memory.ts";
+export type { MemoryEdit, MemoryCallContext } from "./memory.ts";
 export { isTerminal, KEPT_TERMINAL_RUNS, type RunInput, type RunMessage, type RunStore, type StoredRun } from "./runs.ts";
 
 type PiConversationId = ConversationRecord["id"];
@@ -261,7 +260,8 @@ export class BotRuntime {
 				const channel = Object.values((await input.read.snapshot(ChannelsDoc, context))?.channels ?? {}).find(
 					(item) => item.conversationId === Number(input.conversationId),
 				);
-				return direct ?? (channel ? bots[channel.botId] : undefined);
+				const record = direct ?? (channel ? bots[channel.botId] : undefined);
+				return record ? { ...record, memoryContext: direct ? "direct" as const : channel?.channelId.startsWith("routine_") ? "routine" as const : "group" as const } : undefined;
 			}, undefined, options.skills),
 		});
 		const core = defineExtension({
@@ -897,86 +897,39 @@ export class BotRuntime {
 	}
 
 	async memoryState(botId: BotId): Promise<MemoryState> {
-		await this.#requireRecord(botId);
-		return memoryState(await this.#harness.snapshot(MemoryDoc, botId, this.#context));
+		return new MemoryBook(this.#harness, this.#context).get(botId);
+	}
+
+	async sharedMemory(): Promise<MemoryState> {
+		return new MemoryBook(this.#harness, this.#context).get();
 	}
 
 	async setMemory(botId: BotId, content: string, expectedRevision: number): Promise<MemoryState> {
-		return this.#changeMemory(botId, expectedRevision, () => content, "user");
+		return new MemoryBook(this.#harness, this.#context).set(botId, expectedRevision, content);
 	}
 
 	async restoreMemory(botId: BotId, revision: number, expectedRevision: number): Promise<MemoryState> {
-		return this.#changeMemory(
-			botId,
-			expectedRevision,
-			(state) => {
-				const previous = state.history.find((item) => item.revision === revision);
-				if (!previous) throw new ProtocolError("not_found", "Memory version is no longer available");
-				return previous.content;
-			},
-			"restore",
-			revision,
-		);
+		return new MemoryBook(this.#harness, this.#context).set(botId, expectedRevision, undefined, revision);
 	}
 
-	async #changeMemory(
-		botId: BotId,
-		expectedRevision: number,
-		next: (state: MemoryState) => string,
-		source: MemorySnapshot["source"],
-		restoredFrom?: number,
-	): Promise<MemoryState> {
-		return this.#harness.commit(async (tx) => {
-			const record = (await tx.doc(BotsDoc)).bots[botId];
-			if (!record || record.status === "deleted") throw new ProtocolError("not_found", "Unknown or deleted Bot");
-			const doc = await tx.doc(MemoryDoc, botId, null);
-			const state = memoryState(doc);
-			if (state.revision !== expectedRevision)
-				throw new ProtocolError("request_conflict", "Memory changed. Reload before saving your draft.");
-			const content = next(state);
-			checkMemorySize(content);
-			const { history, ...previous } = state;
-			doc.history = [...history, previous].slice(-MEMORY_HISTORY_LIMIT);
-			doc.content = content;
-			doc.revision = state.revision + 1;
-			doc.source = source;
-			doc.updatedAt = Date.now();
-			delete doc.restoredFrom;
-			if (restoredFrom !== undefined) doc.restoredFrom = restoredFrom;
-			return JSON.parse(JSON.stringify(memoryState(doc))) as MemoryState;
-		}, this.#context);
+	async setSharedMemory(content: string, expectedRevision: number): Promise<MemoryState> {
+		return new MemoryBook(this.#harness, this.#context).set(undefined, expectedRevision, content);
 	}
 
-	/** Receipt and edit commit together; replay cannot overwrite a later user correction. */
-	async editMemory(botId: BotId, edit: MemoryEdit, invocationId: string): Promise<number> {
-		const fingerprint = createHash("sha256")
-			.update(JSON.stringify([botId, edit.action, edit.section, edit.content, edit.expectedRevision]))
-			.digest("hex");
-		return this.#harness.commit(async (tx) => {
-			const receipt = await tx.doc(MemoryReceiptDoc, invocationId, null);
-			if (receipt.fingerprint) {
-				if (receipt.fingerprint !== fingerprint) throw new ProtocolError("request_conflict", "Memory invocation arguments changed");
-				return receipt.revision!;
-			}
-			const record = (await tx.doc(BotsDoc)).bots[botId];
-			if (!record || record.status === "deleted") throw new ProtocolError("not_found", "Unknown or deleted Bot");
-			const doc = await tx.doc(MemoryDoc, botId, null);
-			const state = memoryState(doc);
-			if (state.revision !== edit.expectedRevision)
-				throw new ProtocolError("request_conflict", "Memory changed. Review the refreshed memory system section before trying again.");
-			const content = applyMemoryEdit(state.content, edit);
-			checkMemorySize(content);
-			const { history, ...previous } = state;
-			doc.history = [...history, previous].slice(-MEMORY_HISTORY_LIMIT);
-			doc.content = content;
-			doc.revision = state.revision + 1;
-			doc.source = "model";
-			doc.updatedAt = Date.now();
-			delete doc.restoredFrom;
-			receipt.fingerprint = fingerprint;
-			receipt.revision = doc.revision;
-			return doc.revision;
-		}, this.#context);
+	async restoreSharedMemory(revision: number, expectedRevision: number): Promise<MemoryState> {
+		return new MemoryBook(this.#harness, this.#context).set(undefined, expectedRevision, undefined, revision);
+	}
+
+	async changeMemoryNote(input: import("@openbot/protocol").MemoryNoteChange) {
+		return new MemoryBook(this.#harness, this.#context).change(input);
+	}
+
+	async memorySource(botId: string, scope: import("@openbot/protocol").MemoryScope, noteId: string, which: "original" | "changed") {
+		return new MemoryBook(this.#harness, this.#context).evidence(botId, scope, noteId, which);
+	}
+
+	async editMemory(botId: BotId, edit: MemoryEdit, invocationId: string, call: MemoryCallContext): Promise<number> {
+		return new MemoryBook(this.#harness, this.#context).editModel(botId, edit, invocationId, call);
 	}
 
 	/** Leave a "stopped" note in the transcript, after the user cancelled a Run. */

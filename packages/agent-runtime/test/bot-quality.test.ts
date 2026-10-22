@@ -76,7 +76,9 @@ describe("Bot quality", () => {
 		const { models, requests } = recordingModels(steps, options);
 		const invoke: ToolInvoker = async (call) => {
 			const args = call.args as { action: "replace" | "append"; section: string; content: string; expectedRevision: number };
-			await runtime!.editMemory(call.botId, args, `${call.conversationId}:${call.callId}`);
+			const runId = call.runId ?? "quality-run";
+			await runtime!.runsStore().put({ runId, botId: call.botId, state: "running", origin: "user", requestIds: ["quality-input"], createdAt: 0, messages: [], inputs: [{ requestId: "quality-input", text: "Remember my preference" }] });
+			await runtime!.editMemory(call.botId, args, `${call.conversationId}:${call.callId}`, { runId, conversationId: call.conversationId });
 			return { status: "succeeded", output: "Memory updated." };
 		};
 		runtime = await BotRuntime.open({ databasePath, models, tools: { invoke, definitions: [memoryTool] } });
@@ -127,8 +129,9 @@ describe("Bot quality", () => {
 		await runtime!.createBot(bot);
 		await runtime!.setMemory("scout", "## Notes\n- keep me", 0);
 		await expect(runtime!.setMemory("scout", "x".repeat(MEMORY_LIMIT_BYTES + 1), 1)).rejects.toThrow(/limited to 8 KB/);
+		await runtime!.runsStore().put({ runId: "size-run", botId: "scout", state: "running", origin: "user", requestIds: [], createdAt: 0, messages: [], inputs: [] });
 		await expect(
-			runtime!.editMemory("scout", { action: "append", section: "Notes", content: "y".repeat(MEMORY_LIMIT_BYTES), expectedRevision: 1 }, "limit"),
+			runtime!.editMemory("scout", { action: "append", section: "New notes", content: "y".repeat(MEMORY_LIMIT_BYTES), expectedRevision: 1 }, "limit", { runId: "size-run", conversationId: await runtime!.conversationKey("scout") }),
 		).rejects.toThrow(/limited to 8 KB/);
 		expect(await runtime!.memory("scout")).toBe("## Notes\n- keep me");
 		// Exactly at the limit is allowed; the limit counts UTF-8 bytes, not characters.

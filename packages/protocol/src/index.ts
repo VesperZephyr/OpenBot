@@ -1,4 +1,6 @@
 export * from "./routines.ts";
+export * from "./memory.ts";
+import type { MemoryNote, MemoryNoteChange, MemoryScope, MemorySourceEvidence } from "./memory.ts";
 import type { CredentialStatus, CredentialMigration } from "./credentials.ts";
 export * from "./credentials.ts";
 import type {ConnectorInstall,ConnectorChange,ConnectorProfile} from "./connectors.ts";
@@ -27,8 +29,9 @@ export type MemorySnapshot = {
 	readonly source: "legacy" | "user" | "model" | "restore";
 	readonly updatedAt: number | null;
 	readonly restoredFrom?: number;
+	readonly notes?: readonly MemoryNote[];
 };
-export type MemoryState = MemorySnapshot & { readonly history: readonly MemorySnapshot[] };
+export type MemoryState = MemorySnapshot & { readonly notes: readonly MemoryNote[]; readonly history: readonly MemorySnapshot[] };
 export const MEMORY_HISTORY_LIMIT = 20;
 
 export const PROTOCOL_VERSION = 1 as const;
@@ -611,6 +614,14 @@ export type HostMethods = {
 	};
 	"credentials.delete": { params: { readonly providerId: string }; result: RedactedSettings };
 	"bots.memory.get": { params: { readonly botId: BotId }; result: MemoryState };
+	"memory.shared.get": { params: Record<string, never>; result: MemoryState };
+	"memory.shared.update": { params: { readonly content: string; readonly expectedRevision: number }; result: MemoryState };
+	"memory.shared.restore": { params: { readonly revision: number; readonly expectedRevision: number }; result: MemoryState };
+	"bots.memory.note": { params: MemoryNoteChange; result: { readonly local: MemoryState; readonly shared: MemoryState } };
+	"bots.memory.source": {
+		params: { readonly botId: BotId; readonly scope: MemoryScope; readonly noteId: string; readonly which: "original" | "changed" };
+		result: MemorySourceEvidence;
+	};
 	"bots.memory.update": {
 		params: { readonly botId: BotId; readonly content: string; readonly expectedRevision: number };
 		result: MemoryState;
@@ -712,6 +723,11 @@ export const HOST_METHODS = [
 	"credentials.set",
 	"credentials.delete",
 	"bots.memory.get",
+	"memory.shared.get",
+	"memory.shared.update",
+	"memory.shared.restore",
+	"bots.memory.note",
+	"bots.memory.source",
 	"bots.memory.update",
 	"bots.memory.restore",
 	"conversations.reset",
@@ -1126,7 +1142,7 @@ export const TOOL_CATALOG = [
 		capability: "memory",
 		destination: "host",
 		description:
-			"Save something worth remembering across conversations to your memory: the user's lasting preferences, facts about them and their work, and notes on your role. Memory is Markdown split into ## sections and is limited to 8 KB.",
+			"Remember a lasting preference or fact during a direct user request. Use one short specific topic per note and reuse its title when updating. Owner-corrected, forgotten and shared topics are protected; only the owner can edit or share them in Memory. Local active memory is limited to 8 KB. Never save secrets, permissions or unverified task completion.",
 		parameters: object(
 			{
 				action: {
@@ -1134,7 +1150,7 @@ export const TOOL_CATALOG = [
 					enum: ["replace", "append"],
 					description: "append adds a line to the section; replace sets the whole section, and empty content removes it.",
 				},
-				section: string("Section heading without the ## prefix, such as Preferences."),
+				section: string("Specific topic without the ## prefix, such as Response language. Reuse an existing topic for a correction; never bypass protection with another title."),
 				content: string("Markdown to add, or the complete new section text."),
 				expectedRevision: {
 					type: "integer",

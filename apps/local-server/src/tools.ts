@@ -3,7 +3,7 @@
  * book, the executor process, and Host tools. The executor re-checks every path against the grants it receives.
  */
 import { APP_TOOL_DEFINITIONS, APP_MANAGEMENT_TOOL_DEFINITIONS, type ExecutionTarget, TOOL_CATALOG } from "@openbot/protocol";
-import type { MemoryEdit, PolicyStore } from "@openbot/agent-runtime";
+import type { MemoryCallContext, MemoryEdit, PolicyStore } from "@openbot/agent-runtime";
 import {
 	type ApprovalBook,
 	type HostService,
@@ -29,7 +29,7 @@ export function createToolRouter(options: {
 	/** Tavily endpoint override (`OPENBOT_TAVILY_BASE_URL`), for tests against a local fake. */
 	readonly tavilyBaseUrl: string | undefined;
 	/** `BotRuntime.editMemory`; called only once tool calls flow, after the runtime opened. */
-	readonly editMemory: (botId: string, edit: MemoryEdit, invocationId: string) => Promise<number>;
+	readonly editMemory: (botId: string, edit: MemoryEdit, invocationId: string, call: MemoryCallContext) => Promise<number>;
 	/** `BotRuntime.policy`; like `editMemory`, read only once tool calls flow. */
 	readonly policy: () => PolicyStore;
 	/** `<data>/artifacts`, where the executor saves cut output; `local_read` may read it without asking. */
