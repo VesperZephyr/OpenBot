@@ -1,41 +1,44 @@
 /* A quiet conversation canvas; activity and permissions carry the signal colors. */
 :root {
  color-scheme: light;
- --bg: #ffffff;
- --sidebar: #f5f6f8;
- --surface: #fafbfc;
- --surface-raised: #eef0f3;
- --border: #e4e7ec;
- --text: #202329;
- --muted: #626b78;
- --accent: #202329;
- --signal: #b66b12;
- --unread: #397bd1;
- --attention: #c43838;
+ --bg: #faf9fd;
+ --sidebar: #242131;
+ --surface: #ffffff;
+ --surface-raised: #eee7f6;
+ --border: #e5dfed;
+ --text: #30283f;
+ --muted: #6d6479;
+ --accent: #644689;
+ --accent-ink: #ffffff;
+ --signal: #865a27;
+ --unread: #695093;
+ --attention: #b03845;
+ --user: #eee7f6;
  --radius: 12px;
- --font: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
- --font-display: "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
+ --font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+ --font-display: "Avenir Next", -apple-system, BlinkMacSystemFont, sans-serif;
  --font-mono: "SF Mono", ui-monospace, Menlo, monospace;
  font-family: var(--font);
  font-size: 14px;
  line-height: 1.6;
  color: var(--text);
- background: var(--bg);
+ background: var(--sidebar);
  -webkit-font-smoothing: antialiased;
 }
 @media (prefers-color-scheme: dark) {
  :root {
   color-scheme: dark;
-  --bg: #17191d;
-  --sidebar: #121418;
-  --surface: #1c1f24;
-  --surface-raised: #292d34;
-  --border: #343942;
-  --text: #edf0f5;
-  --muted: #a0a8b5;
-  --accent: #edf0f5;
-  --signal: #e3a447;
-  --attention: #ff8e88;
+  --bg: #2c2739;
+  --surface: #342e43;
+  --surface-raised: #514164;
+  --border: #51465e;
+  --text: #f1eaf9;
+  --muted: #c0b5ce;
+  --accent: #75509c;
+  --unread: #d0b4f0;
+  --signal: #e7b777;
+  --attention: #ff9ca4;
+  --user: #463650;
  }
 }
 
@@ -71,7 +74,7 @@ button:disabled {
 
 button.primary {
 	background: var(--accent);
-	color: var(--bg);
+	color: var(--accent-ink);
 	border-color: var(--accent);
 	font-weight: 600;
 }
@@ -99,13 +102,22 @@ code {
 
 .app {
 	display: grid;
-	grid-template-columns: 248px minmax(0, 1fr);
+	grid-template-columns: 232px minmax(0, 1fr);
+	padding: 8px 12px 8px 0;
 	height: 100vh;
 }
 
 /* Sidebar */
 
 .sidebar {
+	--text: #f3effa;
+	--muted: #b9b3ca;
+	--bg: #242131;
+	--surface: #302a40;
+	--surface-raised: #ffffff09;
+	--border: #4c425c;
+	--unread: #e5d5ff;
+	color: var(--text);
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
@@ -116,7 +128,7 @@ code {
 }
 
 .sidebar-titlebar {
-	height: 44px;
+	height: 28px;
 	flex-shrink: 0;
 	-webkit-app-region: drag;
 }
@@ -144,7 +156,7 @@ code {
 	font-size: 11px;
 	font-weight: 600;
 	letter-spacing: 0.04em;
-	text-transform: uppercase;
+	text-transform: none;
 	color: var(--muted);
 }
 
@@ -262,7 +274,10 @@ code {
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
-	height: 100vh;
+	height: calc(100vh - 16px);
+	background: var(--bg);
+	border-radius: 22px;
+	overflow: hidden;
 }
 
 .banner {
@@ -499,11 +514,11 @@ code {
 .message-user {
 	align-self: flex-end;
 	max-width: 80%;
-	padding: 12px 18px;
-	background: var(--accent);
-	color: var(--bg);
-	border: 1px solid var(--accent);
-	border-radius: 20px 20px 5px 20px;
+	padding: 13px 17px;
+	background: var(--user);
+	color: var(--text);
+	border: 1px solid transparent;
+	border-radius: 17px 17px 5px 17px;
 }
 
 /* Sent, not read by the Bot yet: queued for a slot or waiting to join the current turn. */
@@ -741,7 +756,8 @@ code {
 }
 
 .composer:focus-within {
-	border-color: color-mix(in srgb, var(--text) 30%, var(--border));
+	border-color: var(--accent);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .composer textarea {
@@ -969,14 +985,14 @@ textarea {
 .model-result { color: var(--text); border-left: 2px solid var(--text); padding-left: 12px; }
 @media (max-width: 650px) { .model-source-switch, .model-form-grid { grid-template-columns: 1fr; } }
 
-.core-badge { display: inline-block; font-size: 10px; line-height: 18px; padding: 0 6px; margin-left: 7px; border: 1px solid var(--border); border-radius: 5px; color: var(--muted); font-weight: 500; }
+
 .eyebrow { color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .1em; }
 .setup-skip { display: block; margin: 18px auto 0; background: transparent; border: 0; color: var(--muted); }
 
 /* Product surfaces share spacing and tolerate both interface languages. */
 button { transition: background-color 120ms, border-color 120ms; }
 button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--text) 28%, var(--border)); }
-.avatar-core { border-radius: 50%; }
+
 .empty-conversation h2 { font-size: 30px; font-weight: 550; letter-spacing: -.035em; margin-top: 20px; }
 .empty-conversation p { font-size: 15px; margin-bottom: 24px; }
 .capability-strip { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }

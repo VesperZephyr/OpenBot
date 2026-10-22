@@ -1,3 +1,4 @@
+import { PersonalStar } from "./Avatar";
 import type { ConversationKey, ConversationSummary } from "@openbot/protocol";
 import { useComposer } from "./useComposer";
 import { markRead, report, useStore } from "./store";
@@ -40,7 +41,7 @@ export function RosterPreview({
 		<span className={`bot-row-text ${unread ? "has-unread" : ""}`}>
 			<span className="bot-row-name">
 				<span className="roster-name">{name}</span>
-				{core && <span className="core-badge">{t("Core")}</span>}
+				{core && <PersonalStar />}
 				{date && (
 					<time dateTime={date.toISOString()} title={date.toLocaleString(locale)}>
 						{new Intl.DateTimeFormat(locale, today ? { hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric" }).format(

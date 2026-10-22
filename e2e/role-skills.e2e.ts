@@ -10,6 +10,7 @@ const ref = ({ name, revision, sha256 }: SkillRef): SkillRef => ({ name, revisio
 async function edit(chinese = false): Promise<void> {
 	await h.page().getByRole("button", { name: "•••" }).click();
 	await h.page().getByRole("menuitem", { name: chinese ? "编辑资料" : "Edit profile" }).click();
+	await h.page().locator(".profile-advanced > summary").click();
 }
 beforeAll(async () => {
 	h = await launchApp("role-skills");

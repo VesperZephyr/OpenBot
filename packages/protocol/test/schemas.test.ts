@@ -124,3 +124,10 @@ it("bounds private completion inspection and keeps renderer stop authority narro
  expect(paramsError("background.stop",{invocationId:key.invocationId})).toBeUndefined();
  expect(paramsError("background.stop",{invocationId:key.invocationId,botId:"other",targetId:"remote"})).toBeDefined();
 });
+
+it("allows bounded avatar choices but rejects forged assets, paths, scripts and future recipes", () => {
+ const params = { botId: "b", expectedRevision: 1 };
+ expect(paramsError("bots.update", { ...params, avatar: { kind: "generated", version: 1, seed: 12, motif: "leaf" } })).toBeUndefined();
+ for (const avatar of [{kind:"image",sha256:"a".repeat(64)},{kind:"upload",base64:"<svg/>"},{kind:"upload",base64:"a".repeat(409601)},{kind:"generated",version:2,seed:1,motif:"leaf"},{kind:"generated",version:1,seed:-1,motif:"leaf"},{kind:"generated",version:1,seed:1,motif:"leaf",path:"/private/image.png"}])
+  expect(paramsError("bots.update",{...params,avatar})).toBeDefined();
+});

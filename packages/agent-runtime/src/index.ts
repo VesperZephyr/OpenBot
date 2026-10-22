@@ -1,3 +1,5 @@
+import { defaultAvatar, type BotAvatar, type AvatarImage } from "@openbot/protocol";
+import { AvatarDoc, saveAvatar, releaseAvatar } from "./avatars.ts";
 import { validSkillRef, SKILL_LIMITS, type SkillRef } from "@openbot/protocol";
 import { routineStore } from "./routines.ts";
 export type { RoutineState } from "./routines.ts";
@@ -171,6 +173,7 @@ export type BotRuntimeOptions = {
 };
 
 export type CreateBotInput = {
+	readonly avatar?: BotAvatar;
 	readonly defaultSkills?: readonly SkillRef[];
 	readonly botId: BotId;
 	readonly name: string;
@@ -184,6 +187,7 @@ export type CreateBotInput = {
 };
 
 export type UpdateBotInput = {
+	readonly avatar?: BotAvatar;
 	readonly defaultSkills?: readonly SkillRef[];
 	readonly expectedRevision?: number;
 	readonly name?: string;
@@ -461,6 +465,14 @@ export class BotRuntime {
 		return record === undefined ? undefined : toProfile(record);
 	}
 
+	async avatarImage(botId: BotId): Promise<AvatarImage | null> {
+		const bot = await this.getBot(botId);
+		if (bot?.avatar?.kind !== "image") return null;
+		const { sha256 } = bot.avatar;
+		const image = await this.#harness.snapshot(AvatarDoc, sha256, this.#context);
+		return image?.base64 ? { sha256, base64: image.base64 } : null;
+	}
+
 	async ensureCoreBot(now: number): Promise<BotProfile> {
 		const pending = (this.#coreBootstrap ??= this.#bootstrapCore(now));
 		try {
@@ -532,6 +544,7 @@ export class BotRuntime {
 			});
 			const record: BotRecord = {
 				botId: input.botId,
+				avatar: input.avatar ?? defaultAvatar(input.botId),
 				revision: 1,
 				kind: "specialist",
 				name: input.name,
@@ -545,6 +558,7 @@ export class BotRuntime {
 				createdAt: input.createdAt,
 				conversationId: conversation.id,
 			};
+			await saveAvatar(tx, doc.bots, record.avatar!);
 			doc.bots[input.botId] = record;
 			if (input.memory) (await tx.doc(MemoryDoc, input.botId, null)).content = input.memory;
 			await projectConversation(tx, `bot:${input.botId}`, { messageCount: 0, incomingCount: 0 });
@@ -554,7 +568,7 @@ export class BotRuntime {
 		}, this.#context);
 	}
 
-	async updateBot(botId: BotId, change: UpdateBotInput, proposal?: BotManagementProposal): Promise<BotProfile> {
+	async updateBot(botId: BotId, change: UpdateBotInput, proposal?: BotManagementProposal, image?: AvatarImage): Promise<BotProfile> {
 		checkRoleSkills(change.defaultSkills, proposal);
 		if (change.model !== undefined) this.#usageEpoch = randomUUID();
 		const defaultModel = await this.defaultModel();
@@ -591,7 +605,9 @@ export class BotRuntime {
 					if (channel.botId === botId) await configure(tx, channel.conversationId as PiConversationId, agent);
 				}
 			}
+			if (change.avatar) await saveAvatar(tx, doc.bots, change.avatar, image, botId);
 			doc.bots[botId] = updated;
+			if (change.avatar) await releaseAvatar(tx, doc.bots, record.avatar);
 			if (updated.status === "deleted") await detachGroupBot(tx, botId);
 			const result = toProfile(updated);
 			await completeManagement(tx, proposal, result);
@@ -1172,7 +1188,7 @@ function agentChange(input: {
 
 function toProfile(record: BotRecord): BotProfile {
 	const { conversationId: _conversationId, ...profile } = record;
-	return { ...profile, revision: profile.revision ?? 1, kind: profile.kind ?? "specialist" };
+	return { ...profile, avatar: profile.avatar ?? defaultAvatar(profile.botId), revision: profile.revision ?? 1, kind: profile.kind ?? "specialist" };
 }
 
 /** Text blocks of a user or assistant message; images are not projected yet. */

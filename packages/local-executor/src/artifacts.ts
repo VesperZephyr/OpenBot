@@ -46,7 +46,7 @@ export function selectedPath(path: string): string {
 	}
 	return absolute;
 }
-function bytesAt(path: string, max: number): Buffer {
+export function bytesAt(path: string, max: number): Buffer {
 	const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
 	try {
 		const before = fstatSync(fd);
@@ -67,7 +67,7 @@ function bytesAt(path: string, max: number): Buffer {
 		closeSync(fd);
 	}
 }
-function imageSize(bytes: Buffer, type: string): [number, number] {
+export function imageSize(bytes: Buffer, type: string): [number, number] {
 	if (type === "image/png") {
 		if (bytes.length < 33 || bytes.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a" || bytes.toString("ascii", 12, 16) !== "IHDR")
 			fail("Unsupported or invalid image");

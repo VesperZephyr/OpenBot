@@ -15,6 +15,10 @@ References:
 - **Grok Bot**: [source-backed research snapshot](research/grok-bot.md) and [client interaction research](tasks/d2-grok-ui-research.md); distinguish official facts, observations and inference.
 - **Pi**: `~/github/pi/packages/coding-agent` for the reference coding-agent tools.
 
+## Desktop design delivery
+
+[D6: Personal assistant design](tasks/d6-desktop-design.md) is implemented on `task/d6-desktop-design`, with automated acceptance complete and review pending. The owner approved chat styling, ordinary Bot rows with a protected identity star, and editable profiles with generated/uploaded avatars for every Bot together. Merge remains pending. AI image generation, adjustable cropping, proactive greetings, new result grouping and settings category navigation need separate specs.
+
 ## Memory design research
 
 [D5: Local memory research](tasks/d5-memory-research.md) is merged in PR #44. The owner approved the local role direction from [D6 research PR #45](https://github.com/VesperZephyr/OpenBot/pull/45).

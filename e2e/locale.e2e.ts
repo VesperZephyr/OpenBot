@@ -77,7 +77,7 @@ it("preserves user names, instructions and memory while switching languages", as
  await h.shot("05-settings-zh-small");
  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
  await page.getByLabel("语言", { exact: true }).selectOption("en");
- await page.getByRole("button", { name: /OpenBot Core/ }).click();
+ await page.getByRole("button", { name: /OpenBot Personal assistant/ }).click();
  await page.getByRole("textbox", { name: "Message OpenBot" }).waitFor();
  await h.shot("06-conversation-en-small");
 });

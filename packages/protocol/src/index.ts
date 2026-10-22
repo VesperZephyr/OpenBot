@@ -1,3 +1,5 @@
+export * from "./avatars.ts";
+import type { BotAvatar, AvatarChange, AvatarSource, AvatarImage } from "./avatars.ts";
 export * from "./routines.ts";
 export * from "./memory.ts";
 import type { MemoryNote, MemoryNoteChange, MemoryScope, MemorySourceEvidence } from "./memory.ts";
@@ -178,6 +180,7 @@ export type ModelApi = (typeof MODEL_APIS)[number];
 export type ThinkingLevel = "off" | "low" | "medium" | "high";
 
 export type BotProfile = {
+	readonly avatar?: BotAvatar;
 	/** Exact reviewed procedures applied only to new direct user messages. */
 	readonly defaultSkills?: readonly SkillRef[];
 	/** Increments on every profile mutation; legacy profiles start at 1. */
@@ -554,6 +557,8 @@ export type HostMethods = {
 
 	"host.status": { params: Record<string, never>; result: HostStatus };
 	"bots.management.history": { params: Record<string, never>; result: readonly BotManagementActivity[] };
+	"avatars.source": { params: { path: string }; result: AvatarSource };
+	"bots.avatar.get": { params: { botId: string }; result: AvatarImage | null };
 	"bots.list": { params: Record<string, never>; result: readonly BotSummary[] };
 	"bots.create": {
 		params: {
@@ -567,6 +572,7 @@ export type HostMethods = {
 	};
 	"bots.update": {
 		params: {
+			readonly avatar?: AvatarChange;
 			readonly botId: BotId;
 			readonly expectedRevision?: number;
 			readonly defaultSkills?: readonly SkillRef[];
@@ -707,6 +713,8 @@ export const HOST_METHODS = [
 	"groups.send",
 	"host.status",
 	"bots.list",
+	"avatars.source",
+	"bots.avatar.get",
 	"bots.management.history",
 	"bots.create",
 	"bots.update",

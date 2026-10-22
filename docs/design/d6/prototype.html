@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OpenBot · Your personal assistant</title>
+<link rel="stylesheet" href="personal.css">
+</head>
+<body>
+<div class="study"><span><b>OpenBot</b><span class="study-caption"> · Personal assistant study · Fictional data</span></span><div class="study-controls"><button data-scene="welcome" aria-pressed="true">Welcome</button><button data-scene="conversation" aria-pressed="false">Conversation</button><button data-scene="approval" aria-pressed="false">Approval</button><button id="appearance" aria-label="Switch to dark appearance">Dark</button></div></div>
+<div class="app">
+ <nav class="sidebar" aria-label="Main navigation">
+  <div class="brand"><span class="brand-symbol" aria-hidden="true">o<span>·</span></span><span>openbot</span><button class="icon-button sidebar-close" aria-label="Close navigation" id="close-nav">×</button></div>
+  <button class="search-button" id="search-open"><span data-icon="search"></span><span>Find a conversation</span><kbd>⌘ K</kbd></button>
+  <div class="sidebar-section"><span>Chats</span><button class="icon-button" aria-label="Create Bot or group" id="create">+</button></div>
+  <div class="team-list">
+   <button class="chat-link selected" data-person="OpenBot" aria-current="page"><span class="chat-avatar" data-companion></span><span class="chat-copy"><span class="chat-title"><strong>OpenBot</strong><span class="personal-star" role="img" aria-label="Personal assistant" title="Your personal assistant" data-icon="personalStar"></span><time>10:42</time></span><small>A lighter plan for this week</small></span></button>
+   <button class="chat-link" data-person="Atlas"><span class="initial peach">A</span><span class="chat-copy"><span class="chat-title"><strong>Atlas</strong><time>Yesterday</time></span><small>The research brief is ready.</small></span></button>
+   <button class="chat-link" data-person="Scribe"><span class="initial lilac">S</span><span class="chat-copy"><span class="chat-title"><strong>Scribe</strong><time>Tue</time></span><small>A clearer opening for your draft.</small></span></button>
+   <button class="chat-link" data-person="Research team"><span class="initial olive" data-icon="group"></span><span class="chat-copy"><span class="chat-title"><strong>Research team</strong><time>Mon</time></span><small>Atlas: I’ll check the sources.</small></span></button>
+  </div>
+  <div class="sidebar-spacer"></div>
+  <div class="sidebar-tools">
+   <button data-dialog="routines"><span data-icon="sun"></span>Routines</button>
+   <button data-dialog="apps"><span data-icon="plug"></span>Connect apps</button>
+   <button data-dialog="skills"><span data-icon="book"></span>Skills</button>
+   <button id="settings"><span data-icon="settings"></span>Settings</button>
+  </div>
+  <div class="local-status"><span class="tiny-dot"></span><span>On your Mac</span><span class="status-caption">Ready</span></div>
+ </nav>
+ <main class="main" id="main"></main>
+</div>
+<dialog id="dialog" aria-labelledby="dialog-title"></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="avatars.js"></script>
+<script src="personal.js"></script>
+</body>
+</html>

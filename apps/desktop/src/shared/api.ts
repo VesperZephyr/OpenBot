@@ -21,6 +21,7 @@ export const RENDERER_METHODS = [
 	"groups.send",
 	"host.status",
 	"bots.list",
+	"bots.avatar.get",
 	"bots.management.history",
 	"bots.create",
 	"bots.update",
@@ -79,6 +80,7 @@ export type HostState = { readonly status: "starting" | "ready" | "stopped"; rea
 export type FolderSelection = { readonly selection: string; readonly path: string };
 
 export type OpenBotApi = {
+	readonly pickAvatar: () => Promise<import("@openbot/protocol").AvatarUpload | null>;
 	readonly attachFiles: () => Promise<{ attachments: readonly import("@openbot/protocol").ArtifactRef[]; errors: readonly string[] }>;
 	readonly exportArtifact: (params: { artifactId: string; requestId: string }) => Promise<boolean>;
 	readonly methods: { readonly [M in RendererMethod]: (params: RendererParams<M>) => Promise<HostResult<M>> };
@@ -100,6 +102,7 @@ export type OpenBotApi = {
 
 /** IPC channel names between preload and main. */
 export const CHANNELS = {
+	pickAvatar: "openbot:pick-avatar",
 	attachFiles: "openbot:attach-files",
 	exportArtifact: "openbot:export-artifact",
 	call: "openbot:call",
