@@ -10,7 +10,7 @@ Architecture: Sections 1, 1.1 and 3; existing Desktop/Host/Executor boundaries r
 
 Give OpenBot the character of a warm, intelligent personal assistant whose primary interface is conversation. A recognizable assistant, continuity with the user's own work, and visible, correctable memory should make the application feel personal. The assistant should be easy to talk to while remaining precise about what it has done and what still needs permission.
 
-Owner preference: a private assistant with personality, warmth and approachability; chat is the core experience. The permanent personal assistant appears as an ordinary chat with a small dedicated star, not as a visually elevated Core role. It cannot be deleted. The design expresses that through identity, language and interaction, with focused Specialists available as supporting teammates.
+Owner preference: a private assistant with personality, warmth and approachability; chat is the core experience. The permanent personal assistant appears as an ordinary chat with a small dedicated star, not as a visually elevated Core role. It cannot be deleted. Every Bot, including the permanent assistant, has an editable name, avatar, role and instructions. The design expresses that through identity, language and interaction, with focused Specialists available as supporting teammates.
 
 This is a design task, not authorization to implement a new runtime feature. It includes a source-informed audit, a local interactive prototype, and the contracts and acceptance matrix for subsequent implementation packets. Product source, policy, data stores, and the owner's running app are unchanged.
 
@@ -104,6 +104,24 @@ Keep Routines, Connect apps, Skills and Settings in the bottom navigation. The e
 
 Do not remove All/Unread filtering, hidden Bots, pinned ordering or mark-read just because they are absent from the reduced demo fixture. No new navigation data model is needed.
 
+### Editable profiles and generated avatars
+
+[Grok Bot's official Bots documentation](https://docs.x.ai/grok-bot/bots), reviewed 2026-10-22, exposes name, label, description and avatar through Edit Profile. It does not document an automatic avatar-generation algorithm. OpenBot adopts the unified editing concept; the local character generator below is an original proposal, not a claim about Grok's implementation.
+
+Every Bot, including Core, exposes the same Edit profile action. Name, avatar, role and working instructions are editable. Save updates the roster, header and author identity together; Cancel leaves the saved profile unchanged. Display names may collide without changing Bot identity, message ownership, memory, grants or lifecycle protection. The Core star stays outside the avatar so that a custom image cannot hide the permanent-assistant marker. Group avatars and membership remain a separate group-editing concern.
+
+Proposed avatar choices:
+
+1. **Automatic local character.** Creating a Bot assigns an original procedural avatar from a stable seed and renderer version. Combine a small family of rounded silhouettes, facial details, restrained palettes and optional role motifs. Research can suggest glasses and writing a cap; role cues are a starting point, not a required identity. Use the immutable Bot ID and an explicit variation seed, not the display name, to maintain stability. Evaluate recognition at 24–40 px and avoid palette-only differences between adjacent Bots.
+2. **Choose another.** Generate six candidates locally, with Another set and a selected preview. Save applies the choice; changing name, role or instructions alone never regenerates an existing avatar. Store the selected recipe/version or a normalized rendered asset so a later generator update does not silently change familiar faces.
+3. **Upload an image.** Let the owner choose a local PNG, JPEG or WebP, preview its square crop, and save explicitly. A production editor should support crop adjustment. The prototype only demonstrates a centered crop, a 5 MB limit, a dimension check after decoding and 256 px PNG normalization; this is not hardened production import validation.
+
+AI image generation is a later, optional explicit action for an owner who wants a specific style or character. It needs an image-capable provider, a clear account of the prompt/data sent and any provider cost, candidate preview and explicit selection. It must not block Bot creation, run silently on rename or be implied by the local Generate options control. There are no image-provider calls in this study.
+
+Current product evidence: `BotProfile` in `packages/protocol/src/index.ts` has no avatar field. The renderer's `Avatar` in `App.tsx` derives Specialist color from the name and uses initials; Core has a fixed mark. Persisted custom avatars therefore need their own ready execution spec covering profile serialization, versioning, revision conflicts, normalized local asset references, import validation before expensive decoding, asset size/pixel bounds, cleanup/backup and duplicate behavior. Raw uploaded SVG, arbitrary local paths and remote URLs are not accepted avatar sources. Preserve the existing Host/Executor boundary for local import and storage. Duplicating a profile can copy its appearance, but creates a new Specialist identity without the Core star or protection.
+
+The study implements the editor and candidate picker for all three fixture Bots, including selected-file decoding in the browser. It does not implement the real Create Bot flow, persistent storage, arbitrary crop positioning or AI generation. No selected image leaves the page; all edits reset on reload.
+
 ### Conversation and composition
 
 - Use restrained user bubbles and unboxed, well-spaced Bot content. Retain the actual author identity for every group contribution, including when messages are adjacent.
@@ -167,8 +185,8 @@ Give an empty personal-assistant conversation a recognizable avatar and a simple
 
 ## Deliverables and demo limits
 
-- [Interactive prototype](../design/d6/prototype.html), with [styles](../design/d6/personal.css) and [interaction code](../design/d6/personal.js): welcome, conversation, plan preview, approval, memory editing, assistant profile, search, settings and light/dark appearance.
-- [Prototype checks](../design/d6/verify.js): reproducible browser checks of the local study.
+- [Interactive prototype](../design/d6/prototype.html), with [styles](../design/d6/personal.css) and [interaction code](../design/d6/personal.js) and [local avatar generator](../design/d6/avatars.js): editable names/roles/avatars, local image preview, welcome, conversation, plan preview, approval, memory editing, assistant profile, search, settings and light/dark appearance.
+- [Prototype checks](../design/d6/verify.js) and [profile/avatar checks](../design/d6/verify-avatars.js): reproducible browser checks of the local study.
 - [Verification record](../design/d6/README.md): preview instructions, checks and limits.
 
 All fixture content is fictional and labelled. Sending adds an in-memory preview message and never calls a model. Approval controls never execute or save a grant. Memory/profile edits affect only page state and reset on reload. Peripheral controls explain their demo limits. The plan is based on a fictional supplied notes file; it is not a calendar integration. No event, email or external record is changed.
@@ -181,7 +199,8 @@ Each packet requires its own ready execution spec, branch and PR after direction
 
 1. **Personal identity and conversation:** settle entry behavior, consolidate tokens, remove conflicting root overrides, standardize icons/control variants, apply the original assistant identity and warm visual system to the existing roster, transcript and composer without changing message order or actions. Specify how the welcome/resume/memory surfaces use existing records before implementing them. Touch renderer styles and components only. Highest immediate visual value and lowest data risk.
 2. **Context, results, approvals and inspector:** apply the new artifact/action hierarchy and consistent file-panel and profile-dialog behavior; preserve all permission and artifact state contracts. Any new presentation grouping must be keyed to existing durable identities and have its own explicit contract.
-3. **Settings and remaining surfaces:** category navigation with a complete old-to-new control inventory; align onboarding, creation, groups, skills, connectors and routines with the component system. Preserve drafts, secret handling and save conflicts.
+3. **Persisted profiles and avatars:** specify stable generated recipes/versioning, normalized uploaded assets, profile revisions and storage lifecycle; support customization for every Bot while retaining Core identity and lifecycle protection. This requires protocol and persistence work beyond the renderer-only foundation. Optional AI generation needs a separate provider/design decision.
+4. **Settings and remaining surfaces:** category navigation with a complete old-to-new control inventory; align onboarding, creation, groups, skills, connectors and routines with the component system. Preserve drafts, secret handling and save conflicts.
 
 No new UI framework, remote fonts, Pi changes, Host APIs, schema migrations or navigation store are required merely to implement the visual foundation. Prefer focused reusable components (button variants, row, panel header, field, state notice) over a broad UI-library rewrite. Split `App.tsx` only where the packet's view/component responsibility warrants it.
 
@@ -196,6 +215,7 @@ These are required implementation checks, not claims that the prototype proves p
 | Draft, IME, pending send, send failure, channel switch | Existing B21 coverage plus panel/category-switch regression scenarios |
 | Reading old history during incoming activity | Scroll anchor and Jump to latest e2e; no forced scroll from panel changes |
 | Ordinary chat rows, permanent assistant star, pinned/unread/hidden Bots, group distinction and search | B22/B23 semantics survive; star stays bound to immutable Core identity after renaming; Core cannot be deleted or hidden through UI or Host/tool entry points; Specialists retain confirmed lifecycle actions |
+| Editable profiles and avatars | Rename/role edits preserve selected avatar, history, draft and memory; safe long/duplicate names; every surface updates after save/restart; Cancel and revision conflicts preserve saved data; generated variants, malformed/oversized uploads, crop, missing assets, duplication, cleanup and backup covered by the ready persistence spec |
 | Group routing and work | Scripted Core/default and explicit-mention scenarios; actual author and attention state retained; Stop still visible |
 | Pending, expired, stale and reusable approval | Scripted exact-operation approval, Deny, Allow once, supported Always allow scope and timeout; no action before Host confirmation |
 | Result preview/export/remove/missing | Existing B15a bounds and validation; panel focus/scroll; removal updates every linked card |
@@ -220,4 +240,5 @@ Avoid pixel snapshots as the only proof. Assert meaningful visibility, focus, re
 ## Open questions
 
 - 2026-10-22: The selected direction is a warm personal assistant in an ordinary chat list, with a static identity star and protected lifecycle. Memory excerpt selection/truncation and its exact empty-state placement must be fixed in the relevant execution spec.
+- 2026-10-22: Every Bot is customizable. Persisted avatar recipes/assets and import contracts need a ready execution spec; optional AI image generation is not included in the local generator proposal.
 - 2026-10-22: Choose the first execution packet in its own ready spec. No product implementation has been claimed or started by D6.
