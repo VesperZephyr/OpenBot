@@ -1,6 +1,6 @@
 # D6: A Personal Assistant with Character
 
-Status: draft for owner review; design study complete, product implementation not started
+Status: design direction agreed; execution specs pending, product implementation not started
 Branch: task/d6-desktop-design
 Date: 2026-10-22
 Depends on: B20, B21, B22, B23, B15a
@@ -10,7 +10,7 @@ Architecture: Sections 1, 1.1 and 3; existing Desktop/Host/Executor boundaries r
 
 Give OpenBot the character of a warm, intelligent personal assistant whose primary interface is conversation. A recognizable assistant, continuity with the user's own work, and visible, correctable memory should make the application feel personal. The assistant should be easy to talk to while remaining precise about what it has done and what still needs permission.
 
-Owner preference: a private assistant with personality, warmth and approachability; chat is the core experience. The design expresses that through identity, language and interaction, with focused Specialists available as supporting teammates.
+Owner preference: a private assistant with personality, warmth and approachability; chat is the core experience. The permanent personal assistant appears as an ordinary chat with a small dedicated star, not as a visually elevated Core role. It cannot be deleted. The design expresses that through identity, language and interaction, with focused Specialists available as supporting teammates.
 
 This is a design task, not authorization to implement a new runtime feature. It includes a source-informed audit, a local interactive prototype, and the contracts and acceptance matrix for subsequent implementation packets. Product source, policy, data stores, and the owner's running app are unchanged.
 
@@ -32,22 +32,22 @@ The old `e2e/.run/01-settings.png` was also inspected, but its older sidebar and
 
 ## Recommended visual direction
 
-**A familiar assistant, with room to think.** A dark plum navigation frame surrounds a soft lilac conversation canvas. The Core assistant has an original, simple vector character: a rounded figure, an attentive expression and a small leaf-shaped accent. This identity is visible at welcome scale, then becomes a small author avatar during conversation. It is a static identity mark, not a pet, fabricated emotional state, presence signal or claim of consciousness.
+**A familiar assistant, with room to think.** A dark plum navigation frame surrounds a soft lilac conversation canvas. The personal assistant has an original, simple vector avatar: a rounded figure, an attentive expression and a small leaf-shaped accent. The avatar uses the same roster geometry as other Bots. It may appear at welcome scale only in an explicit empty-state study, then becomes a small author avatar during conversation. It is a static identity mark, not a pet, fabricated emotional state, presence signal or claim of consciousness.
 
-The main visual gesture is an asymmetric greeting and character above a generous composer. The conversation remains spacious and direct. A pale olive inset can distinguish a short plan within an actual response; warm paper-colored file icons make outputs feel like useful things the assistant prepared for the user.
+The normal entry is the conversation, framed by a unified chat list. The explicit welcome/empty-state study uses an asymmetric greeting and character above a generous composer. The conversation remains spacious and direct. A pale olive inset can distinguish a short plan within an actual response; warm paper-colored file icons make outputs feel like useful things the assistant prepared for the user.
 
 ```text
-[ Personal assistant + supporting team ] [ Familiar greeting       Character ]
+[ Chats: OpenBot ★, other Bots, groups ] [ Familiar greeting       Character ]
                                         [ One inviting composer             ]
                                         [ Resume conversation | Bot memory  ]
 
-[ Same persistent assistant identity   ] [ Human request                     ]
+[ Same ordinary chat list              ] [ Human request                     ]
                                         [ Natural reply + useful next step  ]
                                         [ File, when produced               ]
                                         [ Composer                          ]
 ```
 
-The main signature is the **recognizable Core character and conversational continuity**. The assistant's appearance and author identity are consistent across welcome, conversation, profile and approvals. Files and execution records support the conversation; they do not become the product's identity.
+The main signature is the **familiar chat identities and conversational continuity**. The assistant's avatar remains consistent across conversation, profile and approvals. A small star beside its name identifies the permanent personal assistant without a separate section, larger card, privileged row height or Core label. Files and execution records support the conversation; they do not become the product's identity.
 
 ### Visual tokens
 
@@ -92,7 +92,13 @@ The resume row reads existing conversation metadata and opens its actual convers
 
 ### Navigation and identity
 
-Give Core a distinct, familiar identity while keeping Core, pinned Bots, other Bots and groups within their existing ordering rules. The supporting-team presentation must keep groups distinguishable from individual Bots. Rows share avatar, name, one preview line, time and optional unread/attention marker. Preserve current draft/activity/latest-message precedence and native-aware read semantics. Never use only color to distinguish an approval, failure or unread state. Keep search and New accessible; reduce heading weight, not discoverability.
+Use one ordinary chat-list presentation for Bots and groups, preserving existing protected Core-first placement, pinned ordering and recency rules internally. All rows use the same avatar box, height, padding, name, one message preview and optional timestamp/unread/attention state. Groups retain their recognizable group avatar and member context. There is no dedicated Core section or “Your assistant” card.
+
+The permanent personal assistant has a small, static five-point star beside its name in the roster and active conversation header. Its accessible label and hover text identify the personal assistant. It is not a clickable favorite, user pin, unread marker, rank, permission status or proof of greater capability. User pin/unread markers must remain visually and semantically distinct. Customizing the name or avatar does not remove this marker or affect protection: production derives it from the immutable Bot identity/kind, never a display name.
+
+The ordinary chat UI uses the Bot's display name. “Core” remains an internal design/protocol term; group recipient explanations refer to the actual default recipient's display name. Profile details may briefly explain that the built-in personal assistant cannot be deleted or hidden. Its actions omit Delete/Hide; other Bots retain their existing lifecycle controls and confirmations. Host enforcement remains authoritative, including after renaming, through management tools, or with forged requests. The visual marker grants no authority and cannot change a grant.
+
+Preserve current draft/activity/latest-message precedence, hidden-Bot access, unread filters and native-aware read semantics. Never use only color to distinguish approval, failure or unread state. Keep Search and New accessible. The fixture's one list does not authorize a new sorting model or storage migration.
 
 Keep Routines, Connect apps, Skills and Settings in the bottom navigation. The existing global Pause/Resume control remains visible and keyboard-accessible when work can be affected. The study's idle footer is not a replacement for this control. A local readiness label must reflect actual Host state and must not imply that inference is offline.
 
@@ -157,7 +163,7 @@ In Models, distinguish configured, testing, connected-after-test and failed. A s
 
 ### Empty states and first use
 
-Give Core a recognizable character and a simple first-task invitation with two or three concrete examples. Use a first-meeting greeting when there is no prior conversation, and a returning greeting only where existing history justifies it. Model setup or its existing skip path remains available. Specialists are never seeded by the redesign; the demo roster is synthetic. Explain missing configuration where it prevents sending, without blocking the user from managing Bots. Preserve first-launch, no-search-results, missing-file, disconnected-Host and no-unread states as distinct cases.
+Give an empty personal-assistant conversation a recognizable avatar and a simple first-task invitation with two or three concrete examples. Use a first-meeting greeting when there is no prior conversation, and a returning greeting only where existing history justifies it. Model setup or its existing skip path remains available. Specialists are never seeded by the redesign; the demo roster is synthetic. Explain missing configuration where it prevents sending, without blocking the user from managing Bots. Preserve first-launch, no-search-results, missing-file, disconnected-Host and no-unread states as distinct cases.
 
 ## Deliverables and demo limits
 
@@ -189,7 +195,7 @@ These are required implementation checks, not claims that the prototype proves p
 | Light/dark, English/Chinese, reduced motion, 200% zoom | Screenshot/keyboard matrix; no clipped decisions or inaccessible composer; contrast checks on actual tokens |
 | Draft, IME, pending send, send failure, channel switch | Existing B21 coverage plus panel/category-switch regression scenarios |
 | Reading old history during incoming activity | Scroll anchor and Jump to latest e2e; no forced scroll from panel changes |
-| Core identity, pinned/unread/hidden Bots, group distinction and search | B22/B23 semantics and exact-message jump survive new row layout |
+| Ordinary chat rows, permanent assistant star, pinned/unread/hidden Bots, group distinction and search | B22/B23 semantics survive; star stays bound to immutable Core identity after renaming; Core cannot be deleted or hidden through UI or Host/tool entry points; Specialists retain confirmed lifecycle actions |
 | Group routing and work | Scripted Core/default and explicit-mention scenarios; actual author and attention state retained; Stop still visible |
 | Pending, expired, stale and reusable approval | Scripted exact-operation approval, Deny, Allow once, supported Always allow scope and timeout; no action before Host confirmation |
 | Result preview/export/remove/missing | Existing B15a bounds and validation; panel focus/scroll; removal updates every linked card |
@@ -213,5 +219,5 @@ Avoid pixel snapshots as the only proof. Assert meaningful visibility, focus, re
 
 ## Open questions
 
-- 2026-10-22: Owner review of the proposed visual direction and its relative priority against the existing delivery queue remains open. The interactive study is concrete enough to review; this does not block further design refinement.
+- 2026-10-22: The selected direction is a warm personal assistant in an ordinary chat list, with a static identity star and protected lifecycle. Memory excerpt selection/truncation and its exact empty-state placement must be fixed in the relevant execution spec.
 - 2026-10-22: Choose the first execution packet in its own ready spec. No product implementation has been claimed or started by D6.
