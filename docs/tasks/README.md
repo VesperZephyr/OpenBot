@@ -188,4 +188,4 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Spec | Status |
 | --- | --- |
-| [B27a: Attributable memory and explicit sharing](b27a-memory-provenance.md) | implemented; acceptance in progress |
+| [B27a: Attributable memory and explicit sharing](b27a-memory-provenance.md) | in review (#46); 490 unit/Host and 135 hidden desktop tests |

@@ -77,6 +77,20 @@ it("reviews scope changes and supplies shared facts to a second Bot without unre
 	expect(system).toContain("Singapore");
 	expect(system).not.toContain("CEDAR_ONLY");
 	expect(system).not.toContain("London");
+	await edit();
+	await page.getByRole("button", { name: "Shared across Bots", exact: true }).click();
+	await card().getByRole("button", { name: "View source" }).click();
+	await card().getByText("Learned by another Bot", { exact: false }).waitFor();
+	await card().getByText("Source Bot: Cedar", { exact: true }).first().waitFor();
+	await card().getByRole("button", { name: "Move to this Bot" }).click();
+	await page.getByRole("button", { name: "Confirm scope change" }).click();
+	await expect.poll(async () => (await method("memory.shared.get")).content).toBe("");
+	await page.getByRole("button", { name: "This Bot", exact: true }).click();
+	await card().getByText("Singapore", { exact: true }).waitFor();
+	await card().getByRole("button", { name: "Share across Bots", exact: true }).click();
+	await page.getByRole("button", { name: "Confirm scope change" }).click();
+	await expect.poll(async () => (await method("memory.shared.get")).content).toContain("Singapore");
+	await page.getByRole("button", { name: "Cancel", exact: true }).click();
 });
 
 it("forgets shared facts across restart and offers usable Chinese controls in a small window", async () => {

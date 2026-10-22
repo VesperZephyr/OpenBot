@@ -19,7 +19,7 @@ References:
 
 [D5: Local memory research](tasks/d5-memory-research.md) is merged in PR #44. The owner approved the local role direction from [D6 research PR #45](https://github.com/VesperZephyr/OpenBot/pull/45).
 
-- **B27a, implemented for review:** [Attributable memory and explicit sharing](tasks/b27a-memory-provenance.md). Topic provenance, correction/forget protection, owner-confirmed scope moves, bounded shared facts and bilingual controls. No semantic extraction or embedding service.
+- **B27a, in review (#46):** [Attributable memory and explicit sharing](tasks/b27a-memory-provenance.md). Topic provenance, correction/forget protection, owner-confirmed scope moves, bounded shared facts and bilingual controls. No semantic extraction or embedding service.
 - **B27b, next:** pin reviewed skill versions to each role; direct-chat defaults remain guidance, with tools and grants independently enforced. Requires its own ready implementation spec.
 - **Later research:** bounded retrieval, semantic contradictions and source citations. B14d must preserve both local/shared documents and protection metadata together.
 

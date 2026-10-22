@@ -1,6 +1,6 @@
 # B27a: Attributable Memory and Explicit Sharing
 
-Status: in progress
+Status: implemented, in review (#46)
 Branch: task/b27a-memory-provenance; pull request target: main
 Depends on: B6/B19, D5; owner-approved D6 direction ([research PR #45](https://github.com/VesperZephyr/OpenBot/pull/45))
 Architecture: Sections 1.1, 5.1, 5.7, 7.1 and 8.3
@@ -80,6 +80,6 @@ None for this batch. Semantic aliases, finer source citations, retrieval, broade
 - `pnpm run check`: 490 tests in 73 suites; boundaries and both TypeScript projects passed.
 - Focused hidden desktop acceptance: 7 tests in `memory-controls.e2e.ts` and `memory-provenance.e2e.ts`, covering legacy history, real routed learning, source previews, protected correction, conflict-preserved drafts, reviewed sharing, a second Bot, forgetting/restart and Chinese small-window controls.
 - Runtime coverage checks matching shared-topic precedence, forgotten shared-topic suppression, direct/routine/group context differences, cross-Bot and non-user rejection, bounded source unavailability after pruning, durable replay, quota rollback and legacy reopen.
-- Full desktop regression and final focused build are recorded below when complete.
+- `pnpm run e2e`: 135 tests in 38 suites passed in background mode. A final focused build rerun covers the source-Bot label and moving a shared note back to the current Bot.
 - Inspected `e2e/.run/memory-provenance/` screenshots. Used agent-browser over CDP on the isolated hidden `memory-explore` app to open the Memory tab, review/confirm a scope change and inspect the resulting shared note. Inspected its screenshot and shut down that test app. No owner data was opened.
 - These deterministic tests establish authority, state and prompt-input contracts. No real-model recall/semantic accuracy benchmark or packaged native release validation was performed in this batch.
