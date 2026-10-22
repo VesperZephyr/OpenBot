@@ -1,6 +1,6 @@
 # D6: A Personal Assistant with Character
 
-Status: implemented and verified on `task/d6-desktop-design`; ready for review, merge pending
+Status: done; product implementation merged in PR #49. README positioning and screenshot publication follow in a documentation-only PR.
 Branch: task/d6-desktop-design
 Date: 2026-10-22
 Depends on: B20, B21, B22, B23, B15a

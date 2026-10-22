@@ -15,9 +15,9 @@ References:
 - **Grok Bot**: [source-backed research snapshot](research/grok-bot.md) and [client interaction research](tasks/d2-grok-ui-research.md); distinguish official facts, observations and inference.
 - **Pi**: `~/github/pi/packages/coding-agent` for the reference coding-agent tools.
 
-## Desktop design delivery
+## Done: personal assistant desktop design
 
-[D6: Personal assistant design](tasks/d6-desktop-design.md) is implemented on `task/d6-desktop-design`, with automated acceptance complete and review pending. The owner approved chat styling, ordinary Bot rows with a protected identity star, and editable profiles with generated/uploaded avatars for every Bot together. Merge remains pending. AI image generation, adjustable cropping, proactive greetings, new result grouping and settings category navigation need separate specs.
+[D6: Personal assistant design](tasks/d6-desktop-design.md) is merged in PR #49, with automated acceptance complete. The owner approved chat styling, ordinary Bot rows with a protected identity star, and editable profiles with generated/uploaded avatars for every Bot together. README positioning and production screenshots follow in a documentation-only PR. AI image generation, adjustable cropping, proactive greetings, new result grouping and settings category navigation need separate specs.
 
 ## Memory design research
 
