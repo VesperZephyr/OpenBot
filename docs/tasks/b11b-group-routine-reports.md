@@ -1,6 +1,6 @@
 # B11b: Scheduled reports in group conversations
 
-Status: in progress
+Status: implemented, in review in [PR #53](https://github.com/VesperZephyr/OpenBot/pull/53)
 Branch: task/b11b-group-routine-reports
 Depends on: B11a, B13c, D7
 
@@ -40,6 +40,26 @@ OpenBot already creates groups, routes mentions, runs isolated scheduled workflo
 4. Group details opens prefilled routine creation and existing routine history; report links open the exact occurrence. English/Chinese layouts and source links remain usable.
 5. Sources distinguish verified releases, prereleases, no update and unavailable retrieval; scripts verify runtime contracts, not model reasoning. A follow-up group request can summarize the reports through existing Core routing.
 6. Full `pnpm run check`, `pnpm run e2e`, screenshot inspection and isolated agent-browser exploration pass. Native release gates remain separate.
+
+## Verification (2026-10-23)
+
+- `pnpm run check`: 512 tests in 77 files, package boundaries and both TypeScript projects. Destination tests cover unknown/stale/non-member groups, scheduled publication, no private copy or peer wakeups, restart identity, remove/re-add revocation, explicit reconfirmation, group dissolution after settlement, destination changes and twenty-occurrence retention.
+- One full-check attempt timed out in the existing spill-file test cleanup hook while desktop compilation was also running; the complete rerun passed all 512 tests without a code or timeout change.
+- `pnpm run e2e`: 157 tests in 44 files. `e2e/group-routines.e2e.ts` adds four combined scenarios for UI creation/review, two attributed reports, a refused retrieval, user-requested Core summary, Host/desktop restart, search/history navigation, Chinese layout and membership changes during approval. Existing private-routine acceptance remains passing.
+- Inspected the English destination review, Chinese group details and blocked-destination screenshots under ignored `e2e/.run/group-routines/`. Agent-browser explored the isolated real-provider app through CDP, inspected both report authors and sources, opened group details and confirmed that contextual creation preselects the group and a member.
+- Separate real-provider acceptance used the configured `claude-sonnet-5-5` model in an isolated app: WorkBuddy and Claude Code official changelogs each required two requests, four requests total. Both `web_fetch` calls succeeded, both reports completed and were published under the correct Bot, no group tasks were created, and a full relaunch preserved exactly two posts. WorkBuddy's report qualified the lack of a listed update; Claude Code's undated source was explicitly insufficient to verify a 24-hour window. This validates two source/report paths, not every product in the catalogue or all model claims.
+- The live trial exercised the implementation working tree based on specification commit `f60cba2`; the ignored evidence records that base commit. Later changes added explicit current-member display, disabled blocked Test/Resume controls and enforced finished-history retention; automated checks cover the final candidate. No owner conversation data was changed. Temporary model configuration was removed after the trial.
+- A direct retrieval probe found that GitHub release HTML can return a navigation shell; the official Kimi Code releases API returned actual release content. The [workflow](../workflows/competitor-radar.md) requires actual release bodies, pagination, source fallback and explicit uncertainty.
+
+Repeat the bounded live trial only when needed, after building the desktop:
+
+```sh
+node scripts/acceptance/group-radar.mts --run --provider <configured-provider> --model <configured-model>
+```
+
+The runner caps upstream inference at twelve requests and 4,096 output tokens per request, with per-report deadlines. It writes ignored evidence and supports optional bounded background inspection through `--inspect-ms`. It is not part of deterministic CI.
+
+Native permissions, signing, clean installation and physical lifecycle acceptance remain separate release gates. Automatic coordinator summaries, conversational routine proposals and browser control are not implemented by this batch.
 
 ## Open questions
 

@@ -1,4 +1,5 @@
 import { validateAppMutation } from "./app-executions.ts";
+import { RoutinesDoc, invalidateRoutineDestinations, ROUTINE_DESTINATION_BLOCKED } from "./routines.ts";
 /** Authoritative local group records. Mutations and publication commit with their replay receipts. */
 import { defineDoc, type Harness, type Tx } from "@earendil-works/pi-durable";
 import type { ConversationSearchIndex } from "./conversation-search.ts";
@@ -111,6 +112,7 @@ export async function detachGroupBot(tx: Tx, botId: string): Promise<void> {
 			group.revision++;
 			if (group.leadBotId === botId) group.leadBotId = null;
 			invalidate(doc, group);
+			await invalidateRoutineDestinations(tx, group);
 		}
 }
 function taskInput(group: Group, roster: readonly BotProfile[], assignment: string, recent: unknown): string {
@@ -148,6 +150,37 @@ export function groupStore(
 		},
 		async posts(id: string): Promise<GroupPost[]> {
 			return (await read()).posts[id] ?? [];
+		},
+		async publishRoutine(occurrenceId: string): Promise<void> {
+			const groupId = await harness.commit(async (tx) => {
+				const state = await tx.doc(RoutinesDoc);
+				const o = state.occurrences[occurrenceId];
+				if (!o?.reportTo || o.published || ["pending", "running", "skipped"].includes(o.state)) return;
+				const doc = await tx.doc(GroupsDoc);
+				const group = doc.groups[o.reportTo.groupId];
+				const routine = state.routines[o.routineId];
+				const bot = (await bots(tx)).find((b) => b.botId === o.botId);
+				if (o.destinationBlocked || !routine || routine.deleted || routine.revision !== o.revision ||
+					!group || group.status !== "active" || group.revision !== o.reportTo.groupRevision ||
+					!group.memberIds.includes(o.botId) || bot?.status !== "active") {
+					o.destinationBlocked = true;
+					o.reason = ROUTINE_DESTINATION_BLOCKED;
+					o.published = true;
+					return;
+				}
+				const post: GroupPost = {
+					postId: `routine-report:${o.occurrenceId}`, senderId: o.botId,
+					text: o.report || "Routine ended without a completed answer", at: o.endedAt ?? o.createdAt,
+					recipientIds: [], attachments: o.artifacts ?? [],
+					routine: { occurrenceId: o.occurrenceId, routineId: o.routineId, name: o.name, scheduledAt: o.scheduledAt, test: o.test, state: o.state },
+				};
+				const posts = doc.posts[group.groupId] ??= [];
+				if (!posts.some((p) => p.postId === post.postId)) posts.push(copy(post));
+				await projectConversation(tx, `group:${group.groupId}`, groupProjection(posts));
+				o.published = true;
+				return group.groupId;
+			}, context);
+			if (groupId) await indexHistory(groupId);
 		},
 		async deliveries(): Promise<GroupDelivery[]> {
 			return Object.values((await read()).deliveries);
@@ -205,6 +238,7 @@ export function groupStore(
 				await projectConversation(tx, `group:${group.groupId}`, groupProjection(doc.posts[group.groupId]!));
 				doc.changes[change.requestId] = copy({ change, result: group });
 				invalidate(doc, group);
+				await invalidateRoutineDestinations(tx, group);
 				return copy(group);
 			}, context);
 		},

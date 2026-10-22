@@ -1,7 +1,7 @@
 # OpenBot Backlog
 
 
-Active delivery scope (2026-10-22): the owner prioritizes attributable memory, correction/forgetting and explicit sharing (B27a), then per-role default skills (B27b), on one local Mac. B9c OAuth and B12b optional model review remain excluded; Phase 3 remains deferred. I3 (#42), B6a (#43), D5 (#44), B27a (#46) and B27b (#47) are merged. I4 verifies these role foundations with a bounded real-model smoke check and deterministic integration. Backup/restore (B14d), history scaling (B14c), templates (B13e) and signed updates (B14f) follow these role foundations. Historical planning sections do not authorize excluded or deferred work.
+Active delivery scope (2026-10-23): the owner prioritizes a Grok Bot-inspired competitor radar: Domestic Hunter and International Hunter publish source-backed Agent changelog reports into one group. [B11b](tasks/b11b-group-routine-reports.md) adds confirmed group destinations and contextual routine controls, in review in [PR #53](https://github.com/VesperZephyr/OpenBot/pull/53). B27a (#46), B27b (#47), I4 (#48), D6 (#49) and D7 (#51) are merged. I5 was merged into the D7 branch by #52; [PR #54](https://github.com/VesperZephyr/OpenBot/pull/54) carries those regression improvements to main. Backup/restore (B14d), history scaling (B14c), templates (B13e) and signed updates (B14f) remain subsequent work. B9c OAuth and B12b optional model review remain excluded; Phase 3 remains deferred.
 
 Work after the tools demo, cut into batches that can each be finished and verified on their own. Each batch states its approach, key decisions, and the acceptance that closes it. A batch gets a full task spec in [`tasks/`](tasks/README.md) before execution starts; batches here without a spec link are approach only.
 
@@ -15,11 +15,15 @@ References:
 - **Grok Bot**: [source-backed research snapshot](research/grok-bot.md) and [client interaction research](tasks/d2-grok-ui-research.md); distinguish official facts, observations and inference.
 - **Pi**: `~/github/pi/packages/coding-agent` for the reference coding-agent tools.
 
+## Competitor radar delivery
+
+**B11b, in review (#53):** [Scheduled reports in group conversations](tasks/b11b-group-routine-reports.md). Two independent hunter routines publish attributable reports into a confirmed group, with exact history links, restart deduplication and revocation when membership changes. The [workflow](workflows/competitor-radar.md) records source selection, daily windows and unavailable-source handling. Automated acceptance and a bounded two-source real-model check are recorded in the spec. Automatic coordinator summaries and conversational routine proposals require separate specs.
+
 ## Done: personal assistant desktop design
 
 [D6: Personal assistant design](tasks/d6-desktop-design.md) is merged in PR #49, with automated acceptance complete. The owner approved chat styling, ordinary Bot rows with a protected identity star, and editable profiles with generated/uploaded avatars for every Bot together. README positioning and production screenshots are merged in PR #50. AI image generation, adjustable cropping, proactive greetings and new result grouping need separate specs.
 
-**D7, in review:** [White chat canvas and focused interactions](tasks/d7-chat-interaction.md). Complete light and dark appearance, management inside Settings, understandable interruption continuation and a compact state-aware composer. All 506 unit and 153 desktop tests pass; bilingual README and screenshots are updated. Development stays in the original checkout.
+**D7, Done (#51):** [White chat canvas and focused interactions](tasks/d7-chat-interaction.md). Complete light and dark appearance, management inside Settings, understandable interruption continuation and a compact state-aware composer. All 506 unit and 153 desktop tests pass; bilingual README and screenshots are updated. Development stays in the original checkout.
 
 ## Memory design research
 
@@ -29,13 +33,13 @@ References:
 - **B27b, Done (#47):** exact per-role skill defaults; direct-chat defaults remain guidance, with tools and grants independently enforced.
 - **Later research:** bounded retrieval, semantic contradictions and source citations. B14d must preserve both local/shared documents and protection metadata together.
 
-**I4, in verification:** [Real-model role and memory acceptance](tasks/i4-role-memory-acceptance.md). Correct cross-topic/restart and corrected invoice totals; selected-version prompt clarification after observed model drift. Real shared/group trials are deferred under the bounded spending scope; [evidence](acceptance/role-memory-2026-10-22.md).
+**I4, Done (#48):** [Real-model role and memory acceptance](tasks/i4-role-memory-acceptance.md). Correct cross-topic/restart and corrected invoice totals; selected-version prompt clarification after observed model drift. Real shared/group trials are deferred under the bounded spending scope; [evidence](acceptance/role-memory-2026-10-22.md).
 
 ## Role methods
 
 [B27b: Per-role skill defaults](tasks/b27b-role-skills.md) is merged in PR #47, following the owner-approved local role direction. Profile pins are exact shared-library versions; direct-user admission composes them with message attachments and freezes accepted method snapshots. Groups and routines keep their existing explicit selections. Memory provenance/correction/sharing is the separate [B27a PR #46](https://github.com/VesperZephyr/OpenBot/pull/46); neither batch introduces cloud services or new grants.
 
-After these role foundations, retain B14d/B14c/B13e/B14f ordering. Per-message skill overrides, capability readiness and broader group defaults need separate specs.
+After B11b, retain B14d/B14c/B13e/B14f ordering. Per-message skill overrides, capability readiness and broader group defaults need separate specs.
 
 ## Phases
 

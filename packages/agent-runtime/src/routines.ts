@@ -1,8 +1,30 @@
 import { RunsDoc, isTerminal } from "./runs.ts";
+import { GroupsDoc } from "./groups.ts";
 import { pruneUsage } from "./usage.ts";
 import { defineDoc, type Harness } from "@earendil-works/pi-durable";
 import type { Context } from "@earendil-works/chord/context";
-import type { Routine, RoutineOccurrence } from "@openbot/protocol";
+import { ProtocolError, type Group, type Routine, type RoutineOccurrence } from "@openbot/protocol";
+import type { Tx } from "@earendil-works/pi-durable";
+
+export const ROUTINE_DESTINATION_BLOCKED = "Report destination changed. Edit the routine to confirm its group again.";
+
+/** Group changes withdraw destination authority in the same transaction as membership changes. */
+export async function invalidateRoutineDestinations(tx: Tx, group: Group): Promise<void> {
+	const state = await tx.doc(RoutinesDoc);
+	for (const r of Object.values(state.routines)) {
+		if (r.deleted || r.reportTo?.groupId !== group.groupId || r.destinationBlocked) continue;
+		if (group.status === "active" && group.revision === r.reportTo.groupRevision && group.memberIds.includes(r.botId)) continue;
+		r.enabled = false;
+		r.destinationBlocked = true;
+		r.revision++;
+		for (const o of Object.values(state.occurrences)) {
+			if (o.routineId !== r.routineId || o.published || o.state === "skipped") continue;
+			o.stopped = true;
+			o.destinationBlocked = true;
+			o.reason = ROUTINE_DESTINATION_BLOCKED;
+		}
+	}
+}
 export type RoutineState = {
 	routines: Record<string, Routine>;
 	occurrences: Record<string, RoutineOccurrence>;
@@ -32,8 +54,13 @@ export function routineStore(harness: Harness, context: Context) {
 				}
 			);
 		},
-		async change<T>(fn: (state: RoutineState) => T): Promise<T> {
+		async change<T>(fn: (state: RoutineState) => T, destination?: { botId: string; reportTo: NonNullable<Routine["reportTo"]> }): Promise<T> {
 			return harness.commit(async (tx) => {
+				if (destination) {
+					const group = (await tx.doc(GroupsDoc)).groups[destination.reportTo.groupId];
+					if (!group || group.status !== "active" || group.revision !== destination.reportTo.groupRevision || !group.memberIds.includes(destination.botId))
+						throw new ProtocolError("invalid_request", ROUTINE_DESTINATION_BLOCKED);
+				}
 				const state = await tx.doc(RoutinesDoc);
 				const previous = Object.values(state.occurrences);
 				// Transaction draft proxies must never escape into Host responses.
