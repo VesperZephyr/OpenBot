@@ -1,7 +1,7 @@
 # OpenBot Backlog
 
 
-Active delivery scope (2026-10-22): the owner prioritizes attributable memory, correction/forgetting and explicit sharing (B27a), then per-role default skills (B27b), on one local Mac. B9c OAuth and B12b optional model review remain excluded; Phase 3 remains deferred. I3 (#42), B6a (#43) and D5 (#44) are merged. Backup/restore (B14d), history scaling (B14c), templates (B13e) and signed updates (B14f) follow these role foundations. Historical planning sections do not authorize excluded or deferred work.
+Active delivery scope (2026-10-22): the owner prioritizes attributable memory, correction/forgetting and explicit sharing (B27a), then per-role default skills (B27b), on one local Mac. B9c OAuth and B12b optional model review remain excluded; Phase 3 remains deferred. I3 (#42), B6a (#43), D5 (#44), B27a (#46) and B27b (#47) are merged. I4 verifies these role foundations with a bounded real-model smoke check and deterministic integration. Backup/restore (B14d), history scaling (B14c), templates (B13e) and signed updates (B14f) follow these role foundations. Historical planning sections do not authorize excluded or deferred work.
 
 Work after the tools demo, cut into batches that can each be finished and verified on their own. Each batch states its approach, key decisions, and the acceptance that closes it. A batch gets a full task spec in [`tasks/`](tasks/README.md) before execution starts; batches here without a spec link are approach only.
 
@@ -19,13 +19,15 @@ References:
 
 [D5: Local memory research](tasks/d5-memory-research.md) is merged in PR #44. The owner approved the local role direction from [D6 research PR #45](https://github.com/VesperZephyr/OpenBot/pull/45).
 
-- **B27a, in review (#46):** [Attributable memory and explicit sharing](tasks/b27a-memory-provenance.md). Topic provenance, correction/forget protection, owner-confirmed scope moves, bounded shared facts and bilingual controls. No semantic extraction or embedding service.
-- **B27b, next:** pin reviewed skill versions to each role; direct-chat defaults remain guidance, with tools and grants independently enforced. Requires its own ready implementation spec.
+- **B27a, Done (#46):** [Attributable memory and explicit sharing](tasks/b27a-memory-provenance.md). Topic provenance, correction/forget protection, owner-confirmed scope moves, bounded shared facts and bilingual controls. No semantic extraction or embedding service.
+- **B27b, Done (#47):** exact per-role skill defaults; direct-chat defaults remain guidance, with tools and grants independently enforced.
 - **Later research:** bounded retrieval, semantic contradictions and source citations. B14d must preserve both local/shared documents and protection metadata together.
+
+**I4, in verification:** [Real-model role and memory acceptance](tasks/i4-role-memory-acceptance.md). Correct cross-topic/restart and corrected invoice totals; selected-version prompt clarification after observed model drift. Real shared/group trials are deferred under the bounded spending scope; [evidence](acceptance/role-memory-2026-10-22.md).
 
 ## Role methods
 
-[B27b: Per-role skill defaults](tasks/b27b-role-skills.md) is implemented in PR #47, following the owner-approved local role direction. Profile pins are exact shared-library versions; direct-user admission composes them with message attachments and freezes accepted method snapshots. Groups and routines keep their existing explicit selections. Memory provenance/correction/sharing is the separate [B27a PR #46](https://github.com/VesperZephyr/OpenBot/pull/46); neither batch introduces cloud services or new grants.
+[B27b: Per-role skill defaults](tasks/b27b-role-skills.md) is merged in PR #47, following the owner-approved local role direction. Profile pins are exact shared-library versions; direct-user admission composes them with message attachments and freezes accepted method snapshots. Groups and routines keep their existing explicit selections. Memory provenance/correction/sharing is the separate [B27a PR #46](https://github.com/VesperZephyr/OpenBot/pull/46); neither batch introduces cloud services or new grants.
 
 After these role foundations, retain B14d/B14c/B13e/B14f ordering. Per-message skill overrides, capability readiness and broader group defaults need separate specs.
 
