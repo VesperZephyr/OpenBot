@@ -1,6 +1,6 @@
 # D6: A Personal Assistant with Character
 
-Status: implemented and verified on `task/d6-desktop-design`; ready for review, merge pending
+Status: done; product implementation merged in PR #49. README positioning and screenshot publication follow in a documentation-only PR.
 Branch: task/d6-desktop-design
 Date: 2026-10-22
 Depends on: B20, B21, B22, B23, B15a
@@ -240,8 +240,10 @@ Avoid pixel snapshots as the only proof. Assert meaningful visibility, focus, re
 
 ## Production verification — 2026-10-22
 
+Final integration includes `origin/main` at `2fd2017` (I4 role/memory acceptance). Both the full check and e2e commands below passed again after integration. The English and Chinese READMEs describe the personal desktop positioning and show production screenshots from the final isolated test run.
+
 - `pnpm run check`: boundaries, both TypeScript projects and 506 tests in 77 files passed. A subsequent type check passed after formatting cleanup.
-- `pnpm run e2e`: 144 tests in 40 files passed against ScriptedModel in isolated background Electron instances. After the final dark-mode selected-label/outline color adjustment, rebuilt the desktop and reran all five personal-design scenarios successfully, including a computed contrast assertion for the selected profile tab.
+- `pnpm run e2e`: 147 tests in 41 files passed against ScriptedModel in isolated background Electron instances. After the final dark-mode selected-label/outline color adjustment, rebuilt the desktop and reran all five personal-design scenarios successfully, including a computed contrast assertion for the selected profile tab.
 - `node apps/desktop/scripts/stage-runtime.mjs` and an isolated bundled Host/executor startup passed with the PNG decoder dependency included. This is runtime composition validation, not a signed packaged release.
 - Inspected production welcome, conversation and profile screenshots against the approved study at 1280×820, plus wide profile editing, dark Chinese layouts at 880 px, native 200% zoom capture, compact approval, long names/code, group details and file results. Latest reference captures are generated under `e2e/.run/design-reference/`; other matrices live under `e2e/.run/personal-design/`, `conversation-experience/` and `artifacts/`.
 - Used agent-browser against a separate background test app on CDP 9338. Verified generated selection, rename/save propagation, profile/memory draft retention, Escape focus restoration, one protected identity star and no document overflow. Measured light supporting-text contrast at 5.34:1 and sidebar supporting text at 7.02:1 or higher, including selected-row alpha compositing. No complete accessibility audit is claimed.
