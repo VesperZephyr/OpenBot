@@ -13,6 +13,9 @@ export const KEPT_TERMINAL_RUNS = 50;
 
 /** One message of a Run as the user sent it; the text is kept to detect a reused request ID with other content. */
 export type RunMessage = {
+	/** Original explicit input for replay; resolved skills may also contain role defaults. */
+	readonly requestedSkills?: readonly import("@openbot/protocol").SkillRef[];
+	readonly roleSkills?: readonly import("@openbot/protocol").SkillRef[];
 	readonly requestId: string;
 	readonly text: string;
 	readonly attachments?: readonly import("@openbot/protocol").ArtifactRef[];

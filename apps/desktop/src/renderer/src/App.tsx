@@ -1,3 +1,4 @@
+import { RoleSkills } from "./RoleSkills";
 import {RoutinesPanel} from "./Routines";
 import { CredentialStorage } from "./CredentialStorage";
 import {ConnectorsPanel} from "./Connectors";
@@ -21,6 +22,7 @@ import type {
 	ModelSummary,
 	RunRecord,
 	ThinkingLevel,
+	SkillRef,
 	TranscriptItem,
 } from "@openbot/protocol";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -842,6 +844,7 @@ const THINKING_LABEL: Record<ThinkingLevel, string> = { off: "Off", low: "Low", 
 
 function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
 	const [revision, setRevision] = useState(bot.revision);
+	const [defaultSkills, setDefaultSkills] = useState<readonly SkillRef[]>(bot.defaultSkills ?? []);
 	const [saveError, setSaveError] = useState("");
 	const [saving, setSaving] = useState(false);
 	const [name, setName] = useState(bot.name);
@@ -863,6 +866,7 @@ function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 			await api["bots.update"]({
 				botId: bot.botId,
 				expectedRevision: revision,
+				defaultSkills,
 				name: name.trim() || bot.name,
 				role,
 				instructions,
@@ -899,6 +903,7 @@ function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 									const fresh = bots.find((item) => item.botId === bot.botId);
 									if (!fresh) return;
 									setRevision(fresh.revision);
+									setDefaultSkills(fresh.defaultSkills ?? []);
 									setName(fresh.name);
 									setRole(fresh.role);
 									setInstructions(fresh.instructions);
@@ -951,6 +956,7 @@ function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 					</label>
 				)}
 			</div>
+			<RoleSkills value={defaultSkills} onChange={setDefaultSkills} disabled={saving} />
 			<div className="dialog-actions">
 				<button type="button" onClick={onClose}>
 					{t("Cancel")}

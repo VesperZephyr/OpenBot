@@ -1,8 +1,9 @@
 /** Local management intents and receipts. Only the Host writes these; results commit with the Bot mutation. */
 import { defineDoc, type Harness } from "@earendil-works/pi-durable";
 import type { Context } from "@earendil-works/chord/context";
-import { type BotManagementProposal, type BotManagementReceipt, ProtocolError } from "@openbot/protocol";
-export const ManagementDoc = defineDoc<{ operations: Record<string, BotManagementReceipt> }>({
+import { type BotManagementProposal, type BotManagementReceipt, type BotProfile, type SkillRef, ProtocolError } from "@openbot/protocol";
+type StoredReceipt = Omit<BotManagementReceipt, "result"> & { result?: Omit<BotProfile, "defaultSkills"> & { defaultSkills?: SkillRef[] } };
+export const ManagementDoc = defineDoc<{ operations: Record<string, StoredReceipt> }>({
 	kind: "openbot.management",
 	version: 1,
 	scope: "session",

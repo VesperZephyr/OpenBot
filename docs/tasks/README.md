@@ -183,3 +183,9 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Spec | Status |
 | --- | --- |
 | [B6a: Evidence-based Bot delivery](b6a-prompt-reliability.md) | in review (#43); 479 unit/Host and 132 hidden e2e tests; real-model report and unknown-write trial |
+
+## Per-role methods
+
+| Spec | Status |
+| --- | --- |
+| [B27b: Per-role skill defaults](b27b-role-skills.md) | implemented; acceptance in progress |

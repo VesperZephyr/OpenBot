@@ -175,6 +175,8 @@ export type ModelApi = (typeof MODEL_APIS)[number];
 export type ThinkingLevel = "off" | "low" | "medium" | "high";
 
 export type BotProfile = {
+	/** Exact reviewed procedures applied only to new direct user messages. */
+	readonly defaultSkills?: readonly SkillRef[];
 	/** Increments on every profile mutation; legacy profiles start at 1. */
 	readonly revision: number;
 	readonly kind: "core" | "specialist";
@@ -564,6 +566,7 @@ export type HostMethods = {
 		params: {
 			readonly botId: BotId;
 			readonly expectedRevision?: number;
+			readonly defaultSkills?: readonly SkillRef[];
 			readonly name?: string;
 			readonly role?: string;
 			readonly instructions?: string;

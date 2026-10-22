@@ -483,6 +483,10 @@ The desktop offers an explicit recipient picker and @ search, visible assignment
 
 **Handoff (planned).** `bot_handoff` submits a task to another Bot's conversation with the request ID `handoff:<invocationId>`, which deduplicates retransmission after a crash. Both transcripts record the handoff. Work started by a handoff is unattended for approval-expiry purposes unless the user is in that conversation.
 
+**Role skill defaults.** [B27b](tasks/b27b-role-skills.md) adds optional `defaultSkills` references to a Bot profile. The owner previews and selects up to two exact name/revision/SHA-256 pins in Profile and saves with the existing profile revision. Missing/corrupt versions fail visibly; a new library revision never upgrades defaults automatically. Duplication preserves pins with fresh memory/history. Management tools may inspect pin metadata but cannot configure associations.
+
+The Run scheduler composes defaults only for new direct user messages. Identical message/default references deduplicate; conflicting versions or a union above two methods fail before acceptance. The accepted Run stores explicit request references, role references and immutable procedure documents. Queueing, steering, restart, continuation and replay use those snapshots, not current profile/library state. Legacy messages retain their original replay contract. Groups, peer/background work and routines do not acquire new defaults; existing routine pins remain authoritative. Skills stay guidance under ordinary tool authorization. Older methods may remain in conversation history until a new topic starts.
+
 **Templates (planned).** A Bot can be exported as a template containing its profile, instructions, and referenced skill names, excluding memory, conversation history, credentials, and grants. Importing a template creates a new Bot.
 
 ### 5.8 Skills and Routines

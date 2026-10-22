@@ -1,6 +1,6 @@
 # B27b: Per-Role Skill Defaults
 
-Status: ready
+Status: implemented; acceptance in progress
 Branch: task/b27b-role-skills; pull request target: main
 Depends on: B10/B19; owner-approved D6 role direction
 Architecture: Sections 5.7 and 5.9
@@ -17,7 +17,7 @@ Out: private skill libraries, automatic skill creation/upgrades, new tool grants
 
 ## Contracts
 
-- Add optional `defaultSkills: SkillRef[]` to Bot profiles/records. Legacy profiles have no defaults. Limit two distinct names, each pinned by name/revision/SHA-256. Keep existing profile CAS and update events. Duplication copies settings and pins with empty memory/history. Model management schemas do not gain this field.
+- Add optional `defaultSkills: SkillRef[]` to Bot profiles/records. Legacy profiles have no defaults. Limit two distinct names, each pinned by name/revision/SHA-256. Keep existing profile CAS and update events. Duplication copies settings and pins with empty memory/history. Model management input schemas do not gain this field; inspection/results can report pins as read-only profile metadata.
 - The owner selects defaults in Profile from the shared library, inspects the exact procedure, and explicitly saves. Existing stale/unavailable pins remain visible and removable. Never silently upgrade a pin; choosing a newer revision is an explicit selection after preview. Validate every newly submitted selection against the executor-backed library before the profile commit. Invalid references fail without losing the draft. No tool authorization changes.
 - Compose defaults only for new direct user message admission, inside the Run scheduler's serial admission path. Group, peer, background and routine admission use their existing explicit references; routine pins remain authoritative.
 - Merge profile defaults and explicit message skills in stable order. Identical references deduplicate. Same name/different version or a union over two names fails visibly before creating a Run; no silent omission or upgrade. The composer shows current role defaults and explains how to resolve a conflict by editing profile defaults or message attachments. This increment does not add a per-message override switch.
@@ -47,3 +47,11 @@ Out: private skill libraries, automatic skill creation/upgrades, new tool grants
 ## Open questions
 
 None. Per-message overrides, project-specific skill sets, group defaults, capability readiness and semantic method evaluation remain separate work.
+
+## Verification record (2026-10-22)
+
+- `pnpm run check`: 484 tests in 73 suites passed, including boundaries and both TypeScript projects.
+- Focused hidden desktop acceptance: 8 tests in the existing shared-skills suite and the new role-skills suite. These cover preview/pin, local file work with the actual pinned input, revision-conflict drafts, restart/duplication, role independence, deliberate version adoption, rejected unavailable methods, draft recovery and Chinese controls.
+- Scheduler tests retain original role methods through queueing, profile changes, library loss, restart and continuation. Replay uses original explicit inputs; context tests exclude defaults from other Bots, groups, routines, background and peer work. Schema and Host tests reject forged model configuration and invalid/unavailable owner pins.
+- Screenshot inspection identified a long-option intrinsic-width overflow in the preview; the layout is constrained and a regression assertion is included. Final build/full desktop results are recorded before readiness.
+- Isolated agent-browser exploration uses the hidden `role-skills-explore` app. No owner data or real external services are used. Scripted tests establish context/authority contracts, not real-model method quality.

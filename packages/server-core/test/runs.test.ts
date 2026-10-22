@@ -147,6 +147,49 @@ describe("RunScheduler", () => {
   const continued=await scheduler.continue("interrupted-skill","resume");await reaches("b",continued.runId,"completed");expect((await runtime.runsStore().get(continued.runId))?.messages[0]?.skills).toEqual([skill]);
   expect((await runtime.snapshot("b")).items.filter(i=>i.kind==="user").at(-1)).toMatchObject({skills:[ref]});await close();
  });
+
+	it("freezes role methods before queueing, survives changed defaults and library loss, and replays the original request", async () => {
+		const ref = { name: "report", revision: 1, sha256: "a".repeat(64) };
+		const skill = { ...ref, document: { name: "report", description: "Method", inputs: "Numbers", requirements: "None", steps: "Original method", validation: "Check", output: "Report", approvalBoundaries: "Ask" }, markdown: "ROLE_METHOD_ORIGINAL" };
+		let available = true;
+		attachments = { resolveSkills: async refs => { if (!available) throw new Error("Unavailable"); return refs.map(() => skill); } };
+		await open(); await createBots("a", "b"); admitted = false;
+		await runtime.updateBot("a", { defaultSkills: [ref], expectedRevision: 1 });
+		const accepted = await scheduler.submit("a", "role-queued", "Use my method");
+		expect((await runtime.runsStore().get(accepted.runId))?.messages[0]).toMatchObject({ roleSkills: [ref], requestedSkills: [], skills: [skill] });
+		await runtime.updateBot("a", { defaultSkills: [], expectedRevision: 2 });
+		available = false;
+		expect((await scheduler.submit("a", "role-queued", "Use my method")).runId).toBe(accepted.runId);
+		await expect(scheduler.submit("a", "role-queued", "Use my method", { skills: [ref] })).rejects.toThrow("already used");
+		await close();
+		await open("Used accepted method", "Continued method"); admitted = true; await scheduler.start();
+		await reaches("a", accepted.runId, "completed");
+		const original = (await runtime.runsStore().get(accepted.runId))!;
+		expect(original.inputs[0]?.skills).toEqual([skill]);
+		await runtime.runsStore().put({ ...original, runId: "role-interrupted", state: "needs_attention", inputs: [], interruption: { reason: "user", requestedAt: 1, settledAt: 2 } });
+		const continued = await scheduler.continue("role-interrupted", "resume");
+		await reaches("a", continued.runId, "completed");
+		expect((await runtime.runsStore().get(continued.runId))?.inputs[0]?.skills).toEqual([skill]);
+		await close();
+	});
+
+	it("excludes role defaults from other Bots and non-direct contexts and rejects conflicts before admission", async () => {
+		const ref = { name: "report", revision: 1, sha256: "a".repeat(64) };
+		const calls: unknown[] = [];
+		attachments = { resolveSkills: async refs => { calls.push(refs); return []; } };
+		await open(); await createBots("a", "b"); admitted = false;
+		await runtime.updateBot("a", { defaultSkills: [ref] });
+		await scheduler.submit("b", "other", "Hello");
+		for (const origin of ["peer", "background", "routine"] as const) await scheduler.submit("a", origin, "Hello", { origin, separate: true });
+		await runtime.ensureChannel("a", "group_roles");
+		await scheduler.submit("a", "group", "Hello", { channelId: "group_roles" });
+		expect(calls).toEqual([[], [], [], [], []]);
+		await expect(scheduler.submit("a", "conflict", "Hello", { skills: [{ ...ref, revision: 2 }] })).rejects.toThrow("different versions");
+		expect((await runtime.runsStore().list()).some(run => run.requestIds.includes("conflict"))).toBe(false);
+		await scheduler.submit("a", "dedup", "Hello", { skills: [ref] });
+		expect(calls.at(-1)).toEqual([ref]);
+		await close();
+	});
 	it("fails unavailable accepted attachments visibly without admitting empty model input", async () => {
 		const ref = {
 			artifactId: `artifact_${"a".repeat(32)}`,

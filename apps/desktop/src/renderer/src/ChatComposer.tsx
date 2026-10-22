@@ -21,6 +21,7 @@ export function ChatComposer({
 	const { draft, attempt } = useComposer(conversationKey);
 	const input = useRef<HTMLTextAreaElement>(null);
  const skills=useStore(s=>s.skills);
+ const roleSkills=useStore(s=>conversationKey.startsWith("bot:") ? s.bots.find(bot=>bot.botId===conversationKey.slice(4))?.defaultSkills : undefined);
  const [skillPicker,setSkillPicker]=useState(false),[skillActive,setSkillActive]=useState(0),[skillDismissed,setSkillDismissed]=useState<string>();
  const skillListId=useId();
  const skillMatch=members?null:draft.text.match(/(?:^|\s)\/([a-z0-9-]*)$/);
@@ -95,6 +96,7 @@ export function ChatComposer({
 	const copy = (text: string) => void navigator.clipboard.writeText(text).catch(report);
 	return (
 		<div className="compose-area">
+			{!!roleSkills?.length && <p className="compose-notice role-skill-defaults">{t("Role defaults")}: {roleSkills.map(ref => `/${ref.name} v${ref.revision}`).join(" · ")}<br />{t("Defaults and message attachments share a two-skill limit. Change defaults in Profile.")}</p>}
 			{composers.warning && (
 				<p className="compose-notice" role="alert">
 					{t(composers.warning)}
