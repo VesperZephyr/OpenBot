@@ -1,3 +1,4 @@
+import { avatarSource, validateAvatar } from "@openbot/local-executor";
 /**
  * Local executor process. Started by the Host with an IPC channel; serves the executor protocol (Section 6.2) for the
  * bound local target over the receipt ledger in `<data>/executor/receipts.sqlite`, saves cut tool output under
@@ -132,6 +133,8 @@ process.on("message", (message: ExecutorRequest) => {
 				const op = message.operation;
 				let result;
 				switch (op.action) {
+					case "avatar-source": result = avatarSource(op.path); break;
+					case "avatar-validate": result = validateAvatar(op.base64); break;
 					case "import":
 						result = artifactStore.capture(message.requestId, op.path);
 						break;
@@ -154,7 +157,7 @@ process.on("message", (message: ExecutorRequest) => {
 				const ref = result
 					? "artifact" in result
 						? result.artifact
-						: result
+						: "artifactId" in result ? result : undefined
 					: "artifactId" in op
 						? artifactStore.get(op.artifactId)
 						: undefined;

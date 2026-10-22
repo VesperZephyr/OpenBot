@@ -57,7 +57,7 @@ Dated entries added during execution. Empty when ready.
 
 ## Index
 
-Desktop design: [D6: Personal Assistant Design](d6-desktop-design.md), **design direction agreed; execution specs pending**. Source-informed audit, interactive local prototype, editable profiles and local avatar generation, visual tokens and proposed implementation packets. No product implementation or delivery reprioritization.
+Desktop design: [D6: Personal Assistant Design](d6-desktop-design.md), **implemented and verified; merge pending**. Owner-approved chat redesign, ordinary Bot list with protected personal-assistant star, focused editable profiles and durable local generated/uploaded avatars. Includes the original standalone design study.
 
 Product design (not an implementation task): [D1: Core Bot, Specialist Bots, and Model Sources](d1-bot-product-design.md), **accepted direction**. Research and task contracts for the product foundation. Agent mechanisms continue to reuse Pi.
 

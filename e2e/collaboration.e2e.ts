@@ -80,7 +80,7 @@ it("structured @ chooses a member, while cycles pause durably in Chinese", async
 	await send("Review directly.");
 	await until(async () => (await snapshot()).posts.at(-1)?.text).toBe("Only Beta replied.");
 	expect((await snapshot()).posts.at(-2).recipientIds).toEqual(["bot_beta"]);
-	await h.page().getByRole("button", { name: "Core · automatic", exact: true }).click();
+	await h.page().getByRole("button", { name: "OpenBot · automatic", exact: true }).click();
 	h.model.script(
 		{ tool: "bot_delegate", args: { botId: "bot_alpha", task: "Review", expectedResult: "Review" } },
 		{ text: "Assigned." },

@@ -29,6 +29,7 @@ export function LifecycleControls() {
 					{state?.error && <p>{t(state.error)}</p>}
 				</div>
 			)}
+			<span className="local-target"><span aria-hidden="true" />{t("On this Mac")}</span>
 			<button
 				type="button"
 				disabled={unavailable}

@@ -4,12 +4,12 @@ import type { ArtifactRef } from "@openbot/protocol";
 /**
  * The renderer's only path to the Host. Each call is checked against the method allowlist, the sending frame, and the
  * method's parameter schema before it is forwarded. Errors keep their protocol code so the renderer can show actionable
- * messages. Two desktop-only channels need main's privileges: writing the clipboard and revealing a file in Finder.
+ * messages. Desktop-only channels also handle native pickers, clipboard access and revealing files in Finder.
  */
-import { BrowserWindow, clipboard, dialog, ipcMain, type IpcMainInvokeEvent, shell } from "electron";
+import { BrowserWindow, clipboard, dialog, ipcMain, nativeImage, type IpcMainInvokeEvent, shell } from "electron";
 import type { RedactedSettings } from "@openbot/protocol";
 import type { Language } from "../shared/i18n";
-import { ProtocolError } from "@openbot/protocol";
+import { AVATAR_LIMITS, ProtocolError } from "@openbot/protocol";
 import { paramsError } from "@openbot/protocol/schemas";
 import { CHANNELS, RENDERER_METHODS, type RendererMethod } from "../shared/api";
 import { FolderSelections } from "./folder-picker";
@@ -63,6 +63,59 @@ export function registerIpc({ host, isTrustedFrame, language, onSettings }: IpcO
 			// Electron serializes only the message across IPC, so the code travels as a prefix.
 			if (error instanceof ProtocolError) throw new Error(`[${error.code}] ${error.message}`);
 			throw error;
+		}
+	});
+
+	ipcMain.handle(CHANNELS.pickAvatar, async (event) => {
+		checkFrame(event);
+		const frame = event.senderFrame,
+			window = BrowserWindow.fromWebContents(event.sender);
+		if (!window) throw Error("No application window");
+		let expired = false;
+		const expire = () => {
+			expired = true;
+		};
+		const check = () => {
+			if (
+				expired ||
+				event.sender.isDestroyed() ||
+				frame?.isDestroyed() ||
+				event.sender.mainFrame !== frame ||
+				BrowserWindow.fromWebContents(event.sender) !== window
+			)
+				throw Error("The file selection expired");
+		};
+		event.sender.on("did-start-navigation", expire);
+		try {
+			const selected = await dialog.showOpenDialog(window, {
+				title: translate(language?.() ?? "en", "Choose an avatar"),
+				properties: ["openFile"],
+				filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }],
+			});
+			if (selected.canceled) return null;
+			check();
+			if (selected.filePaths.length !== 1) throw Error("Choose one avatar image");
+			const source = await host.call("avatars.source", { path: selected.filePaths[0]! });
+			check();
+			const image = nativeImage.createFromBuffer(Buffer.from(source.base64, "base64"));
+			const { width, height } = image.getSize(),
+				side = Math.min(width, height);
+			if (
+				image.isEmpty() ||
+				!side ||
+				width > AVATAR_LIMITS.side ||
+				height > AVATAR_LIMITS.side ||
+				width * height > AVATAR_LIMITS.pixels
+			)
+				throw Error("Could not read this avatar. Choose another image.");
+			const cropped = image
+				.crop({ x: Math.floor((width - side) / 2), y: Math.floor((height - side) / 2), width: side, height: side })
+				.resize({ width: AVATAR_LIMITS.size, height: AVATAR_LIMITS.size, quality: "best" });
+			const png = cropped.toPNG();
+			if (png.length > AVATAR_LIMITS.pngBytes) throw Error("Could not read this avatar. Choose another image.");
+			return { kind: "upload", base64: png.toString("base64") };
+		} finally {
+			event.sender.removeListener("did-start-navigation", expire);
 		}
 	});
 

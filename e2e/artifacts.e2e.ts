@@ -208,7 +208,7 @@ it("publishes group task results without attaching an earlier delivery's files",
 		(await api("groups.snapshot", { groupId })).posts.find((p: any) => p.text === "A later delivery without a file.").attachments,
 	).toBeUndefined();
 	await h.shot("04-group-result");
-	await h.page().locator(".bot-row:not(.group-nav)").filter({ hasText: "Core" }).first().click();
+	await h.page().locator(".bot-row:not(.group-nav)").filter({ has: h.page().getByText("OpenBot", {exact:true}) }).first().click();
 });
 it("rejects incompatible image models and presents Chinese cards in a small dark window", async () => {
 	await api("models.addProvider", {

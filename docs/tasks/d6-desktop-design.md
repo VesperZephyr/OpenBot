@@ -1,6 +1,6 @@
 # D6: A Personal Assistant with Character
 
-Status: design direction agreed; execution specs pending, product implementation not started
+Status: implemented and verified on `task/d6-desktop-design`; ready for review, merge pending
 Branch: task/d6-desktop-design
 Date: 2026-10-22
 Depends on: B20, B21, B22, B23, B15a
@@ -12,7 +12,19 @@ Give OpenBot the character of a warm, intelligent personal assistant whose prima
 
 Owner preference: a private assistant with personality, warmth and approachability; chat is the core experience. The permanent personal assistant appears as an ordinary chat with a small dedicated star, not as a visually elevated Core role. It cannot be deleted. Every Bot, including the permanent assistant, has an editable name, avatar, role and instructions. The design expresses that through identity, language and interaction, with focused Specialists available as supporting teammates.
 
-This is a design task, not authorization to implement a new runtime feature. It includes a source-informed audit, a local interactive prototype, and the contracts and acceptance matrix for subsequent implementation packets. Product source, policy, data stores, and the owner's running app are unchanged.
+The owner approved production implementation of the conversation and profile/avatar direction. The execution contract below defines this delivery; the remaining design sections retain the broader visual reference. The owner's running app and real data are not used for verification.
+
+## Approved execution contract (2026-10-22)
+
+The owner approved implementing the selected chat design and all Bot profile/avatar customization together. This section is the execution contract for this branch and covers this combined delivery. Settings category reorganization, automatic memory excerpts, AI image generation, browser control and proactive greetings remain out of scope. The empty conversation uses the approved static greeting and character composition without claiming prior activity or reading memory automatically.
+
+- Apply the selected plum frame, lilac canvas, original character identities, restrained user bubbles, readable unboxed replies and generous composer to direct and group chat. Consolidate root tokens rather than adding another theme override. Keep existing chronological transcript, approval, artifact, search, read, draft, IME, recovery, model, role-skill, memory and lifecycle controls.
+- Use one ordinary Bot list with protected Core-first and pinned/recency ordering. Replace Core badges with a static accessible star in roster and header. Preserve groups and hidden/unread access. Core identity/kind, never its editable name/avatar, controls protection and management authority.
+- Provide a focused modal profile editor with name, role, Prompt, avatar and existing model/thinking/role-skill controls; keep memory and usage reachable. Switching profile/memory tabs retains drafts. A failed or revision-conflicting save retains the draft and exposes explicit Reload. Save and Cancel return focus. Existing profiles migrate lazily to a deterministic generated avatar derived from immutable ID; new Bots persist a version-1 recipe. Name/role changes never change the saved recipe. Six candidate options vary palette, silhouette and facial detail; generation is local and explicitly selected.
+- `BotAvatar` is either a versioned generated recipe or an opaque image SHA-256. Image bytes live in a separate session document keyed by digest, not the roster, conversation, model context or artifact library. A profile write and its new image commit together under the existing expected revision. Image replacement clears the old payload only when no retained Bot references it; duplication shares the image with a new Specialist identity and empty memory/history. Deleted profiles retain their images like their retained history. Limit stored distinct images to 128, normalized PNG to 256 px square and 300 KiB per image. SQLite backup includes these documents.
+- Native image selection is bound to the trusted frame/window. Main passes the selected path to a private Host method and the local executor reads a bounded regular nonsymlink file. Accept PNG/JPEG/WebP up to 5 MiB, 4096 px per side and 16 million pixels, checking file signature and dimensions before decoding. Main uses Electron's image decoder to normalize a centered square preview. The owner reviews it before Save; arbitrary crop adjustment is a follow-up. Cancellation leaves no persisted asset. Renderer never supplies a local path. The Host sends submitted PNG bytes through a bounded executor validation/re-encoding operation before committing; invalid bytes, forged image references and stale revisions fail without altering the saved profile. No network is used.
+- Avatar retrieval is a private desktop read by Bot ID, returning a bounded image only when present. Renderer uses the generated fallback while loading or when unavailable; it discards late responses after profile changes. Profile image data is never added to model-facing Bot inspection/projection or management arguments. Existing Bot update, duplicate and management paths retain revision and Core invariants.
+- Add unit/Host coverage for schemas, image import bounds and malformed images, legacy stability, revision conflicts, image ownership/cleanup and duplication. Add ScriptedModel e2e for Core and Specialist edit/save/cancel, generated/uploaded avatars across restart and rename, rejected uploads, star/protection, duplicate names, profile tab draft preservation, light/dark and English/Chinese layouts, and representative chat/approval/group flows. Run `pnpm run check` and full background `pnpm run e2e`, inspect screenshots, and explore the isolated app using agent-browser. Native packaged release gates remain separate.
 
 ## Evidence and current diagnosis
 
@@ -32,7 +44,7 @@ The old `e2e/.run/01-settings.png` was also inspected, but its older sidebar and
 
 ## Recommended visual direction
 
-**A familiar assistant, with room to think.** A dark plum navigation frame surrounds a soft lilac conversation canvas. The personal assistant has an original, simple vector avatar: a rounded figure, an attentive expression and a small leaf-shaped accent. The avatar uses the same roster geometry as other Bots. It may appear at welcome scale only in an explicit empty-state study, then becomes a small author avatar during conversation. It is a static identity mark, not a pet, fabricated emotional state, presence signal or claim of consciousness.
+**A familiar assistant, with room to think.** A dark plum navigation frame surrounds a soft lilac conversation canvas. The personal assistant has an original, simple vector avatar: a rounded figure, an attentive expression and a small leaf-shaped accent. The avatar uses the same roster geometry as other Bots. It appears at welcome scale in an empty conversation, then becomes a small author avatar during conversation. It is a static identity mark, not a pet, fabricated emotional state, presence signal or claim of consciousness.
 
 The normal entry is the conversation, framed by a unified chat list. The explicit welcome/empty-state study uses an asymmetric greeting and character above a generous composer. The conversation remains spacious and direct. A pale olive inset can distinguish a short plan within an actual response; warm paper-colored file icons make outputs feel like useful things the assistant prepared for the user.
 
@@ -118,7 +130,7 @@ Proposed avatar choices:
 
 AI image generation is a later, optional explicit action for an owner who wants a specific style or character. It needs an image-capable provider, a clear account of the prompt/data sent and any provider cost, candidate preview and explicit selection. It must not block Bot creation, run silently on rename or be implied by the local Generate options control. There are no image-provider calls in this study.
 
-Current product evidence: `BotProfile` in `packages/protocol/src/index.ts` has no avatar field. The renderer's `Avatar` in `App.tsx` derives Specialist color from the name and uses initials; Core has a fixed mark. Persisted custom avatars therefore need their own ready execution spec covering profile serialization, versioning, revision conflicts, normalized local asset references, import validation before expensive decoding, asset size/pixel bounds, cleanup/backup and duplicate behavior. Raw uploaded SVG, arbitrary local paths and remote URLs are not accepted avatar sources. Preserve the existing Host/Executor boundary for local import and storage. Duplicating a profile can copy its appearance, but creates a new Specialist identity without the Core star or protection.
+The production implementation stores versioned generated recipes or opaque image digests on `BotProfile`. All avatar surfaces use the shared identity renderer. Uploaded artwork is validated, normalized and stored separately from conversation and model data under the execution contract above. Raw SVG, arbitrary renderer-supplied paths and remote image URLs are not accepted. Duplicating a profile copies its appearance into a new Specialist identity without the personal-assistant star or protection.
 
 The study implements the editor and candidate picker for all three fixture Bots, including selected-file decoding in the browser. It does not implement the real Create Bot flow, persistent storage, arbitrary crop positioning or AI generation. No selected image leaves the page; all edits reset on reload.
 
@@ -191,39 +203,49 @@ Give an empty personal-assistant conversation a recognizable avatar and a simple
 
 All fixture content is fictional and labelled. Sending adds an in-memory preview message and never calls a model. Approval controls never execute or save a grant. Memory/profile edits affect only page state and reset on reload. Peripheral controls explain their demo limits. The plan is based on a fictional supplied notes file; it is not a calendar integration. No event, email or external record is changed.
 
-The welcome character, memory excerpt and resume action are design proposals. No automatic proactive outreach, routine creation or background summarization is authorized by this design. The current product's privacy, identity, permission and credential contracts remain unchanged. English is the prototype language; both existing product languages remain implementation acceptance requirements.
+The static welcome character is implemented for empty conversations. Memory excerpts and resume actions remain design proposals. No automatic proactive outreach, routine creation or background summarization is authorized by this design. The current product's privacy, identity, permission and credential contracts remain unchanged. English is the prototype language; both existing product languages remain implementation acceptance requirements.
 
-## Proposed implementation packets
+## Delivery scope and follow-ups
 
-Each packet requires its own ready execution spec, branch and PR after direction is settled. This task does not silently reprioritize the established delivery queue.
+This branch delivers the chat visual system, ordinary roster, focused profile dialog and persisted generated/uploaded avatars under the approved execution contract. Existing approvals, artifacts, groups, role skills and settings retain their behavior and receive the shared visual tokens.
 
-1. **Personal identity and conversation:** settle entry behavior, consolidate tokens, remove conflicting root overrides, standardize icons/control variants, apply the original assistant identity and warm visual system to the existing roster, transcript and composer without changing message order or actions. Specify how the welcome/resume/memory surfaces use existing records before implementing them. Touch renderer styles and components only. Highest immediate visual value and lowest data risk.
-2. **Context, results, approvals and inspector:** apply the new artifact/action hierarchy and consistent file-panel and profile-dialog behavior; preserve all permission and artifact state contracts. Any new presentation grouping must be keyed to existing durable identities and have its own explicit contract.
-3. **Persisted profiles and avatars:** specify stable generated recipes/versioning, normalized uploaded assets, profile revisions and storage lifecycle; support customization for every Bot while retaining Core identity and lifecycle protection. This requires protocol and persistence work beyond the renderer-only foundation. Optional AI generation needs a separate provider/design decision.
-4. **Settings and remaining surfaces:** category navigation with a complete old-to-new control inventory; align onboarding, creation, groups, skills, connectors and routines with the component system. Preserve drafts, secret handling and save conflicts.
+The following need separate ready specs: proactive welcome/resume and memory excerpts; new artifact/activity grouping; settings category navigation; AI avatar generation and adjustable crop positioning. No remote fonts, UI framework, Pi vendor changes or model-provider dependencies are introduced.
 
-No new UI framework, remote fonts, Pi changes, Host APIs, schema migrations or navigation store are required merely to implement the visual foundation. Prefer focused reusable components (button variants, row, panel header, field, state notice) over a broad UI-library rewrite. Split `App.tsx` only where the packet's view/component responsibility warrants it.
+## Visual implementation contract
 
-## Acceptance for later execution
+Use the study's composition in the actual renderer: 232 px plum sidebar at wide sizes, 685 px reading/composer column, quiet line icons, ordinary 64 px Bot rows, 29 px header avatar, assistant body inset by 35 px, and author/time on one line. The composer keeps file and skill controls at lower left with a 36 px rounded send button at lower right. The static empty-conversation greeting uses the selected Bot's real avatar and contains no fabricated memory or history.
 
-These are required implementation checks, not claims that the prototype proves production behavior.
+The profile dialog is 660 px wide with a 190 px avatar column, a 27 px gutter and stacked profile fields. Production retains memory tabs, model/skill disclosure and usage access. Existing operations, approval decisions, error states and group routing remain visible even when they add content beyond the sparse study. The prototype's study navigation, fictional continuity note and fictional deliverables are not product UI.
+
+## Acceptance
+
+The following matrix checks the production implementation. Prototype screenshots are reference material only.
 
 | Scenario | Automated proof |
 | --- | --- |
-| Welcome/return entry, direct conversation, rich answer, artifact, code/table, long name | ScriptedModel e2e at 1280×820 and minimum 880 px width; inspect screenshots and overflow assertions |
+| Static empty-conversation welcome, direct conversation, rich answer, artifact, code/table, long name | ScriptedModel e2e at default/wide sizes and minimum 880 px width; inspect screenshots and overflow assertions |
 | Light/dark, English/Chinese, reduced motion, 200% zoom | Screenshot/keyboard matrix; no clipped decisions or inaccessible composer; contrast checks on actual tokens |
 | Draft, IME, pending send, send failure, channel switch | Existing B21 coverage plus panel/category-switch regression scenarios |
 | Reading old history during incoming activity | Scroll anchor and Jump to latest e2e; no forced scroll from panel changes |
 | Ordinary chat rows, permanent assistant star, pinned/unread/hidden Bots, group distinction and search | B22/B23 semantics survive; star stays bound to immutable Core identity after renaming; Core cannot be deleted or hidden through UI or Host/tool entry points; Specialists retain confirmed lifecycle actions |
-| Editable profiles and avatars | Rename/role edits preserve selected avatar, history, draft and memory; safe long/duplicate names; every surface updates after save/restart; Cancel and revision conflicts preserve saved data; generated variants, malformed/oversized uploads, crop, missing assets, duplication, cleanup and backup covered by the ready persistence spec |
+| Editable profiles and avatars | Rename/role edits preserve selected avatar, history, draft and memory; safe long/duplicate names; every surface updates after save/restart; Cancel and revision conflicts preserve saved data; generated variants, malformed/oversized uploads, centered crop, fallback, duplication, cleanup and closed-store backup covered by runtime/executor tests and the new profile e2e suite |
 | Group routing and work | Scripted Core/default and explicit-mention scenarios; actual author and attention state retained; Stop still visible |
 | Pending, expired, stale and reusable approval | Scripted exact-operation approval, Deny, Allow once, supported Always allow scope and timeout; no action before Host confirmation |
 | Result preview/export/remove/missing | Existing B15a bounds and validation; panel focus/scroll; removal updates every linked card |
-| Settings categories | Every control in the inventory reachable by keyboard; no lost unsaved input; custom/built-in model setup and errors exercised |
+| Existing settings | Existing custom/built-in model setup, errors and secret controls remain covered; category reorganization is a follow-up |
 | Host disconnected, queued, paused, cancelled, interrupted, unknown | Persistent truthful states and existing recovery behavior, including global Pause/Resume |
 | Complete regression gate | `pnpm run check`, `pnpm run e2e`; inspect `e2e/.run/` screenshots; isolated background agent-browser exploration for new or failed flows |
 
 Avoid pixel snapshots as the only proof. Assert meaningful visibility, focus, retained values and action outcomes. Do not write tests merely mirroring class names. Native titlebar, packaged permissions and signing remain separate packaged Mac checks.
+
+## Production verification — 2026-10-22
+
+- `pnpm run check`: boundaries, both TypeScript projects and 506 tests in 77 files passed. A subsequent type check passed after formatting cleanup.
+- `pnpm run e2e`: 144 tests in 40 files passed against ScriptedModel in isolated background Electron instances. After the final dark-mode selected-label/outline color adjustment, rebuilt the desktop and reran all five personal-design scenarios successfully, including a computed contrast assertion for the selected profile tab.
+- `node apps/desktop/scripts/stage-runtime.mjs` and an isolated bundled Host/executor startup passed with the PNG decoder dependency included. This is runtime composition validation, not a signed packaged release.
+- Inspected production welcome, conversation and profile screenshots against the approved study at 1280×820, plus wide profile editing, dark Chinese layouts at 880 px, native 200% zoom capture, compact approval, long names/code, group details and file results. Latest reference captures are generated under `e2e/.run/design-reference/`; other matrices live under `e2e/.run/personal-design/`, `conversation-experience/` and `artifacts/`.
+- Used agent-browser against a separate background test app on CDP 9338. Verified generated selection, rename/save propagation, profile/memory draft retention, Escape focus restoration, one protected identity star and no document overflow. Measured light supporting-text contrast at 5.34:1 and sidebar supporting text at 7.02:1 or higher, including selected-row alpha compositing. No complete accessibility audit is claimed.
+- `git diff --check` passed. Owner app data and real model providers were not used. Native permissions, signing, packaged helper identity and release acceptance remain separate gates.
 
 ## Risks
 
@@ -232,7 +254,7 @@ Avoid pixel snapshots as the only proof. Assert meaningful visibility, focus, re
 - A character can become distracting. Restrict it to identity and welcome scale; never animate it as fake activity or make it the only state indicator.
 
 - Over-cleaning can hide consequential state. Preserve expanded decision/error states and inventory every existing control.
-- Reordering cards can misrepresent chronology. The first packet only changes presentation; later grouping needs an explicit durable relationship.
+- Reordering cards can misrepresent chronology. This delivery changes chat presentation; later grouping needs an explicit durable relationship.
 - A new inspector can disrupt reading or focus. Extend current focus/anchor rules and test wide and overlay modes.
 - CSS overrides can conceal regressions. Migrate to one token source instead of appending another override stylesheet.
 - The study's sparse example can understate density. Execute long transcripts, multiple artifacts, long Chinese names and multiple pending work states before acceptance.
@@ -240,5 +262,5 @@ Avoid pixel snapshots as the only proof. Assert meaningful visibility, focus, re
 ## Open questions
 
 - 2026-10-22: The selected direction is a warm personal assistant in an ordinary chat list, with a static identity star and protected lifecycle. Memory excerpt selection/truncation and its exact empty-state placement must be fixed in the relevant execution spec.
-- 2026-10-22: Every Bot is customizable. Persisted avatar recipes/assets and import contracts need a ready execution spec; optional AI image generation is not included in the local generator proposal.
-- 2026-10-22: Choose the first execution packet in its own ready spec. No product implementation has been claimed or started by D6.
+- AI image generation requires an explicit provider, cost and privacy contract. The shipped generator uses local vector recipes.
+- Adjustable crop positioning and broader settings/artifact changes remain separate work.

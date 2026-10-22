@@ -1,6 +1,6 @@
 # OpenBot personal assistant design study
 
-Design proposal, 2026-10-22. See [D6](../../tasks/d6-desktop-design.md) for the audit, personal assistant direction, preservation contracts and implementation acceptance. The selected direction is warm, intelligent and approachable, with conversation at its center. No product code is changed.
+Design proposal, 2026-10-22. See [D6](../../tasks/d6-desktop-design.md) for the audit, personal assistant direction, preservation contracts and implementation acceptance. The selected direction is warm, intelligent and approachable, with conversation at its center. This folder remains the standalone study; D6 also records the separately verified production implementation.
 
 ## Open the study
 
@@ -38,4 +38,4 @@ Reload before each run. Checks modify the demo state; reload afterward for a cle
 - The preview supports Escape dismissal, focus return and Tab containment in overlay mode. Dialogs use the native HTML dialog focus behavior. Production integration must retain the existing app's complete focus, scroll-anchor and recovery contracts.
 - `node --check` passed for the interaction code and check script. `git diff --check` passed.
 
-Review screenshots are local artifacts outside the repository, not production screenshots. Full `pnpm run check` and `pnpm run e2e` were not run for this documentation/prototype-only change. D6 specifies the required implementation scenarios. No real-model test, durable memory validation, native packaged validation, Chinese layout verification or complete accessibility audit is claimed by this study.
+Review screenshots are local artifacts outside the repository, not production screenshots. This study record covers prototype checks only. Production `pnpm run check` and `pnpm run e2e` evidence is recorded in D6. D6 specifies the required implementation scenarios. No real-model test, durable memory validation, native packaged validation, Chinese layout verification or complete accessibility audit is claimed by this study.

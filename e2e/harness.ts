@@ -35,6 +35,8 @@ export type AppHarness = {
 };
 
 export type HarnessOptions = {
+	/** Optional CDP port for isolated agent-browser exploration. */
+	readonly debugPort?: number;
 	/** Create launch fixtures after the suite directory is reset; return environment overrides for every relaunch. */
 	readonly prepare?: (run: string) => Promise<Readonly<Record<string, string>>>;
 	/** Extra environment for the app, for example `OPENBOT_MAX_ACTIVE_RUNS`. */
@@ -70,7 +72,7 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 	let page: Page | undefined;
 	const start = async (): Promise<void> => {
 		app = await electron.launch({
-			args: [join(repo, "apps/desktop")],
+			args: [join(repo, "apps/desktop"), ...(options.debugPort ? [`--remote-debugging-port=${options.debugPort}`] : [])],
 			cwd: join(repo, "apps/desktop"),
 			env: {
 				...process.env,

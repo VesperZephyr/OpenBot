@@ -1,3 +1,4 @@
+import { InterfaceIcon } from "./InterfaceIcon";
 import { ArtifactCard } from "./ArtifactCard";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { api, report, sendMessage, useStore } from "./store";
@@ -19,6 +20,7 @@ export function ChatComposer({
 	controls?: ReactNode;
 }) {
 	const { draft, attempt } = useComposer(conversationKey);
+	const coreName = useStore(s => s.bots.find(bot => bot.kind === "core")?.name) ?? t("Personal assistant");
 	const input = useRef<HTMLTextAreaElement>(null);
  const skills=useStore(s=>s.skills);
  const roleSkills=useStore(s=>conversationKey.startsWith("bot:") ? s.bots.find(bot=>bot.botId===conversationKey.slice(4))?.defaultSkills : undefined);
@@ -129,7 +131,7 @@ export function ChatComposer({
 			)}
 			{stale && (
 				<p className="compose-notice" role="alert">
-					{t("A selected Bot is no longer available. Remove it or choose Core before sending.")}
+					{t("A selected Bot is no longer available. Remove it or choose {name} before sending.", { name: coreName })}
 				</p>
 			)}
 			<div className="composer">
@@ -158,7 +160,7 @@ export function ChatComposer({
 							aria-pressed={!selected.length}
 							onClick={() => composers.edit(conversationKey, { recipientIds: [] })}
 						>
-							{t("Core · automatic")}
+							{t("{name} · automatic", { name: coreName })}
 						</button>
 						{selected.map((id) => (
 							<button
@@ -201,7 +203,7 @@ export function ChatComposer({
 					rows={1}
 					readOnly={readOnly}
 					aria-label={label}
-					placeholder={label}
+					placeholder={members ? label : t("Tell me what’s on your mind…")}
 					aria-controls={skillShowing?skillListId:showing ? listId : undefined}
 					aria-expanded={members ? showing : skillShowing}
 					aria-activedescendant={skillShowing&&skillOptions.length?`${skillListId}-${skillActive}`:showing && options.length ? `${listId}-${active}` : undefined}
@@ -243,15 +245,6 @@ export function ChatComposer({
 					}}
 				/>
 				<div className="composer-actions">
-					<span className="composer-hint">
-						{t(
-							readOnly
-								? "Unsent draft · read-only"
-								: members
-									? "Core coordinates by default · @ selects recipients"
-									: "Enter to send · Shift+Enter for a new line",
-						)}
-					</span>
 					{readOnly ? (
 						<button type="button" onClick={() => copy(draft.text)}>
 							{t("Copy draft")}
@@ -276,7 +269,7 @@ export function ChatComposer({
 							{!members && (
 								<button
 									type="button"
-									className="icon-button"
+									className="compose-tool"
 									aria-label={t("Attach files")}
 									disabled={attaching || (draft.attachments?.length ?? 0) >= 4}
 									onClick={() => {
@@ -298,11 +291,11 @@ export function ChatComposer({
 											.finally(() => setAttaching(false));
 									}}
 								>
-									<span aria-hidden>＋</span>
+									<InterfaceIcon name="plus" /><span>{t("Add a file")}</span>
 								</button>
 							)}
-							{!members&&<button type="button" className="icon-button" aria-label={t("Attach a skill")} aria-expanded={skillShowing} onClick={()=>{setSkillPicker(!skillShowing);setSkillDismissed(skillShowing?draft.text:undefined);input.current?.focus();}}>/</button>}
- {controls}
+							{!members&&<button type="button" className="compose-tool" aria-label={t("Attach a skill")} aria-expanded={skillShowing} onClick={()=>{setSkillPicker(!skillShowing);setSkillDismissed(skillShowing?draft.text:undefined);input.current?.focus();}}><InterfaceIcon name="skills" /><span>{t("Skills")}</span></button>}
+ <span className="composer-spacer" />{controls}
 							<button
 								type="button"
 								aria-label={t("Send")}
@@ -310,12 +303,22 @@ export function ChatComposer({
 								disabled={(!draft.text.trim() && !draft.attachments?.length && !draft.skills?.length) || !!attempt || !!stale || attaching}
 								onClick={() => void send()}
 							>
-								<span aria-hidden>↑</span>
+								<InterfaceIcon name="arrow" />
 							</button>
 						</>
 					)}
 				</div>
 			</div>
+					<span className="composer-hint">
+						{t(
+							readOnly
+								? "Unsent draft · read-only"
+								: members
+									? "{name} coordinates by default · @ selects recipients"
+									: "Enter to send · Shift+Enter for a new line",
+							{ name: coreName },
+						)}
+					</span>
 		</div>
 	);
 }

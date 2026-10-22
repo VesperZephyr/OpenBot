@@ -15,9 +15,9 @@ References:
 - **Grok Bot**: [source-backed research snapshot](research/grok-bot.md) and [client interaction research](tasks/d2-grok-ui-research.md); distinguish official facts, observations and inference.
 - **Pi**: `~/github/pi/packages/coding-agent` for the reference coding-agent tools.
 
-## Desktop design proposal
+## Desktop design delivery
 
-[D6: Personal assistant design](tasks/d6-desktop-design.md) contains an interactive study and proposed packets for the personal identity/conversation, context/results/approvals, and settings. The agreed direction uses an ordinary chat list and a static personal-assistant star, retaining Core lifecycle protection. All Bots have proposed editable profiles with locally generated or uploaded avatars; persistence needs its own execution spec. It does not replace the current delivery queue or mark any UI changes as shipped. Each implementation packet needs its own ready spec.
+[D6: Personal assistant design](tasks/d6-desktop-design.md) is implemented on `task/d6-desktop-design`, with automated acceptance complete and review pending. The owner approved chat styling, ordinary Bot rows with a protected identity star, and editable profiles with generated/uploaded avatars for every Bot together. Merge remains pending. AI image generation, adjustable cropping, proactive greetings, new result grouping and settings category navigation need separate specs.
 
 ## Memory design research
 

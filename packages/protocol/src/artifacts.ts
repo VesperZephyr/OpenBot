@@ -1,3 +1,4 @@
+import type { AvatarSource, AvatarImage } from "./avatars.ts";
 /** Immutable local file references. No source path or model-specific types cross the UI contract. */
 export type ArtifactRef = {
 	readonly artifactId: string;
@@ -28,7 +29,9 @@ export const ARTIFACT_LIMITS = {
 	imagePixels: 16_000_000,
 } as const;
 export type ArtifactOperation =
+	| { readonly action: "avatar-source"; readonly path: string }
+	| { readonly action: "avatar-validate"; readonly base64: string }
 	| { readonly action: "import"; readonly path: string }
 	| { readonly action: "get" | "preview" | "content" | "remove"; readonly artifactId: string }
 	| { readonly action: "export"; readonly artifactId: string; readonly path: string };
-export type ArtifactOperationResult = ArtifactRef | ArtifactContent | null;
+export type ArtifactOperationResult = ArtifactRef | ArtifactContent | AvatarSource | AvatarImage | null;

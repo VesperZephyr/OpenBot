@@ -1,3 +1,5 @@
+import { InterfaceIcon } from "./InterfaceIcon";
+import { Avatar } from "./Avatar";
 import { BackgroundTask } from "./BackgroundTask";
 import { ArtifactCard } from "./ArtifactCard";
 import { ChatComposer } from "./ChatComposer";
@@ -44,7 +46,7 @@ function GroupRow({ group: g }: { group: Group }) {
 			onClick={() => useStore.setState({ view: { kind: "group", groupId: g.groupId }, searchTarget: undefined })}
 		>
 			<span className="avatar group-avatar" aria-hidden>
-				◈
+				<InterfaceIcon name="group" />
 			</span>
 			<RosterPreview
 				conversationKey={`group:${g.groupId}`}
@@ -262,7 +264,7 @@ export function GroupView({ groupId }: { groupId: string }) {
 							key={post.postId}
 						>
 							<div className="group-post-meta">
-								<strong>{post.senderId === "user" ? t("You") : name(post.senderId)}</strong>
+								{bots.find(bot => bot.botId === post.senderId) && <Avatar bot={bots.find(bot => bot.botId === post.senderId)!} size={26} />}<strong>{post.senderId === "user" ? t("You") : name(post.senderId)}</strong>
 								{post.recipientIds.length > 0 && <span> → {post.recipientIds.map(name).join(", ")}</span>}
 							</div>
 							{post.kind && (
