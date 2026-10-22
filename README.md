@@ -1,16 +1,27 @@
 # OpenBot
 
-**Personal AI Bots that work on your Mac.**
+**A personal assistant with the tools to get things done on your Mac.**
 
 English · [简体中文](README.zh-CN.md)
 
-Give a Bot a task, let it work with your files and tools, and keep the result. OpenBot is a local-first macOS application with persistent conversations, editable memory, reusable skills, and approvals you control. Bring your own model provider and create specialist Bots when you need them.
+Think **Grok Bot + Codex, in a personal desktop app**. OpenBot pairs approachable, ongoing conversations with an agent that can inspect a codebase, edit files, run commands, research the web and work through connected tools.
 
-![OpenBot completing a weekly revenue report with local files and downloadable results](docs/images/openbot-weekly-report.png)
+OpenBot is currently built for **one person on one Mac**. Give your Bots names, appearances and roles, keep their conversations and memories, and use them for everyday work as well as software projects. The application and its execution tools run on your Mac; you choose the model provider.
 
-*The actual desktop app, using a real model and synthetic sales data. The report and CSV were verified against the source data. [Acceptance evidence](docs/acceptance/mvp-2026-10-19.md).*
+![OpenBot's personal chat interface with a Bot roster, a reply and a spacious composer](docs/images/openbot-personal-chat.png)
 
-**Status:** MVP acceptance candidate for macOS on Apple silicon. The core workflow and several enhancement batches are implemented; the current verification record is linked above. Local development DMGs are ad-hoc signed. Developer ID signing, notarization, clean-install acceptance and native lifecycle checks are still release gates.
+*The production desktop interface with sample conversation data from isolated automated tests. [Design and verification](docs/tasks/d6-desktop-design.md).*
+
+<details>
+<summary>See the welcome screen and Bot profile editor</summary>
+
+![An empty conversation with a personal greeting and the selected Bot's avatar](docs/images/openbot-welcome.png)
+
+![Editing a Bot's name, instructions and generated or uploaded avatar](docs/images/openbot-profile.png)
+
+</details>
+
+**Status:** MVP acceptance candidate for macOS on Apple silicon. The core workflow and several enhancement batches are implemented; the desktop design verification is linked above, alongside separate [MVP release evidence](docs/acceptance/mvp-2026-10-19.md). Local development DMGs are ad-hoc signed. Developer ID signing, notarization, clean-install acceptance and native lifecycle checks are still release gates.
 
 [Get started](#get-started) · [What it does](#what-it-does) · [Model setup](#model-setup) · [Development](#development) · [Roadmap](docs/development-roadmap.md)
 
@@ -21,10 +32,10 @@ Give a Bot a task, let it work with your files and tools, and keep the result. O
 | **Work with files and the terminal** | Read, search, write and edit authorized local files; run commands; follow long-running work in the background. |
 | **Keep usable results** | Attach text, Markdown, CSV or images in private chats. Preview and export immutable result files, including after a restart. |
 | **Research the web** | Search with a configured Tavily key and fetch pages as readable text. |
-| **Build your own Bot roster** | Start with the protected Core assistant, then create named Specialists with their own instructions, model and memory. |
-| **Remember and reuse** | Inspect, edit and restore memory. Review reusable `SKILL.md` procedures and select them for later tasks. |
+| **Personalize every Bot** | Choose names, roles, instructions and generated or uploaded avatars. A small star identifies your permanent personal assistant; Specialists can use their own model and memory. |
+| **Remember and reuse** | Inspect where notes came from, correct or forget them, explicitly share useful context, and pin reviewed `SKILL.md` procedures to a Bot. |
 | **Schedule repeatable work** | Review interval, daily or weekly routines, pin skill versions, test them and receive reports in chat. Pause, catch-up and inactivity protection are built in. |
-| **Coordinate in groups** | Let Core route group tasks, choose explicit recipients, and follow bounded delegation and handoffs. |
+| **Coordinate in groups** | Let your personal assistant route group tasks, choose explicit recipients, and follow bounded delegation and handoffs. |
 | **Connect tools** | Configure local stdio or HTTPS MCP servers, discover their tools, and approve calls under the same policy. |
 | **Stay in control** | Allow once, Always allow or Deny; configure Ask first rules and folder grants; stop a task or pause all work. |
 | **Pick up where you left off** | Search local conversations, keep drafts, inspect task/token usage, and recover interrupted work without blindly repeating uncertain actions. |
@@ -47,13 +58,21 @@ pnpm run build:pi
 pnpm run dev
 ```
 
+Run from the checkout you intend to use. When switching between checkouts or an installed build, fully quit the running OpenBot first: its single-instance behavior can otherwise reopen the existing app.
+
 On first launch:
 
 1. Select a built-in model provider or add a custom endpoint, protocol and model ID.
 2. Save your API key and test the connection. You can also skip setup and return in Settings.
-3. Message **OpenBot**, your Core assistant. Create additional Bots with **New** when you want a specialist.
+3. Message **OpenBot**, your personal assistant marked with a star. Create additional Bots with **New** when you want a specialist.
 
 API keys saved in the app go to macOS Keychain. Model setup uses API credentials; a ChatGPT or Claude subscription is not an API key.
+
+### Make your assistant your own
+
+Open a Bot's **Details → Profile** to change its name, short description, instructions and avatar. **Generate options** creates original character choices locally; **Upload image** accepts PNG, JPEG or WebP and previews a centered crop. Changes take effect only when you save the profile. Renaming a Bot keeps its chosen avatar, conversation and memory.
+
+Your starred personal assistant can be customized like every other Bot and cannot be deleted. Use the **Memory** tab to inspect and edit remembered information, or expand **Model and skills** to choose how a Bot works.
 
 ### Try a useful first task
 
