@@ -1,3 +1,4 @@
+import { composeRoleSkills } from "./role-skills.ts";
 import type { ArtifactRef, ArtifactContent } from "@openbot/protocol";
 /**
  * Runs and admission (Section 7.2). Pi runs every conversation with input at once; OpenBot caps how many Bots work at
@@ -268,7 +269,7 @@ export class RunScheduler {
 				const message = existing.messages.find((candidate) => candidate.requestId === requestId);
 				if (
 					message?.text !== text ||
- JSON.stringify(message?.skills?.map(({name,revision,sha256})=>({name,revision,sha256}))??[])!==JSON.stringify(options.skills?.map(({name,revision,sha256})=>({name,revision,sha256}))??[]) ||
+					JSON.stringify(skillReferences(message?.requestedSkills ?? message?.skills ?? [])) !== JSON.stringify(skillReferences(options.skills ?? [])) ||
 					JSON.stringify(message?.attachments?.map((a) => a.artifactId) ?? []) !== JSON.stringify(options.artifactIds ?? []) ||
 					(existing.channelId ?? "direct") !== channelId ||
 					(existing.origin ?? "user") !== (options.origin ?? "user")
@@ -278,8 +279,11 @@ export class RunScheduler {
 				return { runId: existing.runId, state: existing.state, steered: existing.messages[0]?.requestId !== requestId };
 			}
 			const attachments = options.artifactIds?.length ? await this.#resolveAttachments(botId, options.artifactIds) : [];
-			const skills=await this.#resolveSkills(options.skills??[]);
- const message = { requestId, text, ...(skills.length?{skills}:{}), ...(attachments.length ? { attachments } : {}) };
+			const roleSkills = channelId === "direct" && (options.origin ?? "user") === "user"
+				? (await this.#runtime.getBot(botId))?.defaultSkills ?? [] : [];
+			const requestedSkills = skillReferences(options.skills ?? []);
+			const skills = await this.#resolveSkills(composeRoleSkills(roleSkills, requestedSkills));
+			const message = { requestId, text, requestedSkills, roleSkills, ...(skills.length ? { skills } : {}), ...(attachments.length ? { attachments } : {}) };
 			const candidate = options.separate ? undefined : this.active(botId, channelId);
 			const current = (candidate?.origin ?? "user") === (options.origin ?? "user") ? candidate : undefined;
 			if (current?.state === "queued") {
@@ -557,4 +561,8 @@ export class RunScheduler {
 
 function withInput(run: StoredRun, requestId: string, change: Partial<RunInput>): StoredRun {
 	return { ...run, inputs: run.inputs.map((input) => (input.requestId === requestId ? { ...input, ...change } : input)) };
+}
+
+function skillReferences(refs: readonly import("@openbot/protocol").SkillRef[]): import("@openbot/protocol").SkillRef[] {
+	return refs.map(({ name, revision, sha256 }) => ({ name, revision, sha256 }));
 }

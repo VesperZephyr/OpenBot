@@ -1,3 +1,4 @@
+import { validSkillRef, SKILL_LIMITS, type SkillRef } from "@openbot/protocol";
 import { routineStore } from "./routines.ts";
 export type { RoutineState } from "./routines.ts";
 import { createToolSearchTool } from "@earendil-works/pi-durable/tool-search";
@@ -170,6 +171,7 @@ export type BotRuntimeOptions = {
 };
 
 export type CreateBotInput = {
+	readonly defaultSkills?: readonly SkillRef[];
 	readonly botId: BotId;
 	readonly name: string;
 	readonly role?: string;
@@ -182,6 +184,7 @@ export type CreateBotInput = {
 };
 
 export type UpdateBotInput = {
+	readonly defaultSkills?: readonly SkillRef[];
 	readonly expectedRevision?: number;
 	readonly name?: string;
 	readonly role?: string;
@@ -513,6 +516,7 @@ export class BotRuntime {
 	/** Idempotent for the same `botId`: returns the existing Bot instead of creating a second conversation. */
 	async createBot(input: CreateBotInput, proposal?: BotManagementProposal): Promise<BotProfile> {
 		if (input.memory !== undefined) checkMemorySize(input.memory);
+		checkRoleSkills(input.defaultSkills, proposal);
 		const model = input.model ?? (await this.defaultModel());
 		return this.#harness.commit(async (tx) => {
 			const receipt = await committedManagement(tx, proposal);
@@ -533,6 +537,7 @@ export class BotRuntime {
 				name: input.name,
 				role: input.role ?? "",
 				instructions: input.instructions ?? "",
+				...(input.defaultSkills ? { defaultSkills: input.defaultSkills.map(ref => ({ ...ref })) } : {}),
 				...(input.model === undefined ? {} : { model: input.model }),
 				...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
 				pinned: false,
@@ -550,6 +555,7 @@ export class BotRuntime {
 	}
 
 	async updateBot(botId: BotId, change: UpdateBotInput, proposal?: BotManagementProposal): Promise<BotProfile> {
+		checkRoleSkills(change.defaultSkills, proposal);
 		if (change.model !== undefined) this.#usageEpoch = randomUUID();
 		const defaultModel = await this.defaultModel();
 		return this.#harness.commit(async (tx) => {
@@ -571,8 +577,8 @@ export class BotRuntime {
 			const model = change.model === undefined ? currentModel : (change.model ?? undefined);
 			if (change.expectedRevision !== undefined && change.expectedRevision !== (record.revision ?? 1))
 				throw new ProtocolError("request_conflict", "Profile changed. Reload before saving your draft.");
-			const { model: _model, expectedRevision: _expectedRevision, ...fields } = change;
-			const updated: BotRecord = { ...rest, ...fields, revision: (record.revision ?? 1) + 1, ...(model === undefined ? {} : { model }) };
+			const { model: _model, expectedRevision: _expectedRevision, defaultSkills, ...fields } = change;
+			const updated: BotRecord = { ...rest, ...fields, ...(defaultSkills ? { defaultSkills: defaultSkills.map(ref => ({ ...ref })) } : {}), revision: (record.revision ?? 1) + 1, ...(model === undefined ? {} : { model }) };
 			const effectiveModel = change.model === null ? (defaultModel ?? null) : change.model;
 			const agent: AgentChange = {
 				instructions: revisionedInstructions(updated.instructions, updated.revision ?? 1),
@@ -1550,9 +1556,17 @@ async function committedManagement(tx: Tx, proposal?: BotManagementProposal): Pr
 	return record.result ? (JSON.parse(JSON.stringify(record.result)) as BotProfile) : undefined;
 }
 async function completeManagement(tx: Tx, proposal: BotManagementProposal | undefined, result: BotProfile): Promise<void> {
-	if (proposal) (await tx.doc(ManagementDoc)).operations[proposal.invocationId] = { ...proposal, result, completedAt: Date.now() };
+	const { defaultSkills, ...profile } = result;
+	if (proposal) (await tx.doc(ManagementDoc)).operations[proposal.invocationId] = { ...proposal, result: { ...profile, ...(defaultSkills ? { defaultSkills: defaultSkills.map(ref => ({ ...ref })) } : {}) }, completedAt: Date.now() };
 }
 
 function revisionedInstructions(instructions: string, revision: number): string {
 	return `OpenBot profile revision: ${revision}.\n${instructions}`;
+}
+
+function checkRoleSkills(refs: readonly SkillRef[] | undefined, proposal?: BotManagementProposal): void {
+ if (refs === undefined) return;
+ if (proposal) throw new ProtocolError("invalid_request", "Role skills are configured by the owner in Profile");
+ if (refs.length > SKILL_LIMITS.attachments || !refs.every(validSkillRef) || new Set(refs.map(ref => ref.name)).size !== refs.length)
+  throw new ProtocolError("invalid_request", "Select up to two distinct skills");
 }

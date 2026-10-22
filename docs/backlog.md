@@ -23,6 +23,12 @@ References:
 - **B27b, next:** pin reviewed skill versions to each role; direct-chat defaults remain guidance, with tools and grants independently enforced. Requires its own ready implementation spec.
 - **Later research:** bounded retrieval, semantic contradictions and source citations. B14d must preserve both local/shared documents and protection metadata together.
 
+## Role methods
+
+[B27b: Per-role skill defaults](tasks/b27b-role-skills.md) is implemented in PR #47, following the owner-approved local role direction. Profile pins are exact shared-library versions; direct-user admission composes them with message attachments and freezes accepted method snapshots. Groups and routines keep their existing explicit selections. Memory provenance/correction/sharing is the separate [B27a PR #46](https://github.com/VesperZephyr/OpenBot/pull/46); neither batch introduces cloud services or new grants.
+
+After these role foundations, retain B14d/B14c/B13e/B14f ordering. Per-message skill overrides, capability readiness and broader group defaults need separate specs.
+
 ## Phases
 
 | Phase | Goal | Batches |

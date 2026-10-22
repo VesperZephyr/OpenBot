@@ -178,6 +178,12 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | --- | --- |
 | [B11a: Local scheduled routines](b11a-local-routines.md) | done (#41); 477 unit/Host and 127 hidden desktop tests |
 
+## Per-role methods
+
+| Spec | Status |
+| --- | --- |
+| [B27b: Per-role skill defaults](b27b-role-skills.md) | in review (#47); 484 unit/Host tests; desktop/CI evidence in PR |
+
 ## Prompt reliability
 
 | Spec | Status |

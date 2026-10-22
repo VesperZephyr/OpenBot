@@ -106,6 +106,7 @@ export const HOST_PARAM_SCHEMAS = {
 		model: Type.Optional(ModelRef),
 	}),
 	"bots.update": strict({
+		defaultSkills: Type.Optional(Type.Array(strict({name:SkillName,revision:Type.Integer({minimum:1}),sha256:Type.String({pattern:"^[a-f0-9]{64}$"})}),{maxItems:2})),
 		botId: Id,
 		expectedRevision: Type.Optional(Type.Integer({ minimum: 1 })),
 		name: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),

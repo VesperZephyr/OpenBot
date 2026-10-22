@@ -885,7 +885,25 @@ export const chinese: Readonly<Record<string, string>> = {
 	"Conversations, Bot memory and operation logs are stored on this Mac in ": "对话、Bot 记忆和操作日志都保存在这台 Mac 上： ",
 	"Delete ": "删除 ",
 	" stops any work in progress and disappears from OpenBot. Files it saved in the workspace stay where they are.": " 将停止正在进行的工作，并从 OpenBot 中移除。已保存到工作区的文件会保留。",
-	"Ran ": "已运行 "
+	"Ran ": "已运行 ",
+	"Role skills": "角色技能",
+	"Choose up to two reviewed methods for direct chats. Exact versions stay pinned; groups and routines keep their own selections. Skills do not grant tool access.": "为私聊选择最多两个已审核的方法，并固定具体版本。群聊和定时任务保持各自的选择。技能不会授予工具权限。",
+	"No role defaults. Attach a skill to individual messages when needed.": "暂无角色默认技能，可按需在单条消息中附加技能。",
+	"Inspect pinned {name}": "查看已固定的 {name}",
+	"Inspect pinned version": "查看固定版本",
+	"Remove role skill {name}": "移除角色技能 {name}",
+	"Unavailable. Remove this default before sending new messages.": "此技能不可用。发送新消息前请移除此默认技能。",
+	"A newer version is available. Preview it below to adopt it.": "有新版本可用。在下方预览后可选择采用。",
+	"Preview a skill version": "预览技能版本",
+	"Choose a method to inspect": "选择要查看的方法",
+	"Role skill preview": "角色技能预览",
+	"Use this revision": "使用此版本",
+	"Save profile to apply these defaults to future messages. Accepted tasks keep their methods. Start a new topic to leave old methods out of chat context.": "保存资料后，默认技能将用于新消息。已接收的任务保留原有方法。开始新话题可以移除聊天上下文中的旧方法。",
+	"Role defaults": "角色默认技能",
+	"Defaults and message attachments share a two-skill limit. Change defaults in Profile.": "默认技能与消息附件合计最多两个技能。可在资料中修改默认技能。",
+	"Role and message skills select different versions. Edit the role defaults or message attachments.": "角色默认技能与消息选择了不同版本。请修改默认技能或消息附件。",
+	"Role and message skills exceed two methods. Edit the role defaults or message attachments.": "角色默认技能与消息合计超过两个方法。请修改默认技能或消息附件。",
+	"Reload the profile before changing role skills": "修改角色技能前请重新加载资料",
 };
 
 export function translate(language: Language, message: string, values: Readonly<Record<string, string | number>> = {}): string {

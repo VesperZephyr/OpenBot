@@ -289,6 +289,10 @@ export class HostService {
 			},
 			"bots.update": async ({ botId, ...change }) => {
 				await this.#liveBot(botId);
+				if (change.defaultSkills !== undefined) {
+					if (change.expectedRevision === undefined) throw new ProtocolError("invalid_request", "Reload the profile before changing role skills");
+					await this.skills.attachments(change.defaultSkills);
+				}
 				const profile = await this.#runtime.updateBot(botId, change);
 				this.#emit({ type: "bots.changed", payload: {} });
 				return profile;
@@ -398,6 +402,7 @@ export class HostService {
 					name: `${source.name} (copy)`,
 					role: source.role,
 					instructions: source.instructions,
+					...(source.defaultSkills ? { defaultSkills: source.defaultSkills } : {}),
 					...(source.model === undefined ? {} : { model: source.model }),
 					...(source.thinkingLevel === undefined ? {} : { thinkingLevel: source.thinkingLevel }),
 					createdAt: this.#now(),
