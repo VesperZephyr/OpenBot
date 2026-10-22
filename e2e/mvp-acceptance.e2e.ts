@@ -32,7 +32,10 @@ it("computes a real CSV only after approval, then publishes and exports the veri
   await h.send("Analyze weekly-sales.csv and publish a CSV summary after I approve the calculation.");
   await poll(async () => (await snapshot()).approvals[0]?.tool).toBe("local_exec");
   expect(await access(join(h.workspace, "calculation-runs.txt")).then(() => true, () => false)).toBe(false);
-  await h.page().getByRole("button", { name: "Allow once", exact: true }).click();
+  const approval = h.page().getByRole("group", { name: "Approval request" });
+  await poll(() => approval.locator(".approval-args").textContent()).toContain("node analyze-sales.mjs");
+  await poll(() => h.page().locator(".bot-row").filter({ has: h.page().getByText("OpenBot", { exact: true }) }).textContent()).toContain("Needs attention");
+  await approval.getByRole("button", { name: "Allow once", exact: true }).click();
   await h.page().getByText("The weekly CSV is ready: $13,400, up 11.7%.", { exact: true }).waitFor();
   await poll(async () => (await snapshot()).run).toBeUndefined();
   const summary = JSON.parse(await readFile(join(h.workspace, "reports/summary.json"), "utf8"));
@@ -69,6 +72,8 @@ it("denies a separate write and retains the exported result after restart withou
   await h.page().getByRole("button", { name: "Deny", exact: true }).click();
   await h.page().getByText("The action was denied; no file was created.", { exact: true }).waitFor();
   await poll(async () => (await snapshot()).run).toBeUndefined();
+  expect(JSON.stringify(h.model.requests.at(-1)?.messages.at(-1))).toContain("denied");
+  await h.page().locator(".tool-card.tool-failed", { hasText: "Synthetic denied action" }).waitFor();
   const calls = h.model.requests.length;
   await rm(join(h.workspace, "reports/weekly-summary.csv"));
   await h.relaunch();
