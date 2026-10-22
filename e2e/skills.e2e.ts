@@ -62,6 +62,7 @@ it("reviews a proposed method, denies without saving and approves a distinct pro
 	expect(ref.revision).toBe(1);
 	expect((await api("skills.get", { name: doc.name })).history).toHaveLength(1);
 	expect(await readFile(join(h.dataDirectory, "skills", doc.name, "SKILL.md"), "utf8")).toContain("B10_METHOD_CANARY");
+	await h.page().getByRole("button", { name: /^Settings/ }).click();
 	await h.page().getByRole("button", { name: "Skills", exact: true }).click();
 	await h
 		.page()
@@ -156,6 +157,7 @@ it("pins slash-selected versions across draft reload, queue, deletion and restar
 		.click();
 	expect((await snapshot(second)).items.filter((i: any) => i.kind === "user").at(-1).skills[0].revision).toBe(1);
 	await api("settings.update", { language: "zh-CN" });
+	await h.page().getByRole("button", { name: /^设置/ }).click();
 	await h.page().getByRole("button", { name: "技能", exact: true }).click();
 	await h
 		.page()

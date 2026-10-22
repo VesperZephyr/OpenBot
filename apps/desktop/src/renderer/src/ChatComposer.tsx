@@ -20,6 +20,11 @@ export function ChatComposer({
 	controls?: ReactNode;
 }) {
 	const { draft, attempt } = useComposer(conversationKey);
+	const run = useStore(s => conversationKey.startsWith("bot:") ? s.conversations[conversationKey.slice(4)]?.run : undefined);
+	const paused = useStore(s => s.lifecycle?.blocked ?? false);
+	const working = run?.state === "running";
+	const activeRun = working || run?.state === "queued";
+	const hasContent = !!draft.text.trim() || !!draft.attachments?.length || !!draft.skills?.length;
 	const coreName = useStore(s => s.bots.find(bot => bot.kind === "core")?.name) ?? t("Personal assistant");
 	const input = useRef<HTMLTextAreaElement>(null);
  const skills=useStore(s=>s.skills);
@@ -81,7 +86,7 @@ export function ChatComposer({
 					...(a.recipientIds.length ? { recipientIds: a.recipientIds } : {}),
 				});
 	const send = async (retry = false) => {
-		if (readOnly || (!retry && stale)) return;
+		if (readOnly || attaching || (!retry && stale)) return;
 		if (
 			await composers.send(
 				conversationKey,
@@ -92,8 +97,10 @@ export function ChatComposer({
 					}),
 				retry,
 			)
-		)
+		) {
 			window.dispatchEvent(new CustomEvent("openbot:sent", { detail: conversationKey }));
+			input.current?.focus();
+		}
 	};
 	const copy = (text: string) => void navigator.clipboard.writeText(text).catch(report);
 	return (
@@ -134,6 +141,7 @@ export function ChatComposer({
 					{t("A selected Bot is no longer available. Remove it or choose {name} before sending.", { name: coreName })}
 				</p>
 			)}
+			{activeRun && <div className="composer-status" role="status">{t(paused ? "Queued until work resumes" : working ? "Working · send a follow-up to guide this task" : "Waiting for a free slot")}</div>}
 			<div className="composer">
  {draft.skills?.map(skill=><button type="button" disabled={readOnly} key={skill.name} className="skill-chip" aria-label={t("Detach skill {name}",{name:skill.name})} onClick={()=>composers.edit(conversationKey,{skills:draft.skills?.filter(s=>s.name!==skill.name)??[]})}>/{skill.name} <small>v{skill.revision}</small> ×</button>)}
  {skillShowing&&<div className="skill-options" role="listbox" id={skillListId} aria-label={t("Attach a skill")}>
@@ -203,7 +211,7 @@ export function ChatComposer({
 					rows={1}
 					readOnly={readOnly}
 					aria-label={label}
-					placeholder={members ? label : t("Tell me what’s on your mind…")}
+					placeholder={members ? label : t(working ? "Add a follow-up…" : "Tell me what’s on your mind…")}
 					aria-controls={skillShowing?skillListId:showing ? listId : undefined}
 					aria-expanded={members ? showing : skillShowing}
 					aria-activedescendant={skillShowing&&skillOptions.length?`${skillListId}-${skillActive}`:showing && options.length ? `${listId}-${active}` : undefined}
@@ -271,6 +279,7 @@ export function ChatComposer({
 									type="button"
 									className="compose-tool"
 									aria-label={t("Attach files")}
+									title={t("Attach files")}
 									disabled={attaching || (draft.attachments?.length ?? 0) >= 4}
 									onClick={() => {
 										setAttaching(true);
@@ -291,20 +300,21 @@ export function ChatComposer({
 											.finally(() => setAttaching(false));
 									}}
 								>
-									<InterfaceIcon name="plus" /><span>{t("Add a file")}</span>
+									<InterfaceIcon name="plus" />
 								</button>
 							)}
 							{!members&&<button type="button" className="compose-tool" aria-label={t("Attach a skill")} aria-expanded={skillShowing} onClick={()=>{setSkillPicker(!skillShowing);setSkillDismissed(skillShowing?draft.text:undefined);input.current?.focus();}}><InterfaceIcon name="skills" /><span>{t("Skills")}</span></button>}
  <span className="composer-spacer" />{controls}
-							<button
+							{(!activeRun || hasContent) && <button
 								type="button"
 								aria-label={t("Send")}
+								title={t(working ? "Send follow-up" : "Send")}
 								className="primary send"
 								disabled={(!draft.text.trim() && !draft.attachments?.length && !draft.skills?.length) || !!attempt || !!stale || attaching}
 								onClick={() => void send()}
 							>
 								<InterfaceIcon name="arrow" />
-							</button>
+							</button>}
 						</>
 					)}
 				</div>

@@ -153,5 +153,5 @@
 button.danger {
 	border-color: var(--attention);
 	background: var(--attention);
-	color: #fff;
+	color: var(--danger-ink);
 }

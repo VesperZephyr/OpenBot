@@ -1,6 +1,26 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
+ "Appearance": "外观",
+ "Light": "浅色",
+ "Dark": "深色",
+ "System": "跟随系统",
+ "General": "通用",
+ "Settings navigation": "设置导航",
+ "Back to chat": "返回聊天",
+ "Work ready. Use Continue task on interrupted conversations.": "工作已恢复。已中断的对话需要点击「继续任务」。",
+ "Resume and continue": "恢复并继续",
+ "Continuing\u2026": "正在继续…",
+ "Waiting for actions to stop\u2026": "正在等待操作停止…",
+ "Unlock your Mac to continue.": "解锁 Mac 后即可继续。",
+ "Wake your Mac to continue.": "唤醒 Mac 后即可继续。",
+ "Open the app again to continue.": "重新打开应用后即可继续。",
+ "This also resumes queued work across your Bots.": "这也会恢复所有 Bot 排队中的工作。",
+ "Queued until work resumes": "已排队，恢复工作后执行",
+ "Working \u00b7 send a follow-up to guide this task": "正在处理 · 发送补充消息可调整当前任务",
+ "Add a follow-up\u2026": "补充一点想法…",
+ "Send follow-up": "发送补充消息",
+
  "On this Mac": "在这台 Mac 上",
  "A little room for you": "给自己留一点空间",
  "Good to see you.": "很高兴见到你。",
