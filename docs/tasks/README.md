@@ -182,7 +182,7 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Spec | Status |
 | --- | --- |
-| [B27b: Per-role skill defaults](b27b-role-skills.md) | implemented; acceptance in progress |
+| [B27b: Per-role skill defaults](b27b-role-skills.md) | in review (#47); 484 unit/Host tests; desktop/CI evidence in PR |
 
 ## Prompt reliability
 

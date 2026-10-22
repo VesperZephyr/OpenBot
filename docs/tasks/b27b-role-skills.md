@@ -1,6 +1,6 @@
 # B27b: Per-Role Skill Defaults
 
-Status: implemented; acceptance in progress
+Status: implemented, in review ([PR #47](https://github.com/VesperZephyr/OpenBot/pull/47))
 Branch: task/b27b-role-skills; pull request target: main
 Depends on: B10/B19; owner-approved D6 role direction
 Architecture: Sections 5.7 and 5.9
@@ -50,10 +50,10 @@ None. Per-message overrides, project-specific skill sets, group defaults, capabi
 
 ## Verification record (2026-10-22)
 
-- `pnpm run check`: 484 tests in 73 suites passed, including boundaries and both TypeScript projects.
+- `VITEST_MAX_WORKERS=2 pnpm run check`: 484 tests in 74 suites passed, including boundaries and both TypeScript projects.
 - Focused hidden desktop acceptance: 8 tests in the existing shared-skills suite and the new role-skills suite. These cover preview/pin, local file work with the actual pinned input, revision-conflict drafts, restart/duplication, role independence, deliberate version adoption, rejected unavailable methods, draft recovery and Chinese controls.
 - Scheduler tests retain original role methods through queueing, profile changes, library loss, restart and continuation. Replay uses original explicit inputs; context tests exclude defaults from other Bots, groups, routines, background and peer work. Schema and Host tests reject forged model configuration and invalid/unavailable owner pins.
-- Screenshot inspection identified a long-option intrinsic-width overflow in the preview; the layout is constrained and a regression assertion is included. Final build/full desktop results are recorded before readiness.
+- Screenshot inspection identified a long-option intrinsic-width overflow in the preview; the layout is constrained and a regression assertion is included. A rebuilt focused run passed all four role tests with panel-width verification. Full desktop and CI results are recorded in [PR #47](https://github.com/VesperZephyr/OpenBot/pull/47) before readiness.
 - Isolated agent-browser exploration uses the hidden `role-skills-explore` app. No owner data or real external services are used. Scripted tests establish context/authority contracts, not real-model method quality.
 
-Two repeated full checks hit a 10-second cleanup-hook timeout in the unchanged 4,096-file spill quota fixture. Its isolated rerun passed both tests in 4.31 seconds. Final full checking uses `VITEST_MAX_WORKERS=2` to reduce concurrent filesystem load; assertions and cleanup limits are unchanged. The first desktop regression used the pre-fix layout build and caught preview overflow; a rebuilt focused rerun passed all four role tests, including panel-width verification. A fresh full desktop regression follows that rebuilt result.
+Two repeated full checks hit a 10-second cleanup-hook timeout in the unchanged 4,096-file spill quota fixture. Its isolated rerun passed both tests in 4.31 seconds. Final full checking uses `VITEST_MAX_WORKERS=2` to reduce concurrent filesystem load; assertions and cleanup limits are unchanged. The first desktop regression used the pre-fix layout build and caught preview overflow; a rebuilt focused rerun passed all four role tests, including panel-width verification. The full desktop rerun uses the rebuilt layout; its final outcome and exact head are recorded in the PR.
