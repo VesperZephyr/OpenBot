@@ -21,7 +21,7 @@ B14e is merged in PR #38: async native Keychain ownership in main, bounded priva
 
 [I2](tasks/i2-mvp-acceptance.md) verifies the integrated MVP candidate including B9b and introduces the application through an English README, a complete Chinese translation and an authentic real-model screenshot. Its [acceptance record](acceptance/mvp-2026-10-19.md) separates current automated checks, practical tasks, packaging and outstanding native release gates.
 
-Design proposal (2026-10-22): [D6](tasks/d6-desktop-design.md) audits the current desktop and proposes a shared visual system, result/approval hierarchy and category-based settings. Its standalone prototype uses fictional data. These changes are not implemented in the application; the existing Desktop contracts and delivery order remain current.
+Design proposal (2026-10-22): [D6](tasks/d6-desktop-design.md) audits the current desktop and proposes a personal assistant identity, conversation continuity, editable memory and precise approvals. Its standalone prototype uses fictional data. These changes are not implemented in the application; the existing Desktop contracts and delivery order remain current.
 
 ## 1. Current State
 

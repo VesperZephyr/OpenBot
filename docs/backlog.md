@@ -17,7 +17,7 @@ References:
 
 ## Desktop design proposal
 
-[D6: Desktop visual and interaction design](tasks/d6-desktop-design.md) contains an interactive study and proposed packets for the visual foundation, results/approvals, and settings. It is a design proposal awaiting owner review; it does not replace the current delivery queue or mark any UI changes as shipped. Each implementation packet needs its own ready spec.
+[D6: Personal assistant design](tasks/d6-desktop-design.md) contains an interactive study and proposed packets for the personal identity/conversation, context/results/approvals, and settings. It is a design proposal awaiting owner review; it does not replace the current delivery queue or mark any UI changes as shipped. Each implementation packet needs its own ready spec.
 
 ## Memory design research
 

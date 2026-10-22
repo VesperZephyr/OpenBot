@@ -1,4 +1,4 @@
-# D6: Desktop Visual and Interaction Design
+# D6: A Personal Assistant with Character
 
 Status: draft for owner review; design study complete, product implementation not started
 Branch: task/d6-desktop-design
@@ -8,7 +8,9 @@ Architecture: Sections 1, 1.1 and 3; existing Desktop/Host/Executor boundaries r
 
 ## Goal
 
-Make OpenBot feel like a considered personal Mac application: recognize the right Bot, read its answer comfortably, inspect its deliverable, and understand exactly when an action needs a decision. The daily surface should emphasize conversation and results; configuration and execution details should be available without competing with them.
+Give OpenBot the character of a warm, intelligent personal assistant whose primary interface is conversation. A recognizable assistant, continuity with the user's own work, and visible, correctable memory should make the application feel personal. The assistant should be easy to talk to while remaining precise about what it has done and what still needs permission.
+
+Owner preference: a private assistant with personality, warmth and approachability; chat is the core experience. The design expresses that through identity, language and interaction, with focused Specialists available as supporting teammates.
 
 This is a design task, not authorization to implement a new runtime feature. It includes a source-informed audit, a local interactive prototype, and the contracts and acceptance matrix for subsequent implementation packets. Product source, policy, data stores, and the owner's running app are unchanged.
 
@@ -30,51 +32,67 @@ The old `e2e/.run/01-settings.png` was also inspected, but its older sidebar and
 
 ## Recommended visual direction
 
-**A quiet personal workspace with recognizable teammates and readable deliverables.** The app is used for sustained reading, so the visual character comes from disciplined type, a blue-grey navigation surface, compact identity marks and a consistent result card. It does not need a dashboard, hero artwork or decorative analytics.
+**A familiar assistant, with room to think.** A dark plum navigation frame surrounds a soft lilac conversation canvas. The Core assistant has an original, simple vector character: a rounded figure, an attentive expression and a small leaf-shaped accent. This identity is visible at welcome scale, then becomes a small author avatar during conversation. It is a static identity mark, not a pet, fabricated emotional state, presence signal or claim of consciousness.
 
-Three layouts were considered:
+The main visual gesture is an asymmetric greeting and character above a generous composer. The conversation remains spacious and direct. A pale olive inset can distinguish a short plan within an actual response; warm paper-colored file icons make outputs feel like useful things the assistant prepared for the user.
 
 ```text
-A. Messaging + contextual inspector (recommended)
-   [ Bot roster ][ conversation and composer ][ inspector when opened ]
+[ Personal assistant + supporting team ] [ Familiar greeting       Character ]
+                                        [ One inviting composer             ]
+                                        [ Resume conversation | Bot memory  ]
 
-B. Permanent three-column operations console
-   [ navigation ][ conversation ][ all tasks, files and controls ]
-
-C. Full-width single chat
-   [ roster hidden ][ conversation ][ details in dialogs ]
+[ Same persistent assistant identity   ] [ Human request                     ]
+                                        [ Natural reply + useful next step  ]
+                                        [ File, when produced               ]
+                                        [ Composer                          ]
 ```
 
-A keeps the existing Bot mental model and makes outputs accessible. B continuously narrows the reading area and repeats task state. C makes switching persistent teammates unnecessarily indirect. At small desktop widths, A's inspector overlays the conversation rather than reducing its useful width.
+The main signature is the **recognizable Core character and conversational continuity**. The assistant's appearance and author identity are consistent across welcome, conversation, profile and approvals. Files and execution records support the conversation; they do not become the product's identity.
 
-The signature is the **deliverable card paired with a quiet execution receipt**. A file reads as something the Bot produced, while the receipt explains how the work was done. This is a visual pattern, not a new artifact type or new proof of completion. No synthetic thumbnails of file contents, invented source counts, progress percentages or completion claims may be inferred from model prose.
-
-An early direction with a permanent activity strip and decorative team avatars was discarded before building: both repeated information already present in messages. The prototype spends emphasis on one result and one decision at a time.
-
-### Design tokens
+### Visual tokens
 
 | Role | Light | Dark | Use |
 | --- | --- | --- | --- |
-| Canvas | `#FFFFFF` | `#19212E` | Conversation and primary content |
-| Navigation | `#EDF1F6` | `#141C28` | Bot roster and app navigation |
-| Surface | `#F5F7FA` | `#202B3A` | User message, quiet form regions |
-| Ink | `#202B3D` | `#E7EDF7` | Primary reading text |
-| Secondary ink | `#5f6c80` | `#A5B2C6` | Supporting text |
-| Accent | `#315FD4` | `#A9C1FF` | Focus, selected controls, links |
+| Frame | `#242131` | `#242131` | Navigation and window surround |
+| Frame ink / secondary | `#F3EFFA` / `#B9B3CA` | Same | Accessible navigation text |
+| Canvas | `#FAF9FD` | `#2C2739` | Main conversation surface |
+| Paper | `#FFFFFF` | `#342E43` | Composer, files and preview |
+| Ink | `#30283F` | `#F1EAF9` | Reading text |
+| Secondary | `#756C83` | `#C0B5CE` | Supporting text |
+| Accent | `#644689` | `#75509C` | Send and primary decision |
+| Accent text | `#695093` | `#D0B4F0` | Greeting and contextual links |
+| Lavender | `#E8DFF5` | `#514164` | Identity and soft emphasis |
+| Warm paper | `#F5E7D7` | `#4A3C38` | File icon surface |
 
-Supporting semantic tokens: light border `#DCE3ED`, selection `#E0E8FA`, success `#286A56`, attention `#865917` on `#FFF8EB`. Dark border `#344255`, selection `#2A3C5B`, success `#9ED2BB`, attention `#EFD398` on `#322E24`. Dark solid primary buttons use `#3F6ED8` with white text. Validate every actual text/background pairing; a decorative border is not an adequate control boundary or focus indicator by itself.
+Supporting colors: light border `#E5DFED`, user message `#EEE7F6`, success `#47735C`, attention `#865A27` on `#FCF4E6`. The character uses a lavender body and a small `#E3E9B6` leaf accent. Its color is decorative and never encodes an authorization state. Dark mode retains sufficient contrast for essential labels and buttons.
 
-- **Type:** system SF/Helvetica stack for controls and body; Avenir Next used sparingly for the OpenBot wordmark and document-style headings, with system fallbacks; SF Mono/Menlo for commands and paths. No remote font requests.
-- **Scale:** body 15 px, line-height 1.65–1.75; navigation and controls 13–14 px; secondary text 12 px; conversation heading 16 px; result heading 20–22 px. Prototype timestamps and nonessential shortcut hints are smaller; no decision, error or scope description may rely on those sizes. Chinese uses the system CJK fallback and needs its own line-height verification.
-- **Geometry:** 244 px roster; conversation reading width at most 700–760 px; 340 px inspector; 8 px spacing rhythm with 4 px fine adjustments. 8–10 px controls, 12 px result cards, 15 px composer. No universal oversized rounding.
-- **Icons:** one consistent 18 px outline family with accessible names; 32–36 px minimum desktop hit targets. Use recognizable identity color sparingly. Core remains visibly distinct and protected.
-- **Motion:** 120–160 ms for direct state feedback and panel entry; no ambient animation. Honor reduced motion. No simulated typing, waiting or progress.
+- **Type:** Avenir Next, with system fallbacks, for conversational headings and identity; system SF/Helvetica stack for reading and controls; SF Mono/Menlo for exact commands and paths. No remote font loading. CJK uses the system fallback and requires separate implementation verification.
+- **Scale:** welcome heading 39–48 px on wide desktops, 30–35 px in constrained layouts; conversation headings 23–25 px; body 15 px / 1.75; controls 13–14 px; secondary information 11–12 px. Never render a scope, decision or error only as tiny metadata.
+- **Geometry:** 232 px navigation, 810 px maximum welcome content, 685 px reading column, 330 px preview. Rounded 22 px main surface inside the dark frame; 19–21 px composer; 12 px files. This framing is a prototype treatment; implementation must account for native titlebar and traffic-light hit areas.
+- **Motion:** short direct hover/panel feedback only, disabled for reduced motion. The character remains still during work and approvals; no idle breathing, blinking, pretend listening, fake typing or artificial completion sequence.
+- **Assets:** the character is original inline SVG authored for this study. No generated stock illustration, remote image, copied mascot or new runtime dependency is required.
+
+### Voice and personal continuity
+
+| Moment | Tone and behavior | Example from the fictional fixture |
+| --- | --- | --- |
+| Welcome | Invite an incomplete thought without demanding a perfect task brief | “What's on your mind?” |
+| Help | Offer a grounded next step and explain its basis | “From your notes, the proposal is the one thing to protect.” |
+| Memory | State what is actually stored and make correction easy | “Keep the plan simple. Leave some room to breathe.” with View & edit |
+| Approval | Calm, clear and specific; no reassuring claim about unknown effects | “Take a look at the command below and decide whether you want me to continue.” |
+| Error | Explain what happened and the next available action | Existing truthful error and recovery states, styled consistently |
+
+Avoid repetitive diminutives, canned encouragement, pet names, emotional dependency language or claims that the assistant knows how the user feels. Warmth comes from attending to the user's actual request and remembering explicit preferences accurately. Do not automatically add personal-sounding sentences to model output in the renderer.
+
+The welcome study is a reviewable entry/empty-state concept. Existing conversations must reopen at their saved reading position, not be replaced every time by a greeting. Returning to a Bot remains a direct route to its conversation. A greeting/overview is only shown on an explicitly specified entry or empty state. The execution spec must fix that entry behavior before implementation.
+
+The resume row reads existing conversation metadata and opens its actual conversation; it is not a new task database. A memory excerpt comes only from the selected Bot's existing memory, is clearly identified as memory, and opens the current revision-aware editor. There is no new shared-memory layer, personal profiling service or invented preference. Empty memory hides the excerpt or offers the existing memory explanation. A deleted or changed memory must stop appearing in this surface. The fixture's single excerpt is not a proposed ranking algorithm: selection/truncation rules must be explicit in the execution spec.
 
 ## Interaction design and preservation contracts
 
 ### Navigation and identity
 
-Keep Core, pinned Bots, other Bots and groups within their existing ordering rules. Rows share avatar, name, one preview line, time and optional unread/attention marker. Preserve current draft/activity/latest-message precedence and native-aware read semantics. Never use only color to distinguish an approval, failure or unread state. Keep search and New accessible; reduce heading weight, not discoverability.
+Give Core a distinct, familiar identity while keeping Core, pinned Bots, other Bots and groups within their existing ordering rules. The supporting-team presentation must keep groups distinguishable from individual Bots. Rows share avatar, name, one preview line, time and optional unread/attention marker. Preserve current draft/activity/latest-message precedence and native-aware read semantics. Never use only color to distinguish an approval, failure or unread state. Keep search and New accessible; reduce heading weight, not discoverability.
 
 Keep Routines, Connect apps, Skills and Settings in the bottom navigation. The existing global Pause/Resume control remains visible and keyboard-accessible when work can be affected. The study's idle footer is not a replacement for this control. A local readiness label must reflect actual Host state and must not imply that inference is offline.
 
@@ -84,7 +102,7 @@ Do not remove All/Unread filtering, hidden Bots, pinned ordering or mark-read ju
 
 - Use restrained user bubbles and unboxed, well-spaced Bot content. Retain the actual author identity for every group contribution, including when messages are adjacent.
 - Keep chronological message order. Make delivered artifacts easier to find in their existing publication positions first. Never move an approval, failure or interrupted tool receipt below later successful content.
-- The prototype shows one composed result example. Production must not generate a heading such as “Your report is ready” independently of actual message content or committed receipts.
+- The prototype shows one composed conversation example. Production must not invent empathetic commentary, result headings, personal preferences or completion claims independently of actual model messages and committed receipts.
 - Preserve Markdown, selectable text, code wrapping/scrolling, links and table readability. Add no automatic page-level horizontal scrolling for wide code or tables.
 - Keep one composer with clear Send versus Stop states, visible pending messages and existing steering behavior. Retain attachments, skill selection, IME handling, recipient IDs, draft recovery and per-channel persistence.
 - Opening or closing an inspector must preserve the draft and reading anchor. Incoming content cannot drag a reader away from older messages. Keep Jump to latest.
@@ -114,7 +132,7 @@ Keep Deny and Allow once visible and unambiguous. Always allow is a separate dis
 
 Make Preview the main affordance. Keep Export copy available; put Remove local copy in a clearly labelled secondary menu with its current confirmation. Do not remove supported actions to obtain a cleaner screenshot.
 
-The proposed common inspector has exactly one active content type: Bot/group details or a supported artifact preview. Opening another type replaces the visible content; it does not create a fourth column. Metadata uses existing artifact names, sizes, availability and identity, not guessed document titles. A generic document icon is acceptable; a miniature rendering requires actual validated preview content.
+The file inspector shows one supported artifact at a time. Bot/group profile and memory editing use a focused dialog in the study, with one active editor and explicit close/save behavior. These surfaces must not create a fourth column or leave hidden editors accepting keyboard input. Metadata uses existing artifact names, sizes, availability and identity, not guessed document titles. A generic document icon is acceptable; a miniature rendering requires actual validated preview content.
 
 At wide widths the inspector is nonmodal and independently scrollable. At narrower widths it becomes a modal drawer with scrim, inert background, focus containment, Escape dismissal and return focus. Breakpoint is based on preserving at least approximately 560 px for conversation content; 1180–1200 px is the initial desktop target. Reuse and extend the existing `DetailsPanel` focus behavior rather than replacing it with raw overlay markup.
 
@@ -139,22 +157,24 @@ In Models, distinguish configured, testing, connected-after-test and failed. A s
 
 ### Empty states and first use
 
-Give Core a simple first-task invitation and show two or three concrete examples. Model setup or its existing skip path remains available. Specialists are never seeded by the redesign; the demo roster is synthetic. Explain missing configuration where it prevents sending, without blocking the user from managing Bots. Preserve first-launch, no-search-results, missing-file, disconnected-Host and no-unread states as distinct cases.
+Give Core a recognizable character and a simple first-task invitation with two or three concrete examples. Use a first-meeting greeting when there is no prior conversation, and a returning greeting only where existing history justifies it. Model setup or its existing skip path remains available. Specialists are never seeded by the redesign; the demo roster is synthetic. Explain missing configuration where it prevents sending, without blocking the user from managing Bots. Preserve first-launch, no-search-results, missing-file, disconnected-Host and no-unread states as distinct cases.
 
 ## Deliverables and demo limits
 
-- [Interactive prototype](../design/d6/prototype.html): conversation, report/data inspector, approval decision, settings categories, empty conversations, per-Bot in-memory drafts, search filter and light/dark appearance.
+- [Interactive prototype](../design/d6/prototype.html), with [styles](../design/d6/personal.css) and [interaction code](../design/d6/personal.js): welcome, conversation, plan preview, approval, memory editing, assistant profile, search, settings and light/dark appearance.
 - [Prototype checks](../design/d6/verify.js): reproducible browser checks of the local study.
-- [Verification record](../design/d6/README.md): how to preview, what was exercised, and limits.
+- [Verification record](../design/d6/README.md): preview instructions, checks and limits.
 
-All demo content is fictional and labelled as such. Sending only adds a local message. Approval buttons do not run commands or save grants. Unimplemented peripheral controls show a specific demo explanation instead of pretending to work. Reloading resets the study. It intentionally does not reproduce native titlebar traffic lights, live streaming, durable drafts, production modal behavior or all translated states. Prototype HTML is review material, not product code to copy into React.
+All fixture content is fictional and labelled. Sending adds an in-memory preview message and never calls a model. Approval controls never execute or save a grant. Memory/profile edits affect only page state and reset on reload. Peripheral controls explain their demo limits. The plan is based on a fictional supplied notes file; it is not a calendar integration. No event, email or external record is changed.
+
+The welcome character, memory excerpt and resume action are design proposals. No automatic proactive outreach, routine creation or background summarization is authorized by this design. The current product's privacy, identity, permission and credential contracts remain unchanged. English is the prototype language; both existing product languages remain implementation acceptance requirements.
 
 ## Proposed implementation packets
 
 Each packet requires its own ready execution spec, branch and PR after direction is settled. This task does not silently reprioritize the established delivery queue.
 
-1. **Visual foundation and conversation:** consolidate tokens, remove conflicting root overrides, standardize icons/control variants, style the existing roster, transcript and composer without changing message order or actions. Touch renderer styles and components only. Highest immediate visual value and lowest data risk.
-2. **Results, approvals and inspector:** apply the new artifact/action hierarchy and shared panel behavior; preserve all permission and artifact state contracts. Any new presentation grouping must be keyed to existing durable identities and have its own explicit contract.
+1. **Personal identity and conversation:** settle entry behavior, consolidate tokens, remove conflicting root overrides, standardize icons/control variants, apply the original assistant identity and warm visual system to the existing roster, transcript and composer without changing message order or actions. Specify how the welcome/resume/memory surfaces use existing records before implementing them. Touch renderer styles and components only. Highest immediate visual value and lowest data risk.
+2. **Context, results, approvals and inspector:** apply the new artifact/action hierarchy and consistent file-panel and profile-dialog behavior; preserve all permission and artifact state contracts. Any new presentation grouping must be keyed to existing durable identities and have its own explicit contract.
 3. **Settings and remaining surfaces:** category navigation with a complete old-to-new control inventory; align onboarding, creation, groups, skills, connectors and routines with the component system. Preserve drafts, secret handling and save conflicts.
 
 No new UI framework, remote fonts, Pi changes, Host APIs, schema migrations or navigation store are required merely to implement the visual foundation. Prefer focused reusable components (button variants, row, panel header, field, state notice) over a broad UI-library rewrite. Split `App.tsx` only where the packet's view/component responsibility warrants it.
@@ -165,11 +185,11 @@ These are required implementation checks, not claims that the prototype proves p
 
 | Scenario | Automated proof |
 | --- | --- |
-| Direct conversation, rich answer, artifact, code/table, long name | ScriptedModel e2e at 1280×820 and minimum 880 px width; inspect screenshots and overflow assertions |
+| Welcome/return entry, direct conversation, rich answer, artifact, code/table, long name | ScriptedModel e2e at 1280×820 and minimum 880 px width; inspect screenshots and overflow assertions |
 | Light/dark, English/Chinese, reduced motion, 200% zoom | Screenshot/keyboard matrix; no clipped decisions or inaccessible composer; contrast checks on actual tokens |
 | Draft, IME, pending send, send failure, channel switch | Existing B21 coverage plus panel/category-switch regression scenarios |
 | Reading old history during incoming activity | Scroll anchor and Jump to latest e2e; no forced scroll from panel changes |
-| Core, pinned, unread, hidden Bots and search | B22/B23 semantics and exact-message jump survive new row layout |
+| Core identity, pinned/unread/hidden Bots, group distinction and search | B22/B23 semantics and exact-message jump survive new row layout |
 | Group routing and work | Scripted Core/default and explicit-mention scenarios; actual author and attention state retained; Stop still visible |
 | Pending, expired, stale and reusable approval | Scripted exact-operation approval, Deny, Allow once, supported Always allow scope and timeout; no action before Host confirmation |
 | Result preview/export/remove/missing | Existing B15a bounds and validation; panel focus/scroll; removal updates every linked card |
@@ -180,6 +200,10 @@ These are required implementation checks, not claims that the prototype proves p
 Avoid pixel snapshots as the only proof. Assert meaningful visibility, focus, retained values and action outcomes. Do not write tests merely mirroring class names. Native titlebar, packaged permissions and signing remain separate packaged Mac checks.
 
 ## Risks
+
+- Personalization can imply more knowledge than exists. Display only the selected Bot's stored memory and actual history; keep correction and deletion effective.
+- A welcome concept can interrupt daily work. Preserve direct conversation return and scroll/draft state; entry behavior needs a ready execution contract.
+- A character can become distracting. Restrict it to identity and welcome scale; never animate it as fake activity or make it the only state indicator.
 
 - Over-cleaning can hide consequential state. Preserve expanded decision/error states and inventory every existing control.
 - Reordering cards can misrepresent chronology. The first packet only changes presentation; later grouping needs an explicit durable relationship.
