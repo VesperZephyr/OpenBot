@@ -16,6 +16,8 @@ const strict = <T extends Record<string, TSchema>>(properties: T) => Type.Object
 const ModelRef = strict({ provider: Id, modelId: Id });
 const ThinkingLevel = Type.Enum(["off", "low", "medium", "high"]);
 const BotOnly = strict({ botId: Id });
+const MemoryScope = Type.Enum(["bot", "shared"]);
+const MemoryNoteBase = { botId: Id, requestId: Id, scope: MemoryScope, expectedRevision: Type.Integer({ minimum: 0 }) };
 const GrantAccess = Type.Enum(["read", "readwrite"]);
 const AlwaysAllowScope = Type.Union([
 	strict({
@@ -150,6 +152,16 @@ export const HOST_PARAM_SCHEMAS = {
 	"credentials.set": strict({ providerId: Id, apiKey: Type.String({ maxLength: 16_384 }) }),
 	"credentials.delete": strict({ providerId: Id }),
 	"bots.memory.get": BotOnly,
+	"memory.shared.get": NoParams,
+	"memory.shared.update": strict({ content: Type.String(), expectedRevision: Type.Integer({ minimum: 0 }) }),
+	"memory.shared.restore": strict({ revision: Type.Integer({ minimum: 0 }), expectedRevision: Type.Integer({ minimum: 0 }) }),
+	"bots.memory.note": Type.Union([
+		strict({ ...MemoryNoteBase, action: Type.Literal("add"), heading: Type.String({ minLength: 1, maxLength: 120 }), content: Type.String({ minLength: 1, maxLength: 8192 }) }),
+		strict({ ...MemoryNoteBase, action: Type.Literal("edit"), noteId: Id, content: Type.String({ minLength: 1, maxLength: 8192 }) }),
+		strict({ ...MemoryNoteBase, action: Type.Literal("forget"), noteId: Id }),
+		strict({ ...MemoryNoteBase, action: Type.Enum(["share", "unshare"]), noteId: Id, otherRevision: Type.Integer({ minimum: 0 }) }),
+	]),
+	"bots.memory.source": strict({ botId: Id, scope: MemoryScope, noteId: Id, which: Type.Enum(["original", "changed"]) }),
 	"bots.memory.update": strict({ botId: Id, content: Type.String(), expectedRevision: Type.Integer({ minimum: 0 }) }),
 	"bots.memory.restore": strict({ botId: Id, revision: Type.Integer({ minimum: 0 }), expectedRevision: Type.Integer({ minimum: 0 }) }),
 	"conversations.reset": BotOnly,

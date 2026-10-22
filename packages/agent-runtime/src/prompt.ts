@@ -7,9 +7,9 @@ import type { Context } from "@earendil-works/chord/context";
 import { type PromptInput, type PromptSection, section } from "@earendil-works/pi-durable";
 import { MEMORY_LIMIT_BYTES } from "@openbot/protocol";
 
-import { MemoryDoc, memoryState } from "./memory.ts";
+import { MemoryDoc, SharedMemoryDoc, memoryState, renderNotes } from "./memory.ts";
 
-export type PromptBot = { readonly botId: string; readonly name: string; readonly role: string };
+export type PromptBot = { readonly botId: string; readonly name: string; readonly role: string; readonly memoryContext?: "direct" | "group" | "routine" };
 
 /** Resolves the Bot that owns the conversation being prompted. */
 export type BotLookup = (input: PromptInput, context: Context) => Promise<PromptBot | undefined>;
@@ -28,8 +28,12 @@ export function botSections(lookup: BotLookup, today: () => string = localDate, 
 			const bot = await lookup(input, context);
 			if (bot === undefined) return undefined;
 			const memory = memoryState(await input.read.snapshot(MemoryDoc, bot.botId, context));
-			const canUpdate = input.agent.tools.some((tool) => tool.name === "memory_update");
-			return `Memory revision: ${memory.revision}. Use this expectedRevision for memory_update.\n${memoryGuidance(memory.content, canUpdate)}`;
+			const shared = bot.memoryContext === "group" ? undefined : memoryState(await input.read.snapshot(SharedMemoryDoc, context));
+			const sharedKeys = new Set(shared?.notes.filter(n => n.status !== "shared").map(n => n.key));
+			const local = renderNotes(memory.notes.filter(n => !sharedKeys.has(n.key)));
+			const protectedTopics = [...memory.notes.filter(n => n.protected), ...(shared?.notes ?? [])].map(n => n.heading || "Legacy notes");
+			const canUpdate = (bot.memoryContext ?? "direct") === "direct" && input.agent.tools.some((tool) => tool.name === "memory_update");
+			return `Memory revision: ${memory.revision}. Use this expectedRevision for memory_update.\nOwner-protected topics (do not change or recreate under aliases): ${JSON.stringify(protectedTopics)}.\n${memoryGuidance(local, canUpdate)}${shared ? `\n\nShared user memory (owner-managed; takes precedence over matching local topics; no model writes):\n${shared.content || "(empty)"}` : "\nShared user memory is excluded from this group context."}`;
 		}),
 	];
 }
@@ -124,9 +128,9 @@ function memoryGuidance(memory: string, canUpdate: boolean): string {
 	];
 	if (canUpdate) {
 		lines.push(
-			`When the user states a lasting preference or a fact worth keeping, save it with memory_update right away, one short line each, under a fitting section such as Preferences, About the user, or Role notes. Keep memory under ${MEMORY_LIMIT_BYTES / 1024} KB: replace outdated notes instead of piling up new ones. Never store secrets.`,
+			`When the user states a lasting preference or fact, save it with memory_update under a short specific topic such as Response language or Report format. Reuse its existing topic when updating. Keep memory under ${MEMORY_LIMIT_BYTES / 1024} KB. Owner corrections, forgotten topics and shared topics are protected: never bypass this by using another title. The owner can correct or share a note in Memory. Never store secrets, permissions or an unverified claim of task completion.`,
 		);
-	}
+	} else lines.push("Memory learning is unavailable in this context. Do not call memory_update or copy this context into another memory scope.");
 	lines.push("", memory.trim() === "" ? "(Your memory is empty.)" : memory.trim());
 	return lines.join("\n");
 }

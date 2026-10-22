@@ -39,7 +39,7 @@ Owner edits, clears, forgetting and restores protect affected topic identities a
 
 The owner can create/edit/forget notes in either This Bot or Shared across Bots, and move a local note into shared memory or back to the selected Bot. Scope changes require a concrete review showing content and audience before the write; they never happen because a model says a fact is global. An atomic move updates both documents, preserves provenance and leaves a protected source tombstone. An existing destination topic causes a conflict instead of replacement. Both document revisions participate in scope-change CAS.
 
-Shared notes apply to direct chats and routines, not group conversations. Existing Bot-local memory continues to apply across that Bot's contexts, preserving B13a behavior; the UI states this clearly. A shared active topic takes precedence over the same local topic in direct/routine prompt projection; the local entry remains visible in the editor as overridden. Groups omit shared content and retain only their existing Bot-local projection. This is model-context scoping, not isolation between Bots on the shared Mac.
+Shared notes apply to direct chats and routines, not group conversations. Existing Bot-local memory continues to apply across that Bot's contexts, preserving B13a behavior; the UI states this clearly. A shared active topic takes precedence over the same local topic in direct/routine prompt projection; the local entry remains visible in the editor as overridden. A forgotten shared topic also suppresses matching local content; moving it back to one Bot explicitly ends this suppression. Groups omit shared content and retain only their existing Bot-local projection. This is model-context scoping, not isolation between Bots on the shared Mac.
 
 ### Application API and UI
 
@@ -74,3 +74,12 @@ Topic-level notes can contain several claims; provenance names the learning oper
 ## Open questions
 
 None for this batch. Semantic aliases, finer source citations, retrieval, broader context scopes, background extraction and backup transport remain separate work.
+
+## Verification record (2026-10-22)
+
+- `pnpm run check`: 490 tests in 73 suites; boundaries and both TypeScript projects passed.
+- Focused hidden desktop acceptance: 7 tests in `memory-controls.e2e.ts` and `memory-provenance.e2e.ts`, covering legacy history, real routed learning, source previews, protected correction, conflict-preserved drafts, reviewed sharing, a second Bot, forgetting/restart and Chinese small-window controls.
+- Runtime coverage checks matching shared-topic precedence, forgotten shared-topic suppression, direct/routine/group context differences, cross-Bot and non-user rejection, bounded source unavailability after pruning, durable replay, quota rollback and legacy reopen.
+- Full desktop regression and final focused build are recorded below when complete.
+- Inspected `e2e/.run/memory-provenance/` screenshots. Used agent-browser over CDP on the isolated hidden `memory-explore` app to open the Memory tab, review/confirm a scope change and inspect the resulting shared note. Inspected its screenshot and shut down that test app. No owner data was opened.
+- These deterministic tests establish authority, state and prompt-input contracts. No real-model recall/semantic accuracy benchmark or packaged native release validation was performed in this batch.

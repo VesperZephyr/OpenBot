@@ -1,7 +1,7 @@
 # OpenBot Backlog
 
 
-Active delivery scope (2026-10-21): B9c OAuth and B12b optional model review are excluded. Phase 3 is deferred. B9b (#39), I2 (#40) and B11a (#41) are merged. [I3 workflow acceptance](tasks/i3-workflow-acceptance.md) is merged in PR #42, with 477 unit/Host and 131 hidden desktop tests plus a bounded real-model trial. The remaining delivery order is B14d backup/restore, B14c history scaling, B13e templates and B14f signed updates. Historical planning sections below do not authorize excluded or deferred work.
+Active delivery scope (2026-10-22): the owner prioritizes attributable memory, correction/forgetting and explicit sharing (B27a), then per-role default skills (B27b), on one local Mac. B9c OAuth and B12b optional model review remain excluded; Phase 3 remains deferred. I3 (#42), B6a (#43) and D5 (#44) are merged. Backup/restore (B14d), history scaling (B14c), templates (B13e) and signed updates (B14f) follow these role foundations. Historical planning sections do not authorize excluded or deferred work.
 
 Work after the tools demo, cut into batches that can each be finished and verified on their own. Each batch states its approach, key decisions, and the acceptance that closes it. A batch gets a full task spec in [`tasks/`](tasks/README.md) before execution starts; batches here without a spec link are approach only.
 
@@ -17,7 +17,11 @@ References:
 
 ## Memory design research
 
-[D5: Local memory research](tasks/d5-memory-research.md) is in review in PR #44 as a separate research increment. The [report](research/memory-design.md) reviews current guarantees, primary sources, a bilingual lexical-search probe and proposed stages: record provenance/correction/forgetting, explicit shared facts, then bounded retrieval. These are proposals requiring ready implementation specs; no shared memory, new storage format or embedding service is enabled. Backup/restore (B14d) and history indexing (B14c) must inform any later migration/index design.
+[D5: Local memory research](tasks/d5-memory-research.md) is merged in PR #44. The owner approved the local role direction from [D6 research PR #45](https://github.com/VesperZephyr/OpenBot/pull/45).
+
+- **B27a, implemented for review:** [Attributable memory and explicit sharing](tasks/b27a-memory-provenance.md). Topic provenance, correction/forget protection, owner-confirmed scope moves, bounded shared facts and bilingual controls. No semantic extraction or embedding service.
+- **B27b, next:** pin reviewed skill versions to each role; direct-chat defaults remain guidance, with tools and grants independently enforced. Requires its own ready implementation spec.
+- **Later research:** bounded retrieval, semantic contradictions and source citations. B14d must preserve both local/shared documents and protection metadata together.
 
 ## Phases
 
@@ -132,5 +136,5 @@ Attention-state mutation, UI navigation, cross-Bot memory operations, new dispat
 ## Prompt reliability and memory research
 
 - **In review (#43):** [B6a: Evidence-based Bot delivery](tasks/b6a-prompt-reliability.md). 479 unit/Host and 132 hidden desktop tests, inspected screenshots and a two-turn real-model report/unknown-write trial; [adoption/defer record](research/grok-prompt-adoption.md).
-- **Research requested:** structured memory, shared vs role-specific facts, provenance/conflicts, retrieval and forgetting. This is design work; shared memory and retrieval changes require their own implementation specs.
+- **Memory delivery:** B27a implements topic attribution, owner corrections/forgetting and explicit shared scope. Retrieval and semantic contradiction handling remain separate research.
 - Other prompt candidates remain in the adoption/defer record and do not enable excluded capabilities.

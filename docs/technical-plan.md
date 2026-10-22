@@ -1,9 +1,9 @@
 # OpenBot Technical Plan
 
 
-Active delivery scope (2026-10-21): B9c OAuth and B12b optional model review are excluded. Phase 3 is deferred. B9b (#39), I2 (#40) and B11a (#41) are merged. [I3 workflow acceptance](tasks/i3-workflow-acceptance.md) is merged in PR #42, with 477 unit/Host and 131 hidden desktop tests plus a bounded real-model trial. The remaining delivery order is B14d backup/restore, B14c history scaling, B13e templates and B14f signed updates. Historical planning sections below do not authorize excluded or deferred work.
+Active delivery scope (2026-10-22): the owner prioritizes attributable memory, correction/forgetting and explicit sharing (B27a), then per-role default skills (B27b), on one local Mac. B9c OAuth and B12b optional model review remain excluded; Phase 3 remains deferred. I3 (#42), B6a (#43) and D5 (#44) are merged. Backup/restore (B14d), history scaling (B14c), templates (B13e) and signed updates (B14f) follow these role foundations. Historical planning sections do not authorize excluded or deferred work.
 
-Last updated: 2026-10-21.
+Last updated: 2026-10-22.
 
 This plan turns [the architecture](architecture.md) into an ordered sequence of work. The architecture defines contracts and boundaries; this document records what exists, what each milestone builds, how each step is verified, and which decisions are still open. When the two disagree, fix the architecture first, then update this plan.
 
@@ -27,6 +27,7 @@ B14e is merged in PR #38: async native Keychain ownership in main, bounded priva
 
 | Component | State | Verified by |
 | --- | --- | --- |
+| Attributable local/shared memory (B27a) | Implemented for review: topic provenance from bound direct user Runs; owner corrections and tombstones; atomic explicit sharing; shared facts apply to direct chats/routines, excluded from groups; bilingual note/source controls | [Spec and acceptance](tasks/b27a-memory-provenance.md); no semantic alias detection, embedding index or complete erasure |
 | Evidence-based Bot delivery (B6a) | Implemented, in review (#43): verified completion, uncertain mutation recovery, common trust/scope rules and optional connector/artifact guidance | 479 unit/Host and 132 hidden e2e tests; isolated real-model report and one unknown write without retry; [spec](tasks/b6a-prompt-reliability.md), [research and deferred work](research/grok-prompt-adoption.md) |
 | Repeatable workflow gate (I3) | Synthetic CRM + invoice/report + exact correction/approval + reviewed skill + pinned routine; Host restart, auth/rate errors and unknown remote effects | Merged (#42); 477 unit/Host and 131 hidden e2e tests; two real-model approved updates, immutable reports and one routine publication; [evidence and live-retrieval limitation](acceptance/workflow-2026-10-20.md) |
 | Local scheduled routines (B11a) | Confirmed bilingual panel, interval/daily/weekly calendar schedules, exact skills, isolated unattended contexts, durable catch-up/absence/overlap, one report per occurrence and twenty-record history | 477 unit/Host and 127 hidden e2e tests; real-clock trigger, Host-crash approval recovery, bundled startup and isolated real-model report/relaunch; [evidence](tasks/b11a-local-routines.md) |

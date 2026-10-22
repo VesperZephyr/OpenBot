@@ -1,5 +1,6 @@
+import { MemoryNotes } from "./MemoryNotes";
 import { t } from "./i18n";
-import { MEMORY_LIMIT_BYTES, type MemoryState } from "@openbot/protocol";
+import { MEMORY_LIMIT_BYTES, SHARED_MEMORY_LIMIT_BYTES, type MemoryScope, type MemoryState } from "@openbot/protocol";
 import { type FormEvent, useEffect, useState } from "react";
 import { api, errorMessage, useStore } from "./store";
 
@@ -8,22 +9,27 @@ const sourceLabel = { legacy: "Original memory", user: "Edited by you", model: "
 /** Drafts stay intact after a conflict; only an explicit reload replaces them. */
 export function ProfileMemory({ botId, onClose }: { readonly botId: string; readonly onClose: () => void }) {
 	const language = useStore((state) => state.settings?.language ?? "en");
-	const [state, setState] = useState<MemoryState>();
+	const [local, setLocal] = useState<MemoryState>();
+	const [shared, setShared] = useState<MemoryState>();
+	const [scope, setScope] = useState<MemoryScope>("bot");
+	const state = scope === "bot" ? local : shared;
+	const other = scope === "bot" ? shared : local;
+	const limit = scope === "bot" ? MEMORY_LIMIT_BYTES : SHARED_MEMORY_LIMIT_BYTES;
 	const [content, setContent] = useState("");
 	const [selected, setSelected] = useState<number>();
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
 	const accept = (memory: MemoryState): void => {
-		setState(memory);
+		if (scope === "bot") setLocal(memory); else setShared(memory);
 		setContent(memory.content);
 		setSelected(undefined);
 		setError("");
 	};
 	useEffect(() => {
 		let current = true;
-		api["bots.memory.get"]({ botId })
-			.then((memory) => {
-				if (current) accept(memory);
+		Promise.all([api["bots.memory.get"]({ botId }), api["memory.shared.get"]({})])
+			.then(([local, shared]) => {
+				if (current) { setLocal(local); setShared(shared); setScope("bot"); setContent(local.content); setError(""); }
 			})
 			.catch((error) => {
 				if (current) setError(errorMessage(error));
@@ -35,7 +41,8 @@ export function ProfileMemory({ botId, onClose }: { readonly botId: string; read
 	const reload = async (): Promise<void> => {
 		setBusy(true);
 		try {
-			accept(await api["bots.memory.get"]({ botId }));
+			const [local, shared] = await Promise.all([api["bots.memory.get"]({ botId }), api["memory.shared.get"]({})]);
+			setLocal(local); setShared(shared); accept(scope === "bot" ? local : shared);
 		} catch (error) {
 			setError(errorMessage(error));
 		} finally {
@@ -49,7 +56,8 @@ export function ProfileMemory({ botId, onClose }: { readonly botId: string; read
 		if (!state || busy) return;
 		setBusy(true);
 		try {
-			await api["bots.memory.update"]({ botId, content, expectedRevision: state.revision });
+			if (scope === "bot") await api["bots.memory.update"]({ botId, content, expectedRevision: state.revision });
+			else await api["memory.shared.update"]({ content, expectedRevision: state.revision });
 			onClose();
 		} catch (error) {
 			setError(errorMessage(error));
@@ -61,7 +69,9 @@ export function ProfileMemory({ botId, onClose }: { readonly botId: string; read
 		if (!state || !previous || busy) return;
 		setBusy(true);
 		try {
-			accept(await api["bots.memory.restore"]({ botId, revision: previous.revision, expectedRevision: state.revision }));
+			accept(scope === "bot"
+				? await api["bots.memory.restore"]({ botId, revision: previous.revision, expectedRevision: state.revision })
+				: await api["memory.shared.restore"]({ revision: previous.revision, expectedRevision: state.revision }));
 		} catch (error) {
 			setError(errorMessage(error));
 		} finally {
@@ -70,6 +80,15 @@ export function ProfileMemory({ botId, onClose }: { readonly botId: string; read
 	};
 	return (
 		<form className="profile-memory" onSubmit={save}>
+			<div className="memory-scope" role="group" aria-label={t("Memory scope")}>
+				{(["bot", "shared"] as const).map(value => <button type="button" key={value} aria-pressed={scope === value} disabled={busy || !local || !shared || content !== state?.content} onClick={() => {
+					setScope(value); setContent((value === "bot" ? local : shared)?.content ?? ""); setSelected(undefined); setError("");
+				}}>{t(value === "bot" ? "This Bot" : "Shared across Bots")}</button>)}
+			</div>
+			<p className="field-hint">{t(scope === "bot" ? "This Bot uses these notes in its private chats, groups and routines. Bots share this Mac; this is not a privacy boundary." : "Shared notes apply to every Bot's private chats and routines, not groups. Edits and forgetting affect all Bots.")}</p>
+			{state && other && <MemoryNotes key={scope} botId={botId} scope={scope} state={state} other={other} busy={busy} disabled={content !== state.content} setBusy={setBusy} onChange={({ local, shared }) => {
+				setLocal(local); setShared(shared); accept(scope === "bot" ? local : shared);
+			}} />}
 			<p className="field-hint">
 				{t(
 					"Memory holds learned preferences. Prompt defines how this Bot works. Both are stored on this Mac and sent to your configured model when needed.",
@@ -82,7 +101,7 @@ export function ProfileMemory({ botId, onClose }: { readonly botId: string; read
 				</div>
 			)}
 			<label className="field">
-				<span>{t("What this Bot remembers across conversations and new topics")}</span>
+				<span>{t("Memory Markdown")}</span>
 				<textarea
 					rows={8}
 					value={content}
@@ -99,8 +118,8 @@ export function ProfileMemory({ botId, onClose }: { readonly botId: string; read
 			</p>
 			{error && <p role="alert">{t(error)}</p>}
 			<div className="memory-controls">
-				<span className={bytes > MEMORY_LIMIT_BYTES ? "memory-size is-over" : "memory-size"}>
-					{t("{used} of {limit} bytes", { used: bytes.toLocaleString(language), limit: MEMORY_LIMIT_BYTES.toLocaleString(language) })}
+				<span className={bytes > limit ? "memory-size is-over" : "memory-size"}>
+					{t("{used} of {limit} bytes", { used: bytes.toLocaleString(language), limit: limit.toLocaleString(language) })}
 				</span>
 				<button type="button" disabled={busy} onClick={() => void reload()}>
 					{t("Reload memory")}
@@ -150,7 +169,7 @@ export function ProfileMemory({ botId, onClose }: { readonly botId: string; read
 				<button type="button" onClick={onClose}>
 					{t("Cancel")}
 				</button>
-				<button type="submit" className="primary" disabled={!state || busy || bytes > MEMORY_LIMIT_BYTES}>
+				<button type="submit" className="primary" disabled={!state || busy || bytes > limit}>
 					{t("Save memory")}
 				</button>
 			</div>

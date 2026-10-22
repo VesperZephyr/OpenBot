@@ -1,7 +1,7 @@
 # OpenBot Development Roadmap
 
 
-Active delivery scope (2026-10-21): B9c OAuth and B12b optional model review are excluded. Phase 3 is deferred. B9b (#39), I2 (#40) and B11a (#41) are merged. [I3 workflow acceptance](tasks/i3-workflow-acceptance.md) is merged in PR #42, with 477 unit/Host and 131 hidden desktop tests plus a bounded real-model trial. The remaining delivery order is B14d backup/restore, B14c history scaling, B13e templates and B14f signed updates. Historical planning sections below do not authorize excluded or deferred work.
+Active delivery scope (2026-10-22): the owner prioritizes attributable memory, correction/forgetting and explicit sharing (B27a), then per-role default skills (B27b), on one local Mac. B9c OAuth and B12b optional model review remain excluded; Phase 3 remains deferred. I3 (#42), B6a (#43) and D5 (#44) are merged. Backup/restore (B14d), history scaling (B14c), templates (B13e) and signed updates (B14f) follow these role foundations. Historical planning sections do not authorize excluded or deferred work.
 
 Status: owner-authorized sequential delivery after B26; implementation evidence remains per task.
 Design record: [D4: Post-B26 Delivery Plan](tasks/d4-delivery-plan.md).

@@ -38,7 +38,7 @@ it("shows local provenance, protects drafts, clears and restores a previewed ver
 	await input.fill("My unsaved correction");
 	// Concurrent model write through the real routed tool while the editor stays open.
 	h.model.script(
-		{ tool: "memory_update", args: { action: "append", section: "Preferences", content: "Quiet mornings", expectedRevision: 1 } },
+		{ tool: "memory_update", args: { action: "append", section: "Morning preference", content: "Quiet mornings", expectedRevision: 1 } },
 		{ text: "Saved the preference." },
 	);
 	await method("messages.submit", { botId: bot.botId, requestId: "memory-race", text: "Remember quiet mornings" });
