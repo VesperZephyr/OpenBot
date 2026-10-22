@@ -1,6 +1,6 @@
 # I5: E2E coverage and execution efficiency
 
-Status: in progress
+Status: in review
 Branch: task/i5-e2e-efficiency
 Depends on: D7 (PR #51)
 
@@ -23,6 +23,17 @@ Reduce desktop regression latency without removing unique user-flow or safety co
 2. The scheduler still runs real Host/executor/model work without Test run, publishes one missing-source result and preserves scheduled occurrence identity.
 3. Full `pnpm run check` and `pnpm run e2e` pass; repeat the parallel suite to check isolation. Inspect changed-flow screenshots.
 4. Record timing and counts, and upload machine-readable results with the existing CI screenshots.
+
+## Verification
+
+- Final `pnpm run check`: boundary and TypeScript checks pass; 507 tests pass across 77 files.
+
+- Baseline D7 local full regression: 153 tests / 43 files, 510.14 seconds of Vitest execution.
+- First optimized local full regression: 149 tests / 42 files, 232.30 seconds (54.5% shorter). All tests passed.
+- Targeted migrated-coverage/scheduling run: 11 tests passed. The scheduled case takes about four seconds; no wall-clock minute wait remains.
+- The periodic timer is independently verified with an advanced interval clock and real store I/O; no explicit sweep is called to make that assertion pass.
+- Second full regression: 149 tests / 42 files, 230.38 seconds (54.8% shorter than baseline), with no retries or skips. Changed-flow screenshots for scheduled output, file/Markdown rendering and approved calculation/export were inspected.
+- No native packaged release claim. No production code, timeout reduction, retries or skipped tests.
 
 ## Open questions
 

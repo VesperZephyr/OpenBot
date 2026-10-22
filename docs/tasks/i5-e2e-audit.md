@@ -40,10 +40,10 @@ The 100-reply unread test and 34-result search test remain: they cross real badg
 
 ## Execution changes
 
-- The scheduled-routine case used to wait 30–90 seconds for the next wall-clock minute. It now seeds a due interval occurrence through the runtime store with the Host closed, then launches the real scheduler, model and executor. It still asserts `test: false`, exact `scheduledAt`, one published occurrence, and the missing-source result. Calendar/DST math remains in `routine-schedule.test.ts`; cursor/overlap/catch-up invariants remain in `routines.test.ts`.
+- The scheduled-routine case used to wait 30–90 seconds for the next wall-clock minute. It now seeds a due interval occurrence through the runtime store with the Host closed, then launches the real scheduler, model and executor. It still asserts `test: false`, exact `scheduledAt`, one published occurrence, and the missing-source result. Calendar/DST math remains in `routine-schedule.test.ts`; cursor/overlap/catch-up invariants remain in `routines.test.ts`. A timer-driven unit case advances the interval clock and observes admission without calling `sweep`, retaining periodic-wakeup coverage without a real-minute wait.
 - Two files may run concurrently in background mode. Each uses a unique suite directory, model/connector ports and Keychain service. Stateful cases within a file remain sequential. Headed mode stays serial. The single clipboard test has no concurrent suite writing the clipboard; process-kill cases target their own Host/executor or workspace.
 - JSON results include file and case timing and are uploaded with the existing screenshots. No timeout reduction, automatic retries, exclusions or skipped suites are used to manufacture a passing result.
 
 ## Measurements
 
-Final local measurements are recorded in [I5](i5-e2e-efficiency.md). CI speed remains unverified until the new branch runs on its macOS runner; local improvements must not be presented as a measured CI result.
+Two full local runs passed all 149 cases in 232.30s and 230.38s, versus the 510.14s baseline (54.5–54.8% shorter). The scheduled case took 3.97s / 3.94s. Verification details are recorded in [I5](i5-e2e-efficiency.md). CI speed remains unverified until the new branch runs on its macOS runner; local improvements must not be presented as a measured CI result.

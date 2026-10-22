@@ -214,4 +214,4 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Task | Status |
 | --- | --- |
-| [I5: E2E coverage and execution efficiency](i5-e2e-efficiency.md) | in progress; original checkout |
+| [I5: E2E coverage and execution efficiency](i5-e2e-efficiency.md) | in review; two full parallel regressions pass |
