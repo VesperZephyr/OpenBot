@@ -1,6 +1,6 @@
 # B27b: Per-Role Skill Defaults
 
-Status: implemented, in review ([PR #47](https://github.com/VesperZephyr/OpenBot/pull/47))
+Status: merged ([PR #47](https://github.com/VesperZephyr/OpenBot/pull/47))
 Branch: task/b27b-role-skills; pull request target: main
 Depends on: B10/B19; owner-approved D6 role direction
 Architecture: Sections 5.7 and 5.9
