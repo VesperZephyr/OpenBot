@@ -27,7 +27,7 @@ it("previews and pins a role method, supplies the exact text and keeps stale pro
 	await page.getByLabel("Preview a skill version", { exact: true }).selectOption(document.name);
 	await page.getByRole("region", { name: "Role skill preview" }).filter({ hasText: "ROLE_METHOD_V1" }).waitFor();
 	await page.getByRole("button", { name: "Use this revision" }).scrollIntoViewIfNeeded();
-	expect(await page.locator(".role-skills").evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+	expect(await page.locator(".conversation-details").evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
 	await h.shot("01-method-preview");
 	await page.getByRole("button", { name: "Use this revision" }).click();
 	await page.getByRole("button", { name: "Save profile" }).click();

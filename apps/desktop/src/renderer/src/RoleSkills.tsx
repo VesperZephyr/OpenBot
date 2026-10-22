@@ -1,3 +1,4 @@
+import "./role-skills.css";
 import { useEffect, useState } from "react";
 import type { SkillRef, SkillSummary, SkillVersion } from "@openbot/protocol";
 import { api, errorMessage } from "./store";
@@ -7,7 +8,7 @@ import { t } from "./i18n";
 export function RoleSkills({ value, onChange, disabled }: {
 	value: readonly SkillRef[]; onChange: (refs: readonly SkillRef[]) => void; disabled: boolean;
 }) {
-	const [library, setLibrary] = useState<readonly SkillSummary[]>([]);
+	const [library, setLibrary] = useState<readonly SkillSummary[]>();
 	const [preview, setPreview] = useState<SkillVersion>();
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
@@ -30,19 +31,19 @@ export function RoleSkills({ value, onChange, disabled }: {
 		<p className="field-hint">{t("Choose up to two reviewed methods for direct chats. Exact versions stay pinned; groups and routines keep their own selections. Skills do not grant tool access.")}</p>
 		{value.length === 0 && <p className="field-hint">{t("No role defaults. Attach a skill to individual messages when needed.")}</p>}
 		{value.map(ref => {
-			const latest = library.find(item => item.name === ref.name);
+			const latest = library?.find(item => item.name === ref.name);
 			return <div className="role-skill-row" key={ref.name}>
 				<span>/{ref.name} · v{ref.revision}</span>
 				<button type="button" disabled={disabled || busy} onClick={() => void inspect(ref)} aria-label={t("Inspect pinned {name}", { name: ref.name })}>{t("Inspect pinned version")}</button>
 				<button type="button" disabled={disabled || busy} onClick={() => { onChange(value.filter(item => item.name !== ref.name)); setPreview(undefined); }} aria-label={t("Remove role skill {name}", { name: ref.name })}>{t("Remove")}</button>
-				{(!latest || latest.deleted || !latest.available) && <span className="field-hint">{t("Unavailable. Remove this default before sending new messages.")}</span>}
+				{library && (!latest || latest.deleted || !latest.available) && <span className="field-hint">{t("Unavailable. Remove this default before sending new messages.")}</span>}
 				{latest && latest.revision !== ref.revision && latest.available && !latest.deleted && <span className="field-hint">{t("A newer version is available. Preview it below to adopt it.")}</span>}
 			</div>;
 		})}
 		<label className="field"><span>{t("Preview a skill version")}</span>
-			<select aria-label={t("Preview a skill version")} value="" disabled={disabled || busy} onChange={event => { const skill = library.find(item => item.name === event.target.value); if (skill) void inspect(skill); }}>
+			<select aria-label={t("Preview a skill version")} value="" disabled={disabled || busy || !library} onChange={event => { const skill = library?.find(item => item.name === event.target.value); if (skill) void inspect(skill); }}>
 				<option value="">{t("Choose a method to inspect")}</option>
-				{library.filter(item => item.available && !item.deleted).map(item => <option key={item.name} value={item.name}>/{item.name} · v{item.revision} — {item.description}</option>)}
+				{library?.filter(item => item.available && !item.deleted).map(item => <option key={item.name} value={item.name}>/{item.name} · v{item.revision} — {item.description}</option>)}
 			</select>
 		</label>
 		{preview && <div className="role-skill-preview" role="region" aria-label={t("Role skill preview")}>

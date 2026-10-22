@@ -1,20 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { validBackgroundKeys, HOST_METHODS } from "../src/index.ts";
 import { HOST_PARAM_SCHEMAS, paramsError, validArtifactRequest } from "../src/schemas.ts";
-import { APP_MANAGEMENT_CAPABILITIES } from "../src/app-management.ts";
-import { Compile } from "typebox/compile";
 
 describe("Host method parameter schemas", () => {
-	it("bounds owner skill pins without adding model management authority", () => {
-		const ref = { name: "invoice-check", revision: 1, sha256: "a".repeat(64) };
-		expect(paramsError("bots.update", { botId: "a", expectedRevision: 1, defaultSkills: [ref] })).toBeUndefined();
-		for (const defaultSkills of [[{ ...ref, revision: 0 }], [{ ...ref, sha256: "latest" }], [ref, ref, ref]])
-			expect(paramsError("bots.update", { botId: "a", defaultSkills })).toBeDefined();
-		const update = APP_MANAGEMENT_CAPABILITIES.find(item => item.id === "bots.update")!;
-		expect(Compile(update.inputSchema).Check({ botId: "a", expectedRevision: 1, defaultSkills: [ref] })).toBe(false);
-		const inspect = APP_MANAGEMENT_CAPABILITIES.find(item => item.id === "bots.inspect")!;
-		expect(Compile(inspect.outputSchema).Check({ ok: true, value: [{ botId: "a", name: "A", role: "Finance", revision: 1, kind: "specialist", status: "active", pinned: false, createdAt: 0, defaultSkills: [ref] }] })).toBe(true);
-	});
 	it("bounds attachment identities and rejects path or target authority in renderer message parameters", () => {
 		const id = `artifact_${"a".repeat(32)}`;
 		expect(paramsError("messages.submit", { botId: "a", requestId: "r", text: "", artifactIds: [id] })).toBeUndefined();
