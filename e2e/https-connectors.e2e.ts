@@ -15,6 +15,7 @@ const change = async (action: string) => {
 	return api(`connectors.${action}`, { connectorId: p.connectorId, expectedRevision: p.revision, requestId: crypto.randomUUID() });
 };
 const panel = async () => {
+	await h.page().getByRole("button", { name: /^Settings/ }).click();
 	await h.page().getByRole("button", { name: "Connect apps", exact: true }).click();
 	await h
 		.page()
@@ -46,6 +47,7 @@ afterAll(async () => {
 	await fixture?.close();
 });
 it("installs HTTPS through the form, rejects an expired token and replaces it privately", async () => {
+	await h.page().getByRole("button", { name: /^Settings/ }).click();
 	await h.page().getByRole("button", { name: "Connect apps", exact: true }).click();
 	await h.page().getByRole("button", { name: "Add connector", exact: true }).click();
 	await h.page().getByLabel("Connection type", { exact: true }).selectOption("https");
@@ -128,6 +130,7 @@ it("shows expired sessions and rate limits in Chinese, then reconnects explicitl
 	fixture.state.mode = "normal";
 	await h.relaunch();
 	expect(await profile()).toMatchObject({ state: "disconnected", retryAt });
+	await h.page().getByRole("button", { name: /^设置/ }).click();
 	await h.page().getByRole("button", { name: "连接应用", exact: true }).click();
 	await h.page().getByRole("button", { name: /HTTPS notes/ }).click();
 	expect(await h.page().getByRole("button", { name: "连接", exact: true }).isDisabled()).toBe(true);

@@ -60,6 +60,8 @@ pnpm run dev
 
 Run from the checkout you intend to use. When switching between checkouts or an installed build, fully quit the running OpenBot first: its single-instance behavior can otherwise reopen the existing app.
 
+After pulling updates, run `pnpm install --frozen-lockfile` to synchronize dependencies before starting. Run `pnpm run build:pi` if the vendored runtime changed.
+
 On first launch:
 
 1. Select a built-in model provider or add a custom endpoint, protocol and model ID.
@@ -73,6 +75,19 @@ API keys saved in the app go to macOS Keychain. Model setup uses API credentials
 Open a Bot's **Details → Profile** to change its name, short description, instructions and avatar. **Generate options** creates original character choices locally; **Upload image** accepts PNG, JPEG or WebP and previews a centered crop. Changes take effect only when you save the profile. Renaming a Bot keeps its chosen avatar, conversation and memory.
 
 Your starred personal assistant can be customized like every other Bot and cannot be deleted. Use the **Memory** tab to inspect and edit remembered information, or expand **Model and skills** to choose how a Bot works.
+
+The chat canvas defaults to white, independently of macOS appearance. Choose **Settings → General → Appearance** for Light, Dark or System, with visual previews. Dark uses a charcoal canvas, raised surfaces and lavender actions; Light uses pale navigation, a white canvas, dark text and plum accents throughout. **Skills**, **Connect apps** and **Routines** live inside Settings; **Back to chat** returns to your conversation with its draft intact.
+
+While a Bot works, the composer shows a stop button. Type a follow-up to guide the current task, or use **Shift+Enter** for a new line. **Pause all** stops active work across Bots and retains queued messages. **Resume work** releases that queue; a settled interrupted private task also offers **Resume and continue**, which reopens work and asks the Bot to inspect saved results before continuing. Already completed actions are not undone.
+
+<details>
+<summary>See dark appearance and theme preferences</summary>
+
+![Charcoal chat canvas with lavender actions](docs/images/openbot-dark-chat.png)
+
+![Light, Dark and System appearance previews in Settings](docs/images/openbot-appearance.png)
+
+</details>
 
 ### Try a useful first task
 

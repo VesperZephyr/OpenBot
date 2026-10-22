@@ -70,8 +70,8 @@ export function InterfaceIcon({ name }: { name: keyof typeof paths }) {
 export function BrandSymbol() {
 	return (
 		<svg className="brand-symbol" viewBox="0 0 32 32" aria-hidden="true">
-			<circle cx="14" cy="18" r="10" fill="none" stroke="#e8dff5" strokeWidth="4" />
-			<circle cx="23" cy="6" r="3" fill="#e3e9b6" />
+			<circle cx="14" cy="18" r="10" fill="none" stroke="currentColor" strokeWidth="4" />
+			<circle cx="23" cy="6" r="3" fill="var(--brand-dot)" />
 		</svg>
 	);
 }

@@ -1,3 +1,4 @@
+import { AppearanceSelect } from "./appearance";
 import { InterfaceIcon, BrandSymbol } from "./InterfaceIcon";
 import { Avatar, PersonalStar } from "./Avatar";
 import { AvatarEditor } from "./AvatarEditor";
@@ -53,6 +54,8 @@ export function App() {
 	}, [language]);
 	const host = useStore((state) => state.host);
 	const view = useStore((state) => state.view);
+	const lastChat = useRef(view);
+	if (["bot", "group", "home"].includes(view.kind)) lastChat.current = view;
 	const notice = useStore((state) => state.notice);
 	const onboarding = useStore((state) => state.onboarding);
 	const [creating, setCreating] = useState(false);
@@ -102,10 +105,32 @@ export function App() {
 				) : (
 					<>
 						{view.kind === "bot" && <Conversation key={view.botId} botId={view.botId} />}
-						{view.kind === "settings" && <Settings />}
- {view.kind === "skills" && <SkillLibrary />}
- {view.kind==="connectors"&&<ConnectorsPanel/>}
- {view.kind==="routines"&&<RoutinesPanel renderTranscript={snapshot=><Transcript snapshot={snapshot}/>}/>}
+						{["settings", "skills", "connectors", "routines"].includes(view.kind) && (
+							<div className="settings-workspace">
+								<nav className="settings-navigation" aria-label={t("Settings navigation")}>
+									<button className="back-to-chat" aria-label={t("Back to chat")} onClick={() => useStore.setState({ view: lastChat.current })}>
+										← {t("Back to chat")}
+									</button>
+									<p className="settings-nav-title">{t("Settings")}</p>
+									{([
+										["settings", "General", "settings"],
+										["skills", "Skills", "skills"],
+										["connectors", "Connect apps", "apps"],
+										["routines", "Routines", "routines"],
+									] as const).map(([kind, label, icon]) => (
+										<button key={kind} aria-current={view.kind === kind ? "page" : undefined} onClick={() => useStore.setState({ view: { kind } })}>
+											<InterfaceIcon name={icon} />{t(label)}
+										</button>
+									))}
+								</nav>
+								<div className="settings-content">
+									{view.kind === "settings" && <Settings />}
+									{view.kind === "skills" && <SkillLibrary />}
+									{view.kind === "connectors" && <ConnectorsPanel />}
+									{view.kind === "routines" && <RoutinesPanel renderTranscript={snapshot => <Transcript snapshot={snapshot} />} />}
+								</div>
+							</div>
+						)}
 						{view.kind === "group" && <GroupView key={view.groupId} groupId={view.groupId} />}
 						{view.kind === "home" && <Home onNew={() => setCreating(true)} />}
 					</>
@@ -262,31 +287,7 @@ function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; 
 			<div className="sidebar-footer">
 				<button
 					type="button"
-					className={`nav-item ${view.kind === "routines" ? "is-selected" : ""}`}
-					onClick={() => useStore.setState({ view: { kind: "routines" } })}
-				>
-					<InterfaceIcon name="routines" />
-					{t("Routines")}
-				</button>
-				<button
-					type="button"
-					className={`nav-item ${view.kind === "connectors" ? "is-selected" : ""}`}
-					onClick={() => useStore.setState({ view: { kind: "connectors" } })}
-				>
-					<InterfaceIcon name="apps" />
-					{t("Connect apps")}
-				</button>
-				<button
-					type="button"
-					className={`nav-item ${view.kind === "skills" ? "is-selected" : ""}`}
-					onClick={() => useStore.setState({ view: { kind: "skills" } })}
-				>
-					<InterfaceIcon name="skills" />
-					{t("Skills")}
-				</button>
-				<button
-					type="button"
-					className={`nav-item ${view.kind === "settings" ? "is-selected" : ""}`}
+					className={`nav-item ${["settings", "skills", "connectors", "routines"].includes(view.kind) ? "is-selected" : ""}`}
 					onClick={() => useStore.setState({ view: { kind: "settings" } })}
 				>
 					<InterfaceIcon name="settings" />
@@ -1109,6 +1110,7 @@ function Settings() {
 				<h1>{t("Settings")}</h1>
 				<p className="muted">{t("Your models, preferences and permissions. On your Mac.")}</p>
 			</header>
+			<AppearanceSelect />
 			<nav className="settings-jump" aria-label={t("Settings sections")}>
 				{[
 					["models", "Models"],

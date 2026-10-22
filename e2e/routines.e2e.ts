@@ -10,6 +10,7 @@ const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 20000 });
 const button = (name: string) => h.page().getByRole("button", { name, exact: true });
 const detail = () => api("routines.get", { routineId: routine.routineId });
 const select = async () => {
+	await h.page().getByRole("button", { name: /^Settings/ }).click();
 	await button("Routines").click();
 	await h
 		.page()
@@ -54,6 +55,7 @@ it("reviews before saving, pins a skill and runs an isolated report with a real 
 	h.model.script({ text: "Private context noted." });
 	await h.send("PRIVATE_ROUTINE_CANARY");
 	await h.page().getByText("Private context noted.", { exact: true }).waitFor();
+	await h.page().getByRole("button", { name: /^Settings/ }).click();
 	await button("Routines").click();
 	await button("New routine").click();
 	await h.page().getByLabel("Routine name", { exact: true }).fill("Morning sales");

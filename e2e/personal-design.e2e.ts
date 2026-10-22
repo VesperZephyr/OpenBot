@@ -177,6 +177,9 @@ it("rejects malformed uploads, keeps conflicting drafts and treats duplicate nam
 
 it("renders bilingual compact profiles, dark conversations and approval decisions without overflow", async () => {
 	await h.page().locator(".sidebar .bot-row").filter({ hasText: "Nova" }).first().click();
+	await h.page().getByRole("button", {name: /^Settings/}).click();
+	await h.page().getByRole("radio", {name: "System", exact:true}).check();
+	await h.page().getByRole("button", {name: "Back to chat", exact:true}).click();
 	await h.page().emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
 	await h.shot("03-personal-chat-dark");
 	await api("settings.update", { language: "zh-CN" });

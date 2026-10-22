@@ -30,8 +30,8 @@
 	flex-shrink:0;
 	border-radius:7px;
 	transform:rotate(-3deg);
-	background:#f5e7d7;
-	color:#8c6948;
+	background:var(--artifact-bg);
+	color:var(--artifact-ink);
 }
 .artifact-meta {
 	display: block;

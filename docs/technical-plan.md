@@ -21,7 +21,7 @@ B14e is merged in PR #38: async native Keychain ownership in main, bounded priva
 
 [I2](tasks/i2-mvp-acceptance.md) verifies the integrated MVP candidate including B9b and introduces the application through an English README, a complete Chinese translation and an authentic real-model screenshot. Its [acceptance record](acceptance/mvp-2026-10-19.md) separates current automated checks, practical tasks, packaging and outstanding native release gates.
 
-Desktop delivery (2026-10-22): [D6](tasks/d6-desktop-design.md) delivers the owner-approved personal chat design and all-Bot profile/avatar customization, merged in PR #49; automated acceptance is complete. Core is an ordinary protected chat with a static identity star. Generated recipes and normalized uploaded images persist locally with profile revisions. The original fictional prototype remains a design reference; proactive greetings, AI image generation and settings reorganization remain follow-ups.
+Desktop delivery (2026-10-22): [D6](tasks/d6-desktop-design.md) delivers the owner-approved personal chat design and all-Bot profile/avatar customization, merged in PR #49; automated acceptance is complete. Core is an ordinary protected chat with a static identity star. Generated recipes and normalized uploaded images persist locally with profile revisions. The original fictional prototype remains a design reference; proactive greetings and AI image generation remain follow-ups. [D7](tasks/d7-chat-interaction.md) implements white-by-default appearance, management navigation inside Settings, explicit interruption continuation and composer feedback in the original checkout.
 
 ## 1. Current State
 
@@ -29,6 +29,7 @@ Desktop delivery (2026-10-22): [D6](tasks/d6-desktop-design.md) delivers the own
 
 | Component | State | Verified by |
 | --- | --- | --- |
+| Focused chat interactions (D7) | In review: complete light/dark themes with persistent appearance, Settings navigation, Resume and continue, state-aware send/stop controls | 506 unit and 153 desktop tests pass; matched theme screenshots and isolated keyboard exploration inspected; [D7](tasks/d7-chat-interaction.md) |
 | Personal chat and Bot profiles (D6) | Merged (#49): shared plum/lilac tokens, ordinary protected Core row, author avatars, profile/memory draft preservation, generated recipes and bounded native image imports with transactional storage | 506 unit tests and 147 e2e scenarios passed; [D6](tasks/d6-desktop-design.md) records final checks and limits |
 | Attributable local/shared memory (B27a) | Merged (#46): topic provenance from bound direct user Runs; owner corrections and tombstones; atomic explicit sharing; shared facts apply to direct chats/routines, excluded from groups; bilingual note/source controls | 490 unit/Host and 135 hidden e2e tests; [spec and acceptance](tasks/b27a-memory-provenance.md); no semantic alias detection, embedding index or complete erasure |
 | Evidence-based Bot delivery (B6a) | Merged (#43): verified completion, uncertain mutation recovery, common trust/scope rules and optional connector/artifact guidance | 479 unit/Host and 132 hidden e2e tests; isolated real-model report and one unknown write without retry; [spec](tasks/b6a-prompt-reliability.md), [research and deferred work](research/grok-prompt-adoption.md) |

@@ -1,10 +1,10 @@
 /* A quiet conversation canvas; activity and permissions carry the signal colors. */
 :root {
  color-scheme: light;
- --bg: #faf9fd;
- --sidebar: #242131;
+ --bg: #ffffff;
+ --sidebar: #f4f2f7;
  --surface: #ffffff;
- --surface-raised: #eee7f6;
+ --surface-raised: #f6f3f9;
  --border: #e5dfed;
  --text: #30283f;
  --muted: #6d6479;
@@ -14,6 +14,33 @@
  --unread: #695093;
  --attention: #b03845;
  --user: #eee7f6;
+ --danger-ink: #ffffff;
+ --star: #897541;
+ --quote-bg: #eff0e3;
+ --quote-ink: #474d34;
+ --quote-border: #a9b480;
+ --note-bg: #e8dff5;
+ --note-ink: #644689;
+ --artifact-bg: #f5e7d7;
+ --artifact-ink: #795334;
+ --composer-border: #d7cce4;
+ --overlay: #18122466;
+ --shadow: 0 18px 60px #16102424;
+ --composer-shadow: 0 3px 18px #30283f06;
+ --sidebar-text: #30283f;
+ --sidebar-muted: #71677d;
+ --sidebar-surface: #ffffff;
+ --sidebar-hover: #eae5f1;
+ --sidebar-border: #ded7e6;
+ --sidebar-selected-border: #d6c9e4;
+ --sidebar-accent: #644689;
+ --badge: #644689;
+ --badge-ink: #ffffff;
+ --sidebar-signal: #865a27;
+ --sidebar-attention: #b03845;
+ --ready: #607737;
+ --brand-dot: #89985f;
+
  --radius: 12px;
  --font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
  --font-display: "Avenir Next", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -25,21 +52,47 @@
  background: var(--sidebar);
  -webkit-font-smoothing: antialiased;
 }
-@media (prefers-color-scheme: dark) {
- :root {
-  color-scheme: dark;
-  --bg: #2c2739;
-  --surface: #342e43;
-  --surface-raised: #514164;
-  --border: #51465e;
-  --text: #f1eaf9;
-  --muted: #c0b5ce;
-  --accent: #75509c;
-  --unread: #d0b4f0;
-  --signal: #e7b777;
-  --attention: #ff9ca4;
-  --user: #463650;
- }
+:root[data-theme="dark"] {
+ color-scheme: dark;
+ --bg: #19181e;
+ --sidebar: #141218;
+ --surface: #232129;
+ --surface-raised: #2d2a35;
+ --border: #3c3746;
+ --text: #eeeaf3;
+ --muted: #b0a8bc;
+ --accent: #bfa4e5;
+ --accent-ink: #21162f;
+ --unread: #d0b4f0;
+ --signal: #e7b777;
+ --attention: #f39eab;
+ --danger-ink: #30181e;
+ --user: #353040;
+ --star: #d8ce92;
+ --quote-bg: #2a3025;
+ --quote-ink: #d9e2c4;
+ --quote-border: #889669;
+ --note-bg: #342b43;
+ --note-ink: #d0b4f0;
+ --artifact-bg: #352d26;
+ --artifact-ink: #dfbd93;
+ --composer-border: #50475d;
+ --overlay: #09070db3;
+ --shadow: 0 20px 64px #00000066;
+ --composer-shadow: 0 3px 18px #0000001f;
+ --sidebar-text: #eeeaf3;
+ --sidebar-muted: #afa6bd;
+ --sidebar-surface: #24202d;
+ --sidebar-hover: #24202d;
+ --sidebar-border: #332c3f;
+ --sidebar-selected-border: #51415f;
+ --sidebar-accent: #d0b4f0;
+ --badge: #c4a7e7;
+ --badge-ink: #21162f;
+ --sidebar-signal: #e9bf81;
+ --sidebar-attention: #ffadba;
+ --ready: #c3d497;
+ --brand-dot: #d8dfad;
 }
 
 * {
@@ -110,13 +163,15 @@ code {
 /* Sidebar */
 
 .sidebar {
-	--text: #f3effa;
-	--muted: #b9b3ca;
-	--bg: #242131;
-	--surface: #302a40;
-	--surface-raised: #ffffff09;
-	--border: #4c425c;
-	--unread: #e5d5ff;
+	--text: var(--sidebar-text);
+	--muted: var(--sidebar-muted);
+	--bg: var(--sidebar);
+	--surface: var(--sidebar-surface);
+	--surface-raised: var(--sidebar-hover);
+	--border: var(--sidebar-border);
+	--unread: var(--sidebar-accent);
+	--signal: var(--sidebar-signal);
+	--attention: var(--sidebar-attention);
 	color: var(--text);
 	display: flex;
 	flex-direction: column;
@@ -378,7 +433,7 @@ code {
 	background: var(--surface-raised);
 	border: 1px solid var(--border);
 	border-radius: var(--radius);
-	box-shadow: 0 12px 32px rgb(0 0 0 / 12%);
+	box-shadow: var(--shadow);
 }
 
 .menu-popover button {
@@ -799,7 +854,7 @@ code {
 	justify-content: center;
 	padding: 10vh 24px 24px;
 	overflow-y: auto;
-	background: rgb(0 0 0 / 45%);
+	background: var(--overlay);
 }
 
 .dialog {
@@ -808,7 +863,7 @@ code {
 	background: var(--surface-raised);
 	border: 1px solid var(--border);
 	border-radius: 14px;
-	box-shadow: 0 24px 64px rgb(0 0 0 / 18%);
+	box-shadow: var(--shadow);
 }
 
 .dialog h2 {
@@ -921,7 +976,7 @@ textarea {
 	background: var(--surface-raised);
 	border: 1px solid var(--border);
 	border-radius: 10px;
-	box-shadow: 0 12px 32px rgb(0 0 0 / 12%);
+	box-shadow: var(--shadow);
 }
 
 .toast-close {
@@ -990,7 +1045,8 @@ textarea {
 .setup-skip { display: block; margin: 18px auto 0; background: transparent; border: 0; color: var(--muted); }
 
 /* Product surfaces share spacing and tolerate both interface languages. */
-button { transition: background-color 120ms, border-color 120ms; }
+/* Theme changes swap foregrounds and backgrounds together to avoid a low-contrast flash. */
+button { transition: border-color 120ms; }
 button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--text) 28%, var(--border)); }
 
 .empty-conversation h2 { font-size: 30px; font-weight: 550; letter-spacing: -.035em; margin-top: 20px; }
