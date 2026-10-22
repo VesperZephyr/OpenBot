@@ -2,6 +2,8 @@
 
 Research date: 2026-10-21. Status: design proposal, not an implementation contract. Baseline: merged I3 (`50c58f1`) and B6/B19 memory. [D5](../tasks/d5-memory-research.md) records this research task. The [architecture](../architecture.md) remains authoritative.
 
+[D6 role research](bot-role-design.md) connects this memory design to role configuration, shared skills, capability readiness and continuing work. Its proposed product journey and lifecycle cases complement the storage/retrieval work here.
+
 ## Recommendation
 
 Keep a small, inspectable set of current facts in context; retrieve dated evidence when the task needs it. Separate **who may use a fact**, **what kind of knowledge it is**, and **how it enters model context**. These are independent dimensions. Do not turn Grok's four memory labels into four unrelated stores, and do not start by increasing the existing 8 KiB limit or adding a remote vector database.

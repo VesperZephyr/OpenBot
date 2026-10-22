@@ -1,6 +1,6 @@
 # D6: Persistent Roles, Memory and Skills Research
 
-Status: in progress
+Status: in review (#45); research complete, no product changes
 Branch: task/d6-bot-role-design; pull request target: main
 Depends on: accepted D1; merged B6a, D5, B10, B11a and I3
 Architecture: Sections 1.1, 4.2, 5.1, 5.7, 5.8 and 7.1
@@ -48,4 +48,7 @@ Research questions and proposed product decisions will be recorded in the report
 
 ## Evidence
 
-Pending research report and documentation validation.
+- [Research report](../research/bot-role-design.md): official product sources rechecked on 2026-10-22; the archived prompt remains an unverified self-report.
+- Read-only inspection of installed Grok Bot 0.71.2 establishes client representations for selected fact promotion and template fields; archive paths and SHA-256 prefixes are recorded. No account data, live application calls or copied implementation code.
+- Compared merged OpenBot `b04aa77` profile, memory, skill, tool and lifecycle code; proposed object model, role journey, lifecycle matrix and design packets remain distinct from implemented contracts.
+- Local Markdown targets and `git diff --check` validated. No product code, dependencies or owner data changed; no full product suites or model-quality benchmarks run for this documentation increment.

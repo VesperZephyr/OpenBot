@@ -1,6 +1,6 @@
 # B6a: Evidence-Based Bot Delivery
 
-Status: in review (#43)
+Status: done (merged in #43)
 Branch: task/b6a-prompt-reliability
 Depends on: I3 (merged in PR #42)
 Architecture: Sections 4.4 (prompt sections), 5.1 (routed tools), 5.3 (authorization), 5.7 (memory)

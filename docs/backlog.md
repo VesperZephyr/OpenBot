@@ -1,7 +1,7 @@
 # OpenBot Backlog
 
 
-Active delivery scope (2026-10-21): B9c OAuth and B12b optional model review are excluded. Phase 3 is deferred. B9b (#39), I2 (#40) and B11a (#41) are merged. [I3 workflow acceptance](tasks/i3-workflow-acceptance.md) is merged in PR #42, with 477 unit/Host and 131 hidden desktop tests plus a bounded real-model trial. The remaining delivery order is B14d backup/restore, B14c history scaling, B13e templates and B14f signed updates. Historical planning sections below do not authorize excluded or deferred work.
+Active delivery scope (2026-10-22): B9c OAuth and B12b optional model review are excluded. Phase 3 is deferred. B9b (#39), I2 (#40) and B11a (#41) are merged. [I3 workflow acceptance](tasks/i3-workflow-acceptance.md) is merged in PR #42, with 477 unit/Host and 131 hidden desktop tests plus a bounded real-model trial. The remaining delivery order is B14d backup/restore, B14c history scaling, B13e templates and B14f signed updates. Historical planning sections below do not authorize excluded or deferred work.
 
 Work after the tools demo, cut into batches that can each be finished and verified on their own. Each batch states its approach, key decisions, and the acceptance that closes it. A batch gets a full task spec in [`tasks/`](tasks/README.md) before execution starts; batches here without a spec link are approach only.
 
@@ -15,9 +15,11 @@ References:
 - **Grok Bot**: [source-backed research snapshot](research/grok-bot.md) and [client interaction research](tasks/d2-grok-ui-research.md); distinguish official facts, observations and inference.
 - **Pi**: `~/github/pi/packages/coding-agent` for the reference coding-agent tools.
 
-## Memory design research
+## Role and memory research
 
-[D5: Local memory research](tasks/d5-memory-research.md) is in review in PR #44 as a separate research increment. The [report](research/memory-design.md) reviews current guarantees, primary sources, a bilingual lexical-search probe and proposed stages: record provenance/correction/forgetting, explicit shared facts, then bounded retrieval. These are proposals requiring ready implementation specs; no shared memory, new storage format or embedding service is enabled. Backup/restore (B14d) and history indexing (B14c) must inform any later migration/index design.
+[D5: Local memory research](tasks/d5-memory-research.md) is merged in PR #44 as a documentation-only increment. The [report](research/memory-design.md) reviews current guarantees, primary sources, a bilingual lexical-search probe and proposed stages: record provenance/correction/forgetting, explicit shared facts, then bounded retrieval. These are proposals requiring ready implementation specs; no shared memory, new storage format or embedding service is enabled. Backup/restore (B14d) and history indexing (B14c) must inform any later migration/index design.
+
+[D6: Persistent roles, memory and skills](tasks/d6-bot-role-design.md) is in review in PR #45. Its [report](research/bot-role-design.md) compares current official Grok sources, explicitly unverified prompt claims, static client evidence and OpenBot code. Proposed packets cover an inspectable role view with skill associations, attributable memory, explicit shared facts and a tested learning-to-routine journey. They are design briefs, not ready specs or a change to the implementation queue.
 
 ## Phases
 
@@ -131,6 +133,6 @@ Attention-state mutation, UI navigation, cross-Bot memory operations, new dispat
 
 ## Prompt reliability and memory research
 
-- **In review (#43):** [B6a: Evidence-based Bot delivery](tasks/b6a-prompt-reliability.md). 479 unit/Host and 132 hidden desktop tests, inspected screenshots and a two-turn real-model report/unknown-write trial; [adoption/defer record](research/grok-prompt-adoption.md).
-- **Research requested:** structured memory, shared vs role-specific facts, provenance/conflicts, retrieval and forgetting. This is design work; shared memory and retrieval changes require their own implementation specs.
+- **Done, merged (#43):** [B6a: Evidence-based Bot delivery](tasks/b6a-prompt-reliability.md). 479 unit/Host and 132 hidden desktop tests, inspected screenshots and a two-turn real-model report/unknown-write trial; [adoption/defer record](research/grok-prompt-adoption.md).
+- **Research complete:** [D5](research/memory-design.md) and [D6](research/bot-role-design.md) record memory and role design proposals. Implementation specs must settle provenance, corrections, forgetting, shared scope, retrieval and skill associations before changing schemas or behavior.
 - Other prompt candidates remain in the adoption/defer record and do not enable excluded capabilities.

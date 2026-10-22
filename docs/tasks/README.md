@@ -63,7 +63,9 @@ Interaction research: [D2: Grok Bot UI](d2-grok-ui-research.md), **research comp
 
 Delivery planning: [D4: Post-B26 Delivery Plan](d4-delivery-plan.md), **done, documentation only**. The [development roadmap](../development-roadmap.md) orders remaining work against merged `main` through B26, with execution packets, dependencies and acceptance gates. Unimplemented packets are planning briefs, not ready specs.
 
-Memory research: [D5: Local Memory](d5-memory-research.md), **research complete, in review (#44)**. [Source-backed report](../research/memory-design.md), bilingual SQLite matching probe, and proposed implementation decisions; no product contract or schema changes.
+Memory research: [D5: Local Memory](d5-memory-research.md), **done, merged (#44)**. [Source-backed report](../research/memory-design.md), bilingual SQLite matching probe, and proposed implementation decisions; no product contract or schema changes.
+
+Role research: [D6: Persistent Roles, Memory and Skills](d6-bot-role-design.md), **research complete, in review (#45)**. [Product model and evidence](../research/bot-role-design.md) connect role configuration, memory, shared procedures, capability readiness and continuing work; follow-up packets need separate implementation specs.
 
 Architecture design: [D3: Application Capabilities and Local Code Mode](d3-app-capabilities.md), **accepted direction**. Defines a shared authorized Host capability surface and reuse of vendored Pi Code Mode. B24 and B25 are merged into `main`; B26 is merged in PR #27 with exact-approved management composition and its recovery acceptance matrix.
 
@@ -182,4 +184,4 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Spec | Status |
 | --- | --- |
-| [B6a: Evidence-based Bot delivery](b6a-prompt-reliability.md) | in review (#43); 479 unit/Host and 132 hidden e2e tests; real-model report and unknown-write trial |
+| [B6a: Evidence-based Bot delivery](b6a-prompt-reliability.md) | done, merged (#43); 479 unit/Host and 132 hidden e2e tests; real-model report and unknown-write trial |
