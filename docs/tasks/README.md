@@ -180,6 +180,7 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | --- | --- |
 | [B11a: Local scheduled routines](b11a-local-routines.md) | done (#41); 477 unit/Host and 127 hidden desktop tests |
 | [B11b: Scheduled group reports](b11b-group-routine-reports.md) | in review (#53); 512 unit/Host and 157 hidden desktop tests; bounded live-source acceptance |
+| [B11c: Scheduled report summaries](b11c-scheduled-report-summaries.md) | implemented; full verification in progress; stacked on #53 |
 
 ## Per-role methods
 

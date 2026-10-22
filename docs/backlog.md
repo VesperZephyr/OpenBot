@@ -1,13 +1,13 @@
 # OpenBot Backlog
 
 
-Active delivery scope (2026-10-23): the owner prioritizes a Grok Bot-inspired competitor radar: Domestic Hunter and International Hunter publish source-backed Agent changelog reports into one group. [B11b](tasks/b11b-group-routine-reports.md) adds confirmed group destinations and contextual routine controls, in review in [PR #53](https://github.com/VesperZephyr/OpenBot/pull/53). B27a (#46), B27b (#47), I4 (#48), D6 (#49) and D7 (#51) are merged. I5 was merged into the D7 branch by #52; [PR #54](https://github.com/VesperZephyr/OpenBot/pull/54) carries those regression improvements to main. Backup/restore (B14d), history scaling (B14c), templates (B13e) and signed updates (B14f) remain subsequent work. B9c OAuth and B12b optional model review remain excluded; Phase 3 remains deferred.
+Active delivery scope (2026-10-23): the owner prioritizes a Grok Bot-inspired competitor radar: Domestic Hunter and International Hunter publish source-backed Agent changelog reports into one group. [B11b](tasks/b11b-group-routine-reports.md) adds confirmed group destinations and contextual routine controls, in review in [PR #53](https://github.com/VesperZephyr/OpenBot/pull/53). [B11c](tasks/b11c-scheduled-report-summaries.md) adds a daily main-assistant summary with explicitly selected report inputs, bounded waiting and immutable provenance; the existing Core and user-created Specialists remain configuration, not built-in radar identities. B27a (#46), B27b (#47), I4 (#48), D6 (#49) and D7 (#51) are merged. I5 was merged into the D7 branch by #52; [PR #54](https://github.com/VesperZephyr/OpenBot/pull/54) carries those regression improvements to main. Backup/restore (B14d), history scaling (B14c), templates (B13e) and signed updates (B14f) remain subsequent work. B9c OAuth and B12b optional model review remain excluded; Phase 3 remains deferred.
 
 Work after the tools demo, cut into batches that can each be finished and verified on their own. Each batch states its approach, key decisions, and the acceptance that closes it. A batch gets a full task spec in [`tasks/`](tasks/README.md) before execution starts; batches here without a spec link are approach only.
 
 The [architecture](architecture.md) defines the target design; the [technical plan](technical-plan.md) records current state. When a batch lands, move it to the plan's current-state table and delete it here.
 
-Current delivery order: [Post-B26 development roadmap](development-roadmap.md), with the first four execution packets and subsequent workflow gates. Baseline `main` includes B26 (PR #27); no planned feature is authorized merely by its place in this queue. All new PRs target `main`.
+Current delivery order: [Post-B26 development roadmap](development-roadmap.md), with the first four execution packets and subsequent workflow gates. Baseline `main` includes B26 (PR #27); no planned feature is authorized merely by its place in this queue. New PRs target `main`; B11c is explicitly stacked on B11b / #53 until that prerequisite lands, then retargets `main`.
 
 References:
 
@@ -17,7 +17,9 @@ References:
 
 ## Competitor radar delivery
 
-**B11b, in review (#53):** [Scheduled reports in group conversations](tasks/b11b-group-routine-reports.md). Two independent hunter routines publish attributable reports into a confirmed group, with exact history links, restart deduplication and revocation when membership changes. The [workflow](workflows/competitor-radar.md) records source selection, daily windows and unavailable-source handling. Automated acceptance and a bounded two-source real-model check are recorded in the spec. Automatic coordinator summaries and conversational routine proposals require separate specs.
+**B11b, in review (#53):** [Scheduled reports in group conversations](tasks/b11b-group-routine-reports.md). Two independent hunter routines publish attributable reports into a confirmed group, with exact history links, restart deduplication and revocation when membership changes. The [workflow](workflows/competitor-radar.md) records source selection, daily windows and unavailable-source handling. Automated acceptance and a bounded two-source real-model check are recorded in the spec. Automatic scheduled composition is implemented in B11c below; conversational routine proposals remain a separate follow-up.
+
+**B11c, implementation complete; verification in progress:** [Scheduled summaries of routine reports](tasks/b11c-scheduled-report-summaries.md). Generic source selection and bounded waiting let the existing main assistant summarize two configured researchers daily, without a user message. Source revisions, snapshot persistence, missing-input coverage and atomic revocation preserve predictable delivery. Review is stacked on #53.
 
 ## Done: personal assistant desktop design
 
@@ -39,7 +41,7 @@ References:
 
 [B27b: Per-role skill defaults](tasks/b27b-role-skills.md) is merged in PR #47, following the owner-approved local role direction. Profile pins are exact shared-library versions; direct-user admission composes them with message attachments and freezes accepted method snapshots. Groups and routines keep their existing explicit selections. Memory provenance/correction/sharing is the separate [B27a PR #46](https://github.com/VesperZephyr/OpenBot/pull/46); neither batch introduces cloud services or new grants.
 
-After B11b, retain B14d/B14c/B13e/B14f ordering. Per-message skill overrides, capability readiness and broader group defaults need separate specs.
+After B11c, retain B14d/B14c/B13e/B14f ordering. Per-message skill overrides, capability readiness and broader group defaults need separate specs.
 
 ## Phases
 

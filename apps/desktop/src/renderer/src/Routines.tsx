@@ -1,3 +1,4 @@
+import { ReportInputsEditor, ReportInputsSummary, ReportInputResult } from "./RoutineInputs";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ConversationSnapshot, Routine, RoutineChange, RoutineDetail, RoutineFields, RoutineSchedule } from "@openbot/protocol";
 import { api, errorMessage, refreshRoutines, refreshSkills, useStore } from "./store";
@@ -101,6 +102,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 	const edit = (r?: Routine) => {
 		setDraft(
 			r ? { name: r.name, instructions: r.instructions, schedule: r.schedule, catchUpHours: r.catchUpHours, skills: r.skills,
+				...(r.reportInputs ? { reportInputs: { ...r.reportInputs, sources: r.reportInputs.sources.map((ref) => ({ ...ref, revision: list?.routines.find((s) => s.routineId === ref.routineId)?.revision ?? ref.revision })) } } : {}),
 				...(r.reportTo ? { reportTo: { ...r.reportTo, groupRevision: groups.find((g) => g.groupId === r.reportTo?.groupId)?.revision ?? r.reportTo.groupRevision } } : {}) } : empty(),
 		);
 		setBotId(r?.botId ?? bots.find((b) => b.status === "active")?.botId ?? "");
@@ -127,6 +129,9 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 	useEffect(() => {
 		if (selectedOccurrence) resultElement.current?.scrollIntoView({ block: "nearest" });
 	}, [selectedOccurrence?.occurrenceId]);
+	const sourceRoutines = (list?.routines ?? []).filter((r) => r.routineId !== selected && r.enabled && !r.deleted && !r.destinationBlocked && !r.inputsBlocked && !r.reportInputs && r.reportTo?.groupId === draft?.reportTo?.groupId && r.reportTo?.groupRevision === draft?.reportTo?.groupRevision);
+	const inputsValid = !draft?.reportInputs || (!!draft.reportTo && draft.reportInputs.sources.length > 0 && draft.reportInputs.sources.every((ref) => sourceRoutines.some((r) => r.routineId === ref.routineId && r.revision === ref.revision)));
+
 	return (
 		<section className="routine-panel" aria-label={t("Routines")}>
 			<header className="routine-heading">
@@ -208,6 +213,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 									<p>{t("Send reports to")}: {destinationName(review.fields)}</p>
 									{review.fields.reportTo && <p className="muted">{t("The report and its files will be visible to every group member. Reports do not wake other Bots.")}</p>}
 									{review.fields.reportTo && <p>{t("Members")}: {groups.find((g) => g.groupId === review.fields.reportTo?.groupId)?.memberIds.map((id) => bots.find((b) => b.botId === id)?.name ?? id).join(", ")}</p>}
+									{review.fields.reportInputs && <ReportInputsSummary inputs={review.fields.reportInputs} routines={list?.routines ?? []} />}
 									<p className="routine-workflow">{review.fields.instructions}</p>
 									<p>{t("Catch up within {hours} hours", { hours: review.fields.catchUpHours })}</p>
 									{review.fields.skills.map((s) => (
@@ -259,7 +265,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 									const group = groups.find((g) => g.groupId === e.target.value);
 									setDraft((previous) => {
 										if (!previous) return previous;
-										const { reportTo: _reportTo, ...fields } = previous;
+										const { reportTo: _reportTo, reportInputs: _inputs, ...fields } = previous;
 										return group ? { ...fields, reportTo: { groupId: group.groupId, groupRevision: group.revision } } : fields;
 									});
 								}}>
@@ -281,6 +287,12 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 										))}
 								</select>
 							</label>
+							{draft.reportTo && <ReportInputsEditor value={draft.reportInputs} sources={sourceRoutines} onChange={(value) => setDraft((previous) => {
+								if (!previous) return previous;
+								const { reportInputs: _inputs, ...rest } = previous;
+								return value ? { ...rest, reportInputs: value } : rest;
+							})} />}
+							{!inputsValid && <p role="alert">{t("Select available source routines before reviewing.")}</p>}
 							<label>
 								{t("Workflow")}
 								<textarea
@@ -415,7 +427,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 								<button type="button" onClick={() => setDraft(undefined)}>
 									{t("Cancel")}
 								</button>
-								<button disabled={busy || !botId || !destinationValid}>{t("Review routine")}</button>
+								<button disabled={busy || !botId || !destinationValid || !inputsValid}>{t("Review routine")}</button>
 							</div>
 						</form>
 					) : detail ? (
@@ -430,6 +442,8 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 								</span>
 							</header>
 							<p className="routine-workflow">{detail.routine.instructions}</p>
+							{detail.routine.reportInputs && <ReportInputsSummary inputs={detail.routine.reportInputs} routines={list?.routines ?? []} />}
+							{detail.routine.inputsBlocked && <p role="status">{t("Source routines changed. Edit this routine to confirm its report inputs again.")}</p>}
 							<p>{t("Send reports to")}: {destinationName(detail.routine)}</p>
 							{detail.routine.reportTo && <button onClick={() => useStore.setState({ view: { kind: "group", groupId: detail.routine.reportTo!.groupId }, searchTarget: undefined })}>{t("Open group")}</button>}
 							{detail.routine.destinationBlocked && <p role="status">{t("Report destination changed. Edit the routine to confirm its group again.")}</p>}
@@ -449,7 +463,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 									{t("Edit routine")}
 								</button>
 								<button
-									disabled={busy || detail.routine.destinationBlocked || !!detail.history.find((o) => o.state === "running" || o.state === "pending")}
+									disabled={busy || detail.routine.destinationBlocked || detail.routine.inputsBlocked || !!detail.history.find((o) => o.state === "running" || o.state === "pending")}
 									onClick={() => {
 										testRequest.current = crypto.randomUUID();
 										setConfirmTest(true);
@@ -457,7 +471,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 								>
 									{t("Test run")}
 								</button>
-								<button disabled={busy || detail.routine.destinationBlocked} onClick={() => change(detail.routine.enabled ? "pause" : "resume")}>
+								<button disabled={busy || detail.routine.destinationBlocked || detail.routine.inputsBlocked} onClick={() => change(detail.routine.enabled ? "pause" : "resume")}>
 									{t(detail.routine.enabled ? "Pause routine" : "Resume routine")}
 								</button>
 								<button disabled={busy} onClick={() => change("delete")}>
@@ -501,7 +515,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 										<span>
 											{new Date(o.scheduledAt).toLocaleString(language)} {o.test ? `· ${t("Test")}` : ""}
 										</span>
-										<strong>{t(o.state === "needs_attention" ? "Needs attention" : o.state[0]!.toUpperCase() + o.state.slice(1))}{o.destinationBlocked ? ` · ${t("Report not delivered")}` : ""}</strong>
+										<strong>{t(o.state === "needs_attention" ? "Needs attention" : o.state[0]!.toUpperCase() + o.state.slice(1))}{(o.destinationBlocked || o.inputsBlocked) ? ` · ${t("Report not delivered")}` : ""}</strong>
 									</button>
 								))}
 							</section>
@@ -516,6 +530,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 											{t("Stop routine run")}
 										</button>
 									)}
+									<ReportInputResult occurrence={selectedOccurrence} />
 									{selectedOccurrence.reason && <p>{t(selectedOccurrence.reason)}</p>}
 									{selectedOccurrence.report && <Markdown text={selectedOccurrence.report} />}{" "}
 									{selectedOccurrence.artifacts?.map((a) => (
