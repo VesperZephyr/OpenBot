@@ -19,7 +19,7 @@ References:
 
 **B11b, in review (#53):** [Scheduled reports in group conversations](tasks/b11b-group-routine-reports.md). Two independent hunter routines publish attributable reports into a confirmed group, with exact history links, restart deduplication and revocation when membership changes. The [workflow](workflows/competitor-radar.md) records source selection, daily windows and unavailable-source handling. Automated acceptance and a bounded two-source real-model check are recorded in the spec. Automatic scheduled composition is implemented in B11c below; conversational routine proposals remain a separate follow-up.
 
-**B11c, implementation complete; verification in progress:** [Scheduled summaries of routine reports](tasks/b11c-scheduled-report-summaries.md). Generic source selection and bounded waiting let the existing main assistant summarize two configured researchers daily, without a user message. Source revisions, snapshot persistence, missing-input coverage and atomic revocation preserve predictable delivery. Review is stacked on #53.
+**B11c, in review (#55):** [Scheduled summaries of routine reports](tasks/b11c-scheduled-report-summaries.md). Generic source selection and bounded waiting let the existing main assistant summarize two configured researchers daily, without a user message. Source revisions, snapshot persistence, missing-input coverage and atomic revocation preserve predictable delivery. Review is stacked on #53. All 519 unit/Host and 161 hidden desktop tests pass; a bounded five-request real-model check produced both source reports and Core’s summary without duplicate publication after restart.
 
 ## Done: personal assistant desktop design
 
