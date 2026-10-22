@@ -1,6 +1,6 @@
 # B27a: Attributable Memory and Explicit Sharing
 
-Status: implemented, in review (#46)
+Status: merged (#46)
 Branch: task/b27a-memory-provenance; pull request target: main
 Depends on: B6/B19, D5; owner-approved D6 direction ([research PR #45](https://github.com/VesperZephyr/OpenBot/pull/45))
 Architecture: Sections 1.1, 5.1, 5.7, 7.1 and 8.3

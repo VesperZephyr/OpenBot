@@ -184,16 +184,22 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Spec | Status |
 | --- | --- |
-| [B27b: Per-role skill defaults](b27b-role-skills.md) | in review (#47); 484 unit/Host tests; desktop/CI evidence in PR |
+| [B27b: Per-role skill defaults](b27b-role-skills.md) | done (#47); 484 unit/Host tests; desktop/CI evidence in PR |
 
 ## Prompt reliability
 
 | Spec | Status |
 | --- | --- |
-| [B6a: Evidence-based Bot delivery](b6a-prompt-reliability.md) | in review (#43); 479 unit/Host and 132 hidden e2e tests; real-model report and unknown-write trial |
+| [B6a: Evidence-based Bot delivery](b6a-prompt-reliability.md) | done (#43); 479 unit/Host and 132 hidden e2e tests; real-model report and unknown-write trial |
 
 ## Local role foundations
 
 | Spec | Status |
 | --- | --- |
-| [B27a: Attributable memory and explicit sharing](b27a-memory-provenance.md) | in review (#46); 490 unit/Host and 135 hidden desktop tests |
+| [B27a: Attributable memory and explicit sharing](b27a-memory-provenance.md) | done (#46); 490 unit/Host and 135 hidden desktop tests |
+
+## Role acceptance
+
+| Spec | Status |
+| --- | --- |
+| [I4: Real-model role and memory acceptance](i4-role-memory-acceptance.md) | in verification; bounded real-model smoke and deterministic role/group integration; explicit spending limits |

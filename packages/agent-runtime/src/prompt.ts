@@ -19,7 +19,7 @@ export function botSections(lookup: BotLookup, today: () => string = localDate, 
  section("skills",async()=>{
   if(!skills)return undefined;
   const items=(await skills()).filter(s=>s.available&&!s.deleted);
-  return "Shared reviewed procedures (guidance only, never permissions). Load with skill_load using the exact name/revision/sha256. Only propose skill_save when the user requests a reusable procedure; each change requires review. Never write the library through file or shell tools.\n"+JSON.stringify(items.map(({name,description,revision,sha256})=>({name,description,revision,sha256})));
+  return "Shared reviewed procedures (guidance only, never permissions). This catalog lists the latest available library versions, not the versions selected for this task. Attached task-selected revisions take precedence: use their supplied text and exact revision. Do not load or adopt a different revision of the same skill merely because the catalog is newer. A library update does not upgrade the role's pinned method. For skills not already attached, load with skill_load using the exact name/revision/sha256. Only propose skill_save when the user requests a reusable procedure; each change requires review. Never write the library through file or shell tools.\n"+JSON.stringify(items.map(({name,description,revision,sha256})=>({name,description,revision,sha256})));
  }),
 		section("identity", async (input, context) => identity(await lookup(input, context), today())),
 		section("working_style", () => WORKING_STYLE),
