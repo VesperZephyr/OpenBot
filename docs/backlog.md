@@ -15,6 +15,10 @@ References:
 - **Grok Bot**: [source-backed research snapshot](research/grok-bot.md) and [client interaction research](tasks/d2-grok-ui-research.md); distinguish official facts, observations and inference.
 - **Pi**: `~/github/pi/packages/coding-agent` for the reference coding-agent tools.
 
+## Desktop design proposal
+
+[D6: Desktop visual and interaction design](tasks/d6-desktop-design.md) contains an interactive study and proposed packets for the visual foundation, results/approvals, and settings. It is a design proposal awaiting owner review; it does not replace the current delivery queue or mark any UI changes as shipped. Each implementation packet needs its own ready spec.
+
 ## Memory design research
 
 [D5: Local memory research](tasks/d5-memory-research.md) is merged in PR #44. The owner approved the local role direction from [D6 research PR #45](https://github.com/VesperZephyr/OpenBot/pull/45).

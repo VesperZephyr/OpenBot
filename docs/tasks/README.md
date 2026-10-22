@@ -57,6 +57,8 @@ Dated entries added during execution. Empty when ready.
 
 ## Index
 
+Desktop design: [D6: Visual and Interaction Design](d6-desktop-design.md), **draft for owner review**. Source-informed audit, interactive local prototype, visual tokens and proposed implementation packets. No product implementation or delivery reprioritization.
+
 Product design (not an implementation task): [D1: Core Bot, Specialist Bots, and Model Sources](d1-bot-product-design.md), **accepted direction**. Research and task contracts for the product foundation. Agent mechanisms continue to reuse Pi.
 
 Interaction research: [D2: Grok Bot UI](d2-grok-ui-research.md), **research complete**. Official documentation, the supplied screenshot and installed-client inspection inform [B21](b21-conversation-experience.md), the conversation-experience spec merged in PR #17, and [B22](b22-conversation-list.md), the conversation-list increment. D2 remains the research record.
