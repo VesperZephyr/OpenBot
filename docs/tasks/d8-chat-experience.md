@@ -1,6 +1,6 @@
 # D8: Unified chat and continuous activity feedback
 
-Status: ready for execution. Owner requested on 2026-10-23. Branch: `task/d8-chat-experience`, stacked on B11c until its prerequisites merge.
+Status: implemented and verified; awaiting review. Owner requested on 2026-10-23. Branch: `task/d8-chat-experience`, stacked on B11c until its prerequisites merge.
 
 ## Problem and outcome
 
@@ -30,12 +30,21 @@ Use the current light/dark tokens, system sans-serif and quiet borders. The sign
 
 ## Acceptance
 
-- [ ] One ordered list, group avatars, search/keyboard/filter/read/draft behavior preserved.
-- [ ] Settings is an icon at bottom left; Pause all is absent from ordinary chat, available in Settings; blocked work remains recoverable.
-- [ ] Slow first token and empty partials always show activity; sending, queueing, tools, approvals, retry, cancellation and terminal states are truthful.
-- [ ] Actual incremental Markdown appears before completion in private and group chats, safe incomplete links and stable finished blocks.
-- [ ] Following, reading older messages and Jump to latest remain predictable during streaming.
-- [ ] Light/dark, reduced motion, keyboard focus, Chinese/English and narrow layouts inspected; automated suites pass.
+- [x] One ordered list, group avatars, search/keyboard/filter/read/draft behavior preserved.
+- [x] Settings is an icon at bottom left; Pause all is absent from ordinary chat, available in Settings; blocked work remains recoverable.
+- [x] Slow first token and empty partials always show activity; sending, queueing, tools, approvals, retry, cancellation and terminal states are truthful.
+- [x] Actual incremental Markdown appears before completion in private and group chats, safe incomplete links and stable finished blocks.
+- [x] Following, reading older messages and Jump to latest remain predictable during streaming.
+- [x] Light/dark, reduced motion, keyboard focus, Chinese/English and narrow layouts inspected; automated suites pass.
+
+## Verification record (2026-10-23)
+
+- `pnpm run check`: boundaries and type checks pass; 520 unit/Host tests across 77 files pass.
+- `pnpm run e2e`: all 167 hidden desktop tests across 46 files pass. The 21 focused navigation/streaming tests also pass independently.
+- ScriptedModel sends delayed real SSE chunks, including empty chunks, to verify submission/first-token feedback, incremental private/group Markdown, completed block identity, safe links, scrolling, approvals, cancellation and failure recovery.
+- A Host regression verifies that root settlement emits one observer notification and later idle sweeps emit none. The desktop regression verifies that completed group work clears without navigating away.
+- Inspected light/dark, Chinese/English and narrow-window screenshots, including reduced motion. Explored search/Escape, mixed navigation, streaming/loading and Settings draft preservation through agent-browser in an isolated hidden app.
+- No real-provider spot check was needed for this UI batch. Native permissions/signing gates are unchanged. The owner's running app, configured radar and schedules were not used as test fixtures.
 
 ## Open questions
 
