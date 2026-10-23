@@ -114,6 +114,8 @@ These are product recommendations, not claims about Grok's implementation. The [
 | Inspectable cost and authority | Configurable models, local data, visible memory, and explicit grants can differentiate OpenBot. Local execution does not prevent selected content from reaching a configured inference endpoint. |
 | Bounded collaboration | Measure completed outcomes and correct ownership transfer, not number of Bots. Budgets, cancellation, durable delivery, and scoped approval remain necessary when specialists cooperate. |
 
+The [D6 role, memory and skill study](bot-role-design.md) rechecks the role-related sources on 2026-10-22, examines personal versus shared methods and template memory representation, and proposes a local learning journey. Its source categories and remaining unknowns are explicit; this older snapshot is not an implementation contract.
+
 The existing architecture deliberately excludes cloud hosting, mobile synchronization, and remote pairing. Grok's enterprise identity, network administration, and Team Bot hosting are useful comparison points, not near-term OpenBot parity requirements. No research finding authorizes product-code changes or bypasses phase acceptance.
 
 ## Unresolved evidence

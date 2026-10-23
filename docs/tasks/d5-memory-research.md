@@ -1,6 +1,6 @@
 # D5: Local Memory Research
 
-Status: in review (#44); research complete, no product changes
+Status: done (merged in #44); research complete, no product changes
 Branch: task/d5-memory-research; pull request target: main
 Depends on: merged B6, B19, B24/B25 and I3; independent of B6a implementation
 Architecture: Sections 4.1, 5.1, 5.7, 5.8 and 7.1

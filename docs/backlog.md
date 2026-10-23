@@ -27,6 +27,8 @@ References:
 
 ## Memory design research
 
+[D6: Persistent roles, memory and skills](tasks/d6-bot-role-design.md) remains in review in PR #45. Its [dated report](research/bot-role-design.md) records official sources, explicitly unverified prompt claims, static client evidence and the code baseline reviewed on October 22. B27a/B27b below implement the subsequently approved local role direction; the remaining proposed packets require their own ready specs.
+
 [D5: Local memory research](tasks/d5-memory-research.md) is merged in PR #44. The owner approved the local role direction from [D6 research PR #45](https://github.com/VesperZephyr/OpenBot/pull/45).
 
 - **B27a, Done (#46):** [Attributable memory and explicit sharing](tasks/b27a-memory-provenance.md). Topic provenance, correction/forget protection, owner-confirmed scope moves, bounded shared facts and bilingual controls. No semantic extraction or embedding service.
@@ -153,6 +155,6 @@ Attention-state mutation, UI navigation, cross-Bot memory operations, new dispat
 
 ## Prompt reliability and memory research
 
-- **In review (#43):** [B6a: Evidence-based Bot delivery](tasks/b6a-prompt-reliability.md). 479 unit/Host and 132 hidden desktop tests, inspected screenshots and a two-turn real-model report/unknown-write trial; [adoption/defer record](research/grok-prompt-adoption.md).
+- **Done, merged (#43):** [B6a: Evidence-based Bot delivery](tasks/b6a-prompt-reliability.md). 479 unit/Host and 132 hidden desktop tests, inspected screenshots and a two-turn real-model report/unknown-write trial; [adoption/defer record](research/grok-prompt-adoption.md).
 - **Memory delivery:** B27a implements topic attribution, owner corrections/forgetting and explicit shared scope. Retrieval and semantic contradiction handling remain separate research.
 - Other prompt candidates remain in the adoption/defer record and do not enable excluded capabilities.
