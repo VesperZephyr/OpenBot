@@ -38,3 +38,12 @@ Reduce desktop regression latency without removing unique user-flow or safety co
 ## Open questions
 
 None.
+
+## Main integration verification (2026-10-23)
+
+Merged `main` at `0ebfc54` into this branch without rewriting history. Documentation conflicts preserve the current delivery scope and merged D7/B11b behavior. A merge-tree check also confirms compatibility with the updated research PR #45.
+
+- `pnpm run check`: boundaries/types pass and all 513 unit/Host tests across 77 files pass.
+- The initial parallel regression found one test race: Prompt validation sent Enter before the asynchronous profile editor closed and released the inert chat. The test now waits for the editor to disappear; no production change, timeout increase, retry or skipped coverage.
+- The four memory-control cases pass independently. Isolated agent-browser exploration confirms profile save followed by the expected reply; the completed reply and scheduled/migrated-coverage screenshots were inspected.
+- Final `pnpm run e2e`: all 153 tests across 43 files pass in 229.82 seconds of Vitest execution. These counts include the current main additions and are separate from the original D7 measurements above.
