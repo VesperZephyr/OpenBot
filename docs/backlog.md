@@ -1,5 +1,7 @@
 # OpenBot Backlog
 
+**D8, in review ([#56](https://github.com/VesperZephyr/OpenBot/pull/56)).** [Unified chat and continuous activity feedback](tasks/d8-chat-experience.md) is the owner-prioritized next desktop batch, stacked on B11c. One mixed chat list, member-avatar groups, compact Settings navigation, and honest streamed activity are implemented; all 520 unit/Host and 167 hidden desktop tests pass. The owner’s configured radar and scheduled reports are unchanged.
+
 
 Active delivery scope (2026-10-23): the owner prioritizes a Grok Bot-inspired competitor radar: Domestic Hunter and International Hunter publish source-backed Agent changelog reports into one group. [B11b](tasks/b11b-group-routine-reports.md) adds confirmed group destinations and contextual routine controls, in review in [PR #53](https://github.com/VesperZephyr/OpenBot/pull/53). [B11c](tasks/b11c-scheduled-report-summaries.md) adds a daily main-assistant summary with explicitly selected report inputs, bounded waiting and immutable provenance; the existing Core and user-created Specialists remain configuration, not built-in radar identities. B27a (#46), B27b (#47), I4 (#48), D6 (#49) and D7 (#51) are merged. I5 was merged into the D7 branch by #52; [PR #54](https://github.com/VesperZephyr/OpenBot/pull/54) carries those regression improvements to main. Backup/restore (B14d), history scaling (B14c), templates (B13e) and signed updates (B14f) remain subsequent work. B9c OAuth and B12b optional model review remain excluded; Phase 3 remains deferred.
 

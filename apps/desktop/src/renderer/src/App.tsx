@@ -1,5 +1,5 @@
 import { AppearanceSelect } from "./appearance";
-import { InterfaceIcon, BrandSymbol } from "./InterfaceIcon";
+import { InterfaceIcon } from "./InterfaceIcon";
 import { Avatar, PersonalStar } from "./Avatar";
 import { AvatarEditor } from "./AvatarEditor";
 import type { AvatarChange } from "@openbot/protocol";
@@ -31,13 +31,14 @@ import type {
 	TranscriptItem,
 } from "@openbot/protocol";
 import { type ReactNode, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { LiveReply, ActivityIndicator } from "./LiveReply";
 import { Markdown } from "./markdown";
 import { WebSearchSettings } from "./WebSearchSettings";
 import { ProfileMemory } from "./ProfileMemory";
 import { Divider, RetryButton, retryTarget, Thinking } from "./TranscriptExtras";
 import { PendingMessages, StopButton, StoppedNote } from "./runs";
 import { ApprovalCard } from "./ApprovalCard";
-import { GroupView, GroupSidebar, GroupEditor } from "./Groups";
+import { GroupView, GroupRow, GroupEditor } from "./Groups";
 import { CommandSettings, FolderSettings } from "./PolicySettings";
 import { ConfirmDeleteBot, DeleteBotItem, DuplicateBotItem } from "./BotLifecycle";
 import { ModelSetup } from "./ModelSetup";
@@ -62,6 +63,8 @@ export function App() {
 	const [newMenu, setNewMenu] = useState(false);
 	const [creatingGroup, setCreatingGroup] = useState(false);
 	const [query, setQuery] = useState("");
+	const [searchOpen, setSearchOpen] = useState(false);
+	useEffect(() => { if (searchOpen) document.querySelector<HTMLInputElement>(".conversation-search")?.focus(); }, [searchOpen]);
 
 	useEffect(() => connect(), []);
 
@@ -70,6 +73,7 @@ export function App() {
 			if ((!event.metaKey && !event.ctrlKey) || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
 			if (event.key === "k") {
 				event.preventDefault();
+				setSearchOpen(true);
 				document.querySelector<HTMLInputElement>(".conversation-search")?.focus();
 				return;
 			}
@@ -80,11 +84,12 @@ export function App() {
 				event.preventDefault();
 				useStore.setState({ view: { kind: "settings" } });
 			} else if (/^[1-9]$/.test(event.key)) {
-				const bot = visibleBots(useStore.getState().bots)[Number(event.key) - 1];
-				if (bot !== undefined) {
-					event.preventDefault();
-					void openBot(bot.botId).catch(report);
-				}
+                const entry = chatEntries(useStore.getState())[Number(event.key) - 1];
+                if (entry) {
+                    event.preventDefault();
+                    if (entry.kind === "bot") void openBot(entry.bot.botId).catch(report);
+                    else useStore.setState({ view: { kind: "group", groupId: entry.group.groupId }, searchTarget: undefined });
+                }
 			}
 		};
 		window.addEventListener("keydown", onKey);
@@ -93,7 +98,7 @@ export function App() {
 
 	return (
 		<div className="app">
-			<Sidebar query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />
+			<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />
 			<main className="main">
 				{host.status !== "ready" && (
 					<div className={`banner banner-${host.status}`}>
@@ -182,32 +187,25 @@ export function App() {
 	);
 }
 
-/** Core and pinned sections stay first; each section follows committed message recency. */
-function visibleBots(bots: readonly BotSummary[]): BotSummary[] {
-	const summaries = useStore.getState().summaries;
-	return bots
-		.filter((bot) => bot.status === "active")
-		.toSorted(
-			(a, b) =>
-				Number(b.kind === "core") - Number(a.kind === "core") ||
-				Number(b.pinned) - Number(a.pinned) ||
-				recentTime(`bot:${b.botId}`, summaries, b.createdAt) - recentTime(`bot:${a.botId}`, summaries, a.createdAt) ||
-				a.botId.localeCompare(b.botId),
-		);
+/** Core and pinned chats keep priority; all other conversations share recency ordering. */
+function chatEntries(state: Pick<ReturnType<typeof useStore.getState>, "bots" | "groups" | "summaries">) {
+    const entries = [
+        ...state.bots.filter(bot => bot.status === "active").map(bot => ({ kind: "bot" as const, bot, key: `bot:${bot.botId}` as const, priority: bot.kind === "core" ? 2 : bot.pinned ? 1 : 0, at: bot.createdAt })),
+        ...state.groups.map(group => ({ kind: "group" as const, group, key: `group:${group.groupId}` as const, priority: 0, at: group.createdAt })),
+    ];
+    return entries.toSorted((a, b) => b.priority - a.priority || recentTime(b.key, state.summaries, b.at) - recentTime(a.key, state.summaries, a.at) || a.key.localeCompare(b.key));
 }
 
-function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; onQuery: (v: string) => void }) {
+function Sidebar({ onNew, query, onQuery, searchOpen, onSearchOpen }: { onNew: () => void; query: string; onQuery: (v: string) => void; searchOpen: boolean; onSearchOpen: (open: boolean) => void }) {
 	const bots = useStore((state) => state.bots);
 	const summaries = useStore((state) => state.summaries);
+	const groups = useStore(state => state.groups);
 	const [unreadOnly, setUnreadOnly] = useState(false);
 	const eligible = (key: string) => !unreadOnly || (summaries[key]?.unreadCount ?? 0) > 0;
 	const view = useStore((state) => state.view);
 	const showHidden = useStore((state) => state.showHidden);
-	const visible = visibleBots(bots).filter(
-		(b) =>
-			eligible(`bot:${b.botId}`) &&
-			`${b.name} ${b.role}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
-	);
+    const visible = chatEntries({bots, groups, summaries}).filter(entry => eligible(entry.key) &&
+        (entry.kind === "bot" ? `${entry.bot.name} ${entry.bot.role}` : `${entry.group.name} ${entry.group.objective}`).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
 	const hidden = bots.filter(
 		(bot) =>
 			bot.status === "hidden" &&
@@ -219,9 +217,11 @@ function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; 
 	return (
 		<nav className="sidebar" aria-label={t("Bots")}>
 			<div className="sidebar-titlebar" />
-			<div className="sidebar-brand">
-				<BrandSymbol /> openbot
-			</div>
+            <div className="sidebar-toolbar">
+                <button className="icon-button" aria-label={t("Search conversations")} title={t("Search conversations")} aria-expanded={searchOpen} onClick={() => { onSearchOpen(!searchOpen); if (searchOpen) { onQuery(""); setUnreadOnly(false); } }}><InterfaceIcon name="search" /></button>
+                <button className="icon-button new-button" aria-label={t("New")} title={t("New")} onClick={onNew}><InterfaceIcon name="plus" /></button>
+            </div>
+            <div className="sidebar-search-panel" hidden={!searchOpen}>
 			<div className="sidebar-actions">
 				<InterfaceIcon name="search" />
 				<input
@@ -233,7 +233,10 @@ function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; 
 					maxLength={200}
 					onChange={(e) => onQuery(e.target.value)}
 					onKeyDown={(e) => {
-						if (e.key === "Escape" && !e.nativeEvent.isComposing) onQuery("");
+						if (e.key === "Escape" && !e.nativeEvent.isComposing) {
+                        if (query) onQuery("");
+                        else { onSearchOpen(false); setUnreadOnly(false); document.querySelector<HTMLButtonElement>(".sidebar-toolbar button")?.focus(); }
+                    }
 					}}
 				/>
 				{query && (
@@ -254,18 +257,14 @@ function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; 
 			{unreadOnly && !Object.values(summaries).some((r) => r.unreadCount > 0) && (
 				<p className="search-status">{t("No unread conversations")}</p>
 			)}
+			</div>
 			<div className="sidebar-conversations">
-				<BotSection
-					title={t("Chats")}
-					bots={visible}
-					selected={selected}
-					empty={t("Create a Bot for a specific job")}
-					action={
-						<button type="button" className="new-button" aria-label={t("New")} title={t("New")} onClick={onNew}>
-							<span aria-hidden>＋</span>
-						</button>
-					}
-				/>
+                <div className="section chat-list" aria-label={t("Chats")}>
+                    {visible.map(entry => entry.kind === "bot"
+                        ? <BotRow key={entry.key} bot={entry.bot} selected={entry.bot.botId === selected} />
+                        : <GroupRow key={entry.key} group={entry.group} />)}
+                    {!visible.length && <p className="section-empty">{t(query || unreadOnly ? "No matching conversations" : "Create a Bot for a specific job")}</p>}
+                </div>
 				{hidden.length > 0 && (
 					<div className="section">
 						<button
@@ -281,43 +280,20 @@ function Sidebar({ onNew, query, onQuery }: { onNew: () => void; query: string; 
 							hidden.map((bot) => <BotRow key={bot.botId} bot={bot} selected={bot.botId === selected} />)}
 					</div>
 				)}
-				<GroupSidebar query={query} unreadOnly={unreadOnly} />
 				<ConversationSearch query={query} unreadOnly={unreadOnly} />
 			</div>
 			<div className="sidebar-footer">
 				<button
 					type="button"
-					className={`nav-item ${["settings", "skills", "connectors", "routines"].includes(view.kind) ? "is-selected" : ""}`}
+					aria-label={t("Settings")} title={t("Settings")}
+					className={`settings-icon icon-button ${["settings", "skills", "connectors", "routines"].includes(view.kind) ? "is-selected" : ""}`}
 					onClick={() => useStore.setState({ view: { kind: "settings" } })}
 				>
 					<InterfaceIcon name="settings" />
-					{t("Settings")}
-					<kbd>⌘,</kbd>
 				</button>
 			</div>
-			<LifecycleControls />
+			{!["settings", "skills", "connectors", "routines"].includes(view.kind) && <LifecycleControls contextual />}
 		</nav>
-	);
-}
-
-function BotSection(props: {
-	readonly title: string;
-	readonly bots: readonly BotSummary[];
-	readonly selected: string | undefined;
-	readonly empty?: string;
-	readonly action?: ReactNode;
-}) {
-	return (
-		<div className="section">
-			<div className="section-title">
-				<span>{t(props.title)}</span>
-				{props.action}
-			</div>
-			{props.bots.length === 0 && props.empty !== undefined && <div className="section-empty">{t(props.empty)}</div>}
-			{props.bots.map((bot) => (
-				<BotRow key={bot.botId} bot={bot} selected={bot.botId === props.selected} />
-			))}
-		</div>
 	);
 }
 
@@ -441,7 +417,7 @@ function Conversation({ botId }: { readonly botId: string }) {
 				conversationKey={`bot:${botId}`}
 				activity={`${snapshot?.items.length}:${JSON.stringify(snapshot?.live ?? null)}`}
 			>
-				{snapshot === undefined || (snapshot.items.length === 0 && !running) ? (
+				{snapshot === undefined ? <ActivityIndicator label="Loading conversation" /> : (snapshot.items.length === 0 && !running) ? (
 					<EmptyConversation bot={bot} />
 				) : (
 					<Transcript snapshot={snapshot} />
@@ -524,21 +500,9 @@ function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 			)}
 			<PendingMessages snapshot={snapshot} />
  {!snapshot.channelId?.startsWith("routine_")&&snapshot.run?.state==="needs_attention"&&<InterruptedRun key={snapshot.run.runId} run={snapshot.run}/>}
-			{snapshot.live !== undefined && snapshot.live.state !== "waiting_approval" && (
-				<li className="message message-assistant is-live">
-					{snapshot.live.partial === undefined ? (
-						<span className="thinking">{t("Working")}</span>
-					) : (
-						<MessageText parts={snapshot.live.partial} markdown />
-					)}
-					{snapshot.live.retry !== undefined && (
-						<div className="message-error">
-							{t("Retrying after an error: ")}
-							{snapshot.live.retry.error}
-						</div>
-					)}
-				</li>
-			)}
+            {(snapshot.live || snapshot.run?.state === "running" || snapshot.run?.state === "queued") && (
+                <li className="message message-assistant is-live"><LiveReply snapshot={snapshot} /></li>
+            )}
 		</ol>
 	);
 }
@@ -1111,6 +1075,7 @@ function Settings() {
 				<p className="muted">{t("Your models, preferences and permissions. On your Mac.")}</p>
 			</header>
 			<AppearanceSelect />
+            <LifecycleControls />
 			<nav className="settings-jump" aria-label={t("Settings sections")}>
 				{[
 					["models", "Models"],

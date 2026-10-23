@@ -86,6 +86,7 @@ it("combines unread filtering with group/private history and preserves selected 
 it("rebuilds historical search after restart and handles Chinese, IME and a small dark window",async()=>{
 	const before=await api("conversations.search",{query:"群内星图",includeHidden:true});
 	await api("settings.update",{language:"zh-CN"});await h.relaunch();
+	await h.page().keyboard.press("Meta+k");
 	expect(await api("conversations.search",{query:"群内星图",includeHidden:true})).toEqual(before);
 	await search().fill("群内星图");await poll(()=>results().count()).toBe(1);
 	await search().dispatchEvent("keydown",{key:"Escape",isComposing:true});expect(await search().inputValue()).toBe("群内星图");

@@ -1,6 +1,15 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
+	"No matching conversations": "没有匹配的聊天",
+	"Group · {count} members": "群聊 · {count} 位成员",
+	"Loading conversation": "正在加载聊天",
+	"Sending message": "正在发送消息",
+	"Thinking…": "正在思考…",
+	"Waiting for your reply": "等待你的回复",
+	"Retrying response": "正在重试回复",
+	"Running a tool": "正在执行工具",
+	"Replying": "正在回复",
 	"Report inputs": "报告输入",
 	"Use reports from other routines": "使用其他定时任务的报告",
 	"Choose source tasks in this group. Their reports are provided automatically; no daily message is needed.": "选择本群中的来源任务。应用会自动提供它们的报告，无需每天发消息。",
