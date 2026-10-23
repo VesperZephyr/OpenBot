@@ -29,6 +29,7 @@ Desktop delivery (2026-10-22): [D6](tasks/d6-desktop-design.md) delivers the own
 
 | Component | State | Verified by |
 | --- | --- | --- |
+| Desktop regression efficiency (I5) | In review (#54): consolidated smoke coverage, due scheduling fixtures and two isolated background workers | 507 unit tests and 149 desktop cases pass twice; local 510.14s → 232.30s / 230.38s; [coverage audit](tasks/i5-e2e-audit.md) |
 | Scheduled group reports (B11b) | In review (#53): owner-confirmed destination revisions, atomic attributed group posts, no peer wakeups, contextual creation/history and member-change protection | 512 unit/Host and 157 hidden desktop tests; two live official-source reports in four model requests and restart deduplication; [acceptance](tasks/b11b-group-routine-reports.md), [workflow](workflows/competitor-radar.md) |
 | Focused chat interactions (D7) | Merged (#51): complete light/dark themes with persistent appearance, Settings navigation, Resume and continue, state-aware send/stop controls | 506 unit and 153 desktop tests pass; matched theme screenshots and isolated keyboard exploration inspected; [D7](tasks/d7-chat-interaction.md) |
 | Personal chat and Bot profiles (D6) | Merged (#49): shared plum/lilac tokens, ordinary protected Core row, author avatars, profile/memory draft preservation, generated recipes and bounded native image imports with transactional storage | 506 unit tests and 147 e2e scenarios passed; [D6](tasks/d6-desktop-design.md) records final checks and limits |

@@ -38,6 +38,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-screenshots
-          path: e2e/.run/**/*.png
+          path: |
+            e2e/.run/**/*.png
+            e2e/.run/results.json
           include-hidden-files: true
           if-no-files-found: ignore

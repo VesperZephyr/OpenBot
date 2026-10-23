@@ -114,6 +114,22 @@ it("deduplicates confirmed changes and tests, rejects revision and request confl
 	expect(submit).toHaveBeenCalledTimes(1);
 	expect((await runtime.snapshot("bot")).items.filter((i) => i.kind === "assistant" && i.routine)).toHaveLength(1);
 });
+it("admits a future occurrence from the periodic timer without an explicit sweep", async () => {
+	const routine = await create();
+	vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+	try {
+		await service.start();
+		expect(submit).not.toHaveBeenCalled();
+		now = routine.nextAt;
+		await vi.advanceTimersByTimeAsync(1000);
+		// Store I/O remains real; observe admission without calling sweep ourselves.
+		await expect.poll(() => submit.mock.calls.length).toBe(1);
+		expect((await history(routine.routineId))[0]).toMatchObject({ scheduledAt: routine.nextAt, test: false });
+	} finally {
+		await service.close();
+		vi.useRealTimers();
+	}
+});
 it("coalesces missed times, skips overlap and preserves the cursor across reopen", async () => {
 	const r = await create();
 	now += 3600000;

@@ -56,13 +56,17 @@ describe("Desktop MVP", () => {
 			{ tool: "local_write", args: { path: "notes/a.md", content: "A\n" } },
 			{ tool: "local_write", args: { path: "notes/b.md", content: "B\n" } },
 			{ tool: "local_read", args: { path: "notes/a.md" } },
-			{ text: "Wrote two notes:\n\n```sh\ncat notes/a.md notes/b.md\n```" },
+			{ text: "Wrote **two notes**:\n\n```sh\ncat notes/a.md notes/b.md\n```" },
 		);
 		await h.send("Write two notes");
 		const steps = page.locator(".steps-row", { hasText: "Ran 3 steps" });
 		await steps.waitFor();
 		await page.locator(".transcript").getByText("Wrote two notes:").waitFor();
 		expect(await page.locator(".messages > .tool-card").count()).toBe(0);
+		expect(await readFile(join(h.workspace, "notes/a.md"), "utf8")).toBe("A\n");
+		expect(await readFile(join(h.workspace, "notes/b.md"), "utf8")).toBe("B\n");
+		expect(await page.locator(".markdown strong", { hasText: "two notes" }).count()).toBe(1);
+		expect(await page.getByRole("group", { name: "Approval request" }).count()).toBe(0);
 		await h.shot("03-steps-collapsed");
 
 		await steps.locator("summary").first().click();

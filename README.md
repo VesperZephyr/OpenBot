@@ -183,7 +183,7 @@ pnpm run package     # stage, verify and package the arm64 desktop app
 
 Build vendored Pi with `pnpm run build:pi` after installation or a Pi change. Ordinary app changes do not require rebuilding it. With `CI=true`, installation uses the frozen lockfile; intentional dependency changes require `pnpm install --no-frozen-lockfile` and the updated lockfile.
 
-E2e runs use isolated data, workspace and Keychain services under `e2e/.run/`. Windows are hidden and non-focusable; notifications, Dock badges, tray and power assertions are suppressed. Screenshots still render. `dev` and `dev:debug` use your ordinary application data. Background verification does not prove native permission prompts or physical sleep/lock behavior; the existing Copy test also uses the system clipboard.
+E2e runs use isolated data, workspace and Keychain services under `e2e/.run/`. Windows are hidden and non-focusable; notifications, Dock badges, tray and power assertions are suppressed. Screenshots still render. Up to two suites run concurrently in background mode; cases within a suite and headed runs stay sequential. File/case timings are saved to `e2e/.run/results.json` and uploaded with CI screenshots. `dev` and `dev:debug` use your ordinary application data. Background verification does not prove native permission prompts or physical sleep/lock behavior; the existing Copy test also uses the system clipboard.
 
 The [MVP acceptance record](docs/acceptance/mvp-2026-10-19.md) separates automated checks, real-provider tasks, packaged-runtime evidence and outstanding release checks.
 

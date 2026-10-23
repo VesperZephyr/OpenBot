@@ -79,6 +79,8 @@ it("protects Prompt drafts and applies the saved revision to the next model requ
 	await expect.poll(() => prompt.inputValue()).toBe("");
 	await prompt.fill("Reply with CEDAR_PROMPT.");
 	await page.getByRole("button", { name: "Save profile" }).click();
+	// Saving closes a modal editor asynchronously; its inert chat cannot receive Enter yet.
+	await page.getByRole("dialog", { name: "Conversation details", exact: true }).waitFor({ state: "hidden" });
 	h.model.script({ text: "CEDAR_PROMPT" });
 	await h.send("Hello");
 	await page.getByText("CEDAR_PROMPT", { exact: true }).waitFor();
