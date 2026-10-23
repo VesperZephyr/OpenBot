@@ -211,3 +211,5 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Spec | Status |
 | --- | --- |
 | [D7: White canvas and focused interactions](d7-chat-interaction.md) | done (#51); 506 unit and 153 desktop tests pass |
+
+| [D8: Unified chat and continuous activity feedback](d8-chat-experience.md) | ready; owner-prioritized chat refinement, stacked on B11c |
