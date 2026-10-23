@@ -1,10 +1,12 @@
 # Competitor radar
 
-B11b supports two specialist Bots delivering scheduled Agent changelog reports into one group. Each report identifies its author and links its exact routine run. A normal group message asks Core to compare the reports; explicit mentions address either researcher. Reports themselves do not trigger another model call.
+Two user-created Specialists deliver scheduled Agent changelog reports into one group. The existing main assistant (Core) runs a third daily routine that summarizes those selected reports automatically. Each report identifies its author and links its exact run. Explicit mentions still address either researcher for follow-up.
+
+Bot names, roles, monitored products and comparison criteria are user configuration. OpenBot provides the reusable capabilities: groups, schedules, confirmed report inputs, bounded waiting, source snapshots and delivery. This workflow creates two Specialists and reuses Core; it does not install a radar-specific feature or create another coordinator Bot.
 
 ## Setup and interaction
 
-Create Domestic Hunter and International Hunter, then create a group containing both through **New → Create group**. Give the group a shared objective: track Agent product changes, verify primary sources and identify useful improvements. Open **Conversation details → New group routine** for each researcher. The group and an active member are preselected; confirm the Bot, source list, time zone and destination on the review screen. Report sharing includes its files and every current group member.
+Create Domestic Hunter and International Hunter, then create a group containing both and your existing main assistant through **New → Create group**. Give the group a shared objective: track Agent product changes, verify primary sources and identify useful improvements. Open **Conversation details → New group routine** for each researcher. The group and an active member are preselected; confirm the Bot, source list, time zone and destination on the review screen. Report sharing includes its files and every current group member.
 
 A useful initial schedule is 07:10 and 07:15 in `Asia/Singapore`, each covering the previous day's 07:00 through today's 07:00. Keep the reporting cutoff separate from the actual trigger time. A later catch-up run uses its original scheduled time, not the time it happens to finish. Use a 24-hour catch-up window only if a late morning report is still useful.
 
@@ -46,10 +48,22 @@ These are editable workflow inputs, not built-in product integrations or a claim
 | International | Pi | [Releases](https://github.com/earendil-works/pi/releases); [public API](https://api.github.com/repos/earendil-works/pi/releases?per_page=5). |
 | International | OpenCode | [Changelog](https://opencode.ai/changelog). |
 
-After the reports arrive, a useful group request is: “Compare both reports. Give me the three changes most relevant to our Agent, link their primary sources, separate facts from suggestions, and list any unverified claims.” The current implementation requires this user request; automatic coordinator summaries and conversational routine proposals remain separate follow-ups.
+## Automatic main-assistant summary
+
+Create another group routine owned by the existing main assistant. A useful schedule is **07:47, Asia/Singapore**, after the two researcher tasks. In **Report inputs**, enable **Use reports from other routines**, select both researcher tasks, set a **24-hour report window** and **20-minute wait**, then review the Bot, group, source tasks and schedule before saving. If adding Core changes an existing group's membership, first edit/reconfirm and resume the two researcher routines, then configure the summary against their current versions.
+
+Use this editable summary workflow:
+
+> Compare the Host-confirmed researcher reports. Give me the three changes most relevant to our Agent, preserve primary source links, separate verified facts from your suggestions, and list unavailable or unverified claims. Keep product variants and original release dates distinct. Do not promote old context into today's news. If fewer than three useful changes are verified, say so instead of filling the list.
+>
+> State the input coverage and reporting interval. Do not interpret a missing, failed, truncated or undated source as “no update.” Use only the provided reports for this comparison; do not call tools or request another researcher run. Answer in my preferred language and return the summary here for delivery to this group.
+
+After this one-time setup, the daily summary needs no user message. The application selects the latest occurrence of each confirmed source version within `(summary scheduled time − 24 hours, summary scheduled time]`; this selects reports, while each researcher's instructions define the release-news window. It waits without consuming a model request or Run slot. When both reports arrive, or the wait expires, Core runs once. Missing or failed sources produce a visibly partial summary. Late reports do not trigger another summary.
+
+Production summaries exclude **Test run** reports. Testing a summary may use source tests and labels them as tests. History shows the captured text and status, with links to the source posts; the group summary shows input coverage. Editing, pausing or deleting a source pauses its dependent summary until you edit and reconfirm the inputs. Reconfirm after source routines are ready. Restart preserves the captured inputs and does not duplicate completed summaries. Conversational creation of routines remains separate work.
 
 ## Availability and verification
 
 OpenBot and the Mac must be awake and available. Pause, lock, sleep and long absence keep existing lifecycle gates. Exact source URLs can use `web_fetch` without a search key; discovery through `web_search` requires configured Tavily credentials. JavaScript-only, authenticated or challenged pages may need a connector or a different official source. Browser control remains outside B11b.
 
-Automated coverage and a four-request real-model acceptance are recorded in [B11b](../tasks/b11b-group-routine-reports.md). Development evidence uses isolated state and synthetic Bots, never the owner's private conversation database. Native release verification remains separate.
+Automated group-report coverage and a four-request real-model acceptance are recorded in [B11b](../tasks/b11b-group-routine-reports.md). [B11c](../tasks/b11c-scheduled-report-summaries.md) records automatic scheduled composition and a separate five-request real-model check: two live source reports followed by Core’s summary, with both primary links and restart deduplication. The latter uses explicit test runs to bound provider usage; the unattended clock trigger is verified by ScriptedModel e2e. Development evidence uses isolated state and synthetic Bots, never the owner's private conversation database. Native release verification remains separate.

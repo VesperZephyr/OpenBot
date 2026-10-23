@@ -213,3 +213,7 @@
 		align-items: flex-start;
 	}
 }
+
+.routine-inputs { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: 12px; }
+.routine-panel .routine-input-option { display: flex; flex-direction: row; align-items: center; gap: .6rem; margin: .6rem 0; }
+.routine-panel .routine-input-option input { width: auto; margin: 0; }

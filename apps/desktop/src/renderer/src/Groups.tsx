@@ -290,6 +290,7 @@ export function GroupView({ groupId }: { groupId: string }) {
 							<Markdown text={post.text} />
 							{post.routine && <div className="routine-report-label">
 								<span>{t(post.routine.test ? "Test" : "Routine report")} · {post.routine.name} · {t(post.routine.state === "needs_attention" ? "Needs attention" : post.routine.state[0]!.toUpperCase() + post.routine.state.slice(1))}</span>
+								{post.routine.inputs && <span>{t("Inputs ready: {ready}/{total}", post.routine.inputs)} · {t(post.routine.inputs.ready === post.routine.inputs.total ? "Complete inputs" : "Partial inputs")}</span>}
 								<button onClick={() => useStore.setState({ view: { kind: "routines", routineId: post.routine!.routineId, occurrenceId: post.routine!.occurrenceId } })}>{t("View routine")}</button>
 							</div>}
 							{post.attachments?.map((artifact) => (

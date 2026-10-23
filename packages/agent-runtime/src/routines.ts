@@ -1,4 +1,5 @@
 import { RunsDoc, isTerminal } from "./runs.ts";
+import { assertReportInputs, captureReportInputs, validReportInputs, ROUTINE_INPUTS_BLOCKED } from "./routine-inputs.ts";
 import { GroupsDoc } from "./groups.ts";
 import { pruneUsage } from "./usage.ts";
 import { defineDoc, type Harness } from "@earendil-works/pi-durable";
@@ -22,6 +23,21 @@ export async function invalidateRoutineDestinations(tx: Tx, group: Group): Promi
 			o.stopped = true;
 			o.destinationBlocked = true;
 			o.reason = ROUTINE_DESTINATION_BLOCKED;
+		}
+	}
+}
+/** Source edits withdraw dependent execution/publication authority before the transaction commits. */
+function invalidateReportInputs(state: Stored<RoutineState>): void {
+	for (const r of Object.values(state.routines)) {
+		if (!r.reportInputs || r.deleted || r.inputsBlocked || r.destinationBlocked || validReportInputs(state.routines, r.reportTo, r.reportInputs, r.routineId)) continue;
+		r.enabled = false;
+		r.inputsBlocked = true;
+		r.revision++;
+		for (const o of Object.values(state.occurrences)) {
+			if (o.routineId !== r.routineId || o.published || o.state === "skipped") continue;
+			o.stopped = true;
+			o.inputsBlocked = true;
+			o.reason = ROUTINE_INPUTS_BLOCKED;
 		}
 	}
 }
@@ -54,7 +70,25 @@ export function routineStore(harness: Harness, context: Context) {
 				}
 			);
 		},
-		async change<T>(fn: (state: RoutineState) => T, destination?: { botId: string; reportTo: NonNullable<Routine["reportTo"]> }): Promise<T> {
+		async captureInputs(occurrenceId: string, now: number): Promise<RoutineOccurrence | undefined> {
+			return harness.commit(async (tx) => {
+				const state = await tx.doc(RoutinesDoc);
+				invalidateReportInputs(state);
+				const o = state.occurrences[occurrenceId];
+				if (!o) return;
+				const r = state.routines[o.routineId];
+				if (o.reportInputs && !o.inputSnapshot && !o.stopped && r?.revision === o.revision && !r.deleted) {
+					const group = (await tx.doc(GroupsDoc));
+					const destination = o.reportTo && group.groups[o.reportTo.groupId];
+					if (destination?.status === "active" && destination.revision === o.reportTo?.groupRevision && destination.memberIds.includes(o.botId)) {
+						const snapshot = captureReportInputs(state.routines, state.occurrences, group.posts[destination.groupId] ?? [], o, now);
+						if (snapshot) o.inputSnapshot = JSON.parse(JSON.stringify(snapshot));
+					}
+				}
+				return JSON.parse(JSON.stringify(o));
+			}, context);
+		},
+		async change<T>(fn: (state: RoutineState) => T, destination?: { botId: string; reportTo: NonNullable<Routine["reportTo"]>; reportInputs?: NonNullable<Routine["reportInputs"]>; routineId?: string }): Promise<T> {
 			return harness.commit(async (tx) => {
 				if (destination) {
 					const group = (await tx.doc(GroupsDoc)).groups[destination.reportTo.groupId];
@@ -62,9 +96,11 @@ export function routineStore(harness: Harness, context: Context) {
 						throw new ProtocolError("invalid_request", ROUTINE_DESTINATION_BLOCKED);
 				}
 				const state = await tx.doc(RoutinesDoc);
+				if (destination?.reportInputs) assertReportInputs(state.routines, destination.reportTo, destination.reportInputs, destination.routineId);
 				const previous = Object.values(state.occurrences);
 				// Transaction draft proxies must never escape into Host responses.
 				const value = fn(state);
+				invalidateReportInputs(state);
 				const result: T = value === undefined ? value : JSON.parse(JSON.stringify(value));
 				const removed = previous.filter((o) => !state.occurrences[o.occurrenceId] && o.published && o.runId);
 				if (removed.length) {
