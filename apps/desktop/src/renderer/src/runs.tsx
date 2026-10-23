@@ -26,11 +26,7 @@ export function PendingMessages({ snapshot }: { readonly snapshot: ConversationS
 					</div>}
 				</li>
 			))}
-			{snapshot.run?.state === "queued" && (
-				<li className="message message-assistant is-live">
-					<span className="thinking">{t("Waiting for a free slot")}</span>
-				</li>
-			)}
+
 		</>
 	);
 }

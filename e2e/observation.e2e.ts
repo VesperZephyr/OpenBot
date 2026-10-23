@@ -87,6 +87,7 @@ it("keeps a group search target, unread count and Chinese draft through Host rec
 		recipientIds: [helper.botId],
 	});
 	await poll(() => unread("group:group_observation")).toBe(1);
+	await h.page().keyboard.press("Meta+k");
 	const search = h.page().getByRole("searchbox");
 	await search.fill("群聊恢复标记");
 	await h.page().locator(".search-result").click();

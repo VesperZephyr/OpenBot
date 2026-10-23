@@ -15,6 +15,7 @@ let groups: Groups;
 let runs: RunScheduler;
 let model: ScriptedModels;
 let entered: boolean;
+let notifications = 0;
 const waitTool: ToolDefinition = {
 	name: "wait",
 	description: "Wait",
@@ -43,7 +44,7 @@ async function open(...turns: Parameters<typeof scriptedModels>) {
 		authority: new BotManagement(runtime, "mac", Date.now),
 		runs,
 		approvals: new ApprovalBook(() => {}),
-		changed: () => {},
+		changed: () => { notifications++; },
 		settled: () => {},
 		stopping: () => {},
 	});
@@ -110,4 +111,18 @@ it("recovery cancels a dissolved running delivery before resuming the model", as
 	await expect.poll(async () => (await runtime.runsStore().get(d.runId!))?.state).toBe("cancelled");
 	expect(model.requests()).toBe(0);
 	expect(await runtime.groups().posts("group_g")).toHaveLength(1);
+});
+
+it("notifies after final root settlement without emitting changes on idle sweeps", async () => {
+    await runtime.groups().post("group_g", "settlement", "Task", ["a"], 2);
+    const delivery = (await runtime.groups().deliveries())[0]!;
+    await runtime.groups().finish(delivery.deliveryId, "completed", "Published answer", 3);
+    expect((await runtime.groups().roots("group_g"))[0]?.state).toBe("running");
+    notifications = 0;
+    await groups.sweep();
+    expect((await runtime.groups().roots("group_g"))[0]?.state).toBe("completed");
+    expect(notifications).toBe(1);
+    await groups.sweep();
+    expect(notifications).toBe(1);
+    expect(model.requests()).toBe(0);
 });

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { api, report, useStore, refreshLifecycle, openBot } from "./store";
 import { t } from "./i18n";
 import "./lifecycle.css";
-export function LifecycleControls() {
+export function LifecycleControls({ contextual = false }: { contextual?: boolean }) {
 	const state = useStore((s) => s.lifecycle),
 		[busy, setBusy] = useState(false),
 		[resumed, setResumed] = useState(false);
@@ -21,6 +21,7 @@ export function LifecycleControls() {
 						: "Work ready";
 	const unavailable =
 		!state || busy || state.transitioning || (blocked && (!state.nativeReady || state.locked || state.suspended || state.quitting));
+	if (contextual && !blocked) return null;
 	return (
 		<section className="lifecycle-controls" aria-label={t("Work controls")}>
 			{resumed && !blocked && <p role="status">{t("Work ready. Use Continue task on interrupted conversations.")}</p>}
@@ -31,7 +32,7 @@ export function LifecycleControls() {
 					{state?.error && <p>{t(state.error)}</p>}
 				</div>
 			)}
-			<span className="local-target"><span aria-hidden="true" />{t("On this Mac")}</span>
+			{!contextual && <span className="local-target"><span aria-hidden="true" />{t("On this Mac")}</span>}
 			<button
 				type="button"
 				disabled={unavailable}

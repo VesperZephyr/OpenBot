@@ -1,3 +1,4 @@
+import { ActivityIndicator } from "./LiveReply";
 import { InterfaceIcon } from "./InterfaceIcon";
 import { ArtifactCard } from "./ArtifactCard";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
@@ -141,6 +142,7 @@ export function ChatComposer({
 					{t("A selected Bot is no longer available. Remove it or choose {name} before sending.", { name: coreName })}
 				</p>
 			)}
+			{attempt?.state === "pending" && <ActivityIndicator label="Sending message" />}
 			{activeRun && <div className="composer-status" role="status">{t(paused ? "Queued until work resumes" : working ? "Working · send a follow-up to guide this task" : "Waiting for a free slot")}</div>}
 			<div className="composer">
  {draft.skills?.map(skill=><button type="button" disabled={readOnly} key={skill.name} className="skill-chip" aria-label={t("Detach skill {name}",{name:skill.name})} onClick={()=>composers.edit(conversationKey,{skills:draft.skills?.filter(s=>s.name!==skill.name)??[]})}>/{skill.name} <small>v{skill.revision}</small> ×</button>)}

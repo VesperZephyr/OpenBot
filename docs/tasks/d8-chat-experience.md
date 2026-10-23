@@ -23,6 +23,7 @@ Use the current light/dark tokens, system sans-serif and quiet borders. The sign
 
 - Isolate development from the owner's running app and configured routines.
 - Implement shared ordering/avatar and activity components, then simplify navigation.
+- Notify observers when Host reconciliation changes a collaboration root state. A completed root must clear its working/Stop row without navigation; this corrects observation delivery without changing scheduling or publication semantics.
 - Stabilize streamed Markdown rendering and reuse it for group partials.
 - Extend ScriptedModel with delayed real SSE chunks and add end-to-end coverage for navigation, delayed first token, multiple chunks, tool/approval states, scrolling, cancellation and group output.
 - Run `pnpm run check` and `pnpm run e2e`, inspect screenshots and explore an isolated hidden app with agent-browser. Update plan/backlog with verified results and limitations; open a PR.

@@ -6,7 +6,7 @@ import { t } from "./i18n";
  */
 import DOMPurify from "dompurify";
 import { Marked } from "marked";
-import { type MouseEvent, useMemo } from "react";
+import { type MouseEvent, memo, useMemo } from "react";
 import { report, useStore } from "./store";
 
 const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
@@ -31,13 +31,33 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
 	}
 });
 
-export function Markdown({ text }: { readonly text: string }) {
-	const language = useStore((state) => state.settings?.language ?? "en");
-	const html = useMemo(
-		() => DOMPurify.sanitize(marked.parse(text) as string, { FORBID_TAGS: ["style", "img"], FORBID_ATTR: ["style"] }),
-		[text, language],
-	);
-	return <div className="markdown" onClick={copyCode} dangerouslySetInnerHTML={{ __html: html }} />;
+/** Keep completed block DOM intact as a later block streams (selection and Copy survive). */
+const MarkdownBlock = memo(function MarkdownBlock({ source, language, streaming }: { source: string; language: string; streaming: boolean }) {
+    const html = useMemo(() => {
+        const clean = DOMPurify.sanitize(marked.parse(source) as string, { FORBID_TAGS: ["style", "img"], FORBID_ATTR: ["style"] });
+        if (!streaming) return clean;
+        // A bare URL at the live edge may still be incomplete. Closed Markdown links remain usable.
+        const template = document.createElement("template");
+        template.innerHTML = clean;
+        for (const link of template.content.querySelectorAll("a")) {
+            const href = link.getAttribute("href");
+            if (href && source.trimEnd().endsWith(href)) link.replaceWith(document.createTextNode(link.textContent ?? href));
+        }
+        return template.innerHTML;
+    }, [source, language, streaming]);
+    return <div className="markdown-block" dangerouslySetInnerHTML={{ __html: html }} />;
+});
+
+export function Markdown({ text, streaming = false }: { readonly text: string; readonly streaming?: boolean }) {
+    const language = useStore((state) => state.settings?.language ?? "en");
+    const blocks = useMemo(() => {
+        // Reference definitions can affect earlier paragraphs; parse those documents as a unit.
+        if (/^ {0,3}\[[^\]]+\]:/m.test(text)) return [text];
+        return marked.lexer(text).filter(token => token.type !== "space").map(token => token.raw);
+    }, [text]);
+    return <div className="markdown" onClick={copyCode}>{blocks.map((source, index) =>
+        <MarkdownBlock key={index} source={source} language={language} streaming={streaming && index === blocks.length - 1} />
+    )}</div>;
 }
 
 function copyCode(event: MouseEvent<HTMLDivElement>): void {
