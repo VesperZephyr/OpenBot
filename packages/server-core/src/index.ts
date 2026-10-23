@@ -1,3 +1,4 @@
+import type { AvatarImage, AvatarSource } from "@openbot/protocol";
 import { Routines } from "./routines.ts";
 import {Connectors,type ConnectorPort} from "./connectors.ts";
 import { BackgroundTasks, type BackgroundPort } from "./background.ts";
@@ -199,7 +200,7 @@ export class HostService {
 			authority: this.management,
 			runs: this.#runs,
 			approvals: this.#approvals,
-			changed: () => this.#emit({ type: "groups.changed", payload: {} }),
+			changed: () => { this.#emit({ type: "groups.changed", payload: {} }); this.#observation.changed(8); },
 			settled: this.#toolSettled,
 			stopping: (botId, channelId, runId) => this.#conversationStopped(botId, channelId, runId),
 		});
@@ -233,7 +234,7 @@ export class HostService {
 		this.connectors=new Connectors({runtime:this.#runtime,targetId:this.#status.targetId,...(options.connectors?{port:options.connectors}:{}),secrets:this.#secrets,approvals:this.#approvals,assertAllowed:()=>this.lifecycle.assertAllowed(),change:fn=>this.authority.change(fn),publish:(defs,available)=>this.#runtime.refreshConnectorTools(defs,available),changed:()=>this.#observation.changed(8)});
   this.skills=new Skills({runtime:this.#runtime,...(options.skills?{port:options.skills}:{}),targetId:this.#status.targetId,assertAllowed:()=>this.lifecycle.assertAllowed(),changed:()=>this.#observation.changed(8)});
  const skillChange=(requestId:string,change:import("@openbot/protocol").SkillChange)=>this.authority.change(async()=>this.skills.change(`desktop:${requestId}`,change,(await this.#runtime.policy().snapshot()).settings.revision));
- this.routines=new Routines({runtime:this.#runtime,runs:this.#runs,approvals:this.#approvals,targetId:this.#status.targetId,canRun:()=>!this.lifecycle.state.blocked,now:this.#now,changed:()=>this.#observation.changed(9),resolveSkills:refs=>this.skills.attachments(refs),changeAuthority:fn=>this.authority.change(fn),settled:this.#toolSettled});
+ this.routines=new Routines({runtime:this.#runtime,runs:this.#runs,approvals:this.#approvals,targetId:this.#status.targetId,canRun:()=>!this.lifecycle.state.blocked,now:this.#now,changed:()=>this.#observation.changed(11),resolveSkills:refs=>this.skills.attachments(refs),changeAuthority:fn=>this.authority.change(fn),settled:this.#toolSettled});
  this.#handlers = {
    "routines.list":()=>this.routines.list(),
    "routines.get":({routineId,occurrenceId})=>this.routines.detail(routineId,occurrenceId),
@@ -273,6 +274,8 @@ export class HostService {
 			"groups.send": ({ groupId, requestId, text, recipientIds }) => this.groups.send(groupId, requestId, text, recipientIds),
 			"host.status": async () => this.#status,
 			"bots.list": () => this.#listBots(),
+			"avatars.source": ({ path }) => this.#artifact(randomUUID(), { action: "avatar-source", path }) as Promise<AvatarSource>,
+			"bots.avatar.get": async ({ botId }) => { await this.#liveBot(botId); return this.#runtime.avatarImage(botId); },
 			"bots.management.history": () => this.management.history(),
 			"bots.create": async (params) => {
 				const profile = await this.#runtime.createBot({
@@ -287,9 +290,17 @@ export class HostService {
 				this.#emit({ type: "bots.changed", payload: {} });
 				return profile;
 			},
-			"bots.update": async ({ botId, ...change }) => {
+			"bots.update": async ({ botId, avatar, ...change }) => {
 				await this.#liveBot(botId);
-				const profile = await this.#runtime.updateBot(botId, change);
+				if (change.defaultSkills !== undefined) {
+					if (change.expectedRevision === undefined) throw new ProtocolError("invalid_request", "Reload the profile before changing role skills");
+					await this.skills.attachments(change.defaultSkills);
+				}
+				if (change.name !== undefined && !change.name.trim()) throw new ProtocolError("invalid_request", "Give this Bot a name.");
+				if (avatar && change.expectedRevision === undefined) throw new ProtocolError("invalid_request", "Reload the profile before changing its avatar.");
+				const image = avatar?.kind === "upload" ? await this.#artifact(randomUUID(), { action: "avatar-validate", base64: avatar.base64 }) as AvatarImage : undefined;
+				const resolved = image ? { kind: "image" as const, sha256: image.sha256 } : avatar?.kind === "generated" ? avatar : undefined;
+				const profile = await this.#runtime.updateBot(botId, { ...change, ...(resolved ? { avatar: resolved } : {}) }, undefined, image);
 				this.#emit({ type: "bots.changed", payload: {} });
 				return profile;
 			},
@@ -345,6 +356,11 @@ export class HostService {
 				return this.#settings();
 			},
 			"bots.memory.get": ({ botId }) => this.#runtime.memoryState(botId),
+			"memory.shared.get": () => this.#runtime.sharedMemory(),
+			"memory.shared.update": ({ content, expectedRevision }) => this.#runtime.setSharedMemory(content, expectedRevision),
+			"memory.shared.restore": ({ revision, expectedRevision }) => this.#runtime.restoreSharedMemory(revision, expectedRevision),
+			"bots.memory.note": (input) => this.#runtime.changeMemoryNote(input),
+			"bots.memory.source": ({ botId, scope, noteId, which }) => this.#runtime.memorySource(botId, scope, noteId, which),
 			"bots.memory.update": ({ botId, content, expectedRevision }) => this.#runtime.setMemory(botId, content, expectedRevision),
 			"bots.memory.restore": ({ botId, revision, expectedRevision }) => this.#runtime.restoreMemory(botId, revision, expectedRevision),
 			"conversations.reset": async ({ botId }) => {
@@ -393,6 +409,8 @@ export class HostService {
 					name: `${source.name} (copy)`,
 					role: source.role,
 					instructions: source.instructions,
+					...(source.avatar ? { avatar: source.avatar } : {}),
+					...(source.defaultSkills ? { defaultSkills: source.defaultSkills } : {}),
 					...(source.model === undefined ? {} : { model: source.model }),
 					...(source.thinkingLevel === undefined ? {} : { thinkingLevel: source.thinkingLevel }),
 					createdAt: this.#now(),
@@ -566,7 +584,8 @@ export class HostService {
 					const bots = (await this.#runtime.listBots()).filter(
 						(b) => b.status !== "deleted" && (call.args.botId == null || call.args.botId === b.botId),
 					);
-					const profiles = call.args.botId == null ? bots.map(({ instructions: _instructions, ...summary }) => summary) : bots;
+					const identities = bots.map(({ avatar: _avatar, ...profile }) => profile);
+					const profiles = call.args.botId == null ? identities.map(({ instructions: _instructions, ...summary }) => summary) : identities;
 					return { status: "succeeded", output: JSON.stringify(profiles) };
 				}
 				const proposal = await this.management.confirmed(call);
@@ -597,7 +616,8 @@ export class HostService {
 					if (this.#feed.subscribed === result.botId) this.#feed.subscribe(null);
 				} else await this.#observe(result.botId);
 				this.#emit({ type: "bots.changed", payload: {} });
-				return { status: "succeeded", output: JSON.stringify({ action: proposal.action, bot: result }) };
+				const { avatar: _avatar, ...profile } = result;
+				return { status: "succeeded", output: JSON.stringify({ action: proposal.action, bot: profile }) };
 			} catch (error) {
 				if (call.signal.aborted) throw error;
 				return {

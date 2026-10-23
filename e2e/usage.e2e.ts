@@ -169,8 +169,9 @@ it("links group usage to a published group result, without leaking its private c
 	expect(row.conversationKey).toBe(`group:${groupId}`);
 	expect(row.references[0].messageId).toMatch(/^reply:/);
 	expect(row.usage.totalTokens).toBe(130);
+	if (await h.page().getByRole("button", { name: "Close details", exact: true }).isVisible())
+		await h.page().getByRole("button", { name: "Close details", exact: true }).click();
 	await h.page().locator(".sidebar .bot-row:not(.group-nav)").filter({ hasText: "Unknown price" }).click();
-	if (await h.page().locator(".usage-panel").count()) await h.page().locator(".details-toggle").click();
 	await openPanel();
 	await h.page().locator(".usage-run > summary").first().click();
 	await h.page().getByRole("button", { name: "View result", exact: true }).click();

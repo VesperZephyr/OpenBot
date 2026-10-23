@@ -21,6 +21,8 @@ export function routineScheduleLabel(schedule: RoutineSchedule): string {
 export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapshot: ConversationSnapshot) => ReactNode }) {
 	const language = useStore((s) => s.settings?.language ?? "en");
 	const view = useStore((s) => s.view);
+	const groups = useStore((s) => s.groups);
+	const initialGroup = view.kind === "routines" ? groups.find((g) => g.groupId === view.groupId && g.status === "active") : undefined;
 	const list = useStore((s) => s.routines),
 		bots = useStore((s) => s.bots),
 		skills = useStore((s) => s.skills),
@@ -28,8 +30,8 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 	const [selected, setSelected] = useState<string | undefined>(view.kind === "routines" ? view.routineId : undefined),
 		[occurrence, setOccurrence] = useState<string | undefined>(view.kind === "routines" ? view.occurrenceId : undefined),
 		[detail, setDetail] = useState<RoutineDetail>();
-	const [draft, setDraft] = useState<RoutineFields>(),
-		[botId, setBotId] = useState(""),
+	const [draft, setDraft] = useState<RoutineFields | undefined>(() => initialGroup ? { ...empty(), reportTo: { groupId: initialGroup.groupId, groupRevision: initialGroup.revision } } : undefined),
+		[botId, setBotId] = useState(() => initialGroup ? bots.find((b) => b.status === "active" && initialGroup.memberIds.includes(b.botId))?.botId ?? "" : ""),
 		[revision, setRevision] = useState(0);
 	const [review, setReview] = useState<RoutineChange>(),
 		[confirmTest, setConfirmTest] = useState(false),
@@ -98,7 +100,8 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 	};
 	const edit = (r?: Routine) => {
 		setDraft(
-			r ? { name: r.name, instructions: r.instructions, schedule: r.schedule, catchUpHours: r.catchUpHours, skills: r.skills } : empty(),
+			r ? { name: r.name, instructions: r.instructions, schedule: r.schedule, catchUpHours: r.catchUpHours, skills: r.skills,
+				...(r.reportTo ? { reportTo: { ...r.reportTo, groupRevision: groups.find((g) => g.groupId === r.reportTo?.groupId)?.revision ?? r.reportTo.groupRevision } } : {}) } : empty(),
 		);
 		setBotId(r?.botId ?? bots.find((b) => b.status === "active")?.botId ?? "");
 		setRevision(r?.revision ?? 0);
@@ -119,6 +122,8 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 	const selectedOccurrence =
 		detail?.history.find((o) => o.occurrenceId === occurrence) ??
 		detail?.history.find((o) => o.state === "running" || o.state === "pending");
+	const destinationName = (fields: RoutineFields) => fields.reportTo ? groups.find((g) => g.groupId === fields.reportTo?.groupId)?.name ?? t("Unavailable group") : t("Bot's private chat");
+	const destinationValid = !draft?.reportTo || groups.some((g) => g.groupId === draft.reportTo?.groupId && g.status === "active" && g.revision === draft.reportTo.groupRevision && g.memberIds.includes(botId));
 	useEffect(() => {
 		if (selectedOccurrence) resultElement.current?.scrollIntoView({ block: "nearest" });
 	}, [selectedOccurrence?.occurrenceId]);
@@ -200,6 +205,9 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 										{t("Bot")}: {bots.find((b) => b.botId === botId)?.name}
 									</p>
 									<p>{routineScheduleLabel(review.fields.schedule)}</p>
+									<p>{t("Send reports to")}: {destinationName(review.fields)}</p>
+									{review.fields.reportTo && <p className="muted">{t("The report and its files will be visible to every group member. Reports do not wake other Bots.")}</p>}
+									{review.fields.reportTo && <p>{t("Members")}: {groups.find((g) => g.groupId === review.fields.reportTo?.groupId)?.memberIds.map((id) => bots.find((b) => b.botId === id)?.name ?? id).join(", ")}</p>}
 									<p className="routine-workflow">{review.fields.instructions}</p>
 									<p>{t("Catch up within {hours} hours", { hours: review.fields.catchUpHours })}</p>
 									{review.fields.skills.map((s) => (
@@ -245,6 +253,22 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 								{t("Routine name")}
 								<input required maxLength={80} value={draft.name} onChange={(e) => field("name", e.target.value)} />
 							</label>
+							<label>
+								{t("Send reports to")}
+								<select aria-label={t("Send reports to")} value={draft.reportTo?.groupId ?? ""} onChange={(e) => {
+									const group = groups.find((g) => g.groupId === e.target.value);
+									setDraft((previous) => {
+										if (!previous) return previous;
+										const { reportTo: _reportTo, ...fields } = previous;
+										return group ? { ...fields, reportTo: { groupId: group.groupId, groupRevision: group.revision } } : fields;
+									});
+								}}>
+									<option value="">{t("Bot's private chat")}</option>
+									{draft.reportTo && !groups.some((g) => g.status === "active" && g.groupId === draft.reportTo?.groupId && g.memberIds.includes(botId)) && <option value={draft.reportTo.groupId} disabled>{t("Unavailable group")}</option>}
+									{groups.filter((g) => g.status === "active" && g.memberIds.includes(botId)).map((g) => <option key={g.groupId} value={g.groupId}>{g.name}</option>)}
+								</select>
+							</label>
+							{!destinationValid && <p role="alert">{t("Report destination changed. Edit the routine to confirm its group again.")}</p>}
 							<label>
 								{t("Bot")}
 								<select aria-label={t("Bot")} value={botId} disabled={!!revision} onChange={(e) => setBotId(e.target.value)}>
@@ -391,7 +415,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 								<button type="button" onClick={() => setDraft(undefined)}>
 									{t("Cancel")}
 								</button>
-								<button disabled={busy || !botId}>{t("Review routine")}</button>
+								<button disabled={busy || !botId || !destinationValid}>{t("Review routine")}</button>
 							</div>
 						</form>
 					) : detail ? (
@@ -406,6 +430,9 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 								</span>
 							</header>
 							<p className="routine-workflow">{detail.routine.instructions}</p>
+							<p>{t("Send reports to")}: {destinationName(detail.routine)}</p>
+							{detail.routine.reportTo && <button onClick={() => useStore.setState({ view: { kind: "group", groupId: detail.routine.reportTo!.groupId }, searchTarget: undefined })}>{t("Open group")}</button>}
+							{detail.routine.destinationBlocked && <p role="status">{t("Report destination changed. Edit the routine to confirm its group again.")}</p>}
 							<p className="muted">{t("Catch up within {hours} hours", { hours: detail.routine.catchUpHours })}</p>
 							{detail.routine.skills.map((s) => (
 								<span className="skill-chip" key={s.name}>
@@ -422,7 +449,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 									{t("Edit routine")}
 								</button>
 								<button
-									disabled={busy || !!detail.history.find((o) => o.state === "running" || o.state === "pending")}
+									disabled={busy || detail.routine.destinationBlocked || !!detail.history.find((o) => o.state === "running" || o.state === "pending")}
 									onClick={() => {
 										testRequest.current = crypto.randomUUID();
 										setConfirmTest(true);
@@ -430,7 +457,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 								>
 									{t("Test run")}
 								</button>
-								<button disabled={busy} onClick={() => change(detail.routine.enabled ? "pause" : "resume")}>
+								<button disabled={busy || detail.routine.destinationBlocked} onClick={() => change(detail.routine.enabled ? "pause" : "resume")}>
 									{t(detail.routine.enabled ? "Pause routine" : "Resume routine")}
 								</button>
 								<button disabled={busy} onClick={() => change("delete")}>
@@ -474,7 +501,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 										<span>
 											{new Date(o.scheduledAt).toLocaleString(language)} {o.test ? `· ${t("Test")}` : ""}
 										</span>
-										<strong>{t(o.state === "needs_attention" ? "Needs attention" : o.state[0]!.toUpperCase() + o.state.slice(1))}</strong>
+										<strong>{t(o.state === "needs_attention" ? "Needs attention" : o.state[0]!.toUpperCase() + o.state.slice(1))}{o.destinationBlocked ? ` · ${t("Report not delivered")}` : ""}</strong>
 									</button>
 								))}
 							</section>
@@ -506,7 +533,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 					) : (
 						<div className="routine-empty">
 							<h2>{t("A useful task, on a schedule.")}</h2>
-							<p>{t("Choose a Bot, describe the work, then review when it should run. Reports return to that Bot's chat.")}</p>
+							<p>{t("Choose a Bot, describe the work, then choose when and where its reports arrive.")}</p>
 						</div>
 					)}
 				</div>

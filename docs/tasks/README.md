@@ -57,6 +57,8 @@ Dated entries added during execution. Empty when ready.
 
 ## Index
 
+Desktop design: [D6: Personal Assistant Design](d6-desktop-design.md), **done; merged in PR #49**. Owner-approved chat redesign, ordinary Bot list with protected personal-assistant star, focused editable profiles and durable local generated/uploaded avatars. Includes the original standalone design study.
+
 Product design (not an implementation task): [D1: Core Bot, Specialist Bots, and Model Sources](d1-bot-product-design.md), **accepted direction**. Research and task contracts for the product foundation. Agent mechanisms continue to reuse Pi.
 
 Interaction research: [D2: Grok Bot UI](d2-grok-ui-research.md), **research complete**. Official documentation, the supplied screenshot and installed-client inspection inform [B21](b21-conversation-experience.md), the conversation-experience spec merged in PR #17, and [B22](b22-conversation-list.md), the conversation-list increment. D2 remains the research record.
@@ -179,9 +181,34 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Spec | Status |
 | --- | --- |
 | [B11a: Local scheduled routines](b11a-local-routines.md) | done (#41); 477 unit/Host and 127 hidden desktop tests |
+| [B11b: Scheduled group reports](b11b-group-routine-reports.md) | in review (#53); 512 unit/Host and 157 hidden desktop tests; bounded live-source acceptance |
+
+## Per-role methods
+
+| Spec | Status |
+| --- | --- |
+| [B27b: Per-role skill defaults](b27b-role-skills.md) | done (#47); 484 unit/Host tests; desktop/CI evidence in PR |
 
 ## Prompt reliability
 
 | Spec | Status |
 | --- | --- |
-| [B6a: Evidence-based Bot delivery](b6a-prompt-reliability.md) | done, merged (#43); 479 unit/Host and 132 hidden e2e tests; real-model report and unknown-write trial |
+| [B6a: Evidence-based Bot delivery](b6a-prompt-reliability.md) | done (#43); 479 unit/Host and 132 hidden e2e tests; real-model report and unknown-write trial |
+
+## Local role foundations
+
+| Spec | Status |
+| --- | --- |
+| [B27a: Attributable memory and explicit sharing](b27a-memory-provenance.md) | done (#46); 490 unit/Host and 135 hidden desktop tests |
+
+## Role acceptance
+
+| Spec | Status |
+| --- | --- |
+| [I4: Real-model role and memory acceptance](i4-role-memory-acceptance.md) | done (#48); bounded real-model smoke and deterministic role/group integration; explicit spending limits |
+
+## Chat interaction refinement
+
+| Spec | Status |
+| --- | --- |
+| [D7: White canvas and focused interactions](d7-chat-interaction.md) | done (#51); 506 unit and 153 desktop tests pass |

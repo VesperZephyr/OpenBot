@@ -5,6 +5,7 @@ export type RoutineSchedule =
 	| { readonly kind: "daily"; readonly time: string; readonly timezone: string }
 	| { readonly kind: "weekly"; readonly time: string; readonly timezone: string; readonly weekday: number };
 export type RoutineFields = {
+	readonly reportTo?: { readonly groupId: string; readonly groupRevision: number };
 	readonly name: string;
 	readonly instructions: string;
 	readonly schedule: RoutineSchedule;
@@ -12,6 +13,7 @@ export type RoutineFields = {
 	readonly skills: readonly SkillRef[];
 };
 export type Routine = RoutineFields & {
+	readonly destinationBlocked?: boolean;
 	readonly routineId: string;
 	readonly botId: string;
 	readonly targetId: string;
@@ -23,6 +25,8 @@ export type Routine = RoutineFields & {
 	readonly nextAt: number;
 };
 export type RoutineOccurrence = {
+	readonly reportTo?: NonNullable<RoutineFields["reportTo"]>;
+	readonly destinationBlocked?: boolean;
 	readonly occurrenceId: string;
 	readonly routineId: string;
 	readonly botId: string;

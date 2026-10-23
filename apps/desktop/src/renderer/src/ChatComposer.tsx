@@ -1,3 +1,4 @@
+import { InterfaceIcon } from "./InterfaceIcon";
 import { ArtifactCard } from "./ArtifactCard";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { api, report, sendMessage, useStore } from "./store";
@@ -19,8 +20,15 @@ export function ChatComposer({
 	controls?: ReactNode;
 }) {
 	const { draft, attempt } = useComposer(conversationKey);
+	const run = useStore(s => conversationKey.startsWith("bot:") ? s.conversations[conversationKey.slice(4)]?.run : undefined);
+	const paused = useStore(s => s.lifecycle?.blocked ?? false);
+	const working = run?.state === "running";
+	const activeRun = working || run?.state === "queued";
+	const hasContent = !!draft.text.trim() || !!draft.attachments?.length || !!draft.skills?.length;
+	const coreName = useStore(s => s.bots.find(bot => bot.kind === "core")?.name) ?? t("Personal assistant");
 	const input = useRef<HTMLTextAreaElement>(null);
  const skills=useStore(s=>s.skills);
+ const roleSkills=useStore(s=>conversationKey.startsWith("bot:") ? s.bots.find(bot=>bot.botId===conversationKey.slice(4))?.defaultSkills : undefined);
  const [skillPicker,setSkillPicker]=useState(false),[skillActive,setSkillActive]=useState(0),[skillDismissed,setSkillDismissed]=useState<string>();
  const skillListId=useId();
  const skillMatch=members?null:draft.text.match(/(?:^|\s)\/([a-z0-9-]*)$/);
@@ -78,7 +86,7 @@ export function ChatComposer({
 					...(a.recipientIds.length ? { recipientIds: a.recipientIds } : {}),
 				});
 	const send = async (retry = false) => {
-		if (readOnly || (!retry && stale)) return;
+		if (readOnly || attaching || (!retry && stale)) return;
 		if (
 			await composers.send(
 				conversationKey,
@@ -89,12 +97,15 @@ export function ChatComposer({
 					}),
 				retry,
 			)
-		)
+		) {
 			window.dispatchEvent(new CustomEvent("openbot:sent", { detail: conversationKey }));
+			input.current?.focus();
+		}
 	};
 	const copy = (text: string) => void navigator.clipboard.writeText(text).catch(report);
 	return (
 		<div className="compose-area">
+			{!!roleSkills?.length && <p className="compose-notice role-skill-defaults">{t("Role defaults")}: {roleSkills.map(ref => `/${ref.name} v${ref.revision}`).join(" · ")}<br />{t("Defaults and message attachments share a two-skill limit. Change defaults in Profile.")}</p>}
 			{composers.warning && (
 				<p className="compose-notice" role="alert">
 					{t(composers.warning)}
@@ -127,9 +138,10 @@ export function ChatComposer({
 			)}
 			{stale && (
 				<p className="compose-notice" role="alert">
-					{t("A selected Bot is no longer available. Remove it or choose Core before sending.")}
+					{t("A selected Bot is no longer available. Remove it or choose {name} before sending.", { name: coreName })}
 				</p>
 			)}
+			{activeRun && <div className="composer-status" role="status">{t(paused ? "Queued until work resumes" : working ? "Working · send a follow-up to guide this task" : "Waiting for a free slot")}</div>}
 			<div className="composer">
  {draft.skills?.map(skill=><button type="button" disabled={readOnly} key={skill.name} className="skill-chip" aria-label={t("Detach skill {name}",{name:skill.name})} onClick={()=>composers.edit(conversationKey,{skills:draft.skills?.filter(s=>s.name!==skill.name)??[]})}>/{skill.name} <small>v{skill.revision}</small> ×</button>)}
  {skillShowing&&<div className="skill-options" role="listbox" id={skillListId} aria-label={t("Attach a skill")}>
@@ -156,7 +168,7 @@ export function ChatComposer({
 							aria-pressed={!selected.length}
 							onClick={() => composers.edit(conversationKey, { recipientIds: [] })}
 						>
-							{t("Core · automatic")}
+							{t("{name} · automatic", { name: coreName })}
 						</button>
 						{selected.map((id) => (
 							<button
@@ -199,7 +211,7 @@ export function ChatComposer({
 					rows={1}
 					readOnly={readOnly}
 					aria-label={label}
-					placeholder={label}
+					placeholder={members ? label : t(working ? "Add a follow-up…" : "Tell me what’s on your mind…")}
 					aria-controls={skillShowing?skillListId:showing ? listId : undefined}
 					aria-expanded={members ? showing : skillShowing}
 					aria-activedescendant={skillShowing&&skillOptions.length?`${skillListId}-${skillActive}`:showing && options.length ? `${listId}-${active}` : undefined}
@@ -241,15 +253,6 @@ export function ChatComposer({
 					}}
 				/>
 				<div className="composer-actions">
-					<span className="composer-hint">
-						{t(
-							readOnly
-								? "Unsent draft · read-only"
-								: members
-									? "Core coordinates by default · @ selects recipients"
-									: "Enter to send · Shift+Enter for a new line",
-						)}
-					</span>
 					{readOnly ? (
 						<button type="button" onClick={() => copy(draft.text)}>
 							{t("Copy draft")}
@@ -274,8 +277,9 @@ export function ChatComposer({
 							{!members && (
 								<button
 									type="button"
-									className="icon-button"
+									className="compose-tool"
 									aria-label={t("Attach files")}
+									title={t("Attach files")}
 									disabled={attaching || (draft.attachments?.length ?? 0) >= 4}
 									onClick={() => {
 										setAttaching(true);
@@ -296,24 +300,35 @@ export function ChatComposer({
 											.finally(() => setAttaching(false));
 									}}
 								>
-									<span aria-hidden>＋</span>
+									<InterfaceIcon name="plus" />
 								</button>
 							)}
-							{!members&&<button type="button" className="icon-button" aria-label={t("Attach a skill")} aria-expanded={skillShowing} onClick={()=>{setSkillPicker(!skillShowing);setSkillDismissed(skillShowing?draft.text:undefined);input.current?.focus();}}>/</button>}
- {controls}
-							<button
+							{!members&&<button type="button" className="compose-tool" aria-label={t("Attach a skill")} aria-expanded={skillShowing} onClick={()=>{setSkillPicker(!skillShowing);setSkillDismissed(skillShowing?draft.text:undefined);input.current?.focus();}}><InterfaceIcon name="skills" /><span>{t("Skills")}</span></button>}
+ <span className="composer-spacer" />{controls}
+							{(!activeRun || hasContent) && <button
 								type="button"
 								aria-label={t("Send")}
+								title={t(working ? "Send follow-up" : "Send")}
 								className="primary send"
 								disabled={(!draft.text.trim() && !draft.attachments?.length && !draft.skills?.length) || !!attempt || !!stale || attaching}
 								onClick={() => void send()}
 							>
-								<span aria-hidden>↑</span>
-							</button>
+								<InterfaceIcon name="arrow" />
+							</button>}
 						</>
 					)}
 				</div>
 			</div>
+					<span className="composer-hint">
+						{t(
+							readOnly
+								? "Unsent draft · read-only"
+								: members
+									? "{name} coordinates by default · @ selects recipients"
+									: "Enter to send · Shift+Enter for a new line",
+							{ name: coreName },
+						)}
+					</span>
 		</div>
 	);
 }

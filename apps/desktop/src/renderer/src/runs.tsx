@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ArtifactCard } from "./ArtifactCard";
 import { t } from "./i18n";
 /**
@@ -44,10 +45,21 @@ export function StoppedNote() {
 
 /** Stop for a running or queued Run. */
 export function StopButton({ run }: { readonly run: RunRecord | undefined }) {
+	const [busy, setBusy] = useState(false);
 	if (run?.state !== "running" && run?.state !== "queued") return null;
 	return (
-		<button type="button" className="stop" onClick={() => void api["runs.cancel"]({ runId: run.runId }).catch(report)}>
-			{t("Stop")}
+		<button
+			type="button"
+			className="stop"
+			disabled={busy}
+			aria-label={t(busy ? "Stopping work" : "Stop")}
+			title={t("Stop")}
+			onClick={() => {
+				setBusy(true);
+				void api["runs.cancel"]({ runId: run.runId }).catch(report).finally(() => setBusy(false));
+			}}
+		>
+			<span className="stop-square" aria-hidden="true" />
 		</button>
 	);
 }

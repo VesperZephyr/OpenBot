@@ -112,6 +112,7 @@ const strict = (properties: Record<string, TSchema>) => Type.Object(properties, 
 const text = Type.String();
 const revision = Type.Integer({ minimum: 1 });
 const profile = strict({
+	defaultSkills: Type.Optional(Type.Array(strict({ name: text, revision, sha256: text }), { maxItems: 2 })),
 	botId: text,
 	name: text,
 	role: text,

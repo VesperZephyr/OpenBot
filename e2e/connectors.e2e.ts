@@ -35,6 +35,7 @@ afterAll(async () => {
 });
 it("installs a reviewed local program and saves a credential separately without revealing it", async () => {
 	expect(await list()).toEqual([]);
+	await h.page().getByRole("button", { name: /^Settings/ }).click();
 	await h.page().getByRole("button", { name: "Connect apps", exact: true }).click();
 	await h.page().getByRole("button", { name: "Add connector", exact: true }).click();
 	await h.page().getByLabel("Connector name", { exact: true }).fill("Fixture notes");
@@ -111,6 +112,7 @@ it("keeps configuration after restart but requires an explicit connection and su
 	await h.relaunch();
 	expect((await list())[0]).toMatchObject({ state: "disconnected", credentialConfigured: true });
 	await api("settings.update", { language: "zh-CN" });
+	await h.page().getByRole("button", { name: /^设置/ }).click();
 	await h.page().getByRole("button", { name: "连接应用", exact: true }).click();
 	await h
 		.page()
@@ -131,6 +133,7 @@ it("cancels a pending approval on removal and never permits the queued write", a
 	h.model.script({ tool: "mcp__notes__write_note", args: { text: "must not overwrite" } }, { text: "Connector removed safely." });
 	await h.send("Try another connector write.");
 	await poll(async () => (await snapshot()).approvals[0]?.tool).toBe("mcp__notes__write_note");
+	await h.page().getByRole("button", { name: /^Settings/ }).click();
 	await h.page().getByRole("button", { name: "Connect apps", exact: true }).click();
 	await h
 		.page()

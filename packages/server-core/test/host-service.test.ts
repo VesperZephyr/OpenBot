@@ -90,6 +90,21 @@ describe("HostService", () => {
 		await rm(directory, { recursive: true, force: true });
 	});
 
+	it("requires owner profile revisions and rejects unavailable role skills without changing the Bot", async () => {
+		const bot = await service.handle("bots.create", { requestId: "roles", name: "Analyst" });
+		const ref = { name: "report", revision: 1, sha256: "a".repeat(64) };
+		await expect(service.handle("bots.update", { botId: bot.botId, defaultSkills: [ref] })).rejects.toThrow("Reload the profile");
+		await expect(service.handle("bots.update", { botId: bot.botId, expectedRevision: 1, defaultSkills: [ref] })).rejects.toThrow("unavailable");
+		expect((await runtime.getBot(bot.botId))?.revision).toBe(1);
+		await expect(runtime.updateBot(bot.botId, { defaultSkills: [ref, ref] })).rejects.toThrow("distinct skills");
+		await runtime.updateBot(bot.botId, { defaultSkills: [ref], expectedRevision: 1 });
+		const copy = await service.handle("bots.duplicate", { botId: bot.botId, requestId: "role-copy" });
+		expect(copy.defaultSkills).toEqual([ref]);
+		expect(await runtime.memory(copy.botId)).toBe("");
+		await expect(service.handle("bots.update", { botId: bot.botId, expectedRevision: 1, defaultSkills: [] })).rejects.toThrow("Profile changed");
+		expect((await runtime.getBot(bot.botId))?.defaultSkills).toEqual([ref]);
+	});
+
 	it("refuses messages until a model is chosen, then answers and marks the Bot unread", async () => {
 		const bot = await service.handle("bots.create", { requestId: "r1", name: "Scout" });
 		await expect(service.handle("messages.submit", { botId: bot.botId, requestId: "m1", text: "Hi" })).rejects.toThrow(

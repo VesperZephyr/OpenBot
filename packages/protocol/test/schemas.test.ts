@@ -3,6 +3,16 @@ import { validBackgroundKeys, HOST_METHODS } from "../src/index.ts";
 import { HOST_PARAM_SCHEMAS, paramsError, validArtifactRequest } from "../src/schemas.ts";
 
 describe("Host method parameter schemas", () => {
+	it("requires scoped memory revisions and rejects forged attribution", () => {
+		const add = { botId: "a", requestId: "r", scope: "bot", expectedRevision: 0, action: "add", heading: "City", content: "Singapore" };
+		expect(paramsError("bots.memory.note", add)).toBeUndefined();
+		for (const extra of [{ source: { kind: "user" } }, { scope: "group" }, { protected: false }, { expectedRevision: -1 }])
+			expect(paramsError("bots.memory.note", { ...add, ...extra })).toBeDefined();
+		const share = { botId: "a", requestId: "s", scope: "bot", expectedRevision: 1, action: "share", noteId: "note_a" };
+		expect(paramsError("bots.memory.note", share)).toBeDefined();
+		expect(paramsError("bots.memory.note", { ...share, otherRevision: 0 })).toBeUndefined();
+		expect(paramsError("bots.memory.source", { botId: "a", scope: "shared", noteId: "n", which: "original", runId: "forged" })).toBeDefined();
+	});
 	it("bounds attachment identities and rejects path or target authority in renderer message parameters", () => {
 		const id = `artifact_${"a".repeat(32)}`;
 		expect(paramsError("messages.submit", { botId: "a", requestId: "r", text: "", artifactIds: [id] })).toBeUndefined();
@@ -113,4 +123,11 @@ it("bounds private completion inspection and keeps renderer stop authority narro
  for(const keys of [[{...key,targetId:"other"}],[{...key,taskId:""}],Array.from({length:17},()=>key)])expect(validBackgroundKeys(keys)).toBe(false);
  expect(paramsError("background.stop",{invocationId:key.invocationId})).toBeUndefined();
  expect(paramsError("background.stop",{invocationId:key.invocationId,botId:"other",targetId:"remote"})).toBeDefined();
+});
+
+it("allows bounded avatar choices but rejects forged assets, paths, scripts and future recipes", () => {
+ const params = { botId: "b", expectedRevision: 1 };
+ expect(paramsError("bots.update", { ...params, avatar: { kind: "generated", version: 1, seed: 12, motif: "leaf" } })).toBeUndefined();
+ for (const avatar of [{kind:"image",sha256:"a".repeat(64)},{kind:"upload",base64:"<svg/>"},{kind:"upload",base64:"a".repeat(409601)},{kind:"generated",version:2,seed:1,motif:"leaf"},{kind:"generated",version:1,seed:-1,motif:"leaf"},{kind:"generated",version:1,seed:1,motif:"leaf",path:"/private/image.png"}])
+  expect(paramsError("bots.update",{...params,avatar})).toBeDefined();
 });

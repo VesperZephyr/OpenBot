@@ -1,3 +1,4 @@
+export { avatarSource, validateAvatar } from "./avatars.ts";
 /**
  * The local executor: performs authorized tool invocations on the bound local target. It checks the target and the
  * granted folders again, independently of the Host, and records every invocation in the receipt ledger before its

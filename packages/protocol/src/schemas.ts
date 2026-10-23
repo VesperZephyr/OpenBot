@@ -15,7 +15,14 @@ const NoParams = Type.Object({}, { additionalProperties: false });
 const strict = <T extends Record<string, TSchema>>(properties: T) => Type.Object(properties, { additionalProperties: false });
 const ModelRef = strict({ provider: Id, modelId: Id });
 const ThinkingLevel = Type.Enum(["off", "low", "medium", "high"]);
+const AvatarBase64 = Type.String({ minLength: 1, maxLength: 409600, pattern: "^[A-Za-z0-9+/]+={0,2}$" });
+const AvatarChange = Type.Union([
+ strict({ kind: Type.Literal("generated"), version: Type.Literal(1), seed: Type.Integer({ minimum: 0, maximum: 4294967295 }), motif: Type.Enum(["leaf", "glasses", "cap"]) }),
+ strict({ kind: Type.Literal("upload"), base64: AvatarBase64 }),
+]);
 const BotOnly = strict({ botId: Id });
+const MemoryScope = Type.Enum(["bot", "shared"]);
+const MemoryNoteBase = { botId: Id, requestId: Id, scope: MemoryScope, expectedRevision: Type.Integer({ minimum: 0 }) };
 const GrantAccess = Type.Enum(["read", "readwrite"]);
 const AlwaysAllowScope = Type.Union([
 	strict({
@@ -95,6 +102,8 @@ export const HOST_PARAM_SCHEMAS = {
  "lifecycle.native":strict({sourceId:Id,seq:Type.Integer({minimum:0,maximum:Number.MAX_SAFE_INTEGER}),locked:Type.Boolean(),suspended:Type.Boolean(),quitting:Type.Boolean()}),
  "runs.continue":strict({runId:Id,requestId:Id}),
 	"bots.list": NoParams,
+	"avatars.source": strict({ path: ArtifactPath }),
+	"bots.avatar.get": BotOnly,
 	"bots.management.history": NoParams,
 	"bots.create": strict({
 		requestId: Id,
@@ -104,6 +113,8 @@ export const HOST_PARAM_SCHEMAS = {
 		model: Type.Optional(ModelRef),
 	}),
 	"bots.update": strict({
+		avatar: Type.Optional(AvatarChange),
+		defaultSkills: Type.Optional(Type.Array(strict({name:SkillName,revision:Type.Integer({minimum:1}),sha256:Type.String({pattern:"^[a-f0-9]{64}$"})}),{maxItems:2})),
 		botId: Id,
 		expectedRevision: Type.Optional(Type.Integer({ minimum: 1 })),
 		name: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
@@ -150,6 +161,16 @@ export const HOST_PARAM_SCHEMAS = {
 	"credentials.set": strict({ providerId: Id, apiKey: Type.String({ maxLength: 16_384 }) }),
 	"credentials.delete": strict({ providerId: Id }),
 	"bots.memory.get": BotOnly,
+	"memory.shared.get": NoParams,
+	"memory.shared.update": strict({ content: Type.String(), expectedRevision: Type.Integer({ minimum: 0 }) }),
+	"memory.shared.restore": strict({ revision: Type.Integer({ minimum: 0 }), expectedRevision: Type.Integer({ minimum: 0 }) }),
+	"bots.memory.note": Type.Union([
+		strict({ ...MemoryNoteBase, action: Type.Literal("add"), heading: Type.String({ minLength: 1, maxLength: 120 }), content: Type.String({ minLength: 1, maxLength: 8192 }) }),
+		strict({ ...MemoryNoteBase, action: Type.Literal("edit"), noteId: Id, content: Type.String({ minLength: 1, maxLength: 8192 }) }),
+		strict({ ...MemoryNoteBase, action: Type.Literal("forget"), noteId: Id }),
+		strict({ ...MemoryNoteBase, action: Type.Enum(["share", "unshare"]), noteId: Id, otherRevision: Type.Integer({ minimum: 0 }) }),
+	]),
+	"bots.memory.source": strict({ botId: Id, scope: MemoryScope, noteId: Id, which: Type.Enum(["original", "changed"]) }),
 	"bots.memory.update": strict({ botId: Id, content: Type.String(), expectedRevision: Type.Integer({ minimum: 0 }) }),
 	"bots.memory.restore": strict({ botId: Id, revision: Type.Integer({ minimum: 0 }), expectedRevision: Type.Integer({ minimum: 0 }) }),
 	"conversations.reset": BotOnly,
@@ -242,6 +263,8 @@ const artifactRequest = Compile(
 		requestId: Id,
 		targetId: Id,
 		operation: Type.Union([
+			strict({ action: Type.Literal("avatar-source"), path: ArtifactPath }),
+			strict({ action: Type.Literal("avatar-validate"), base64: AvatarBase64 }),
 			strict({ action: Type.Literal("import"), path: ArtifactPath }),
 			strict({ action: Type.Enum(["get", "preview", "content", "remove"]), artifactId: ArtifactId }),
 			strict({ action: Type.Literal("export"), artifactId: ArtifactId, path: ArtifactPath }),

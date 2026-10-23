@@ -1,16 +1,27 @@
 # OpenBot
 
-**Personal AI Bots that work on your Mac.**
+**A personal assistant with the tools to get things done on your Mac.**
 
 English · [简体中文](README.zh-CN.md)
 
-Give a Bot a task, let it work with your files and tools, and keep the result. OpenBot is a local-first macOS application with persistent conversations, editable memory, reusable skills, and approvals you control. Bring your own model provider and create specialist Bots when you need them.
+Think **Grok Bot + Codex, in a personal desktop app**. OpenBot pairs approachable, ongoing conversations with an agent that can inspect a codebase, edit files, run commands, research the web and work through connected tools.
 
-![OpenBot completing a weekly revenue report with local files and downloadable results](docs/images/openbot-weekly-report.png)
+OpenBot is currently built for **one person on one Mac**. Give your Bots names, appearances and roles, keep their conversations and memories, and use them for everyday work as well as software projects. The application and its execution tools run on your Mac; you choose the model provider.
 
-*The actual desktop app, using a real model and synthetic sales data. The report and CSV were verified against the source data. [Acceptance evidence](docs/acceptance/mvp-2026-10-19.md).*
+![OpenBot's personal chat interface with a Bot roster, a reply and a spacious composer](docs/images/openbot-personal-chat.png)
 
-**Status:** MVP acceptance candidate for macOS on Apple silicon. The core workflow and several enhancement batches are implemented; the current verification record is linked above. Local development DMGs are ad-hoc signed. Developer ID signing, notarization, clean-install acceptance and native lifecycle checks are still release gates.
+*The production desktop interface with sample conversation data from isolated automated tests. [Design and verification](docs/tasks/d6-desktop-design.md).*
+
+<details>
+<summary>See the welcome screen and Bot profile editor</summary>
+
+![An empty conversation with a personal greeting and the selected Bot's avatar](docs/images/openbot-welcome.png)
+
+![Editing a Bot's name, instructions and generated or uploaded avatar](docs/images/openbot-profile.png)
+
+</details>
+
+**Status:** MVP acceptance candidate for macOS on Apple silicon. The core workflow and several enhancement batches are implemented; the desktop design verification is linked above, alongside separate [MVP release evidence](docs/acceptance/mvp-2026-10-19.md). Local development DMGs are ad-hoc signed. Developer ID signing, notarization, clean-install acceptance and native lifecycle checks are still release gates.
 
 [Get started](#get-started) · [What it does](#what-it-does) · [Model setup](#model-setup) · [Development](#development) · [Roadmap](docs/development-roadmap.md)
 
@@ -21,10 +32,10 @@ Give a Bot a task, let it work with your files and tools, and keep the result. O
 | **Work with files and the terminal** | Read, search, write and edit authorized local files; run commands; follow long-running work in the background. |
 | **Keep usable results** | Attach text, Markdown, CSV or images in private chats. Preview and export immutable result files, including after a restart. |
 | **Research the web** | Search with a configured Tavily key and fetch pages as readable text. |
-| **Build your own Bot roster** | Start with the protected Core assistant, then create named Specialists with their own instructions, model and memory. |
-| **Remember and reuse** | Inspect, edit and restore memory. Review reusable `SKILL.md` procedures and select them for later tasks. |
-| **Schedule repeatable work** | Review interval, daily or weekly routines, pin skill versions, test them and receive reports in chat. Pause, catch-up and inactivity protection are built in. |
-| **Coordinate in groups** | Let Core route group tasks, choose explicit recipients, and follow bounded delegation and handoffs. |
+| **Personalize every Bot** | Choose names, roles, instructions and generated or uploaded avatars. A small star identifies your permanent personal assistant; Specialists can use their own model and memory. |
+| **Remember and reuse** | Inspect where notes came from, correct or forget them, explicitly share useful context, and pin reviewed `SKILL.md` procedures to a Bot. |
+| **Schedule repeatable work** | Review interval, daily or weekly routines, pin skill versions, test them and receive reports in private chat or a confirmed group. Pause, catch-up and inactivity protection are built in. |
+| **Coordinate in groups** | Let your personal assistant route group tasks, choose explicit recipients, and follow bounded delegation and handoffs. |
 | **Connect tools** | Configure local stdio or HTTPS MCP servers, discover their tools, and approve calls under the same policy. |
 | **Stay in control** | Allow once, Always allow or Deny; configure Ask first rules and folder grants; stop a task or pause all work. |
 | **Pick up where you left off** | Search local conversations, keep drafts, inspect task/token usage, and recover interrupted work without blindly repeating uncertain actions. |
@@ -47,13 +58,36 @@ pnpm run build:pi
 pnpm run dev
 ```
 
+Run from the checkout you intend to use. When switching between checkouts or an installed build, fully quit the running OpenBot first: its single-instance behavior can otherwise reopen the existing app.
+
+After pulling updates, run `pnpm install --frozen-lockfile` to synchronize dependencies before starting. Run `pnpm run build:pi` if the vendored runtime changed.
+
 On first launch:
 
 1. Select a built-in model provider or add a custom endpoint, protocol and model ID.
 2. Save your API key and test the connection. You can also skip setup and return in Settings.
-3. Message **OpenBot**, your Core assistant. Create additional Bots with **New** when you want a specialist.
+3. Message **OpenBot**, your personal assistant marked with a star. Create additional Bots with **New** when you want a specialist.
 
 API keys saved in the app go to macOS Keychain. Model setup uses API credentials; a ChatGPT or Claude subscription is not an API key.
+
+### Make your assistant your own
+
+Open a Bot's **Details → Profile** to change its name, short description, instructions and avatar. **Generate options** creates original character choices locally; **Upload image** accepts PNG, JPEG or WebP and previews a centered crop. Changes take effect only when you save the profile. Renaming a Bot keeps its chosen avatar, conversation and memory.
+
+Your starred personal assistant can be customized like every other Bot and cannot be deleted. Use the **Memory** tab to inspect and edit remembered information, or expand **Model and skills** to choose how a Bot works.
+
+The chat canvas defaults to white, independently of macOS appearance. Choose **Settings → General → Appearance** for Light, Dark or System, with visual previews. Dark uses a charcoal canvas, raised surfaces and lavender actions; Light uses pale navigation, a white canvas, dark text and plum accents throughout. **Skills**, **Connect apps** and **Routines** live inside Settings; **Back to chat** returns to your conversation with its draft intact.
+
+While a Bot works, the composer shows a stop button. Type a follow-up to guide the current task, or use **Shift+Enter** for a new line. **Pause all** stops active work across Bots and retains queued messages. **Resume work** releases that queue; a settled interrupted private task also offers **Resume and continue**, which reopens work and asks the Bot to inspect saved results before continuing. Already completed actions are not undone.
+
+<details>
+<summary>See dark appearance and theme preferences</summary>
+
+![Charcoal chat canvas with lavender actions](docs/images/openbot-dark-chat.png)
+
+![Light, Dark and System appearance previews in Settings](docs/images/openbot-appearance.png)
+
+</details>
 
 ### Try a useful first task
 
@@ -78,9 +112,11 @@ Other tasks to try:
 
 ### Schedule a trusted workflow
 
-Open **Routines**, choose a Bot and describe the source files, steps and expected output. Review the schedule and pinned skill versions before confirming. **Test run** performs real work with the same permissions and ten-minute unattended approval expiry. Reports return to the Bot's chat; execution details and the latest 20 finished runs stay in the panel.
+Open **Routines**, choose a Bot and describe the source files, steps and expected output. Review the schedule and pinned skill versions before confirming. **Test run** performs real work with the same permissions and ten-minute unattended approval expiry. Choose the Bot's private chat or a group containing that Bot as the report destination; execution details and the latest 20 finished runs stay in the panel.
 
 OpenBot must be running and the Mac awake. After sleep or restart, at most one eligible missed run is caught up; overlapping work is skipped. Seven days without interaction pauses scheduling until you explicitly resume. Both the catch-up window and inactivity limit are configurable. [Routine contract and verification](docs/tasks/b11a-local-routines.md).
+
+For a competitor radar, create Domestic Hunter and International Hunter in one group, then use **Conversation details → New group routine**. Each researcher reports under its own name with a link to its run. Confirm the destination and members before saving; changing the group pauses these routines until you reconfirm. The [competitor radar workflow](docs/workflows/competitor-radar.md) includes primary sources, daily reporting windows and instructions for missing data. Ask the assistant in the group to compare the reports when needed.
 
 The [integrated workflow acceptance](docs/acceptance/workflow-2026-10-20.md) exercises CRM records, reports, exact approvals, reviewed skills and routine reuse, including restart, rate limits and uncertain writes. Its evidence separates automated checks, a real-model trial and the live-retrieval limitation.
 

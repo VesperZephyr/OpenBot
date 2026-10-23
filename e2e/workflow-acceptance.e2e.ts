@@ -47,7 +47,7 @@ const readAndReport = (): ScriptedTurn[] => [
 	{ tool: "local_exec", args: { command: "node crm-report.mjs", description: "Calculate receivables from current sources" } },
 	{ tool: "artifact_publish", args: { path: "receivables.md" } },
 ];
-const selectRoutine = async () => { await button("Routines").click(); await h.page().getByRole("button", { name: /Receivables review/ }).click(); };
+const selectRoutine = async () => { await h.page().getByRole("button", {name:/^Settings/}).click(); await button("Routines").click(); await h.page().getByRole("button", { name: /Receivables review/ }).click(); };
 const runRoutine = async () => {
 	const previous = (await detail()).history[0]?.occurrenceId;
 	await button("Test run").click(); await button("Run now").click(); interventions++;
@@ -122,7 +122,7 @@ it("joins CRM and captured research, denies a wrong update, confirms the correct
 }, 90000);
 it("pins the corrected skill, reads changed inputs and survives Host loss with one routine report and one new effect", async () => {
 	await writeFile(join(h.workspace, "invoices.csv"), changedInvoices);
-	await button("Routines").click(); await button("New routine").click();
+	await h.page().getByRole("button", {name:/^Settings/}).click(); await button("Routines").click(); await button("New routine").click();
 	await h.page().getByLabel("Routine name", { exact: true }).fill("Receivables review");
 	await h.page().getByLabel("Workflow", { exact: true }).fill("Read current CRM and invoices.csv, apply policy-capture.md, calculate and publish receivables.md. Propose exact versioned updates and report partial or unknown outcomes honestly.");
 	await h.page().getByLabel("Frequency", { exact: true }).selectOption("weekly");

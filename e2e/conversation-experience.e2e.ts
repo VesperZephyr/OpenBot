@@ -140,10 +140,10 @@ it("mentions are keyboard accessible, IME-safe and never silently redirect remov
 		expectedRevision: previous.revision,
 		fields: { name: previous.name, objective: previous.objective, memberIds: ["bot_analyst", core], leadBotId: "bot_analyst" },
 	});
-	await h.page().getByText("A selected Bot is no longer available. Remove it or choose Core before sending.").waitFor();
+	await h.page().getByText("A selected Bot is no longer available. Remove it or choose OpenBot before sending.").waitFor();
 	expect(await h.page().getByRole("button", { name: "Send", exact: true }).isDisabled()).toBe(true);
 	expect(h.model.requests.length).toBe(before);
-	await h.page().getByRole("button", { name: "Core · automatic", exact: true }).click();
+	await h.page().getByRole("button", { name: "OpenBot · automatic", exact: true }).click();
 	h.model.script({ text: "Core received the explicit new choice." });
 	await box().press("Enter");
 	await poll(async () => (await group()).posts.at(-1)?.text).toBe("Core received the explicit new choice.");
@@ -169,7 +169,7 @@ it("mentions are keyboard accessible, IME-safe and never silently redirect remov
 	await box().press("Enter");
 	await poll(async () => (await group()).posts.at(-1)?.text).toBe("Reviewer replied directly.");
 	expect((await group()).posts.at(-1).senderId).toBe("bot_reviewer");
-	expect(await h.page().getByRole("button", { name: "Core · automatic" }).getAttribute("aria-pressed")).toBe("true");
+	expect(await h.page().getByRole("button", { name: "OpenBot · automatic" }).getAttribute("aria-pressed")).toBe("true");
 });
 
 it("preserves reading position for private and group updates and renders bilingual small/dark layouts", async () => {

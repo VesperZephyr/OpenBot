@@ -1,3 +1,4 @@
+import { InterfaceIcon } from "./InterfaceIcon";
 import { useEffect, useState } from "react";
 import type { ArtifactContent, ArtifactRef } from "@openbot/protocol";
 import { api, report } from "./store";
@@ -42,7 +43,7 @@ export function ArtifactCard({ artifact, detach }: { artifact: ArtifactRef; deta
 		<div className="artifact-card" data-artifact-id={ref.artifactId}>
 			<div className="artifact-heading">
 				<span className="artifact-icon" aria-hidden>
-					↳
+					<InterfaceIcon name="file" />
 				</span>
 				<div>
 					<strong>{ref.name}</strong>

@@ -52,3 +52,7 @@ Research questions and proposed product decisions will be recorded in the report
 - Read-only inspection of installed Grok Bot 0.71.2 establishes client representations for selected fact promotion and template fields; archive paths and SHA-256 prefixes are recorded. No account data, live application calls or copied implementation code.
 - Compared merged OpenBot `b04aa77` profile, memory, skill, tool and lifecycle code; proposed object model, role journey, lifecycle matrix and design packets remain distinct from implemented contracts.
 - Local Markdown targets and `git diff --check` validated. No product code, dependencies or owner data changed; no full product suites or model-quality benchmarks run for this documentation increment.
+
+### Main integration check (2026-10-23)
+
+Merged `main` at `0ebfc54` into the review branch. Conflict resolution preserves the delivered B27a/B27b/I4/desktop work and the current roadmap; the research report explicitly retains its original dated baseline. Relative to main, this PR remains documentation-only. All 192 local Markdown targets in changed documents and `git diff --check` pass; `pnpm run check` also passes 512 unit/Host tests across 77 files. No additional provider or desktop trial was needed for these documentation resolutions.

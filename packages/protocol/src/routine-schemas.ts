@@ -6,6 +6,7 @@ const revision = Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER });
 const time = Type.String({ pattern: "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$" });
 const timezone = Type.String({ minLength: 1, maxLength: 80 });
 const fields = strict({
+	reportTo: Type.Optional(strict({ groupId: id, groupRevision: revision })),
 	name: Type.String({ minLength: 1, maxLength: 80 }),
 	instructions: Type.String({ minLength: 1, maxLength: 16384 }),
 	schedule: Type.Union([

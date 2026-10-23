@@ -1,7 +1,7 @@
 .artifact-card {
 	border: 1px solid var(--border);
-	border-radius: 14px;
-	padding: 12px 14px;
+	border-radius: 12px;
+	padding: 14px 15px;
 	margin: 10px 0;
 	background: var(--surface);
 	color: var(--text);
@@ -23,8 +23,15 @@
 	font-size: 13px;
 }
 .artifact-icon {
-	font-size: 22px;
-	color: var(--muted);
+	display:grid;
+	place-items:center;
+	width:38px;
+	height:44px;
+	flex-shrink:0;
+	border-radius:7px;
+	transform:rotate(-3deg);
+	background:var(--artifact-bg);
+	color:var(--artifact-ink);
 }
 .artifact-meta {
 	display: block;
@@ -36,7 +43,7 @@
 	display: flex;
 	flex-wrap: wrap;
 	gap: 8px;
-	margin-top: 10px;
+	margin: 8px 0 0 48px;
 }
 .artifact-actions button,
 .artifact-confirm button,

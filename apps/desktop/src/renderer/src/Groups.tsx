@@ -1,3 +1,5 @@
+import { InterfaceIcon } from "./InterfaceIcon";
+import { Avatar } from "./Avatar";
 import { BackgroundTask } from "./BackgroundTask";
 import { ArtifactCard } from "./ArtifactCard";
 import { ChatComposer } from "./ChatComposer";
@@ -8,6 +10,7 @@ import type { Group } from "@openbot/protocol";
 import { refreshGroupSnapshot, api, refreshGroups, report, useStore } from "./store";
 import { t } from "./i18n";
 import { Markdown } from "./markdown";
+import { routineScheduleLabel } from "./Routines";
 import { ApprovalCard } from "./ApprovalCard";
 import "./groups.css";
 
@@ -44,7 +47,7 @@ function GroupRow({ group: g }: { group: Group }) {
 			onClick={() => useStore.setState({ view: { kind: "group", groupId: g.groupId }, searchTarget: undefined })}
 		>
 			<span className="avatar group-avatar" aria-hidden>
-				◈
+				<InterfaceIcon name="group" />
 			</span>
 			<RosterPreview
 				conversationKey={`group:${g.groupId}`}
@@ -180,6 +183,7 @@ export function GroupView({ groupId }: { groupId: string }) {
 	const [dissolving, setDissolving] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [details, setDetails] = useState(false);
+	const routines = useStore((s) => s.routines?.routines);
 	useEffect(() => {
 		void refreshGroupSnapshot().catch(report);
 	}, [groupId]);
@@ -199,6 +203,13 @@ export function GroupView({ groupId }: { groupId: string }) {
 				details && (
 					<DetailsPanel title={t("Conversation details")} onClose={() => setDetails(false)}>
 						<p>{group.objective}</p>
+						<section aria-label={t("Group routines")}>
+							<h3>{t("Routines")}</h3>
+							{routines?.filter((r) => r.reportTo?.groupId === groupId).map((r) => <button className="group-routine" key={r.routineId} onClick={() => useStore.setState({ view: { kind: "routines", routineId: r.routineId } })}>
+								<strong>{r.name}</strong><span>{name(r.botId)} · {t(r.enabled ? "Scheduled" : "Paused")}</span><small>{routineScheduleLabel(r.schedule)}</small>
+							</button>)}
+							{active && <button onClick={() => useStore.setState({ view: { kind: "routines", groupId } })}>{t("New group routine")}</button>}
+						</section>
 						<h3>{t("Members")}</h3>
 						<ul>
 							{group.memberIds.map((id) => (
@@ -262,7 +273,7 @@ export function GroupView({ groupId }: { groupId: string }) {
 							key={post.postId}
 						>
 							<div className="group-post-meta">
-								<strong>{post.senderId === "user" ? t("You") : name(post.senderId)}</strong>
+								{bots.find(bot => bot.botId === post.senderId) && <Avatar bot={bots.find(bot => bot.botId === post.senderId)!} size={26} />}<strong>{post.senderId === "user" ? t("You") : name(post.senderId)}</strong>
 								{post.recipientIds.length > 0 && <span> → {post.recipientIds.map(name).join(", ")}</span>}
 							</div>
 							{post.kind && (
@@ -277,6 +288,10 @@ export function GroupView({ groupId }: { groupId: string }) {
 								</small>
 							)}
 							<Markdown text={post.text} />
+							{post.routine && <div className="routine-report-label">
+								<span>{t(post.routine.test ? "Test" : "Routine report")} · {post.routine.name} · {t(post.routine.state === "needs_attention" ? "Needs attention" : post.routine.state[0]!.toUpperCase() + post.routine.state.slice(1))}</span>
+								<button onClick={() => useStore.setState({ view: { kind: "routines", routineId: post.routine!.routineId, occurrenceId: post.routine!.occurrenceId } })}>{t("View routine")}</button>
+							</div>}
 							{post.attachments?.map((artifact) => (
 								<ArtifactCard key={artifact.artifactId} artifact={artifact} />
 							))}
