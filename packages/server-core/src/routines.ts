@@ -184,6 +184,9 @@ export class Routines {
 			const botId = input.action === "create" ? input.botId : current?.botId;
 			if (!botId || (!["pause", "delete"].includes(input.action) && (await this.options.runtime.getBot(botId))?.status !== "active"))
 				fail("Choose an active Bot");
+			const reportTo = input.action === "create" || input.action === "update" ? input.fields.reportTo : current?.reportTo;
+			if (input.action === "resume" && current?.destinationBlocked) fail("Report destination changed. Edit the routine to confirm its group again.");
+			const destination = reportTo && !["pause", "delete"].includes(input.action) ? { botId, reportTo } : undefined;
 			const now = this.options.now(),
 				id = current?.routineId ?? `routine_${randomUUID()}`;
 			const result = await this.options.changeAuthority(() =>
@@ -223,6 +226,7 @@ export class Routines {
 							...(input.action === "update"
 								? {
 										...input.fields,
+										destinationBlocked: false,
 										...(canonical(input.fields.schedule) !== canonical(previous.schedule)
 											? { anchor: now, nextAt: scheduleAt(input.fields.schedule, now, now, "next") }
 											: {}),
@@ -231,6 +235,7 @@ export class Routines {
 									? { enabled: true, nextAt: scheduleAt(previous.schedule, previous.anchor, now, "next") }
 									: { enabled: false, deleted: input.action === "delete" }),
 						};
+						if (input.action === "update" && !input.fields.reportTo) { const { reportTo: _reportTo, ...privateRoutine } = r; r = privateRoutine; }
 						for (const o of Object.values(s.occurrences))
 							if (o.routineId === id && pending(o))
 								s.occurrences[o.occurrenceId] = { ...o, stopped: true, reason: "Routine changed or stopped" };
@@ -239,7 +244,7 @@ export class Routines {
 					s.receipts[input.requestId] = { fingerprint, result: r };
 					s.lastActiveAt = now;
 					return r;
-				}),
+				}, destination),
 			);
 			await this.#reconcile();
 			this.options.changed();
@@ -260,6 +265,7 @@ export class Routines {
 			test: !!testId,
 			instructions: r.instructions,
 			skills: r.skills,
+			...(r.reportTo ? { reportTo: r.reportTo } : {}),
 			state: "pending",
 		};
 	}
@@ -272,6 +278,7 @@ export class Routines {
 			if (!this.options.canRun()) fail("Resume work before testing a routine");
 			const r = s.routines[routineId];
 			if (!r || r.deleted || r.revision !== expectedRevision) fail("Routine changed; refresh before testing");
+			if (r.destinationBlocked) fail("Report destination changed. Edit the routine to confirm its group again.");
 			if ((await this.options.runtime.getBot(r.botId))?.status !== "active") fail("Choose an active Bot");
 			if (Object.values(s.occurrences).some((o) => o.routineId === routineId && pending(o))) fail("A routine run is already pending");
 			const o = this.#occurrence(r, this.options.now(), requestId);
@@ -279,7 +286,7 @@ export class Routines {
 				s.occurrences[o.occurrenceId] = o;
 				s.receipts[requestId] = { fingerprint, result: o };
 				s.lastActiveAt = this.options.now();
-			});
+			}, r.reportTo ? { botId: r.botId, reportTo: r.reportTo } : undefined);
 			await this.#reconcile();
 			this.options.changed();
 			return o;
@@ -388,7 +395,13 @@ export class Routines {
 	}
 	async #save(o: RoutineOccurrence): Promise<void> {
 		await this.#store.change((s) => {
-			s.occurrences[o.occurrenceId] = JSON.parse(JSON.stringify(o));
+			const previous = s.occurrences[o.occurrenceId];
+			s.occurrences[o.occurrenceId] = JSON.parse(JSON.stringify({
+				...o,
+				...(previous?.stopped ? { stopped: true, reason: previous.reason } : {}),
+				...(previous?.destinationBlocked ? { destinationBlocked: true } : {}),
+				...(previous?.published ? { published: true } : {}),
+			}));
 			retain(s, o.routineId);
 		});
 		this.options.changed();
@@ -476,8 +489,14 @@ export class Routines {
 				}
 			}
 			if (!pending(o) && !o.published) {
-				if (bot && bot.status !== "deleted") await this.options.runtime.publishRoutineReport(o.botId, o);
-				await this.#save({ ...o, published: true });
+				if (o.reportTo) {
+					await this.options.runtime.groups().publishRoutine(o.occurrenceId);
+					await this.#store.change((s) => retain(s, o.routineId));
+					this.options.changed();
+				} else {
+					if (bot && bot.status !== "deleted") await this.options.runtime.publishRoutineReport(o.botId, o);
+					await this.#save({ ...o, published: true });
+				}
 			}
 		}
 	}

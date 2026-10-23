@@ -179,6 +179,7 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Spec | Status |
 | --- | --- |
 | [B11a: Local scheduled routines](b11a-local-routines.md) | done (#41); 477 unit/Host and 127 hidden desktop tests |
+| [B11b: Scheduled group reports](b11b-group-routine-reports.md) | in review (#53); 512 unit/Host and 157 hidden desktop tests; bounded live-source acceptance |
 
 ## Per-role methods
 
@@ -202,16 +203,16 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Spec | Status |
 | --- | --- |
-| [I4: Real-model role and memory acceptance](i4-role-memory-acceptance.md) | in verification; bounded real-model smoke and deterministic role/group integration; explicit spending limits |
+| [I4: Real-model role and memory acceptance](i4-role-memory-acceptance.md) | done (#48); bounded real-model smoke and deterministic role/group integration; explicit spending limits |
 
 ## Chat interaction refinement
 
 | Spec | Status |
 | --- | --- |
-| [D7: White canvas and focused interactions](d7-chat-interaction.md) | in review; 506 unit and 153 desktop tests pass |
+| [D7: White canvas and focused interactions](d7-chat-interaction.md) | done (#51); 506 unit and 153 desktop tests pass |
 
 ## Regression efficiency
 
 | Task | Status |
 | --- | --- |
-| [I5: E2E coverage and execution efficiency](i5-e2e-efficiency.md) | in review; two full parallel regressions pass |
+| [I5: E2E coverage and execution efficiency](i5-e2e-efficiency.md) | in review (#54); two full parallel regressions pass |

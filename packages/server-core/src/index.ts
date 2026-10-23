@@ -200,7 +200,7 @@ export class HostService {
 			authority: this.management,
 			runs: this.#runs,
 			approvals: this.#approvals,
-			changed: () => this.#emit({ type: "groups.changed", payload: {} }),
+			changed: () => { this.#emit({ type: "groups.changed", payload: {} }); this.#observation.changed(8); },
 			settled: this.#toolSettled,
 			stopping: (botId, channelId, runId) => this.#conversationStopped(botId, channelId, runId),
 		});
@@ -234,7 +234,7 @@ export class HostService {
 		this.connectors=new Connectors({runtime:this.#runtime,targetId:this.#status.targetId,...(options.connectors?{port:options.connectors}:{}),secrets:this.#secrets,approvals:this.#approvals,assertAllowed:()=>this.lifecycle.assertAllowed(),change:fn=>this.authority.change(fn),publish:(defs,available)=>this.#runtime.refreshConnectorTools(defs,available),changed:()=>this.#observation.changed(8)});
   this.skills=new Skills({runtime:this.#runtime,...(options.skills?{port:options.skills}:{}),targetId:this.#status.targetId,assertAllowed:()=>this.lifecycle.assertAllowed(),changed:()=>this.#observation.changed(8)});
  const skillChange=(requestId:string,change:import("@openbot/protocol").SkillChange)=>this.authority.change(async()=>this.skills.change(`desktop:${requestId}`,change,(await this.#runtime.policy().snapshot()).settings.revision));
- this.routines=new Routines({runtime:this.#runtime,runs:this.#runs,approvals:this.#approvals,targetId:this.#status.targetId,canRun:()=>!this.lifecycle.state.blocked,now:this.#now,changed:()=>this.#observation.changed(9),resolveSkills:refs=>this.skills.attachments(refs),changeAuthority:fn=>this.authority.change(fn),settled:this.#toolSettled});
+ this.routines=new Routines({runtime:this.#runtime,runs:this.#runs,approvals:this.#approvals,targetId:this.#status.targetId,canRun:()=>!this.lifecycle.state.blocked,now:this.#now,changed:()=>this.#observation.changed(11),resolveSkills:refs=>this.skills.attachments(refs),changeAuthority:fn=>this.authority.change(fn),settled:this.#toolSettled});
  this.#handlers = {
    "routines.list":()=>this.routines.list(),
    "routines.get":({routineId,occurrenceId})=>this.routines.detail(routineId,occurrenceId),

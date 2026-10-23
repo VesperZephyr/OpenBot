@@ -34,7 +34,7 @@ OpenBot is currently built for **one person on one Mac**. Give your Bots names, 
 | **Research the web** | Search with a configured Tavily key and fetch pages as readable text. |
 | **Personalize every Bot** | Choose names, roles, instructions and generated or uploaded avatars. A small star identifies your permanent personal assistant; Specialists can use their own model and memory. |
 | **Remember and reuse** | Inspect where notes came from, correct or forget them, explicitly share useful context, and pin reviewed `SKILL.md` procedures to a Bot. |
-| **Schedule repeatable work** | Review interval, daily or weekly routines, pin skill versions, test them and receive reports in chat. Pause, catch-up and inactivity protection are built in. |
+| **Schedule repeatable work** | Review interval, daily or weekly routines, pin skill versions, test them and receive reports in private chat or a confirmed group. Pause, catch-up and inactivity protection are built in. |
 | **Coordinate in groups** | Let your personal assistant route group tasks, choose explicit recipients, and follow bounded delegation and handoffs. |
 | **Connect tools** | Configure local stdio or HTTPS MCP servers, discover their tools, and approve calls under the same policy. |
 | **Stay in control** | Allow once, Always allow or Deny; configure Ask first rules and folder grants; stop a task or pause all work. |
@@ -112,9 +112,11 @@ Other tasks to try:
 
 ### Schedule a trusted workflow
 
-Open **Routines**, choose a Bot and describe the source files, steps and expected output. Review the schedule and pinned skill versions before confirming. **Test run** performs real work with the same permissions and ten-minute unattended approval expiry. Reports return to the Bot's chat; execution details and the latest 20 finished runs stay in the panel.
+Open **Routines**, choose a Bot and describe the source files, steps and expected output. Review the schedule and pinned skill versions before confirming. **Test run** performs real work with the same permissions and ten-minute unattended approval expiry. Choose the Bot's private chat or a group containing that Bot as the report destination; execution details and the latest 20 finished runs stay in the panel.
 
 OpenBot must be running and the Mac awake. After sleep or restart, at most one eligible missed run is caught up; overlapping work is skipped. Seven days without interaction pauses scheduling until you explicitly resume. Both the catch-up window and inactivity limit are configurable. [Routine contract and verification](docs/tasks/b11a-local-routines.md).
+
+For a competitor radar, create Domestic Hunter and International Hunter in one group, then use **Conversation details → New group routine**. Each researcher reports under its own name with a link to its run. Confirm the destination and members before saving; changing the group pauses these routines until you reconfirm. The [competitor radar workflow](docs/workflows/competitor-radar.md) includes primary sources, daily reporting windows and instructions for missing data. Ask the assistant in the group to compare the reports when needed.
 
 The [integrated workflow acceptance](docs/acceptance/workflow-2026-10-20.md) exercises CRM records, reports, exact approvals, reviewed skills and routine reuse, including restart, rate limits and uncertain writes. Its evidence separates automated checks, a real-model trial and the live-retrieval limitation.
 

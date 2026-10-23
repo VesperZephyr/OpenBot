@@ -1,6 +1,16 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
+	"Send reports to": "报告发送到",
+	"Bot's private chat": "Bot 私聊",
+	"Unavailable group": "群聊不可用",
+	"Group routines": "群内定时任务",
+	"New group routine": "新建群内定时任务",
+	"Open group": "打开群聊",
+	"Report not delivered": "报告未投递",
+	"Report destination changed. Edit the routine to confirm its group again.": "报告目标群已变更。请编辑定时任务，重新确认群聊。",
+	"The report and its files will be visible to every group member. Reports do not wake other Bots.": "报告及文件对所有群成员可见。报告本身不会唤醒其他 Bot。",
+	"Choose a Bot, describe the work, then choose when and where its reports arrive.": "选择 Bot，描述工作，再选择报告的时间和目标会话。",
  "Appearance": "外观",
  "Light": "浅色",
  "Dark": "深色",
