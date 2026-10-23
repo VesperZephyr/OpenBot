@@ -1,6 +1,6 @@
 # I4: Real-Model Role and Memory Acceptance
 
-Status: implemented; final verification in progress
+Status: merged in PR #48; bounded verification and deferred checks are recorded below
 Branch: task/i4-role-memory-acceptance; pull request target: main
 Depends on: B27a (#46), B27b (#47), B13c and B6a, merged at 0d34b31
 

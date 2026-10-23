@@ -1,6 +1,6 @@
 # D7: White chat canvas and focused interactions
 
-Status: in review. Owner-authorized refinement of D6, developed in the original checkout on `task/d7-chat-interaction` without a worktree.
+Status: merged in PR #51. Owner-authorized refinement of D6, developed in the original checkout on `task/d7-chat-interaction` without a worktree.
 
 ## Contract
 

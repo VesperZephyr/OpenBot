@@ -24,7 +24,7 @@ export type View =
 	| { readonly kind: "settings" }
  | { readonly kind:"skills" }
  | {readonly kind:"connectors"}
- | {readonly kind:"routines"; readonly routineId?:string; readonly occurrenceId?:string}
+ | {readonly kind:"routines"; readonly groupId?:string; readonly routineId?:string; readonly occurrenceId?:string}
 	| { readonly kind: "home" };
 
 export type SearchTarget = { conversationKey: ConversationKey; messageId: string; nonce: string };

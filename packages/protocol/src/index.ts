@@ -133,6 +133,7 @@ export type CollaborationSnapshot = {
 	readonly tasks: readonly (GroupDelivery & { readonly conversation?: ConversationSnapshot })[];
 };
 export type GroupPost = {
+	readonly routine?: import("./routines.ts").RoutineReport;
 	readonly attachments?: readonly ArtifactRef[];
 	readonly rootId?: string;
 	readonly kind?: "delegation" | "handoff" | "result";

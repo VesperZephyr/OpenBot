@@ -330,3 +330,97 @@ it("preserves an interval anchor on workflow edits and resets it only when the s
 	expect(rescheduled.anchor).toBe(now);
 	expect(rescheduled.nextAt).toBe(now + 600000);
 });
+
+async function radar() {
+	await runtime.createBot({ botId: "peer", name: "International Hunter", model: SCRIPTED_MODEL, createdAt: now });
+	return runtime.groups().change({ action: "create", requestId: "radar", groupId: "group_radar", expectedRevision: 0,
+		fields: { name: "Competitor radar", objective: "Verify Agent changelogs", memberIds: ["bot", "peer"], leadBotId: "bot" } }, now);
+}
+const reportTo = { groupId: "group_radar", groupRevision: 1 };
+it("requires an exact active group and member for destination confirmation", async () => {
+	await expect(create("unknown", { reportTo })).rejects.toThrow("Report destination changed");
+	await radar();
+	await expect(create("stale-destination", { reportTo: { ...reportTo, groupRevision: 2 } })).rejects.toThrow("Report destination changed");
+	await runtime.createBot({ botId: "outsider", name: "Outsider", model: SCRIPTED_MODEL, createdAt: now });
+	await expect(service.change({ action: "create", botId: "outsider", requestId: "outsider", fields: { ...fields, reportTo } })).rejects.toThrow("Report destination changed");
+	const r = await create("valid", { reportTo });
+	expect(r.reportTo).toEqual(reportTo);
+});
+it("atomically publishes attributed scheduled reports once without waking peers or writing private chats", async () => {
+	await radar();
+	const r = await create("group-report", { reportTo });
+	now = r.nextAt;
+	await service.sweep();
+	const o = (await history(r.routineId)).find((o) => o.state === "pending")!;
+	await finish();
+	await runtime.groups().publishRoutine(o.occurrenceId);
+	const posts = await runtime.groups().posts(reportTo.groupId);
+	expect(posts).toHaveLength(1);
+	expect(posts[0]).toMatchObject({ senderId: "bot", recipientIds: [], routine: { occurrenceId: o.occurrenceId, test: false, state: "completed" } });
+	expect(await runtime.groups().deliveries()).toHaveLength(0);
+	expect(await runtime.groups().roots()).toHaveLength(0);
+	expect((await runtime.snapshot("bot")).items.filter((i) => i.kind === "assistant" && i.routine)).toHaveLength(0);
+	await service.close(); await runtime.close(); await open(); createService();
+	await service.sweep();
+	await runtime.groups().publishRoutine(o.occurrenceId);
+	expect(await runtime.groups().posts(reportTo.groupId)).toEqual(posts);
+	expect((await history(r.routineId))[0]?.published).toBe(true);
+});
+it("group edits withdraw pending authority atomically and re-adding a member cannot revive it", async () => {
+	await radar();
+	const r = await create("revocable", { reportTo });
+	const o = await service.test(r.routineId, 1, "pending-group");
+	const run = (await runtime.runsStore().list())[0]!;
+	expect(await service.admissible(run)).toBe(true);
+	await runtime.createBot({ botId: "replacement", name: "Replacement", model: SCRIPTED_MODEL, createdAt: now });
+	await runtime.groups().change({ action: "update", requestId: "remove", groupId: reportTo.groupId, expectedRevision: 1,
+		fields: { name: "Radar", objective: "Changed team", memberIds: ["peer", "replacement"], leadBotId: "peer" } }, now);
+	expect(await service.admissible(run)).toBe(false);
+	expect((await service.detail(r.routineId)).routine).toMatchObject({ enabled: false, destinationBlocked: true, revision: 2 });
+	await runtime.groups().change({ action: "update", requestId: "readd", groupId: reportTo.groupId, expectedRevision: 2,
+		fields: { name: "Radar", objective: "Restored team", memberIds: ["bot", "peer"], leadBotId: "bot" } }, now);
+	await service.sweep();
+	expect(await runtime.groups().posts(reportTo.groupId)).toHaveLength(0);
+	expect((await history(r.routineId)).find((x) => x.occurrenceId === o.occurrenceId)).toMatchObject({ state: "cancelled", destinationBlocked: true, published: true });
+	await expect(service.change({ action: "resume", routineId: r.routineId, requestId: "unsafe-resume", expectedRevision: 2 })).rejects.toThrow("Report destination changed");
+	await service.change({ action: "update", routineId: r.routineId, requestId: "reconfirm", expectedRevision: 2,
+		fields: { ...fields, reportTo: { ...reportTo, groupRevision: 3 } } });
+	await service.test(r.routineId, 3, "confirmed-group");
+	await finish();
+	expect(await runtime.groups().posts(reportTo.groupId)).toHaveLength(1);
+});
+it("destination changes never redirect an old occurrence and omission restores private delivery", async () => {
+	await radar();
+	const r = await create("redirect", { reportTo });
+	await service.test(r.routineId, 1, "old");
+	const privateRoutine = await service.change({ action: "update", routineId: r.routineId, requestId: "make-private", expectedRevision: 1, fields });
+	expect(privateRoutine.reportTo).toBeUndefined();
+	expect(await runtime.groups().posts(reportTo.groupId)).toHaveLength(0);
+	expect((await history(r.routineId))[0]?.destinationBlocked).toBe(true);
+	await service.test(r.routineId, 2, "private");
+	await finish();
+	expect((await runtime.snapshot("bot")).items.filter((i) => i.kind === "assistant" && i.routine)).toHaveLength(1);
+	expect(await runtime.groups().posts(reportTo.groupId)).toHaveLength(0);
+});
+it("a settled report cannot cross a concurrent group edit; earlier published reports remain", async () => {
+	await radar();
+	const r = await create("atomic", { reportTo });
+	await service.test(r.routineId, 1, "first");
+	await finish();
+	const o = await service.test(r.routineId, 1, "late");
+	await runtime.routines().change((s) => { s.occurrences[o.occurrenceId] = { ...s.occurrences[o.occurrenceId]!, state: "completed", report: "MUST_NOT_SHARE" }; });
+	await runtime.groups().change({ action: "dissolve", requestId: "dissolve", groupId: reportTo.groupId, expectedRevision: 1 }, now);
+	await runtime.groups().publishRoutine(o.occurrenceId);
+	expect(await runtime.groups().posts(reportTo.groupId)).toHaveLength(1);
+	expect(JSON.stringify(await runtime.groups().posts(reportTo.groupId))).not.toContain("MUST_NOT_SHARE");
+	expect((await history(r.routineId)).find((x) => x.occurrenceId === o.occurrenceId)?.destinationBlocked).toBe(true);
+});
+it("retains twenty finished group occurrences without losing published history", async () => {
+	await radar();
+	const r = await create("retention-group", { reportTo });
+	for (let i = 0; i < 22; i++) { now += 1000; await service.test(r.routineId, 1, `history-${i}`); await finish(); }
+	expect(await history(r.routineId)).toHaveLength(20);
+	expect(await runtime.groups().posts(reportTo.groupId)).toHaveLength(22);
+	await service.sweep();
+	expect(await runtime.groups().posts(reportTo.groupId)).toHaveLength(22);
+});
