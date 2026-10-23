@@ -1,6 +1,6 @@
 # D8: Unified chat and continuous activity feedback
 
-Status: implemented and verified; awaiting review. Owner requested on 2026-10-23. Branch: `task/d8-chat-experience`, stacked on B11c until its prerequisites merge.
+Status: in review in [PR #56](https://github.com/VesperZephyr/OpenBot/pull/56); implemented and verified. Owner requested on 2026-10-23. Branch: `task/d8-chat-experience`, stacked on B11c until its prerequisites merge.
 
 ## Problem and outcome
 

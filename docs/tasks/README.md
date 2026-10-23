@@ -212,4 +212,4 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | --- | --- |
 | [D7: White canvas and focused interactions](d7-chat-interaction.md) | done (#51); 506 unit and 153 desktop tests pass |
 
-| [D8: Unified chat and continuous activity feedback](d8-chat-experience.md) | implemented and verified, awaiting review; stacked on B11c; 520 unit/Host and 167 hidden desktop tests |
+| [D8: Unified chat and continuous activity feedback](d8-chat-experience.md) | in review (#56); stacked on B11c; 520 unit/Host and 167 hidden desktop tests |
