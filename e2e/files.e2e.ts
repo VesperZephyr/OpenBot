@@ -334,6 +334,9 @@ it("keeps Markdown, PDF and multiple native pages in independent tabs", async ()
 	await dialog().getByRole("textbox", { name: "Page address" }).fill(`${site}/page`);
 	await dialog().getByRole("button", { name: "Open page", exact: true }).click();
 	await tabs.getByRole("tab", { name: "Source details", exact: true }).waitFor();
+	const zoomIn = await active().getByRole("button", { name: "Zoom in", exact: true }).boundingBox();
+	const zoomReset = await active().getByRole("button", { name: "Reset zoom", exact: true }).boundingBox();
+	expect(zoomIn!.x - zoomReset!.x - zoomReset!.width).toBeLessThan(8);
 	const web = h
 		.app()
 		.context()

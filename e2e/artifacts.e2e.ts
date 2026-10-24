@@ -24,7 +24,9 @@ beforeAll(async () => {
 		},
 	});
 	h.page().setDefaultTimeout(10000);
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	await api("settings.update", {
+		defaultModel: { provider: "scripted", modelId: "scripted" },
+	});
 	core = (await api("bots.list"))[0].botId;
 });
 afterEach(async ({ task }) => {
@@ -36,7 +38,10 @@ afterAll(async () => {
 it("imports selected text/images, retains them after source deletion and sends actual multimodal content", async () => {
 	await h.app().evaluate(
 		({ dialog }, paths) => {
-			dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: paths })) as any;
+			dialog.showOpenDialog = (async () => ({
+				canceled: false,
+				filePaths: paths,
+			})) as any;
 		},
 		[join(h.run, "notes.md"), join(h.run, "pixel.png")],
 	);
@@ -79,7 +84,13 @@ it("imports selected text/images, retains them after source deletion and sends a
 });
 it("rejects renderer paths and expires a native selection when its renderer navigates", async () => {
 	await expect(
-		h.page().evaluate(() => (window as any).openbot.exportArtifact({ artifactId: "bad", requestId: "r", path: "/tmp/forged" })),
+		h.page().evaluate(() =>
+			(window as any).openbot.exportArtifact({
+				artifactId: "bad",
+				requestId: "r",
+				path: "/tmp/forged",
+			}),
+		),
 	).rejects.toThrow("Invalid export request");
 	await writeFile(join(h.run, "expired.txt"), "EXPIRED_PICKER_CANARY");
 	await h.app().evaluate(({ dialog }) => {
@@ -93,7 +104,10 @@ it("rejects renderer paths and expires a native selection when its renderer navi
 	await h.page().reload();
 	await h.app().evaluate(
 		(_electron, path) => {
-			(globalThis as any).__pickerResolve({ canceled: false, filePaths: [path] });
+			(globalThis as any).__pickerResolve({
+				canceled: false,
+				filePaths: [path],
+			});
 		},
 		join(h.run, "expired.txt"),
 	);
@@ -106,7 +120,10 @@ it("publishes immutable HTML in an isolated reader, exports without overwrite an
 	const html = "<html><script>window.__artifactCanary=true</script><body>RESULT_CANARY</body></html>";
 	h.model.script(
 		{ tool: "local_write", args: { path: "report.html", content: html } },
-		{ tool: "artifact_publish", args: { path: "report.html", name: "Summary.html" } },
+		{
+			tool: "artifact_publish",
+			args: { path: "report.html", name: "Summary.html" },
+		},
 		{ text: "The result file is ready." },
 	);
 	await box().fill("Create and publish the synthetic result.");
@@ -138,12 +155,20 @@ it("publishes immutable HTML in an isolated reader, exports without overwrite an
 	await h.page().getByRole("button", { name: "Close preview", exact: true }).click();
 	const destination = join(h.run, "exported.html");
 	await h.app().evaluate(({ dialog }, path) => {
-		dialog.showSaveDialog = (async () => ({ canceled: false, filePath: path })) as any;
+		dialog.showSaveDialog = (async () => ({
+			canceled: false,
+			filePath: path,
+		})) as any;
 	}, destination);
 	await card(id).getByRole("button", { name: "Export copy", exact: true }).click();
 	await poll(async () => readFile(destination, "utf8").catch(() => "")).toBe(html);
 	await card(id).getByRole("button", { name: "Export copy", exact: true }).click();
-	await h.page().getByText("Export destination already exists. Choose a new filename.", { exact: true }).waitFor();
+	await h
+		.page()
+		.getByText("Export destination already exists. Choose a new filename.", {
+			exact: true,
+		})
+		.waitFor();
 	await h.shot("02-safe-result-en");
 	await card(id).getByRole("button", { name: "Remove local copy", exact: true }).click();
 	await card(id).getByRole("alertdialog").getByRole("button", { name: "Remove local copy", exact: true }).click();
@@ -158,7 +183,12 @@ it("retries a lost acknowledgement with immutable attachments and preserves a ne
 	const requestId = "attachment-lost-ack",
 		text = "Check the same saved attachment.";
 	h.model.script({ text: "Attachment retry receipt." });
-	await api("messages.submit", { botId: core, requestId, text, artifactIds: [textId] });
+	await api("messages.submit", {
+		botId: core,
+		requestId,
+		text,
+		artifactIds: [textId],
+	});
 	await h.page().getByText("Attachment retry receipt.", { exact: true }).waitFor();
 	await idle();
 	const ref = await api("artifacts.get", { artifactId: textId }),
@@ -166,7 +196,13 @@ it("retries a lost acknowledgement with immutable attachments and preserves a ne
 	await h.page().evaluate(
 		({ core, requestId, text, ref }) => {
 			const key = `bot:${core}`,
-				draft = { version: 1, text: "Newer unsent draft", recipientIds: [], revision: 2, updatedAt: Date.now() };
+				draft = {
+					version: 1,
+					text: "Newer unsent draft",
+					recipientIds: [],
+					revision: 2,
+					updatedAt: Date.now(),
+				};
 			localStorage.setItem(
 				"openbot.composers.v1",
 				JSON.stringify({
@@ -174,7 +210,15 @@ it("retries a lost acknowledgement with immutable attachments and preserves a ne
 					records: {
 						[key]: {
 							draft,
-							attempt: { requestId, conversationKey: key, text, recipientIds: [], attachments: [ref], draftRevision: 1, state: "pending" },
+							attempt: {
+								requestId,
+								conversationKey: key,
+								text,
+								recipientIds: [],
+								attachments: [ref],
+								draftRevision: 1,
+								state: "pending",
+							},
 						},
 					},
 				}),
@@ -188,11 +232,24 @@ it("retries a lost acknowledgement with immutable attachments and preserves a ne
 	expect(await box().inputValue()).toBe("Newer unsent draft");
 	expect(h.model.requests.length).toBe(calls);
 	expect((await snapshot()).items.filter((i: any) => i.kind === "user" && i.parts.some((p: any) => p.text === text))).toHaveLength(1);
-	await expect(api("messages.submit", { botId: core, requestId, text, artifactIds: [imageId] })).rejects.toThrow("another message");
+	await expect(
+		api("messages.submit", {
+			botId: core,
+			requestId,
+			text,
+			artifactIds: [imageId],
+		}),
+	).rejects.toThrow("another message");
 });
 it("opens AI Markdown and PDF result filenames directly in a focused reader", async () => {
 	h.model.script(
-		{ tool: "local_write", args: { path: "Daily brief.md", content: "# Daily radar brief\n\n**Verified evidence** in the conversation." } },
+		{
+			tool: "local_write",
+			args: {
+				path: "Daily brief.md",
+				content: "# Daily radar brief\n\n**Verified evidence** in the conversation.",
+			},
+		},
 		{ tool: "artifact_publish", args: { path: "Daily brief.md" } },
 		{ text: "Your readable report is ready." },
 	);
@@ -221,22 +278,40 @@ it("opens AI Markdown and PDF result filenames directly in a focused reader", as
 	await h.page().getByRole("button", { name: "Close preview", exact: true }).click();
 });
 it("publishes group task results without attaching an earlier delivery's files", async () => {
-	const member = (await api("bots.create", { requestId: "file-member", name: "File helper" })).botId,
+	const member = (
+			await api("bots.create", {
+				requestId: "file-member",
+				name: "File helper",
+			})
+		).botId,
 		groupId = "group_files";
 	await api("groups.change", {
 		requestId: "file-group",
 		action: "create",
 		groupId,
 		expectedRevision: 0,
-		fields: { name: "File team", objective: "Synthetic result sharing", memberIds: [core, member], leadBotId: member },
+		fields: {
+			name: "File team",
+			objective: "Synthetic result sharing",
+			memberIds: [core, member],
+			leadBotId: member,
+		},
 	});
 	await h.page().locator(".group-nav").filter({ hasText: "File team" }).click();
 	h.model.script(
-		{ tool: "local_write", args: { path: "group-result.txt", content: "GROUP_RESULT" } },
+		{
+			tool: "local_write",
+			args: { path: "group-result.txt", content: "GROUP_RESULT" },
+		},
 		{ tool: "artifact_publish", args: { path: "group-result.txt" } },
 		{ text: "Published the group result." },
 	);
-	await api("groups.send", { groupId, requestId: "group-file", text: "Publish the result", recipientIds: [member] });
+	await api("groups.send", {
+		groupId,
+		requestId: "group-file",
+		text: "Publish the result",
+		recipientIds: [member],
+	});
 	await poll(
 		async () =>
 			(await api("groups.snapshot", { groupId })).posts.find((p: any) => p.text === "Published the group result.")?.attachments?.length,
@@ -248,7 +323,12 @@ it("publishes group task results without attaching an earlier delivery's files",
 	expect(await h.page().locator(".reader-source").textContent()).toBe("GROUP_RESULT");
 	await h.page().getByRole("button", { name: "Close preview", exact: true }).click();
 	h.model.script({ text: "A later delivery without a file." });
-	await api("groups.send", { groupId, requestId: "group-followup", text: "Acknowledge only", recipientIds: [member] });
+	await api("groups.send", {
+		groupId,
+		requestId: "group-followup",
+		text: "Acknowledge only",
+		recipientIds: [member],
+	});
 	await poll(async () =>
 		(await api("groups.snapshot", { groupId })).posts.some((p: any) => p.text === "A later delivery without a file."),
 	).toBe(true);
@@ -256,6 +336,103 @@ it("publishes group task results without attaching an earlier delivery's files",
 		(await api("groups.snapshot", { groupId })).posts.find((p: any) => p.text === "A later delivery without a file.").attachments,
 	).toBeUndefined();
 	await h.shot("04-group-result");
+	await h
+		.page()
+		.locator(".bot-row:not(.group-nav)")
+		.filter({ has: h.page().getByText("OpenBot", { exact: true }) })
+		.first()
+		.click();
+});
+it("opens a generated group Markdown and HTML pair with aligned controls and retained page state", async () => {
+	await h.page().reload();
+	await h.page().locator(".group-nav").filter({ hasText: "File team" }).click();
+	const md =
+		"# Radar reading brief\n\nBased on a previously verified report.\n\n| Product | Region | Status |\n| --- | --- | --- |\n| Domestic sample | Domestic | Verified |\n| Overseas sample | Overseas | Unverified |";
+	const html =
+		'<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Radar reading page</title><style>body{font:16px system-ui;padding:20px;margin:0}button{padding:8px}article{margin-top:16px}h1{font-size:24px}</style></head><body><h1>Radar reading page</h1><button onclick="document.querySelector(\'#domestic\').hidden=true;this.textContent=\'Overseas selected\'">Overseas</button><article id="domestic">Domestic sample</article><article>Overseas sample</article></body></html>';
+	h.model.script(
+		{ tool: "local_write", args: { path: "radar-reading-with-a-long-shared-report-name.md", content: md } },
+		{
+			tool: "local_write",
+			args: { path: "radar-reading-with-a-long-shared-report-name.html", content: html },
+		},
+		{ tool: "artifact_publish", args: { path: "radar-reading-with-a-long-shared-report-name.md" } },
+		{ tool: "artifact_publish", args: { path: "radar-reading-with-a-long-shared-report-name.html" } },
+		{ text: "Both radar files are ready." },
+	);
+	const composer = h.page().locator(".group-view textarea");
+	await composer.fill("Generate the Markdown and interactive HTML reading pair.");
+	await composer.press("Enter");
+	const post = h.page().locator(".group-post").filter({ hasText: "Both radar files are ready." });
+	await post.getByRole("button", { name: "radar-reading-with-a-long-shared-report-name.md", exact: true }).waitFor();
+	await composer.fill("Keep my question while reading");
+	await post.getByRole("button", { name: "radar-reading-with-a-long-shared-report-name.md", exact: true }).click();
+	await h.page().getByRole("heading", { name: "Radar reading brief", exact: true }).waitFor();
+	await post.getByRole("button", { name: "radar-reading-with-a-long-shared-report-name.html", exact: true }).click();
+	await poll(
+		async () =>
+			h
+				.app()
+				.context()
+				.pages()
+				.filter((page) => page.url().startsWith("preview:")).length,
+	).toBe(1);
+	const page = h
+		.app()
+		.context()
+		.pages()
+		.find((page) => page.url().startsWith("preview:"))!;
+	await page.getByRole("button", { name: "Overseas", exact: true }).click();
+	await h.page().getByRole("tab", { name: "radar-reading-with-a-long-shared-report-name.md", exact: true }).click();
+	await h.page().getByRole("button", { name: "Zoom in", exact: true }).click();
+	await h.page().getByRole("tab", { name: "radar-reading-with-a-long-shared-report-name.html", exact: true }).click();
+	await page.getByRole("button", { name: "Overseas selected", exact: true }).waitFor();
+	expect(await page.locator("#domestic").isVisible()).toBe(false);
+	await post.getByRole("button", { name: "radar-reading-with-a-long-shared-report-name.md", exact: true }).click();
+	expect(await h.page().getByRole("tablist", { name: "Open files and pages" }).getByRole("tab").count()).toBe(2);
+	expect(await h.page().getByRole("button", { name: "Reset zoom", exact: true }).textContent()).toBe("110%");
+	expect(await composer.inputValue()).toBe("Keep my question while reading");
+	expect(await h.page().locator(".file-browser").count()).toBe(0);
+	expect(await h.page().locator(".reader-tab-extension").allTextContents()).toEqual([".md", ".html"]);
+	const buttons = h.page().locator(".reader-tab-content:not([hidden]) .reader-zoom-controls button");
+	const bounds = await buttons.evaluateAll((nodes) =>
+		nodes.map((node) => {
+			const r = node.getBoundingClientRect();
+			return { x: r.x, y: r.y, w: r.width, h: r.height };
+		}),
+	);
+	expect(new Set(bounds.map((r) => r.y)).size).toBe(1);
+	expect(bounds[2]!.x - bounds[1]!.x - bounds[1]!.w).toBeLessThan(8);
+	for (const r of bounds) expect(r.h).toBeGreaterThanOrEqual(28);
+	const icons = await h
+		.page()
+		.locator(".reader-tabs-header svg")
+		.evaluateAll((nodes) =>
+			nodes.map((node) => {
+				const r = node.getBoundingClientRect();
+				return [r.width, r.height];
+			}),
+		);
+	expect(icons.every(([width, height]) => width === 16 && height === 16)).toBe(true);
+	const labels = await h
+		.page()
+		.locator(".reader-tab-title")
+		.evaluateAll((nodes) => nodes.map((n) => n.scrollWidth > n.clientWidth));
+	expect(labels).toEqual([true, true]);
+	for (const suffix of await h.page().locator(".reader-tab-extension").all()) expect(await suffix.isVisible()).toBe(true);
+	const tabBar = await h.page().locator(".reader-tabs").boundingBox();
+	for (const close of await h.page().locator(".reader-tab-close").all()) {
+		const bounds = await close.boundingBox();
+		expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(tabBar!.x + tabBar!.width + 1);
+	}
+	await h.shot("08-group-reading-pair");
+	await h.page().getByRole("tab", { name: "radar-reading-with-a-long-shared-report-name.html", exact: true }).click();
+	await page.screenshot({ path: join(h.run, "08-group-html-page.png") });
+	await h.page().getByRole("button", { name: "Close radar-reading-with-a-long-shared-report-name.html", exact: true }).click();
+	await poll(async () => page.isClosed()).toBe(true);
+	await h.page().getByRole("heading", { name: "Radar reading brief", exact: true }).waitFor();
+	await h.page().getByRole("button", { name: "Close preview", exact: true }).click();
+	await composer.fill("");
 	await h
 		.page()
 		.locator(".bot-row:not(.group-nav)")
@@ -271,10 +448,18 @@ it("rejects incompatible image models and presents Chinese cards in a small dark
 		api: "openai-completions",
 		modelIds: ["text-only"],
 	});
-	await api("settings.update", { language: "zh-CN", defaultModel: { provider: "text-only", modelId: "text-only" } });
-	await expect(api("messages.submit", { botId: core, requestId: "unsupported-image", text: "", artifactIds: [imageId] })).rejects.toThrow(
-		"does not support image",
-	);
+	await api("settings.update", {
+		language: "zh-CN",
+		defaultModel: { provider: "text-only", modelId: "text-only" },
+	});
+	await expect(
+		api("messages.submit", {
+			botId: core,
+			requestId: "unsupported-image",
+			text: "",
+			artifactIds: [imageId],
+		}),
+	).rejects.toThrow("does not support image");
 	await h.page().reload();
 	await card(textId).getByRole("button", { name: "预览", exact: true }).click();
 	await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(880, 700));

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import type { ReaderFile } from "@openbot/protocol";
 import { api, errorMessage } from "./store";
+import { InterfaceIcon } from "./InterfaceIcon";
 import { t } from "./i18n";
 import { type ReaderTab } from "./reader-store";
 import { ReaderLoading } from "./FileWorkspace";
@@ -27,7 +28,9 @@ export function ReaderTabContent({ tab, active }: { tab: ReaderTab; active: bool
 				? Promise.resolve(selection.file)
 				: selection.kind === "workspace"
 					? api["files.read"]({ path: selection.path })
-					: api["artifacts.read"]({ artifactId: selection.artifact.artifactId }).then((value) => {
+					: api["artifacts.read"]({
+							artifactId: selection.artifact.artifactId,
+						}).then((value) => {
 							if (value.artifact.availability !== "available") throw Error("This local copy is unavailable");
 							if (value.truncated) throw Error("This file exceeds the preview limit");
 							return {
@@ -65,17 +68,29 @@ export function ReaderTabContent({ tab, active }: { tab: ReaderTab; active: bool
 			<div className="reader-controls reader-document-controls">
 				{(file || selection.kind === "web") && (
 					<>
-						<button aria-label={t("Zoom out")} disabled={zoom <= 60} onClick={() => setZoom((z) => Math.max(60, z - 10))}>
-							−
-						</button>
-						<button className="reader-zoom" aria-label={t("Reset zoom")} onClick={() => setZoom(100)}>
-							{zoom}%
-						</button>
-						<button aria-label={t("Zoom in")} disabled={zoom >= 180} onClick={() => setZoom((z) => Math.min(180, z + 10))}>
-							+
-						</button>
+						<div className="reader-zoom-controls">
+							<button
+								aria-label={t("Zoom out")}
+								title={t("Zoom out")}
+								disabled={zoom <= 60}
+								onClick={() => setZoom((z) => Math.max(60, z - 10))}
+							>
+								<InterfaceIcon name="minus" />
+							</button>
+							<button className="reader-zoom" aria-label={t("Reset zoom")} title={t("Reset zoom")} onClick={() => setZoom(100)}>
+								{zoom}%
+							</button>
+							<button
+								aria-label={t("Zoom in")}
+								title={t("Zoom in")}
+								disabled={zoom >= 180}
+								onClick={() => setZoom((z) => Math.min(180, z + 10))}
+							>
+								<InterfaceIcon name="plus" />
+							</button>
+						</div>
 						{file?.text !== undefined && (
-							<button aria-pressed={source} onClick={() => setSource((v) => !v)}>
+							<button className="reader-source-toggle" aria-pressed={source} onClick={() => setSource((v) => !v)}>
 								{source ? t("Reading") : t("Source")}
 							</button>
 						)}
@@ -83,9 +98,13 @@ export function ReaderTabContent({ tab, active }: { tab: ReaderTab; active: bool
 				)}
 				{selection?.kind === "artifact" && file && (
 					<button
+						className="reader-export"
 						onClick={() => {
 							void window.openbot
-								.exportArtifact({ artifactId: selection.artifact.artifactId, requestId: crypto.randomUUID() })
+								.exportArtifact({
+									artifactId: selection.artifact.artifactId,
+									requestId: crypto.randomUUID(),
+								})
 								.catch((e) => setError(t(errorMessage(e))));
 						}}
 					>
@@ -95,7 +114,7 @@ export function ReaderTabContent({ tab, active }: { tab: ReaderTab; active: bool
 			</div>
 			<main className="reader-document" aria-label={t("File preview")}>
 				{selection.kind === "web" ? (
-					<Suspense fallback={<ReaderLoading />}>
+					<Suspense fallback={<ReaderLoading page />}>
 						<HtmlReader url={selection.url} zoom={zoom} active={active} tabId={tab.id} />
 					</Suspense>
 				) : busy ? (

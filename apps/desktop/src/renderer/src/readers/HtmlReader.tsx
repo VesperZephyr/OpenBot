@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReaderBrowserState } from "../../../shared/api";
+import { InterfaceIcon } from "../InterfaceIcon";
 import { t } from "../i18n";
 import { errorMessage } from "../store";
 import { closeReaderTab, setReaderTitle, useReader } from "../reader-store";
@@ -102,7 +103,12 @@ export default function HtmlReader({
 				update();
 			}
 		});
-		modals.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "role", "hidden"] });
+		modals.observe(document.body, {
+			childList: true,
+			subtree: true,
+			attributes: true,
+			attributeFilter: ["class", "role", "hidden"],
+		});
 		window.addEventListener("resize", update);
 		update();
 		return () => {
@@ -124,14 +130,20 @@ export default function HtmlReader({
 	return (
 		<div className="html-reader">
 			<div className="reader-web-toolbar">
-				<button type="button" aria-label={t("Back")} disabled={!state?.canGoBack} onClick={() => void act("back")}>
-					←
+				<button type="button" aria-label={t("Back")} title={t("Back")} disabled={!state?.canGoBack} onClick={() => void act("back")}>
+					<InterfaceIcon name="back" />
 				</button>
-				<button type="button" aria-label={t("Forward")} disabled={!state?.canGoForward} onClick={() => void act("forward")}>
-					→
+				<button
+					type="button"
+					aria-label={t("Forward")}
+					title={t("Forward")}
+					disabled={!state?.canGoForward}
+					onClick={() => void act("forward")}
+				>
+					<InterfaceIcon name="forward" />
 				</button>
-				<button type="button" aria-label={t("Reload page")} disabled={!state} onClick={() => void act("reload")}>
-					↻
+				<button type="button" aria-label={t("Reload page")} title={t("Reload page")} disabled={!state} onClick={() => void act("reload")}>
+					<InterfaceIcon name="refresh" />
 				</button>
 				<span className="reader-web-address" title={state?.url.startsWith("http") ? state.url : undefined}>
 					{state?.url.startsWith("http") ? state.url : t("HTML preview")}
@@ -149,7 +161,7 @@ export default function HtmlReader({
 			</div>
 			<div className="reader-web-viewport" ref={viewport}>
 				{starting || state?.loading ? (
-					<ReaderLoading />
+					<ReaderLoading page />
 				) : error || state?.error ? (
 					<div role="alert" className="reader-status">
 						<strong>{t("Could not open page")}</strong>
