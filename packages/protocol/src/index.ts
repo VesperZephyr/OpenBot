@@ -1126,10 +1126,11 @@ export const TOOL_CATALOG = [
 		capability: "web",
 		destination: "host",
 		description:
-			"Fetch a public web page and return its main content as Markdown with links. Does not run JavaScript. The first lines give the final URL and a retrieval_outcome; only usable_content means the page was actually read. Long pages are cut; the result names the offset to continue. Private and local network addresses are refused.",
+			"Fetch a public page as Markdown, or a text/JSON/XML/Atom/RSS source as text. Does not run JavaScript. Defaults to article extraction; use mode page when date/version context is missing. A usable_content outcome means readable content, not verified completeness or release timing. Long pages name an offset to continue with the same mode. Atom updated is modification time, not publication. Private/local addresses are refused.",
 		parameters: object(
 			{
 				url: string("An http or https URL."),
+				mode: { type: "string", enum: ["article", "page"], description: "HTML extraction: article (default) or complete server-rendered page, preserving surrounding version/date context. No JavaScript execution." },
 				offset: { type: "integer", minimum: 0, description: "Character offset into the page's Markdown to continue from." },
 			},
 			["url"],

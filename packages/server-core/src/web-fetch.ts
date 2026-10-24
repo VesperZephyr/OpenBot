@@ -77,8 +77,8 @@ export function createWebFetch(options: WebFetchOptions = {}): WebToolHandler {
 					return { status: "failed", output: `${url.href} returned ${type || "an unknown type"}, which is not text` };
 				}
 				const body = await readCapped(response, MAX_BODY_BYTES);
-				const page = /^(text\/html|application\/xhtml)/.test(type)
-					? readHtml(body, response.status, url)
+				const page = /^(text\/html|application\/xhtml)/i.test(type)
+					? readHtml(body, response.status, url, args.mode === "page")
 					: { outcome: statusOutcome(response.status), markdown: body.trim() };
 				return render(url, response.status, page, offset);
 			}
@@ -89,12 +89,13 @@ export function createWebFetch(options: WebFetchOptions = {}): WebToolHandler {
 	};
 }
 
-type Page = { readonly outcome: RetrievalOutcome; readonly markdown: string; readonly title?: string };
+type Page = { readonly outcome: RetrievalOutcome; readonly markdown: string; readonly title?: string; readonly fullPage?: boolean };
 
 function render(url: URL, status: number, page: Page, offset: number): ToolOutcome {
 	const header = [`URL: ${url.href}`, `Status: ${status}`];
 	if (page.title !== undefined && page.title !== "") header.push(`Title: ${page.title}`);
 	header.push(`retrieval_outcome: ${page.outcome}`);
+	if (page.fullPage) header.push("extraction_mode: page (includes navigation; verify dates and product context)");
 	if (page.outcome !== "usable_content") header.push(NEXT_STEP[page.outcome]);
 	const outcomeStatus = page.outcome === "usable_content" ? "succeeded" : "failed";
 	const total = page.markdown.length;
@@ -113,11 +114,14 @@ function render(url: URL, status: number, page: Page, offset: number): ToolOutco
 	return { status: outcomeStatus, output: `${header.join("\n")}\n\n${text}${continuation}`, ...(end < total ? { truncated: true } : {}) };
 }
 
-function readHtml(html: string, status: number, url: URL): Page {
+function readHtml(html: string, status: number, url: URL, fullPage: boolean): Page {
 	const outcome = classify(status, html);
 	// Readability mutates the document it reads, so classification and extraction each parse their own copy.
 	const { document } = parseHTML(html);
 	const title = document.title.replace(/\s+/g, " ").trim();
+	for (const element of document.querySelectorAll("time[datetime], relative-time[datetime]")) {
+		if (!element.textContent?.trim()) element.textContent = element.getAttribute("datetime") ?? "";
+	}
 	for (const element of document.querySelectorAll("a[href], img[src]")) {
 		const attribute = element.tagName === "A" ? "href" : "src";
 		try {
@@ -126,9 +130,9 @@ function readHtml(html: string, status: number, url: URL): Page {
 			element.removeAttribute(attribute);
 		}
 	}
-	const article = new Readability(document).parse();
-	const content = article?.content ?? parseHTML(html).document.body?.innerHTML ?? "";
-	return { outcome, markdown: turndown.turndown(content).trim(), ...(title === "" ? {} : { title }) };
+	const body = document.body?.innerHTML ?? "";
+	const content = fullPage ? body : new Readability(document).parse()?.content ?? body;
+	return { outcome, markdown: turndown.turndown(content).trim(), ...(title === "" ? {} : { title }), ...(fullPage ? { fullPage: true } : {}) };
 }
 
 const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced", bulletListMarker: "-" });

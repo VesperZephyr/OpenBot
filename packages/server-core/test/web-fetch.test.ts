@@ -27,6 +27,7 @@ const routes: Record<string, { status: number; file?: string; body?: string; typ
 	"/binary": { status: 200, body: 'binary', type: 'application/octet-stream' },
 	"/oversize": { status: 200, body: 'x'.repeat(2 * 1024 * 1024 + 1), type: 'text/plain' },
 	"/exact-limit": { status: 200, body: 'x'.repeat(2 * 1024 * 1024), type: 'text/plain' },
+	"/release": { status: 200, body: '<html><body><nav>Navigation</nav><div><aside>v3.4.4 <time datetime="2026-10-15"></time><relative-time datetime="2026-10-16T02:00:00Z"></relative-time></aside><article><p>Resume interrupted tasks safely. <a href="/details">Release details</a></p></article></div><script>SECRET_SCRIPT</script></body></html>' },
 	"/plain": { status: 200, body: "just text", type: "text/plain" },
 };
 
@@ -141,6 +142,17 @@ describe("web_fetch", () => {
 		expect(exact.status).toBe("succeeded");
 		expect(exact.truncated).toBe(true);
 		expect(exact.output).toContain('of 2097152');
+	});
+
+	it("offers complete page context when article extraction loses adjacent release metadata", async () => {
+		const page = await fetchPage({ url: `${origin}/release`, mode: "page" }, signal);
+		expect(page.status).toBe("succeeded");
+		expect(page.output).toContain("extraction_mode: page");
+		expect(page.output).toContain("v3.4.4 2026-10-15");
+		expect(page.output).toContain("2026-10-16T02:00:00Z");
+		expect(page.output).toContain("Resume interrupted tasks safely.");
+		expect(page.output).toContain(`[Release details](${origin}/details)`);
+		expect(page.output).not.toContain("SECRET_SCRIPT");
 	});
 
 	it("refuses a blocked host reached through a redirect", async () => {
