@@ -8,11 +8,11 @@ import { ReaderTabs } from "./ReaderTabs";
 import { ReaderTabContent } from "./ReaderTabContent";
 import "./reader.css";
 
-export function ReaderLoading() {
+export function ReaderLoading({ page = false }: { page?: boolean }) {
 	return (
 		<div className="reader-status" role="status">
 			<span className="reader-spinner" aria-hidden />
-			{t("Opening file…")}
+			{t(page ? "Opening page…" : "Opening file…")}
 		</div>
 	);
 }
@@ -75,7 +75,12 @@ export function FileWorkspace() {
 		setPicking(true);
 		try {
 			const selected = await window.openbot.openFile();
-			if (selected) openSelection({ kind: "picked", file: selected, selectionId: selected.selectionId });
+			if (selected)
+				openSelection({
+					kind: "picked",
+					file: selected,
+					selectionId: selected.selectionId,
+				});
 		} catch (e) {
 			setError(t(errorMessage(e)));
 		} finally {
@@ -171,11 +176,11 @@ export function FileWorkspace() {
 								aria-label={t("Parent folder")}
 								onClick={() => setPath(path.split("/").slice(0, -1).join("/"))}
 							>
-								↑
+								<InterfaceIcon name="arrow" />
 							</button>
 							<span title={path}>{tab === "shared" ? t("Attachments and results") : path || t("Workspace")}</span>
 							<button aria-label={t("Refresh files")} onClick={() => setRefresh((n) => n + 1)}>
-								↻
+								<InterfaceIcon name="refresh" />
 							</button>
 						</div>
 						{listBusy && <p role="status">{t("Loading files…")}</p>}
@@ -198,12 +203,16 @@ export function FileWorkspace() {
 													onClick={() =>
 														entry.kind === "directory"
 															? setPath(entry.path)
-															: openSelection({ kind: "workspace", path: entry.path, name: entry.name })
+															: openSelection({
+																	kind: "workspace",
+																	path: entry.path,
+																	name: entry.name,
+																})
 													}
 												>
-													<span aria-hidden>{entry.kind === "directory" ? "▱" : "▤"}</span>
+													<InterfaceIcon name={entry.kind === "directory" ? "folder" : "file"} />
 													<span>{entry.name}</span>
-													{entry.kind === "directory" && <span aria-hidden>›</span>}
+													{entry.kind === "directory" && <InterfaceIcon name="chevron" />}
 												</button>
 											))
 									: artifacts.map((artifact) => (

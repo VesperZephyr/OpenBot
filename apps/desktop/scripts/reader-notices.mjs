@@ -11,6 +11,6 @@ export function readerNotices(nodeModules) {
   let siblings=dirname(directory);while(!siblings.endsWith("/node_modules")&&dirname(siblings)!==siblings)siblings=dirname(siblings);
   for(const name of Object.keys(manifest.dependencies??{}))visit(existsSync(join(directory,"node_modules",name))?join(directory,"node_modules",name):join(siblings,name));
  }
- for(const name of ["react-resizable-panels","react-markdown","remark-gfm","remark-math","rehype-katex","rehype-highlight","rehype-slug","react-pdf","pdfjs-dist","papaparse","highlight.js","katex"])visit(join(nodeModules,name));
+ for(const name of ["lucide-react","react-resizable-panels","react-markdown","remark-gfm","remark-math","rehype-katex","rehype-highlight","rehype-slug","react-pdf","pdfjs-dist","papaparse","highlight.js","katex"])visit(join(nodeModules,name));
  return targets;
 }

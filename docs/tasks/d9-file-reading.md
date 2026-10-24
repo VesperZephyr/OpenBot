@@ -1,8 +1,8 @@
 # D9: Files and read-only document previews
 
-Status: in review — [PR #58](https://github.com/VesperZephyr/OpenBot/pull/58)
+Status: done — merged in [PR #58](https://github.com/VesperZephyr/OpenBot/pull/58)
 Branch: task/d9-file-reading
-Depends on: I6 integration candidate (#57), B15a
+Depends on: I6 (merged in #57), B15a
 
 ## Goal
 
@@ -61,3 +61,7 @@ None. The owner confirmed an embedded browser that opens pages. This is a user-o
 - Rechecked all three enabled daily schedules (07:08, 07:10 and 07:47 Asia/Singapore), unchanged revisions/report dependencies, exactly one copy of each accepted report and unchanged model configuration after restart.
 - Native installed acceptance covers the real Markdown and live HTTP(S) page. Automated desktop acceptance separately covers multiple local HTML interactions, independent browser state/visibility and PDF page retention; no new model call was needed for preview verification.
 - The package remains ad-hoc signed for local acceptance, not a Developer ID/notarized release. Owner data and screenshots stay outside Git.
+
+## Follow-up
+
+[D10: Reader polish and real report acceptance](d10-reader-polish.md) tracks control alignment, adaptive file tabs and the subsequent real Markdown/HTML delivery check.

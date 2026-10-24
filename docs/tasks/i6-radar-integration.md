@@ -1,6 +1,6 @@
 # I6: Integrated daily radar acceptance
 
-Status: in review — [PR #57](https://github.com/VesperZephyr/OpenBot/pull/57), targeting main
+Status: done — merged in [PR #57](https://github.com/VesperZephyr/OpenBot/pull/57)
 Branch: task/i6-radar-integration
 Depends on: B11b (main), reviewed B11c and D8
 Architecture: local deployment, routines, report composition and lifecycle
