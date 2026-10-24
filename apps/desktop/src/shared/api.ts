@@ -5,16 +5,38 @@
 import type { GrantAccess, HostMethod, HostParams, HostResult } from "@openbot/protocol";
 
 export const RENDERER_METHODS = [
- "routines.list","routines.get","routines.change","routines.test","routines.stop","routines.activity","routines.presence",
+	"files.list",
+	"files.read",
+	"artifacts.list",
+	"artifacts.read",
+	"routines.list",
+	"routines.get",
+	"routines.change",
+	"routines.test",
+	"routines.stop",
+	"routines.activity",
+	"routines.presence",
 	"observation.wait",
 	"artifacts.get",
- "connectors.list","connectors.install","connectors.connect","connectors.disconnect","connectors.remove","connectors.credential.set","connectors.credential.delete",
- "skills.list","skills.get","skills.save","skills.delete",
+	"connectors.list",
+	"connectors.install",
+	"connectors.connect",
+	"connectors.disconnect",
+	"connectors.remove",
+	"connectors.credential.set",
+	"connectors.credential.delete",
+	"skills.list",
+	"skills.get",
+	"skills.save",
+	"skills.delete",
 	"artifacts.preview",
 	"artifacts.remove",
 	"collaboration.stop",
- "lifecycle.get","lifecycle.pause","lifecycle.resume","runs.continue",
- "collaboration.stop",
+	"lifecycle.get",
+	"lifecycle.pause",
+	"lifecycle.resume",
+	"runs.continue",
+	"collaboration.stop",
 	"groups.list",
 	"groups.snapshot",
 	"groups.change",
@@ -53,7 +75,9 @@ export const RENDERER_METHODS = [
 	"policy.get",
 	"policy.update",
 	"policy.rules.delete",
- "policy.ask.create", "policy.ask.delete", "policy.reconcile",
+	"policy.ask.create",
+	"policy.ask.delete",
+	"policy.reconcile",
 	"grants.list",
 	"grants.revoke",
 	"grants.add",
@@ -79,7 +103,29 @@ export type HostState = { readonly status: "starting" | "ready" | "stopped"; rea
 /** A folder the user picked in the native dialog: the token for `grants.add`, and the path to show. */
 export type FolderSelection = { readonly selection: string; readonly path: string };
 
+export type ReaderBrowserState = {
+	id: string;
+	url: string;
+	title: string;
+	loading: boolean;
+	canGoBack: boolean;
+	canGoForward: boolean;
+	error?: string;
+	closed?: boolean;
+};
 export type OpenBotApi = {
+	readonly readerOpen: (url: string) => Promise<ReaderBrowserState>;
+	readonly readerAction: (
+		id: string,
+		action: "navigate" | "back" | "forward" | "reload" | "state" | "focus",
+		url?: string,
+	) => Promise<ReaderBrowserState>;
+	readonly readerBounds: (id: string, bounds: { x: number; y: number; width: number; height: number; zoom: number }) => Promise<void>;
+	readonly readerClose: (id: string) => Promise<void>;
+	readonly onReaderState: (listener: (state: ReaderBrowserState) => void) => () => void;
+	readonly openFile: () => Promise<(import("@openbot/protocol").ReaderFile & { selectionId: string }) | null>;
+	readonly previewHtml: (html: string) => Promise<string>;
+	readonly closeHtmlPreview: (url: string) => Promise<void>;
 	readonly pickAvatar: () => Promise<import("@openbot/protocol").AvatarUpload | null>;
 	readonly attachFiles: () => Promise<{ attachments: readonly import("@openbot/protocol").ArtifactRef[]; errors: readonly string[] }>;
 	readonly exportArtifact: (params: { artifactId: string; requestId: string }) => Promise<boolean>;
@@ -102,6 +148,14 @@ export type OpenBotApi = {
 
 /** IPC channel names between preload and main. */
 export const CHANNELS = {
+	readerOpen: "openbot:reader-open",
+	readerAction: "openbot:reader-action",
+	readerBounds: "openbot:reader-bounds",
+	readerClose: "openbot:reader-close",
+	readerState: "openbot:reader-state",
+	openFile: "openbot:open-file",
+	previewHtml: "openbot:preview-html",
+	closeHtmlPreview: "openbot:close-html-preview",
 	pickAvatar: "openbot:pick-avatar",
 	attachFiles: "openbot:attach-files",
 	exportArtifact: "openbot:export-artifact",

@@ -1,3 +1,5 @@
+import { WorkspaceLayout } from "./WorkspaceLayout";
+import { openFiles } from "./reader-store";
 import { AppearanceSelect } from "./appearance";
 import { InterfaceIcon } from "./InterfaceIcon";
 import { Avatar, PersonalStar } from "./Avatar";
@@ -98,7 +100,7 @@ export function App() {
 
 	return (
 		<div className="app">
-			<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />
+            <WorkspaceLayout sidebar={<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />}>
 			<main className="main">
 				{host.status !== "ready" && (
 					<div className={`banner banner-${host.status}`}>
@@ -141,6 +143,7 @@ export function App() {
 					</>
 				)}
 			</main>
+            </WorkspaceLayout>
 			{newMenu && (
 				<div className="dialog-backdrop">
 					<div className="dialog new-conversation" role="dialog" aria-label={t("New conversation")}>
@@ -283,6 +286,7 @@ function Sidebar({ onNew, query, onQuery, searchOpen, onSearchOpen }: { onNew: (
 				<ConversationSearch query={query} unreadOnly={unreadOnly} />
 			</div>
 			<div className="sidebar-footer">
+                <button type="button" className="icon-button" aria-label={t("Files")} title={t("Files")} onClick={openFiles}><InterfaceIcon name="file" /></button>
 				<button
 					type="button"
 					aria-label={t("Settings")} title={t("Settings")}

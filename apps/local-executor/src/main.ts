@@ -1,3 +1,4 @@
+import { listReaderFiles, readWorkspaceFile, readSelectedFile } from "@openbot/local-executor";
 import { avatarSource, validateAvatar } from "@openbot/local-executor";
 /**
  * Local executor process. Started by the Host with an IPC channel; serves the executor protocol (Section 6.2) for the
@@ -133,6 +134,10 @@ process.on("message", (message: ExecutorRequest) => {
 				const op = message.operation;
 				let result;
 				switch (op.action) {
+                    case "files-list": result=listReaderFiles(workspace,op.path);break;
+                    case "files-read": result=readWorkspaceFile(workspace,op.path);break;
+                    case "file-open": result=readSelectedFile(op.path);break;
+                    case "list": result=artifactStore.list(op.offset,op.query);break;
 					case "avatar-source": result = avatarSource(op.path); break;
 					case "avatar-validate": result = validateAvatar(op.base64); break;
 					case "import":
@@ -144,7 +149,12 @@ process.on("message", (message: ExecutorRequest) => {
 					case "preview":
 						result = artifactStore.content(op.artifactId, true);
 						break;
-					case "content":
+					case "read": {
+                        const content = artifactStore.content(op.artifactId);
+                        if (content.text !== undefined && content.artifact.bytes > 2 * 1024 * 1024) throw Error("This file exceeds the preview limit");
+                        result = content; break;
+                    }
+                    case "content":
 						result = artifactStore.content(op.artifactId);
 						break;
 					case "remove":

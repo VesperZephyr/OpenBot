@@ -1,3 +1,4 @@
+import type { ReaderFile, FileListing, ArtifactListing } from "@openbot/protocol";
 import type { AvatarImage, AvatarSource } from "@openbot/protocol";
 import { Routines } from "./routines.ts";
 import {Connectors,type ConnectorPort} from "./connectors.ts";
@@ -256,6 +257,11 @@ export class HostService {
  "skills.save":({requestId,...change})=>skillChange(requestId,{action:"save",...change}),
  "skills.delete":({requestId,...change})=>skillChange(requestId,{action:"delete",...change}),
 			"observation.wait": ({ cursor, waitMs }) => this.#observation.wait(cursor, waitMs),
+			"files.list": ({path}) => this.#artifact(randomUUID(), {action:"files-list",path}) as Promise<FileListing>,
+			"files.read": ({path}) => this.#artifact(randomUUID(), {action:"files-read",path}) as Promise<ReaderFile>,
+			"files.open": ({path}) => this.#artifact(randomUUID(), {action:"file-open",path}) as Promise<ReaderFile>,
+			"artifacts.list": ({offset,query}) => this.#artifact(randomUUID(), {action:"list",offset,query}) as Promise<ArtifactListing>,
+			"artifacts.read": ({artifactId}) => this.#artifact(randomUUID(), {action:"read",artifactId}) as Promise<ArtifactContent>,
 			"artifacts.import": ({ requestId, path }) => this.#artifact(requestId, { action: "import", path }) as Promise<ArtifactRef>,
 			"artifacts.export": ({ requestId, artifactId, path }) =>
 				this.#artifact(requestId, { action: "export", artifactId, path }) as Promise<null>,

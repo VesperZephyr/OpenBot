@@ -16,6 +16,14 @@ function subscribe<T>(channel: string, listener: (value: T) => void): () => void
 }
 
 const api: OpenBotApi = {
+	readerOpen: (url) => ipcRenderer.invoke(CHANNELS.readerOpen, url),
+	readerAction: (id, action, url) => ipcRenderer.invoke(CHANNELS.readerAction, id, action, url),
+	readerBounds: (id, bounds) => ipcRenderer.invoke(CHANNELS.readerBounds, id, bounds),
+	readerClose: (id) => ipcRenderer.invoke(CHANNELS.readerClose, id),
+	onReaderState: (listener) => subscribe(CHANNELS.readerState, listener),
+	openFile: () => ipcRenderer.invoke(CHANNELS.openFile),
+	previewHtml: (html: string) => ipcRenderer.invoke(CHANNELS.previewHtml, html),
+	closeHtmlPreview: (url: string) => ipcRenderer.invoke(CHANNELS.closeHtmlPreview, url),
 	pickAvatar: () => ipcRenderer.invoke(CHANNELS.pickAvatar),
 	attachFiles: () => ipcRenderer.invoke(CHANNELS.attachFiles),
 	exportArtifact: (params) => ipcRenderer.invoke(CHANNELS.exportArtifact, params),

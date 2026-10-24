@@ -1,3 +1,4 @@
+import type { ReaderFile, FileListing } from "./reader.ts";
 import type { AvatarSource, AvatarImage } from "./avatars.ts";
 /** Immutable local file references. No source path or model-specific types cross the UI contract. */
 export type ArtifactRef = {
@@ -28,10 +29,13 @@ export const ARTIFACT_LIMITS = {
 	imageSide: 4096,
 	imagePixels: 16_000_000,
 } as const;
+export type ArtifactListing = { readonly items: readonly ArtifactRef[]; readonly nextOffset?: number };
 export type ArtifactOperation =
+ | { readonly action: "files-list" | "files-read" | "file-open"; readonly path: string }
+ | { readonly action: "list"; readonly offset: number; readonly query: string }
 	| { readonly action: "avatar-source"; readonly path: string }
 	| { readonly action: "avatar-validate"; readonly base64: string }
 	| { readonly action: "import"; readonly path: string }
-	| { readonly action: "get" | "preview" | "content" | "remove"; readonly artifactId: string }
+	| { readonly action: "get" | "preview" | "read" | "content" | "remove"; readonly artifactId: string }
 	| { readonly action: "export"; readonly artifactId: string; readonly path: string };
-export type ArtifactOperationResult = ArtifactRef | ArtifactContent | AvatarSource | AvatarImage | null;
+export type ArtifactOperationResult = ArtifactRef | ArtifactContent | AvatarSource | AvatarImage | ReaderFile | FileListing | ArtifactListing | null;

@@ -14,7 +14,7 @@ it('defaults to white under a dark OS, saves appearance, and keeps drafts throug
     await h.page().emulateMedia({colorScheme:'dark'});
     expect(await h.page().evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--bg').trim())).toBe('#ffffff');
     await h.page().getByRole('textbox', {name:'Message Canvas'}).fill('Keep this draft');
-    expect(await h.page().locator('.sidebar-footer button').count()).toBe(1);
+    expect(await h.page().locator('.sidebar-footer').getByRole('button', {name:'Settings',exact:true}).count()).toBe(1);
     await settings();
     const appearance = (name: string) => h.page().getByRole('radio', {name, exact:true});
     await appearance('System').check();

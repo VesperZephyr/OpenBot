@@ -1,3 +1,4 @@
+import { previewDocuments } from "./preview-documents";
 import { createRequire } from "node:module";
 import { credentialStorageLocation, DesktopCredentials, type NativeKeychain } from "./credentials";
 import { NativeLifecycleBridge } from "./lifecycle";
@@ -166,6 +167,14 @@ function createWindow(): BrowserWindow {
 
 	// No navigation away from the app, no new windows; https links open in the user's browser.
 	created.webContents.on("will-navigate", (event) => event.preventDefault());
+	created.webContents.on("will-frame-navigate", (event) => {
+		if (!event.isMainFrame) event.preventDefault();
+	});
+	const previewOwner = created.webContents.id;
+	created.webContents.on("did-start-navigation", (_event, _url, _inPlace, isMainFrame) => {
+		if (isMainFrame) previewDocuments.clear(previewOwner);
+	});
+	created.webContents.once("destroyed", () => previewDocuments.clear(previewOwner));
 	created.webContents.setWindowOpenHandler(({ url }) => {
 		if (url.startsWith("https://")) void shell.openExternal(url);
 		return { action: "deny" };

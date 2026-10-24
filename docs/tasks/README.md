@@ -216,6 +216,7 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | --- | --- |
 | [D7: White canvas and focused interactions](d7-chat-interaction.md) | done (#51); 506 unit and 153 desktop tests pass |
 | [D8: Unified chat and continuous activity feedback](d8-chat-experience.md) | integrated by I6 / PR #57; 520 unit/Host and 167 hidden desktop tests |
+| [D9: Files and read-only previews](d9-file-reading.md) | in review ([#58](https://github.com/VesperZephyr/OpenBot/pull/58)); three-column resizable file/page tabs and isolated embedded HTML, depends on I6 / #57 |
 
 ## Regression efficiency
 

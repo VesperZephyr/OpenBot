@@ -20,7 +20,7 @@ it("combines groups and Bots by recency, with compact navigation and durable dra
     await row("Hunter").click();
     await h.page().locator(".compose-area textarea").fill("Keep my research draft");
     expect(await button("Pause all").count()).toBe(0);
-    expect(await h.page().locator(".sidebar-footer button").count()).toBe(1);
+    expect(await h.page().locator(".sidebar-footer").getByRole("button", {name:"Settings",exact:true}).count()).toBe(1);
     expect(await button("Settings").textContent()).toBe("");
     expect(await row("Competitor radar").getByRole("img", {name:"Group · 2 members"}).count()).toBe(1);
     await button("Settings").click();

@@ -67,13 +67,15 @@ it("imports selected text/images, retains them after source deletion and sends a
 	expect((await api("conversations.search", { query: "ATTACHMENT_BODY_CANARY" })).items).toHaveLength(0);
 	expect(await h.page().evaluate(() => typeof (window as any).openbot.methods["artifacts.import"])).toBe("undefined");
 	await card(imageId).getByRole("button", { name: "Preview", exact: true }).click();
-	await card(imageId).locator("img").waitFor();
+	await h.page().locator(".reader-image img").waitFor();
 	await poll(() =>
-		card(imageId)
-			.locator("img")
+		h
+			.page()
+			.locator(".reader-image img")
 			.evaluate((img: HTMLImageElement) => img.naturalWidth),
 	).toBe(1);
 	await h.shot("01-inputs-en");
+	await h.page().getByRole("button", { name: "Close preview", exact: true }).click();
 });
 it("rejects renderer paths and expires a native selection when its renderer navigates", async () => {
 	await expect(
@@ -100,7 +102,7 @@ it("rejects renderer paths and expires a native selection when its renderer navi
 	const audit = await readFile(join(h.dataDirectory, "logs", "host.log"), "utf8");
 	expect(audit.match(/"action":"import"/g)).toHaveLength(2);
 });
-it("publishes immutable HTML as escaped text, exports without overwrite and retains removal after restart", async () => {
+it("publishes immutable HTML in an isolated reader, exports without overwrite and retains removal after restart", async () => {
 	const html = "<html><script>window.__artifactCanary=true</script><body>RESULT_CANARY</body></html>";
 	h.model.script(
 		{ tool: "local_write", args: { path: "report.html", content: html } },
@@ -116,9 +118,24 @@ it("publishes immutable HTML as escaped text, exports without overwrite and reta
 	const id = result.artifact.artifactId;
 	await writeFile(join(h.workspace, "report.html"), "source changed");
 	await card(id).getByRole("button", { name: "Preview", exact: true }).click();
-	expect(await card(id).locator(".artifact-preview pre").textContent()).toBe(html);
+	await poll(async () =>
+		h
+			.app()
+			.context()
+			.pages()
+			.some((page) => page.url().startsWith("preview:")),
+	).toBe(true);
+	const htmlPage = h
+		.app()
+		.context()
+		.pages()
+		.find((page) => page.url().startsWith("preview:"))!;
+	await htmlPage.getByText("RESULT_CANARY", { exact: true }).waitFor();
+	await h.page().getByRole("button", { name: "Source", exact: true }).click();
+	expect(await h.page().locator(".reader-source").textContent()).toBe(html);
 	expect(await h.page().evaluate(() => (window as any).__artifactCanary)).toBeUndefined();
 	expect(await h.page().locator("iframe").count()).toBe(0);
+	await h.page().getByRole("button", { name: "Close preview", exact: true }).click();
 	const destination = join(h.run, "exported.html");
 	await h.app().evaluate(({ dialog }, path) => {
 		dialog.showSaveDialog = (async () => ({ canceled: false, filePath: path })) as any;
@@ -173,6 +190,36 @@ it("retries a lost acknowledgement with immutable attachments and preserves a ne
 	expect((await snapshot()).items.filter((i: any) => i.kind === "user" && i.parts.some((p: any) => p.text === text))).toHaveLength(1);
 	await expect(api("messages.submit", { botId: core, requestId, text, artifactIds: [imageId] })).rejects.toThrow("another message");
 });
+it("opens AI Markdown and PDF result filenames directly in a focused reader", async () => {
+	h.model.script(
+		{ tool: "local_write", args: { path: "Daily brief.md", content: "# Daily radar brief\n\n**Verified evidence** in the conversation." } },
+		{ tool: "artifact_publish", args: { path: "Daily brief.md" } },
+		{ text: "Your readable report is ready." },
+	);
+	await box().fill("Prepare the daily report file.");
+	await box().press("Enter");
+	await h.page().getByText("Your readable report is ready.", { exact: true }).waitFor();
+	await idle();
+	await box().fill("Keep my next question");
+	await h.page().locator(".messages .artifact-name").filter({ hasText: "Daily brief.md" }).click();
+	await h.page().getByRole("heading", { name: "Daily radar brief", exact: true }).waitFor();
+	expect(await h.page().locator(".file-browser").count()).toBe(0);
+	await h.shot("06-message-file-reader");
+	await h.page().getByRole("button", { name: "Close preview", exact: true }).click();
+	expect(await box().inputValue()).toBe("Keep my next question");
+	await writeFile(join(h.workspace, "Published.pdf"), await readFile(join(import.meta.dirname, "fixtures", "reader.pdf")));
+	h.model.script({ tool: "artifact_publish", args: { path: "Published.pdf" } }, { text: "The PDF is ready." });
+	await box().fill("Share the prepared PDF.");
+	await box().press("Enter");
+	await h.page().getByText("The PDF is ready.", { exact: true }).waitFor();
+	await idle();
+	const requests = h.model.requests.length;
+	await h.page().locator(".messages .artifact-name").filter({ hasText: "Published.pdf" }).click();
+	await h.page().getByText("Page 1 of 2", { exact: true }).waitFor();
+	expect(h.model.requests).toHaveLength(requests);
+	await h.shot("07-message-pdf-reader");
+	await h.page().getByRole("button", { name: "Close preview", exact: true }).click();
+});
 it("publishes group task results without attaching an earlier delivery's files", async () => {
 	const member = (await api("bots.create", { requestId: "file-member", name: "File helper" })).botId,
 		groupId = "group_files";
@@ -198,7 +245,8 @@ it("publishes group task results without attaching an earlier delivery's files",
 		id = posts.find((p: any) => p.text === "Published the group result.").attachments[0].artifactId;
 	const result = h.page().locator(`.group-post .artifact-card[data-artifact-id="${id}"]`);
 	await result.getByRole("button", { name: "Preview", exact: true }).click();
-	expect(await result.locator("pre").textContent()).toBe("GROUP_RESULT");
+	expect(await h.page().locator(".reader-source").textContent()).toBe("GROUP_RESULT");
+	await h.page().getByRole("button", { name: "Close preview", exact: true }).click();
 	h.model.script({ text: "A later delivery without a file." });
 	await api("groups.send", { groupId, requestId: "group-followup", text: "Acknowledge only", recipientIds: [member] });
 	await poll(async () =>
@@ -208,7 +256,12 @@ it("publishes group task results without attaching an earlier delivery's files",
 		(await api("groups.snapshot", { groupId })).posts.find((p: any) => p.text === "A later delivery without a file.").attachments,
 	).toBeUndefined();
 	await h.shot("04-group-result");
-	await h.page().locator(".bot-row:not(.group-nav)").filter({ has: h.page().getByText("OpenBot", {exact:true}) }).first().click();
+	await h
+		.page()
+		.locator(".bot-row:not(.group-nav)")
+		.filter({ has: h.page().getByText("OpenBot", { exact: true }) })
+		.first()
+		.click();
 });
 it("rejects incompatible image models and presents Chinese cards in a small dark window", async () => {
 	await api("models.addProvider", {

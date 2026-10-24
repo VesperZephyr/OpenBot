@@ -1,4 +1,7 @@
-import { randomUUID } from "node:crypto";
+const readerSelectionKey = randomUUID();
+import { openReader, closeReader, readerAction, readerBounds } from "./reader-browser";
+import { previewDocuments } from "./preview-documents";
+import { createHmac, randomUUID } from "node:crypto";
 import { translate } from "../shared/i18n";
 import type { ArtifactRef } from "@openbot/protocol";
 /**
@@ -30,7 +33,8 @@ const MAX_CLIPBOARD_CHARS = 1_000_000;
 export function registerIpc({ host, isTrustedFrame, language, onSettings }: IpcOptions): void {
 	const folders = new FolderSelections();
 	const checkFrame = (event: IpcMainInvokeEvent): void => {
-		if (!isTrustedFrame(event.senderFrame?.url ?? "")) throw new Error("[invalid_request] Call from an untrusted frame");
+		if (event.senderFrame !== event.sender.mainFrame || !isTrustedFrame(event.senderFrame?.url ?? ""))
+			throw new Error("[invalid_request] Call from an untrusted frame");
 	};
 	ipcMain.handle(CHANNELS.call, async (event, method: unknown, params: unknown) => {
 		checkFrame(event);
@@ -63,6 +67,61 @@ export function registerIpc({ host, isTrustedFrame, language, onSettings }: IpcO
 			// Electron serializes only the message across IPC, so the code travels as a prefix.
 			if (error instanceof ProtocolError) throw new Error(`[${error.code}] ${error.message}`);
 			throw error;
+		}
+	});
+
+	ipcMain.handle(CHANNELS.readerOpen, (event, url: unknown) => {
+		checkFrame(event);
+		return openReader(event.sender, url);
+	});
+	ipcMain.handle(CHANNELS.readerAction, (event, id: unknown, action: unknown, url: unknown) => {
+		checkFrame(event);
+		return readerAction(event.sender, id, action, url);
+	});
+	ipcMain.handle(CHANNELS.readerBounds, (event, id: unknown, bounds: unknown) => {
+		checkFrame(event);
+		readerBounds(event.sender, id, bounds);
+	});
+	ipcMain.handle(CHANNELS.readerClose, (event, id: unknown) => {
+		checkFrame(event);
+		closeReader(event.sender.id, id);
+	});
+	ipcMain.handle(CHANNELS.previewHtml, (event, html: unknown) => {
+		checkFrame(event);
+		return previewDocuments.create(event.sender.id, html);
+	});
+	ipcMain.handle(CHANNELS.closeHtmlPreview, (event, url: unknown) => {
+		checkFrame(event);
+		previewDocuments.revoke(event.sender.id, url);
+	});
+	ipcMain.handle(CHANNELS.openFile, async (event, ...args: unknown[]) => {
+		checkFrame(event);
+		if (args.length) throw Error("Open file does not accept paths");
+		const frame = event.senderFrame,
+			window = BrowserWindow.fromWebContents(event.sender);
+		if (!window) throw Error("No application window");
+		let expired = false;
+		const expire = () => {
+			expired = true;
+		};
+		const check = () => {
+			if (expired || event.sender.isDestroyed() || frame?.isDestroyed() || event.sender.mainFrame !== frame)
+				throw Error("The file selection expired");
+		};
+		event.sender.on("did-start-navigation", expire);
+		try {
+			const selected = await dialog.showOpenDialog(window, {
+				title: translate(language?.() ?? "en", "Open file"),
+				properties: ["openFile"],
+			});
+			if (selected.canceled) return null;
+			check();
+			if (selected.filePaths.length !== 1) throw Error("Choose one file");
+			const result = await host.call("files.open", { path: selected.filePaths[0]! });
+			check();
+			return { ...result, selectionId: createHmac("sha256", readerSelectionKey).update(selected.filePaths[0]!).digest("hex") };
+		} finally {
+			event.sender.removeListener("did-start-navigation", expire);
 		}
 	});
 
@@ -100,13 +159,7 @@ export function registerIpc({ host, isTrustedFrame, language, onSettings }: IpcO
 			const image = nativeImage.createFromBuffer(Buffer.from(source.base64, "base64"));
 			const { width, height } = image.getSize(),
 				side = Math.min(width, height);
-			if (
-				image.isEmpty() ||
-				!side ||
-				width > AVATAR_LIMITS.side ||
-				height > AVATAR_LIMITS.side ||
-				width * height > AVATAR_LIMITS.pixels
-			)
+			if (image.isEmpty() || !side || width > AVATAR_LIMITS.side || height > AVATAR_LIMITS.side || width * height > AVATAR_LIMITS.pixels)
 				throw Error("Could not read this avatar. Choose another image.");
 			const cropped = image
 				.crop({ x: Math.floor((width - side) / 2), y: Math.floor((height - side) / 2), width: side, height: side })

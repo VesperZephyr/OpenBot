@@ -14,6 +14,7 @@
 		"@openbot/protocol": "workspace:*"
 	},
 	"devDependencies": {
+		"@types/papaparse": "5.5.2",
 		"@types/react": "19.3.0",
 		"@types/react-dom": "19.3.0",
 		"@vitejs/plugin-react": "5.2.0",
@@ -22,11 +23,24 @@
 		"electron-builder": "26.15.3",
 		"electron-vite": "5.0.0",
 		"esbuild": "0.28.2",
+		"highlight.js": "11.12.0",
+		"katex": "0.19.1",
 		"marked": "18.1.1",
 		"node-api-headers": "1.9.0",
+		"papaparse": "5.7.0",
+		"pdfjs-dist": "6.3.289",
 		"react": "19.3.1",
 		"react-dom": "19.3.1",
+		"react-markdown": "10.1.0",
+		"react-pdf": "11.0.0",
+		"react-resizable-panels": "4.13.3",
+		"rehype-highlight": "7.0.2",
+		"rehype-katex": "7.0.1",
+		"rehype-slug": "6.0.0",
+		"remark-gfm": "4.0.1",
+		"remark-math": "6.0.0",
 		"vite": "7.3.7",
+		"vite-plugin-static-copy": "4.1.1",
 		"zustand": "5.0.15"
 	}
 }

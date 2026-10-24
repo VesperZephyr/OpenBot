@@ -13,6 +13,9 @@ export const APP_ENTRY_URL = `${SCHEME}://${HOST}/index.html`;
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
 	".html": "text/html; charset=utf-8",
 	".js": "text/javascript; charset=utf-8",
+	".mjs": "text/javascript; charset=utf-8",
+	".ttf": "font/ttf",
+	".woff": "font/woff",
 	".css": "text/css; charset=utf-8",
 	".json": "application/json",
 	".svg": "image/svg+xml",
@@ -22,7 +25,10 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
 
 /** Must run before the app is ready: privileges cannot be granted to a scheme afterwards. */
 export function registerAppScheme(): void {
-	protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+	protocol.registerSchemesAsPrivileged([
+		{ scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+		{ scheme: "preview", privileges: { standard: true, secure: true } },
+	]);
 }
 
 /** Serves files under `root` only; anything else, including `..` and encoded traversal, is a 404. */

@@ -1,3 +1,4 @@
+import type { ReaderFile, FileListing } from "./reader.ts";
 export * from "./avatars.ts";
 import type { BotAvatar, AvatarChange, AvatarSource, AvatarImage } from "./avatars.ts";
 export * from "./routines.ts";
@@ -10,7 +11,7 @@ export * from "./connectors.ts";
 export * from "./background.ts";
 export * from "./skills.ts";
 import type { SkillChange, SkillSummary, SkillDetail, SkillVersion, SkillRef, SkillAttachment, SkillOperation, SkillResult } from "./skills.ts";
-import type { ArtifactRef, ArtifactContent, ArtifactOperation, ArtifactOperationResult } from "./artifacts.ts";
+import type { ArtifactRef, ArtifactContent, ArtifactOperation, ArtifactOperationResult, ArtifactListing } from "./artifacts.ts";
 import type {LifecycleState,NativeLifecycle,LifecycleReason} from "./lifecycle.ts";
 export type {LifecycleState,NativeLifecycle,LifecycleReason,LifecycleRecord} from "./lifecycle.ts";
 import { MANAGEMENT_TOOL_DEFINITIONS, APP_MANAGEMENT_TOOL_DEFINITIONS } from "./app-management.ts";
@@ -543,6 +544,11 @@ export type HostMethods = {
 	"artifacts.import": { params: { requestId: string; path: string }; result: ArtifactRef };
 	"artifacts.export": { params: { requestId: string; artifactId: string; path: string }; result: null };
 	"artifacts.get": { params: { artifactId: string }; result: ArtifactRef };
+	"files.list": { params: { path: string }; result: FileListing };
+	"files.read": { params: { path: string }; result: ReaderFile };
+	"files.open": { params: { path: string }; result: ReaderFile };
+	"artifacts.list": { params: { offset: number; query: string }; result: ArtifactListing };
+	"artifacts.read": { params: { artifactId: string }; result: ArtifactContent };
 	"artifacts.preview": { params: { artifactId: string }; result: ArtifactContent };
 	"artifacts.remove": { params: { requestId: string; artifactId: string }; result: null };
  "lifecycle.get":{params:Record<string,never>;result:LifecycleState};
@@ -704,6 +710,7 @@ export const HOST_METHODS = [
  "routines.list","routines.get","routines.change","routines.test","routines.stop","routines.activity","routines.presence",
  "connectors.list","connectors.install","connectors.connect","connectors.disconnect","connectors.remove","connectors.credential.set","connectors.credential.delete",
  "skills.list","skills.get","skills.save","skills.delete",
+	"files.list", "files.read", "files.open", "artifacts.list", "artifacts.read",
 	"artifacts.preview",
 	"artifacts.remove",
  "lifecycle.get","lifecycle.pause","lifecycle.resume","lifecycle.native","runs.continue",
@@ -994,7 +1001,7 @@ export const TOOL_CATALOG = [
 		capability: "files.read",
 		destination: "executor",
 		description:
-			"Publish an immutable local result file from an already authorized readable path. Supports text, Markdown, CSV, HTML (text preview only), PNG and JPEG. Maximum 8 MiB. This does not export, execute, or grant access to a file.",
+			"Publish an immutable local result file from an already authorized readable path. Supports text, Markdown, CSV, HTML, PDF, PNG and JPEG. Result filenames open in the application reader. Maximum 8 MiB. This does not export, execute, or grant access to a file.",
 		parameters: object(
 			{
 				path: { type: "string", minLength: 1, maxLength: 4096 },
@@ -1185,4 +1192,7 @@ export function toolDefinition(name: string): ToolDefinition | undefined {
 }
 
 export { ARTIFACT_LIMITS } from "./artifacts.ts";
-export type { ArtifactRef, ArtifactContent, ArtifactOperation, ArtifactOperationResult } from "./artifacts.ts";
+export type { ArtifactRef, ArtifactContent, ArtifactOperation, ArtifactOperationResult, ArtifactListing } from "./artifacts.ts";
+
+export { READER_LIMITS } from "./reader.ts";
+export type { ReaderFile, FileListing, FileEntry } from "./reader.ts";
