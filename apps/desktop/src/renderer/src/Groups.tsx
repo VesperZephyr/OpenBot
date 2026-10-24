@@ -1,10 +1,10 @@
-import { InterfaceIcon } from "./InterfaceIcon";
-import { Avatar } from "./Avatar";
+import { LiveReply } from "./LiveReply";
+import { Avatar, GroupAvatar } from "./Avatar";
 import { BackgroundTask } from "./BackgroundTask";
 import { ArtifactCard } from "./ArtifactCard";
 import { ChatComposer } from "./ChatComposer";
 import { ConversationShell, DetailsPanel, Timeline } from "./ConversationUI";
-import { MarkReadButton, RosterPreview, recentTime } from "./RosterPreview";
+import { MarkReadButton, RosterPreview } from "./RosterPreview";
 import { useEffect, useRef, useState } from "react";
 import type { Group } from "@openbot/protocol";
 import { refreshGroupSnapshot, api, refreshGroups, report, useStore } from "./store";
@@ -14,41 +14,16 @@ import { routineScheduleLabel } from "./Routines";
 import { ApprovalCard } from "./ApprovalCard";
 import "./groups.css";
 
-export function GroupSidebar({ query = "", unreadOnly = false }: { query?: string; unreadOnly?: boolean }) {
-	const groups = useStore((s) => s.groups);
-	const summaries = useStore((s) => s.summaries);
-	const visible = groups
-		.filter(
-			(g) =>
-				(!unreadOnly || (summaries[`group:${g.groupId}`]?.unreadCount ?? 0) > 0) &&
-				`${g.name} ${g.objective}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
-		)
-		.toSorted(
-			(a, b) =>
-				recentTime(`group:${b.groupId}`, summaries, b.createdAt) - recentTime(`group:${a.groupId}`, summaries, a.createdAt) ||
-				a.groupId.localeCompare(b.groupId),
-		);
-	return visible.length > 0 ? (
-		<div className="section group-sidebar">
-			<span className="section-title">{t("Groups")}</span>
-			{visible.map((g) => (
-				<GroupRow key={g.groupId} group={g} />
-			))}
-		</div>
-	) : null;
-}
-
-function GroupRow({ group: g }: { group: Group }) {
+export function GroupRow({ group: g }: { group: Group }) {
 	const view = useStore((s) => s.view);
 	return (
 		<button
 			type="button"
-			className={`bot-row group-nav ${view.kind === "group" && view.groupId === g.groupId ? "is-selected" : ""}`}
+			aria-current={view.kind === "group" && view.groupId === g.groupId ? "page" : undefined}
+            className={`bot-row group-nav ${view.kind === "group" && view.groupId === g.groupId ? "is-selected" : ""}`}
 			onClick={() => useStore.setState({ view: { kind: "group", groupId: g.groupId }, searchTarget: undefined })}
 		>
-			<span className="avatar group-avatar" aria-hidden>
-				<InterfaceIcon name="group" />
-			</span>
+			<GroupAvatar memberIds={g.memberIds} />
 			<RosterPreview
 				conversationKey={`group:${g.groupId}`}
 				name={g.name}
@@ -232,7 +207,8 @@ export function GroupView({ groupId }: { groupId: string }) {
 			}
 		>
 			<header className="conversation-header">
-				<div>
+                <GroupAvatar memberIds={group.memberIds} />
+				<div className="conversation-title">
 					<h1>{group.name}</h1>
 					<p className="muted">
 						{t(active ? "{count} members" : "Dissolved", { count: group.memberIds.length })}
@@ -290,6 +266,7 @@ export function GroupView({ groupId }: { groupId: string }) {
 							<Markdown text={post.text} />
 							{post.routine && <div className="routine-report-label">
 								<span>{t(post.routine.test ? "Test" : "Routine report")} · {post.routine.name} · {t(post.routine.state === "needs_attention" ? "Needs attention" : post.routine.state[0]!.toUpperCase() + post.routine.state.slice(1))}</span>
+								{post.routine.inputs && <span>{t("Inputs ready: {ready}/{total}", post.routine.inputs)} · {t(post.routine.inputs.ready === post.routine.inputs.total ? "Complete inputs" : "Partial inputs")}</span>}
 								<button onClick={() => useStore.setState({ view: { kind: "routines", routineId: post.routine!.routineId, occurrenceId: post.routine!.occurrenceId } })}>{t("View routine")}</button>
 							</div>}
 							{post.attachments?.map((artifact) => (
@@ -312,16 +289,17 @@ export function GroupView({ groupId }: { groupId: string }) {
 									</button>
 								)}
 							</div>
-							<p className="task-subject">{posts.find((p) => p.postId === root.postId)?.text.slice(0, 180)}</p>
-							<div className="ownership-trail">
-								{[...new Set(tasks.filter((d) => d.rootId === root.rootId && d.origin !== "result").map((d) => name(d.botId)))].join(" → ")}
-							</div>
+
 							{root.reason && <p>{t(root.reason)}</p>}
 							{root.state === "paused" && (
 								<p>{t("Send a new instruction to start a new task. This chain will not restart automatically.")}</p>
 							)}
 							<details className="task-details">
 								<summary>{t("Task details")}</summary>
+							<p className="task-subject">{posts.find((p) => p.postId === root.postId)?.text.slice(0, 180)}</p>
+							<div className="ownership-trail">
+								{[...new Set(tasks.filter((d) => d.rootId === root.rootId && d.origin !== "result").map((d) => name(d.botId)))].join(" → ")}
+							</div>
 								<small>{t("{count} of 12 automatic deliveries", { count: root.automaticDeliveries })}</small>
 								{tasks
 									.filter((d) => d.rootId === root.rootId)
@@ -355,10 +333,7 @@ export function GroupView({ groupId }: { groupId: string }) {
 					.filter((task) => task.state === "pending")
 					.map((task) => (
 						<div key={task.deliveryId} className="group-task-live">
-							{task.conversation?.live?.partial?.length || task.conversation?.approvals.length ? <strong>{name(task.botId)}</strong> : null}
-							{task.conversation?.live?.partial?.map((part, i) => (
-								<p key={i}>{part.text}</p>
-							))}
+                            <LiveReply snapshot={task.conversation} botId={task.botId} queued={!task.runId} />
 							{task.conversation?.approvals.map((a) => (
 								<ApprovalCard key={a.approvalId} approval={a} />
 							))}

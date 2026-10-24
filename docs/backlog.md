@@ -1,35 +1,32 @@
-# OpenBot Backlog
+# Development Backlog
 
+**I6, in review (#57):** [Integrated daily radar acceptance](tasks/i6-radar-integration.md) carries reviewed B11c and D8 into current main, includes the verified owner application update and three real calendar-triggered daily reporting chains. The final chain read all eleven sources, captured complete inputs and survived an installed-app restart without duplicate delivery. PR #55 and #56 merged into feature branches; main delivery is pending I6. I5 (#54) and B11b (#53) are merged into main.
 
-Active delivery scope (2026-10-23): the owner prioritizes a Grok Bot-inspired competitor radar: Domestic Hunter and International Hunter publish source-backed Agent changelog reports into one group. [B11b](tasks/b11b-group-routine-reports.md) adds confirmed group destinations and contextual routine controls, in review in [PR #53](https://github.com/VesperZephyr/OpenBot/pull/53). B27a (#46), B27b (#47), I4 (#48), D6 (#49) and D7 (#51) are merged. I5 was merged into the D7 branch by #52; [PR #54](https://github.com/VesperZephyr/OpenBot/pull/54) carries those regression improvements to main. Backup/restore (B14d), history scaling (B14c), templates (B13e) and signed updates (B14f) remain subsequent work. B9c OAuth and B12b optional model review remain excluded; Phase 3 remains deferred.
+Active delivery scope (2026-10-24): [I6 / PR #57](https://github.com/VesperZephyr/OpenBot/pull/57) targets main directly with B11c summaries, D8 unified chat and continuous activity, and source-evidence corrections found during live radar acceptance. B11b (#53), I5 (#54), role research (#45), B27a (#46), B27b (#47), I4 (#48), D6 (#49) and D7 (#51) are merged into main. Backup/restore (B14d), history scaling (B14c), templates (B13e) and signed updates (B14f) remain subsequent work. OAuth, optional model review and Phase 3 remain separate specs.
 
-Work after the tools demo, cut into batches that can each be finished and verified on their own. Each batch states its approach, key decisions, and the acceptance that closes it. A batch gets a full task spec in [`tasks/`](tasks/README.md) before execution starts; batches here without a spec link are approach only.
+**D8, integrated in I6 / PR #57:** [Unified chats and continuous activity](tasks/d8-chat-experience.md) provides mixed private/group navigation, member avatars, compact Settings and real streamed Markdown/loading feedback.
 
-The [architecture](architecture.md) defines the target design; the [technical plan](technical-plan.md) records current state. When a batch lands, move it to the plan's current-state table and delete it here.
+Each batch needs a ready task spec in [`tasks/`](tasks/README.md) before execution. The [architecture](architecture.md) defines boundaries; the [technical plan](technical-plan.md) records implemented state. Update both plan and backlog when work lands. The [development roadmap](development-roadmap.md) orders subsequent packets; their place in the queue does not authorize implementation. New PRs target main.
 
-Current delivery order: [Post-B26 development roadmap](development-roadmap.md), with the first four execution packets and subsequent workflow gates. Baseline `main` includes B26 (PR #27); no planned feature is authorized merely by its place in this queue. All new PRs target `main`.
-
-References:
-
-- **MCode**: `~/minimax-ai/minimax-code` (MiniMax Code). Study, do not copy.
-- **Grok Bot**: [source-backed research snapshot](research/grok-bot.md) and [client interaction research](tasks/d2-grok-ui-research.md); distinguish official facts, observations and inference.
-- **Pi**: `~/github/pi/packages/coding-agent` for the reference coding-agent tools.
+References: study MiniMax Code without copying; distinguish official facts and observations in the [Grok Bot research](research/grok-bot.md) and [client interaction research](tasks/d2-grok-ui-research.md); use the vendored Pi baseline and traceable patches for runtime work.
 
 ## Competitor radar delivery
 
-**B11b, in review (#53):** [Scheduled reports in group conversations](tasks/b11b-group-routine-reports.md). Two independent hunter routines publish attributable reports into a confirmed group, with exact history links, restart deduplication and revocation when membership changes. The [workflow](workflows/competitor-radar.md) records source selection, daily windows and unavailable-source handling. Automated acceptance and a bounded two-source real-model check are recorded in the spec. Automatic coordinator summaries and conversational routine proposals require separate specs.
+**B11b, done (#53):** [Scheduled reports in group conversations](tasks/b11b-group-routine-reports.md). Two independent hunter routines publish attributable reports into a confirmed group, with exact history links, restart deduplication and revocation when membership changes. The [workflow](workflows/competitor-radar.md) records source selection, daily windows and unavailable-source handling. Automated acceptance and a bounded two-source real-model check are recorded in the spec. Automatic scheduled composition is implemented in B11c below; conversational routine proposals remain a separate follow-up.
+
+**B11c, integrated in I6 / PR #57:** [Scheduled summaries of routine reports](tasks/b11c-scheduled-report-summaries.md). Generic source selection and bounded waiting let the existing main assistant summarize two configured researchers daily, without a user message. Source revisions, snapshot persistence, missing-input coverage and atomic revocation preserve predictable delivery. Main delivery is through I6 / PR #57. All 519 unit/Host and 161 hidden desktop tests pass; a bounded five-request real-model check produced both source reports and Core’s summary without duplicate publication after restart.
 
 ## Done: personal assistant desktop design
 
 [D6: Personal assistant design](tasks/d6-desktop-design.md) is merged in PR #49, with automated acceptance complete. The owner approved chat styling, ordinary Bot rows with a protected identity star, and editable profiles with generated/uploaded avatars for every Bot together. README positioning and production screenshots are merged in PR #50. AI image generation, adjustable cropping, proactive greetings and new result grouping need separate specs.
 
-**I5, in review (#54):** [E2E coverage and execution efficiency](tasks/i5-e2e-efficiency.md). Four redundant smoke cases consolidated; 149 desktop cases pass twice with due scheduling fixtures and two isolated background workers. Local test time fell from 510.14s to 232.30s / 230.38s.
+**I5, done (#54):** [E2E coverage and execution efficiency](tasks/i5-e2e-efficiency.md). Four redundant smoke cases consolidated; 149 desktop cases pass twice with due scheduling fixtures and two isolated background workers. Local test time fell from 510.14s to 232.30s / 230.38s.
 
 **D7, Done (#51):** [White chat canvas and focused interactions](tasks/d7-chat-interaction.md). Complete light and dark appearance, management inside Settings, understandable interruption continuation and a compact state-aware composer. All 506 unit and 153 desktop tests pass; bilingual README and screenshots are updated. Development stays in the original checkout.
 
 ## Memory design research
 
-[D6: Persistent roles, memory and skills](tasks/d6-bot-role-design.md) remains in review in PR #45. Its [dated report](research/bot-role-design.md) records official sources, explicitly unverified prompt claims, static client evidence and the code baseline reviewed on October 22. B27a/B27b below implement the subsequently approved local role direction; the remaining proposed packets require their own ready specs.
+[D6: Persistent roles, memory and skills](tasks/d6-bot-role-design.md) is merged in PR #45. Its [dated report](research/bot-role-design.md) records official sources, explicitly unverified prompt claims, static client evidence and the code baseline reviewed on October 22. B27a/B27b below implement the subsequently approved local role direction; the remaining proposed packets require their own ready specs.
 
 [D5: Local memory research](tasks/d5-memory-research.md) is merged in PR #44. The owner approved the local role direction from [D6 research PR #45](https://github.com/VesperZephyr/OpenBot/pull/45).
 
@@ -43,7 +40,7 @@ References:
 
 [B27b: Per-role skill defaults](tasks/b27b-role-skills.md) is merged in PR #47, following the owner-approved local role direction. Profile pins are exact shared-library versions; direct-user admission composes them with message attachments and freezes accepted method snapshots. Groups and routines keep their existing explicit selections. Memory provenance/correction/sharing is the separate [B27a PR #46](https://github.com/VesperZephyr/OpenBot/pull/46); neither batch introduces cloud services or new grants.
 
-After B11b, retain B14d/B14c/B13e/B14f ordering. Per-message skill overrides, capability readiness and broader group defaults need separate specs.
+After B11c, retain B14d/B14c/B13e/B14f ordering. Per-message skill overrides, capability readiness and broader group defaults need separate specs.
 
 ## Phases
 

@@ -153,9 +153,14 @@ export class Groups {
 		const work = this.#line.then(async () => {
 			if (this.#stopped||!this.#canRun()) return;
 			const store = this.runtime.groups();
+            const previousStates = new Map((await store.roots()).map(root => [root.rootId, root.state]));
 			await store.reconcile(Date.now());
+            const roots = await store.roots();
+            // Final root settlement follows delivery publication in a later sweep.
+            // Without an invalidation the open group can keep showing work indefinitely.
+            if (roots.some(root => previousStates.get(root.rootId) !== root.state)) this.#changed();
 			const deliveries = await store.deliveries();
-			for (const root of await store.roots())
+			for (const root of roots)
 				if (["paused", "cancelled"].includes(root.state) && !this.#stoppedTrees.has(root.rootId)) {
 					for (const d of deliveries) if (d.rootId === root.rootId && d.runId) this.#stopping(d.botId, d.groupId, d.runId);
 					this.#stoppedTrees.add(root.rootId);

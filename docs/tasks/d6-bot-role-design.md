@@ -1,6 +1,6 @@
 # D6: Persistent Roles, Memory and Skills Research
 
-Status: in review (#45); research complete, no product changes
+Status: done, merged into main (#45); research complete, no product changes
 Branch: task/d6-bot-role-design; pull request target: main
 Depends on: accepted D1; merged B6a, D5, B10, B11a and I3
 Architecture: Sections 1.1, 4.2, 5.1, 5.7, 5.8 and 7.1

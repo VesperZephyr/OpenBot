@@ -11,6 +11,7 @@ export type ModelRequest = { readonly messages: readonly { role: string; content
 
 export type ScriptedTurn = (
 	| { readonly text: string; readonly delayMs?: number }
+    | { readonly chunks: readonly string[]; readonly delayMs?: number; readonly chunkDelayMs: number }
 	/** `args` may be computed from the request, for arguments only known at run time, such as a returned task ID. */
 	| { readonly tool: string; readonly args: Record<string, unknown> | ((request: ModelRequest) => Record<string, unknown>) }
 	/** The provider rejects the request with HTTP 400 and this message; not retried by Pi. */
@@ -50,6 +51,24 @@ export class ScriptedModel {
 					return;
 				}
 				response.writeHead(200, { "content-type": "text/event-stream" });
+                if ("chunks" in turn) {
+                    response.flushHeaders();
+                    let index = 0;
+                    let timer: ReturnType<typeof setTimeout>;
+                    const emit = () => {
+                        if (response.destroyed) return;
+                        const content = turn.chunks[index++];
+                        if (content === undefined) {
+                            response.end(`data: ${JSON.stringify({id:"s", object:"chat.completion.chunk", choices:[{index:0,delta:{},finish_reason:"stop"}]})}\n\ndata: [DONE]\n\n`);
+                            return;
+                        }
+                        response.write(`data: ${JSON.stringify({id:"s", object:"chat.completion.chunk", choices:[{index:0,delta:{role:"assistant",content},finish_reason:null}]})}\n\n`);
+                        timer = setTimeout(emit, turn.chunkDelayMs);
+                    };
+                    timer = setTimeout(emit, turn.delayMs ?? 0);
+                    response.on("close", () => clearTimeout(timer));
+                    return;
+                }
 				if ("delayMs" in turn && turn.delayMs) setTimeout(() => response.end(this.#stream(turn, sent)), turn.delayMs);
 				else response.end(this.#stream(turn, sent));
 			});
@@ -62,7 +81,7 @@ export class ScriptedModel {
 		await new Promise<void>((resolve) => (this.#server ? this.#server.close(() => resolve()) : resolve()));
 	}
 
-	#stream(turn: Exclude<ScriptedTurn, { readonly error: string }>, request: ModelRequest): string {
+	#stream(turn: Exclude<ScriptedTurn, { readonly error: string } | { readonly chunks: readonly string[] }>, request: ModelRequest): string {
 		const reported = turn.usage ? `data: ${JSON.stringify({id:"s",object:"chat.completion.chunk",choices:[],usage:turn.usage})}\n\n` : "";
 		const chunk = (delta: object, finish: string | null) =>
 			`data: ${JSON.stringify({ id: "s", object: "chat.completion.chunk", created: 0, model: "scripted", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;

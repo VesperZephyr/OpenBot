@@ -4,8 +4,9 @@
  */
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { type AppHarness, createBot, launchApp } from "./harness.ts";
+import { type AppHarness, createBot, launchApp, repo } from "./harness.ts";
 
 const KEY = "tvly-e2e-key";
 let h: AppHarness;
@@ -30,7 +31,7 @@ beforeAll(async () => {
 		});
 	});
 	await new Promise<void>((resolve) => tavily.listen(0, "127.0.0.1", resolve));
-	h = await launchApp("web", { env: { OPENBOT_TAVILY_BASE_URL: `http://127.0.0.1:${(tavily.address() as AddressInfo).port}` } });
+	h = await launchApp("web", { env: { OPENBOT_TAVILY_BASE_URL: `http://127.0.0.1:${(tavily.address() as AddressInfo).port}`, OPENBOT_HOST_ENTRY: join(repo, "e2e/fixtures/web-feed-host.mts") } });
 	await h.page().getByRole("textbox", { name: "Message OpenBot" }).waitFor();
 }, 60_000);
 
@@ -86,5 +87,29 @@ describe("Web search", () => {
 		expect(await failed.locator(".tool-output").textContent()).toContain("Web search is not set up: add a Tavily API key in Settings");
 		expect(authorizations).toHaveLength(1);
 		await h.shot("03-web-search-not-set-up");
+	});
+
+	it("reads a routed Atom feed and preserves distinct publication and update timestamps", async () => {
+		h.model.script({ tool: "web_fetch", args: { url: "https://releases.example.org/feed.atom" } }, { text: "Recovery 1.2 was published October 23 and updated October 24. [Release](https://releases.example.org/v1.2)" });
+		await h.send("Read the official release feed and distinguish publication from modification.");
+		const page = h.page();
+		await page.locator(".transcript").getByText("Recovery 1.2 was published October 23", { exact: false }).waitFor();
+		const output = JSON.stringify(h.model.requests.at(-1)?.messages);
+		expect(output).toContain("<published>2026-10-23T01:00:00Z</published>");
+		expect(output).toContain("<updated>2026-10-24T02:00:00Z</updated>");
+		expect(output).toContain("retrieval_outcome: usable_content");
+		await page.getByRole("link", { name: "Release", exact: true }).waitFor();
+		await h.shot("04-release-feed");
+	});
+
+	it("keeps date and version context when the model requests complete page extraction", async () => {
+		h.model.script({ tool: "web_fetch", args: { url: "https://releases.example.org/changelog", mode: "page" } }, { text: "Release 1.2 is dated 2026-10-23T01:00:00Z; the full page preserves its UTC timestamp." });
+		await h.send("Read the full page to recover the missing version and date.");
+		await h.page().locator(".transcript").getByText("Release 1.2 is dated 2026-10-23", { exact: false }).waitFor();
+		const output = JSON.stringify(h.model.requests.at(-1)?.messages);
+		expect(output).toContain("extraction_mode: page");
+		expect(output).toContain("Release 1.2");
+		expect(output).toContain("23 Oct 01:00 (2026-10-23T01:00:00Z)");
+		await h.shot("05-release-page");
 	});
 });

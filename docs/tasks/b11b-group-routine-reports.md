@@ -1,6 +1,6 @@
 # B11b: Scheduled reports in group conversations
 
-Status: implemented, in review in [PR #53](https://github.com/VesperZephyr/OpenBot/pull/53)
+Status: done, merged into main in [PR #53](https://github.com/VesperZephyr/OpenBot/pull/53)
 Branch: task/b11b-group-routine-reports
 Depends on: B11a, B13c, D7
 

@@ -172,7 +172,9 @@ export function groupStore(
 					postId: `routine-report:${o.occurrenceId}`, senderId: o.botId,
 					text: o.report || "Routine ended without a completed answer", at: o.endedAt ?? o.createdAt,
 					recipientIds: [], attachments: o.artifacts ?? [],
-					routine: { occurrenceId: o.occurrenceId, routineId: o.routineId, name: o.name, scheduledAt: o.scheduledAt, test: o.test, state: o.state },
+					routine: { occurrenceId: o.occurrenceId, routineId: o.routineId, name: o.name, scheduledAt: o.scheduledAt, test: o.test, state: o.state, revision: o.revision,
+						...(o.inputSnapshot ? { inputs: { ready: o.inputSnapshot.entries.filter((e) => e.status === "ready").length, total: o.inputSnapshot.entries.length } } : {}),
+					},
 				};
 				const posts = doc.posts[group.groupId] ??= [];
 				if (!posts.some((p) => p.postId === post.postId)) posts.push(copy(post));

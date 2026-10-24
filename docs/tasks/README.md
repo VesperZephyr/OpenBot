@@ -67,7 +67,7 @@ Delivery planning: [D4: Post-B26 Delivery Plan](d4-delivery-plan.md), **done, do
 
 Memory research: [D5: Local Memory](d5-memory-research.md), **done, merged (#44)**. [Source-backed report](../research/memory-design.md), bilingual SQLite matching probe, and proposed implementation decisions; no product contract or schema changes.
 
-Role research: [D6: Persistent Roles, Memory and Skills](d6-bot-role-design.md), **research complete, in review (#45)**. [Product model and evidence](../research/bot-role-design.md) connect role configuration, memory, shared procedures, capability readiness and continuing work; follow-up packets need separate implementation specs.
+Role research: [D6: Persistent Roles, Memory and Skills](d6-bot-role-design.md), **research complete, merged (#45)**. [Product model and evidence](../research/bot-role-design.md) connect role configuration, memory, shared procedures, capability readiness and continuing work; follow-up packets need separate implementation specs.
 
 Architecture design: [D3: Application Capabilities and Local Code Mode](d3-app-capabilities.md), **accepted direction**. Defines a shared authorized Host capability surface and reuse of vendored Pi Code Mode. B24 and B25 are merged into `main`; B26 is merged in PR #27 with exact-approved management composition and its recovery acceptance matrix.
 
@@ -151,6 +151,8 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | [I3: Repeatable workflow acceptance](i3-workflow-acceptance.md) | done (#42); 477 unit/Host and 131 hidden e2e tests; real-model workflow evidence |
 
+| [I6: Integrated daily radar acceptance](i6-radar-integration.md) | in review (#57); 524 unit/Host tests, 165 desktop tests, installed owner app and real calendar/restart acceptance |
+
 ## Reusable procedures
 
 | Task | Status |
@@ -181,7 +183,8 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Spec | Status |
 | --- | --- |
 | [B11a: Local scheduled routines](b11a-local-routines.md) | done (#41); 477 unit/Host and 127 hidden desktop tests |
-| [B11b: Scheduled group reports](b11b-group-routine-reports.md) | in review (#53); 512 unit/Host and 157 hidden desktop tests; bounded live-source acceptance |
+| [B11b: Scheduled group reports](b11b-group-routine-reports.md) | done (#53); 512 unit/Host and 157 hidden desktop tests; bounded live-source acceptance |
+| [B11c: Scheduled report summaries](b11c-scheduled-report-summaries.md) | integrated by I6 / PR #57; 519 unit/Host and 161 hidden desktop tests; five-request real-model composition/restart check |
 
 ## Per-role methods
 
@@ -212,9 +215,10 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Spec | Status |
 | --- | --- |
 | [D7: White canvas and focused interactions](d7-chat-interaction.md) | done (#51); 506 unit and 153 desktop tests pass |
+| [D8: Unified chat and continuous activity feedback](d8-chat-experience.md) | integrated by I6 / PR #57; 520 unit/Host and 167 hidden desktop tests |
 
 ## Regression efficiency
 
 | Task | Status |
 | --- | --- |
-| [I5: E2E coverage and execution efficiency](i5-e2e-efficiency.md) | in review (#54); two full parallel regressions pass |
+| [I5: E2E coverage and execution efficiency](i5-e2e-efficiency.md) | done (#54); two full parallel regressions pass |

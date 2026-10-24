@@ -4,7 +4,30 @@ export type RoutineSchedule =
 	| { readonly kind: "interval"; readonly minutes: number }
 	| { readonly kind: "daily"; readonly time: string; readonly timezone: string }
 	| { readonly kind: "weekly"; readonly time: string; readonly timezone: string; readonly weekday: number };
+export type RoutineReportInputs = {
+	readonly sources: readonly { readonly routineId: string; readonly revision: number }[];
+	readonly windowHours: number;
+	readonly waitMinutes: number;
+};
+export type RoutineInputSnapshot = {
+	readonly capturedAt: number;
+	readonly windowStart: number;
+	readonly windowEnd: number;
+	readonly entries: readonly {
+		readonly routineId: string;
+		readonly botId: string;
+		readonly name: string;
+		readonly status: "ready" | "missing" | "pending" | "failed" | "cancelled" | "needs_attention" | "skipped";
+		readonly occurrenceId?: string;
+		readonly postId?: string;
+		readonly scheduledAt?: number;
+		readonly test?: boolean;
+		readonly text?: string;
+		readonly truncated?: boolean;
+	}[];
+};
 export type RoutineFields = {
+	readonly reportInputs?: RoutineReportInputs;
 	readonly reportTo?: { readonly groupId: string; readonly groupRevision: number };
 	readonly name: string;
 	readonly instructions: string;
@@ -14,6 +37,7 @@ export type RoutineFields = {
 };
 export type Routine = RoutineFields & {
 	readonly destinationBlocked?: boolean;
+	readonly inputsBlocked?: boolean;
 	readonly routineId: string;
 	readonly botId: string;
 	readonly targetId: string;
@@ -25,8 +49,11 @@ export type Routine = RoutineFields & {
 	readonly nextAt: number;
 };
 export type RoutineOccurrence = {
+	readonly reportInputs?: RoutineReportInputs;
+	readonly inputSnapshot?: RoutineInputSnapshot;
 	readonly reportTo?: NonNullable<RoutineFields["reportTo"]>;
 	readonly destinationBlocked?: boolean;
+	readonly inputsBlocked?: boolean;
 	readonly occurrenceId: string;
 	readonly routineId: string;
 	readonly botId: string;
@@ -74,4 +101,4 @@ export type RoutineChange =
 			readonly routineId: string;
 			readonly expectedRevision: number;
 	  };
-export type RoutineReport = Pick<RoutineOccurrence, "occurrenceId" | "routineId" | "name" | "scheduledAt" | "test" | "state">;
+export type RoutineReport = Pick<RoutineOccurrence, "occurrenceId" | "routineId" | "name" | "scheduledAt" | "test" | "state"> & { readonly revision?: number; readonly inputs?: { readonly ready: number; readonly total: number } };

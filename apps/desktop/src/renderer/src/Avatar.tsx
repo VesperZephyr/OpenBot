@@ -6,7 +6,7 @@ import {
 	type AvatarUpload,
 	type GeneratedAvatar,
 } from "@openbot/protocol";
-import { api } from "./store";
+import { api, useStore } from "./store";
 import { t } from "./i18n";
 
 const images = new Map<string, Promise<string | undefined>>();
@@ -128,4 +128,12 @@ function Character({ recipe }: { recipe: GeneratedAvatar }) {
 			<path d="m48 136-5 15m58-14 6 13" stroke={ink} strokeWidth="2" strokeLinecap="round" />
 		</svg>
 	);
+}
+
+/** Group identity is composed from existing member identities, never a second Bot. */
+export function GroupAvatar({ memberIds }: { memberIds: readonly string[] }) {
+    const bots = useStore(state => state.bots);
+    return <span className="group-avatar" role="img" aria-label={t("Group · {count} members", {count: memberIds.length})}>
+        {memberIds.slice(0, 4).map(botId => <Avatar key={botId} bot={bots.find(bot => bot.botId === botId) ?? {botId}} size={23} />)}
+    </span>;
 }

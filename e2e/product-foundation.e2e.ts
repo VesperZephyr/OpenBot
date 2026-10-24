@@ -29,7 +29,9 @@ afterAll(async () => {
 	await h?.close();
 });
 it("retains queued inputs across pause/restart, asks before publication and settles interrupted usage", async () => {
-	await h.page().getByRole("button", { name: "Pause all", exact: true }).click();
+	await h.page().getByRole("button", { name: "Settings", exact: true }).click();
+        await h.page().getByRole("button", { name: "Pause all", exact: true }).click();
+        await h.page().getByRole("button", { name: "Back to chat", exact: true }).click();
 	await poll(async () => (await api("lifecycle.get")).transitioning).toBe(false);
 	await h.app().evaluate(
 		({ dialog }, path) => {
@@ -80,7 +82,9 @@ it("retains queued inputs across pause/restart, asks before publication and sett
 	approval = (await snapshot()).approvals[0];
 	await api("approvals.decide", { approvalId: approval.approvalId, decision: "allow_once" });
 	await poll(() => readFile(join(h.workspace, "count.txt"), "utf8").catch(() => "")).toBe("once\n");
-	await h.page().getByRole("button", { name: "Pause all", exact: true }).click();
+	await h.page().getByRole("button", { name: "Settings", exact: true }).click();
+        await h.page().getByRole("button", { name: "Pause all", exact: true }).click();
+        await h.page().getByRole("button", { name: "Back to chat", exact: true }).click();
 	await poll(async () => (await api("lifecycle.get")).transitioning).toBe(false);
 	await h.page().getByText("Task interrupted", { exact: true }).waitFor();
 	const data = await usage();

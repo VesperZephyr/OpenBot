@@ -1,6 +1,6 @@
 # I5: E2E coverage and execution efficiency
 
-Status: in review
+Status: done, merged into main in PR #54
 Branch: task/i5-e2e-efficiency
 Depends on: D7 (PR #51)
 

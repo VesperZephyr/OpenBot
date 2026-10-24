@@ -31,10 +31,10 @@ OpenBot is currently built for **one person on one Mac**. Give your Bots names, 
 | --- | --- |
 | **Work with files and the terminal** | Read, search, write and edit authorized local files; run commands; follow long-running work in the background. |
 | **Keep usable results** | Attach text, Markdown, CSV or images in private chats. Preview and export immutable result files, including after a restart. |
-| **Research the web** | Search with a configured Tavily key and fetch pages as readable text. |
+| **Research the web** | Search with a configured Tavily key; read pages and official Atom/RSS feeds, retaining full-page date/version context when needed. |
 | **Personalize every Bot** | Choose names, roles, instructions and generated or uploaded avatars. A small star identifies your permanent personal assistant; Specialists can use their own model and memory. |
 | **Remember and reuse** | Inspect where notes came from, correct or forget them, explicitly share useful context, and pin reviewed `SKILL.md` procedures to a Bot. |
-| **Schedule repeatable work** | Review interval, daily or weekly routines, pin skill versions, test them and receive reports in private chat or a confirmed group. Pause, catch-up and inactivity protection are built in. |
+| **Schedule repeatable work** | Review interval, daily or weekly routines, pin skill versions, test them and receive reports in private chat or a confirmed group. Compose selected reports into an automatic daily summary, with bounded waiting and clear missing inputs. |
 | **Coordinate in groups** | Let your personal assistant route group tasks, choose explicit recipients, and follow bounded delegation and handoffs. |
 | **Connect tools** | Configure local stdio or HTTPS MCP servers, discover their tools, and approve calls under the same policy. |
 | **Stay in control** | Allow once, Always allow or Deny; configure Ask first rules and folder grants; stop a task or pause all work. |
@@ -116,7 +116,7 @@ Open **Routines**, choose a Bot and describe the source files, steps and expecte
 
 OpenBot must be running and the Mac awake. After sleep or restart, at most one eligible missed run is caught up; overlapping work is skipped. Seven days without interaction pauses scheduling until you explicitly resume. Both the catch-up window and inactivity limit are configurable. [Routine contract and verification](docs/tasks/b11a-local-routines.md).
 
-For a competitor radar, create Domestic Hunter and International Hunter in one group, then use **Conversation details → New group routine**. Each researcher reports under its own name with a link to its run. Confirm the destination and members before saving; changing the group pauses these routines until you reconfirm. The [competitor radar workflow](docs/workflows/competitor-radar.md) includes primary sources, daily reporting windows and instructions for missing data. Ask the assistant in the group to compare the reports when needed.
+For a competitor radar, create Domestic Hunter and International Hunter and put them in a group with your existing main assistant. Use **Conversation details → New group routine** for each researcher, then create a daily main-assistant routine with both tasks selected in **Report inputs**. After one-time confirmation, reports and their summary arrive automatically without a daily message. The application waits for late inputs, identifies missing sources and preserves the exact reports used. Source or group changes require reconfirmation. Bots, monitored products and comparison criteria are your configuration; scheduling and report composition are reusable application capabilities. The [competitor radar workflow](docs/workflows/competitor-radar.md) includes sources, schedules and setup instructions.
 
 The [integrated workflow acceptance](docs/acceptance/workflow-2026-10-20.md) exercises CRM records, reports, exact approvals, reviewed skills and routine reuse, including restart, rate limits and uncertain writes. Its evidence separates automated checks, a real-model trial and the live-retrieval limitation.
 
