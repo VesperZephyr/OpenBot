@@ -120,3 +120,20 @@ describe("immutable local artifacts", () => {
 		expect(readFileSync(dest, "utf8")).toBe("stable");
 	});
 });
+
+it("lists immutable shared references with stable pagination, filtering and removal",()=>{
+ for(let i=0;i<202;i++)store.capture(`list-${i}`,file(`file-${i}.txt`,String(i)));
+ const first=store.list(0,""),second=store.list(first.nextOffset!,"");
+ expect(first.items).toHaveLength(200);expect(second.items).toHaveLength(2);expect(second.nextOffset).toBeUndefined();
+ expect(new Set([...first.items,...second.items].map(item=>item.artifactId)).size).toBe(202);
+ const match=store.list(0,"FILE-201");expect(match.items).toHaveLength(1);
+ const ref=match.items[0]!;store.remove("list-remove",ref.artifactId);expect(store.list(0,"file-201").items).toHaveLength(0);
+});
+
+it("publishes immutable PDF results without widening model input formats",()=>{
+ const path=file("report.pdf","%PDF-1.4\nsynthetic signature fixture");
+ expect(()=>store.capture("pdf-input",path)).toThrow("Unsupported attachment");
+ const ref=store.capture("pdf-result",path,"result");expect(ref.mediaType).toBe("application/pdf");
+ rmSync(path);expect(Buffer.from(store.content(ref.artifactId).base64!,"base64").toString()).toContain("%PDF-1.4");
+ expect(()=>store.capture("bad-pdf",file("bad.pdf","not pdf"),"result")).toThrow("Invalid PDF");
+});

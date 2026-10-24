@@ -58,7 +58,7 @@ it("keeps source text as data and delivers a corrected publication through previ
 	await h.relaunch();
 	const card = h.page().locator(`.messages .artifact-card[data-artifact-id="${published.artifact.artifactId}"]`).first();
 	await card.getByRole("button", { name: "Preview", exact: true }).click();
-	await expect.poll(() => card.locator(".artifact-preview").textContent()).toContain("Revenue is 42");
+	await expect.poll(() => h.page().locator(".reading-prose").textContent()).toContain("Revenue is 42");
 	expect((await api("artifacts.preview", { artifactId: published.artifact.artifactId })).text).toBe(report);
 	await h.shot("02-delivered-after-restart");
 });

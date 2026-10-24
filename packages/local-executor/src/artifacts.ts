@@ -92,6 +92,10 @@ export function imageSize(bytes: Buffer, type: string): [number, number] {
 }
 function format(name: string, bytes: Buffer, source: ArtifactRef["source"]): string {
 	const ext = extname(name).toLowerCase();
+	if (source === "result" && ext === ".pdf") {
+		if (bytes.toString("ascii", 0, 5) !== "%PDF-") fail("Invalid PDF result");
+		return "application/pdf";
+	}
 	const text = TEXT[ext];
 	if (text) {
 		if (source === "input" && (text === "text/html" || bytes.length > LIMITS.textBytes)) fail("Unsupported input format or text size");
@@ -168,12 +172,21 @@ export class ArtifactStore {
 			return { ...ref, availability: existsSync(this.#path(id)) ? "corrupt" : "missing" };
 		}
 	}
+	list(offset: number, query: string): import("@openbot/protocol").ArtifactListing {
+		const rows = this.#db.prepare("select ref from artifacts where removed=0 order by rowid desc").all() as { ref: string }[];
+		const matches = rows
+			.map((row) => JSON.parse(row.ref) as StoredRef)
+			.filter((ref) => ref.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+		const items = matches.slice(offset, offset + 200).map((ref) => ({ ...ref, availability: "available" as const }));
+		return { items, ...(offset + items.length < matches.length ? { nextOffset: offset + items.length } : {}) };
+	}
 	content(id: string, preview = false): ArtifactContent {
 		const artifact = this.get(id);
 		if (artifact.availability !== "available") return { artifact, truncated: false };
 		const bytes = bytesAt(this.#path(id), LIMITS.resultBytes);
 		if (digest(bytes) !== artifact.sha256) fail("Attachment content is unavailable");
-		if (artifact.mediaType.startsWith("image/")) return { artifact, base64: bytes.toString("base64"), truncated: false };
+		if (artifact.mediaType.startsWith("image/") || artifact.mediaType === "application/pdf")
+			return { artifact, base64: bytes.toString("base64"), truncated: false };
 		const truncated = preview && bytes.length > LIMITS.previewBytes;
 		const text = (truncated ? bytes.subarray(0, LIMITS.previewBytes) : bytes).toString("utf8").replace(/\ufffd$/u, "");
 		return { artifact, text, truncated };

@@ -9,7 +9,7 @@ const invalid = (): never => {
 function bounded(width: number, height: number): void {
 	if (!width || !height || width > L.side || height > L.side || width * height > L.pixels) invalid();
 }
-function webpSize(bytes: Buffer): [number, number] {
+export function webpSize(bytes: Buffer): [number, number] {
 	if (
 		bytes.length < 20 ||
 		bytes.toString("ascii", 0, 4) !== "RIFF" ||

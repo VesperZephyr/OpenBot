@@ -54,7 +54,9 @@ it("computes a real CSV only after approval, then publishes and exports the veri
   artifactId = published.artifact.artifactId;
   const card = h.page().locator(`.messages .artifact-card[data-artifact-id="${artifactId}"]`);
   await card.getByRole("button", { name: "Preview", exact: true }).click();
-  expect(await card.locator(".artifact-preview pre").textContent()).toBe(expectedCsv);
+  await h.page().getByRole("button", {name:"Source",exact:true}).click();
+  expect(await h.page().locator(".reader-source").textContent()).toBe(expectedCsv);
+  await h.page().getByRole("button", {name:"Close preview",exact:true}).click();
   await h.app().evaluate(({ dialog }, path) => {
     dialog.showSaveDialog = (async () => ({ canceled: false, filePath: path })) as any;
   }, join(h.run, "exported-summary.csv"));

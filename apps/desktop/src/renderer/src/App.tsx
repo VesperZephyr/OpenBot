@@ -1,3 +1,5 @@
+import { FileWorkspace } from "./FileWorkspace";
+import { openFiles } from "./reader-store";
 import { AppearanceSelect } from "./appearance";
 import { InterfaceIcon } from "./InterfaceIcon";
 import { Avatar, PersonalStar } from "./Avatar";
@@ -98,6 +100,7 @@ export function App() {
 
 	return (
 		<div className="app">
+            <FileWorkspace />
 			<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />
 			<main className="main">
 				{host.status !== "ready" && (
@@ -283,6 +286,7 @@ function Sidebar({ onNew, query, onQuery, searchOpen, onSearchOpen }: { onNew: (
 				<ConversationSearch query={query} unreadOnly={unreadOnly} />
 			</div>
 			<div className="sidebar-footer">
+                <button type="button" className="icon-button" aria-label={t("Files")} title={t("Files")} onClick={openFiles}><InterfaceIcon name="file" /></button>
 				<button
 					type="button"
 					aria-label={t("Settings")} title={t("Settings")}

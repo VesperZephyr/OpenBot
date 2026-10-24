@@ -47,6 +47,8 @@ const GroupFields = strict({
 	leadBotId: Id,
 });
 const ArtifactId = Type.String({ pattern: "^artifact_[a-f0-9]{32}$" });
+const ReaderPath = Type.String({ maxLength: 4096 });
+const ArtifactList = strict({offset:Type.Integer({minimum:0,maximum:4096}),query:Type.String({maxLength:200})});
 const ArtifactPath = Type.String({ minLength: 1, maxLength: 4096 });
 const SkillName=Type.String({pattern:"^[a-z0-9]+(?:-[a-z0-9]+)*$",maxLength:64});
 const SkillDocument=strict({name:SkillName,description:Type.String({minLength:1,maxLength:300}),inputs:Type.String({minLength:1,maxLength:32768}),requirements:Type.String({minLength:1,maxLength:32768}),steps:Type.String({minLength:1,maxLength:32768}),validation:Type.String({minLength:1,maxLength:32768}),output:Type.String({minLength:1,maxLength:32768}),approvalBoundaries:Type.String({minLength:1,maxLength:32768})});
@@ -78,6 +80,11 @@ export const HOST_PARAM_SCHEMAS = {
 	"artifacts.import": strict({ requestId: Id, path: ArtifactPath }),
 	"artifacts.export": strict({ requestId: Id, artifactId: ArtifactId, path: ArtifactPath }),
 	"artifacts.get": strict({ artifactId: ArtifactId }),
+	"files.list": strict({path:ReaderPath}),
+	"files.read": strict({path:ArtifactPath}),
+	"files.open": strict({path:ArtifactPath}),
+	"artifacts.list": ArtifactList,
+	"artifacts.read": strict({artifactId:ArtifactId}),
 	"artifacts.preview": strict({ artifactId: ArtifactId }),
 	"artifacts.remove": strict({ requestId: Id, artifactId: ArtifactId }),
 	"collaboration.stop": strict({ rootId: Type.String({ minLength: 1, maxLength: 2048 }) }),
@@ -263,10 +270,12 @@ const artifactRequest = Compile(
 		requestId: Id,
 		targetId: Id,
 		operation: Type.Union([
+            strict({action:Type.Enum(["files-list","files-read","file-open"]),path:ReaderPath}),
+            strict({action:Type.Literal("list"),offset:Type.Integer({minimum:0,maximum:4096}),query:Type.String({maxLength:200})}),
 			strict({ action: Type.Literal("avatar-source"), path: ArtifactPath }),
 			strict({ action: Type.Literal("avatar-validate"), base64: AvatarBase64 }),
 			strict({ action: Type.Literal("import"), path: ArtifactPath }),
-			strict({ action: Type.Enum(["get", "preview", "content", "remove"]), artifactId: ArtifactId }),
+			strict({ action: Type.Enum(["get", "preview", "read", "content", "remove"]), artifactId: ArtifactId }),
 			strict({ action: Type.Literal("export"), artifactId: ArtifactId, path: ArtifactPath }),
 		]),
 	}),
