@@ -569,14 +569,14 @@
 }
 
 @container chat (max-width: 580px) {
- .conversation-header { padding: 14px 16px; gap: 8px; }
- .timeline-scroll { padding-left: 12px; padding-right: 12px; }
- .compose-area { padding-left: 12px; padding-right: 12px; }
- .compose-area .composer-hint { font-size: 10px; }
- .group-post { padding: 10px 8px; }
- .message, .group-post { font-size: 14px; overflow-wrap: anywhere; }
- .artifact-card { min-width: 0; }
- .artifact-actions { flex-wrap: wrap; }
+ .chat-panel .conversation-header { padding: 14px 16px; gap: 8px; }
+ .chat-panel .timeline-scroll { padding-left: 12px; padding-right: 12px; }
+ .chat-panel .compose-area { padding-left: 12px; padding-right: 12px; }
+ .chat-panel .compose-area .composer-hint { font-size: 10px; }
+ .chat-panel .group-post { padding: 10px 8px; }
+ .chat-panel .message, .chat-panel .group-post { font-size: 14px; overflow-wrap: anywhere; }
+ .chat-panel .artifact-card { min-width: 0; }
+ .chat-panel .artifact-actions { flex-wrap: wrap; }
 }
 @container reader (max-width: 430px) {
  .reader-title { gap: 6px; }
@@ -587,13 +587,16 @@
  .pdf-reader { padding-left: 12px; padding-right: 12px; }
 }
 @container chat (max-width: 460px) {
- .welcome-character { display: none; }
- .empty-conversation h2 { font-size: 30px; }
- .conversation.is-empty .compose-area { margin-bottom: 24px; }
+ .chat-panel .welcome-character { display: none; }
+ .chat-panel .empty-conversation h2 { font-size: 30px; }
+ .chat-panel .conversation.is-empty .compose-area { margin-bottom: 24px; }
 }
 @container chat (max-width: 460px) {
- .conversation-header .mark-read, .conversation-header .details-toggle { font-size: 0; padding: 6px; }
- .conversation-header .mark-read::after { content: "✓"; font-size: 15px; }
- .conversation-header .details-toggle svg { width: 16px; height: 16px; }
- .conversation-header .conversation-title { min-width: 70px; }
+ .chat-panel .conversation-header .mark-read, .chat-panel .conversation-header .details-toggle { font-size: 0; padding: 6px; }
+ .chat-panel .conversation-header .mark-read::after { content: "✓"; font-size: 15px; }
+ .chat-panel .conversation-header .details-toggle svg { width: 16px; height: 16px; }
+ .chat-panel .conversation-header .conversation-title { min-width: 70px; }
+}
+@container chat (max-width: 460px) {
+ .chat-panel .group-view .conversation-header .details-toggle { font-size: 16px; }
 }

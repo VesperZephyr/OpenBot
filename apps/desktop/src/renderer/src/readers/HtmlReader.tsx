@@ -63,7 +63,7 @@ export default function HtmlReader({ html, zoom }: { html: string; zoom: number 
 		const node = viewport.current,
 			id = state?.id;
 		if (!node || !id) return;
-		const modalOpen = () => [...document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"], .dialog-backdrop')].some((el) => el.offsetParent !== null);
+		const modalOpen = () => [...document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"], .dialog-backdrop')].some((el) => el.getClientRects().length > 0);
 		let covered = modalOpen();
 		const update = () => {
 			const rect = node.getBoundingClientRect();

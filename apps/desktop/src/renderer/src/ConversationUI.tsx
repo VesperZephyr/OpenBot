@@ -28,7 +28,7 @@ export function useDialogFocus() {
 	useEffect(() => {
 		const openers = new Map<HTMLElement, HTMLElement | null>();
 		const dialogs = () =>
-			[...document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]')].filter((e) => e.offsetParent !== null);
+			[...document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]')].filter((e) => e.getClientRects().length > 0);
 		const scan = () => {
 			for (const [dialog, opener] of openers)
 				if (!dialog.isConnected) {
@@ -56,7 +56,7 @@ export function useDialogFocus() {
 					...dialog.querySelectorAll<HTMLElement>(
 						'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"], summary',
 					),
-				].filter((e) => e.offsetParent !== null);
+				].filter((e) => e.getClientRects().length > 0);
 				const first = items[0],
 					last = items.at(-1);
 				if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {

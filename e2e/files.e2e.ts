@@ -202,6 +202,15 @@ it("renders HTML resources and linked pages in an isolated embedded browser", as
     await poll(() => h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible())).toBe(false);
     await h.page().getByRole("dialog", { name: "New conversation" }).getByRole("button", { name: "Close", exact: true }).click();
     await poll(() => h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible())).toBe(true);
+    await h.page().getByRole("button", { name: "Conversation details", exact: true }).click();
+    const profile = h.page().getByRole("dialog", { name: "Conversation details", exact: true });
+    await profile.waitFor();
+    await poll(() => h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible())).toBe(false);
+    await h.page().keyboard.press("Shift+Tab");
+    expect(await profile.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+    await h.page().keyboard.press("Escape");
+    await profile.waitFor({ state: "detached" });
+    await poll(() => h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible())).toBe(true);
     await page.getByRole("button", { name: "Reviewed 1" }).waitFor();
 	await page.screenshot({ path: join(h.run, "02-html-content-en.png") });
 	await h.shot("02-html-shell-en");
