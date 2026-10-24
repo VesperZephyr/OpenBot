@@ -1,7 +1,17 @@
 import { useEffect, useRef } from "react";
 import { closeReaderTab, openFiles, useReader } from "./reader-store";
+import type { ReaderTab } from "./reader-store";
 import { InterfaceIcon } from "./InterfaceIcon";
 import { t } from "./i18n";
+function ReaderTabLabel({ tab }: { tab: ReaderTab }) {
+	const extension = tab.selection.kind !== "web" ? /\.[a-z0-9]{1,8}$/i.exec(tab.title)?.[0] : undefined;
+	return (
+		<>
+			<span className="reader-tab-title">{extension ? tab.title.slice(0, -extension.length) : tab.title}</span>
+			{extension && <span className="reader-tab-extension">{extension}</span>}
+		</>
+	);
+}
 export function ReaderTabs() {
 	const browse = useReader((state) => state.browse);
 	const tabs = useReader((state) => state.tabs),
@@ -33,6 +43,7 @@ export function ReaderTabs() {
 							aria-selected={tab.id === activeId}
 							tabIndex={tab.id === activeId ? 0 : -1}
 							title={tab.title}
+							aria-label={tab.title}
 							onClick={() => useReader.setState({ activeId: tab.id })}
 							onKeyDown={(event) => {
 								if (event.key === "Delete") {
@@ -58,16 +69,17 @@ export function ReaderTabs() {
 								}
 							}}
 						>
-							<span aria-hidden>{tab.selection.kind === "web" ? "◎" : "▤"}</span>
-							<span>{tab.title}</span>
+							<InterfaceIcon name={tab.selection.kind === "web" ? "web" : "file"} />
+							<ReaderTabLabel tab={tab} />
 						</button>
 						<button
 							className="reader-tab-close"
 							tabIndex={tab.id === activeId ? 0 : -1}
 							aria-label={t("Close {name}", { name: tab.title })}
+							title={t("Close {name}", { name: tab.title })}
 							onClick={() => close(tab.id)}
 						>
-							×
+							<InterfaceIcon name="close" />
 						</button>
 					</div>
 				))}
@@ -76,19 +88,24 @@ export function ReaderTabs() {
 				ref={add}
 				className="reader-add-tab"
 				aria-label={t("Open file or page")}
+				title={t("Open file or page")}
 				onClick={() => {
 					openFiles();
 					requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".reader-page-form input")?.focus());
 				}}
 			>
-				+
+				<InterfaceIcon name="plus" />
 			</button>
 			<div className="reader-panel-tools">
-				<button aria-label={t(browse ? "Hide file list" : "Show file list")} onClick={() => useReader.setState({ browse: !browse })}>
-					<InterfaceIcon name="file" />
+				<button
+					aria-label={t(browse ? "Hide file list" : "Show file list")}
+					title={t(browse ? "Hide file list" : "Show file list")}
+					onClick={() => useReader.setState({ browse: !browse })}
+				>
+					<InterfaceIcon name="panel" />
 				</button>
-				<button aria-label={t("Close preview")} onClick={() => useReader.setState({ open: false })}>
-					×
+				<button aria-label={t("Close preview")} title={t("Close preview")} onClick={() => useReader.setState({ open: false })}>
+					<InterfaceIcon name="close" />
 				</button>
 			</div>
 		</div>

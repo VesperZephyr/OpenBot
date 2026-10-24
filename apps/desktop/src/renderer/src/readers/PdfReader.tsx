@@ -3,6 +3,7 @@ import { Document, Page, pdfjs } from "react-pdf";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import "react-pdf/dist/Page/TextLayer.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
+import { InterfaceIcon } from "../InterfaceIcon";
 import { t } from "../i18n";
 import { ReaderLoading } from "../FileWorkspace";
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -32,7 +33,12 @@ export default function PdfReader({ base64, zoom }: { base64: string; zoom: numb
 		return () => observer.disconnect();
 	}, []);
 	// Effect-based PDF loading keeps binary ownership stable before the first page commits.
-	const data = useMemo(() => ({ data: Uint8Array.from(atob(base64), (char) => char.charCodeAt(0)) }), [base64]);
+	const data = useMemo(
+		() => ({
+			data: Uint8Array.from(atob(base64), (char) => char.charCodeAt(0)),
+		}),
+		[base64],
+	);
 	const [pages, setPages] = useState(0),
 		[page, setPage] = useState(1),
 		[error, setError] = useState(false);
@@ -40,11 +46,11 @@ export default function PdfReader({ base64, zoom }: { base64: string; zoom: numb
 		<div className="pdf-reader" ref={container}>
 			<div className="pdf-controls">
 				<button aria-label={t("Previous page")} disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-					←
+					<InterfaceIcon name="back" />
 				</button>
 				<span>{t("Page {page} of {total}", { page, total: pages || "…" })}</span>
 				<button aria-label={t("Next page")} disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
-					→
+					<InterfaceIcon name="forward" />
 				</button>
 			</div>
 			{error ? (

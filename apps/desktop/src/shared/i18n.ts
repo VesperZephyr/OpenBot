@@ -51,6 +51,7 @@ export const chinese: Readonly<Record<string, string>> = {
 	"Filter files": "筛选文件",
 	"Shared files": "共享文件",
 	"File locations": "文件位置",
+	"Opening page…": "正在打开网页…",
 	"Opening file…": "正在打开文件…",
 	"Open file": "打开文件",
 	"File browser": "文件浏览",

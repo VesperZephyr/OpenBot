@@ -26,10 +26,9 @@
 	display:grid;
 	place-items:center;
 	width:38px;
-	height:44px;
+	height:38px;
 	flex-shrink:0;
 	border-radius:7px;
-	transform:rotate(-3deg);
 	background:var(--artifact-bg);
 	color:var(--artifact-ink);
 }
