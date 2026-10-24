@@ -1,6 +1,6 @@
 # I6: Integrated daily radar acceptance
 
-Status: in progress
+Status: in review — [PR #57](https://github.com/VesperZephyr/OpenBot/pull/57), targeting main
 Branch: task/i6-radar-integration
 Depends on: B11b (main), reviewed B11c and D8
 Architecture: local deployment, routines, report composition and lifecycle
@@ -45,7 +45,19 @@ The body byte cap must not silently return a successful complete document: rejec
 
 ## Evidence
 
-Pending.
+Runtime candidate: `90322ba`, packaged as `0.0.0-i6.20261024.2` on 2026-10-24. Subsequent commits record acceptance and workflow instructions only.
+
+- `pnpm run check`: package boundaries, type checking and **524 tests in 77 files passed**.
+- `pnpm run e2e`: **165 tests in 45 files passed**, 308.18 seconds, hidden isolated desktop sessions. Inspected unified-chat, streamed Markdown, automatic-summary, feed and full-page timestamp screenshots. New fixtures exercise actual routed Atom and full-page reads through the desktop model contract.
+- `pnpm run package`: arm64 DMG built; `codesign --verify --deep --strict` passed for the installed ad-hoc-signed application. DMG SHA-256: `50e6e756d83feb4620d216ea0af054507e455cf9fc933a0ccb12c8c9885ae7bf`. Developer ID, notarization and clean-machine native gates are not claimed.
+- Backed up owner data and configuration while the Host was stopped, installed the candidate in Applications, and inspected the actual app with agent-browser. Existing group, four Bots (including the unrelated existing Specialist) and default `mafia/claude-opus-5-5` configuration were preserved. No new radar identities were created. Provider configuration works in the packaged Host without a development terminal.
+- Real calendar runs used temporary same-day source/summary times at 12:35/12:36 and 12:43/12:44, Asia/Singapore; no chat message or Test run admission. Both chains published two researcher reports and one Core summary. The first exposed missing ISO timestamps in visible GitHub labels; the corrected runtime preserves them. The second read all eleven sources with no fetch failures and captured two complete source reports, but left a Codex feed continuation unread. Research instructions now reserve pagination budget before optional checks and distinguish product and release counts. A final 12:49/12:50 calendar run verifies these instructions.
+
+- Final 12:49/12:50 scheduled chain: domestic **15 successful fetches**, international **22 successful fetches**, Core **zero tools**. All eleven primary sources were readable. Codex's 294,506-character Atom feed was read through its closing element in eight pages; the extra coverage found another prerelease omitted by the earlier pass. The summary distinguishes two products and four individually timestamp-verified versions, with three date-only/tag-time candidates kept unverified. This does not establish completeness beyond the inspected sources or verify unknown upstream publication time.
+- Both final source occurrences were non-test, completed and published; Core captured their exact occurrence IDs with **2/2 ready, untruncated inputs** (4,641 and 5,658 UTF-8 bytes), then published one 4,345-byte summary. Every product ledger row has a clickable primary-source citation. Reports and source receipts were inspected, not just completion flags. The model misstated one tool count and retained an earlier acceptance ordinal in prose; the execution ledger is authoritative. Final instructions omit estimated usage counts, and the exported verification note identifies the final pass accurately.
+- Restored the existing daily times: domestic **07:08**, international **07:10**, Core **07:47**, `Asia/Singapore`; all enabled, next occurrence 2026-10-25. Both source revisions are 5 and Core revision 15 confirms those exact sources with a 24-hour input window and 20-minute bounded wait. Temporary acceptance prefixes were removed; no manual message is required for daily composition.
+- Configured a user-local login LaunchAgent for the installed application, without KeepAlive. This is owner-machine setup, not a new built-in startup feature. Graceful Quit stopped the Host; invoking the configured login entry started Applications/OpenBot and its bundled Host, with exit code 0 and no debug port or development terminal. A read-only persisted-state check after restart confirmed exactly one group post per final occurrence and all three enabled schedules with unchanged confirmed revisions. The live group was reopened and inspected.
+- Natural next-morning operation, multi-day uptime, a full logout/login and clean-machine installation have not been observed. Local schedules require the Mac awake and OpenBot running; 24-hour catch-up and existing lifecycle/absence gates still apply. The owner retains the final main merge.
 
 ## Risks
 

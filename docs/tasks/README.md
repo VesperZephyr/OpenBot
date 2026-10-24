@@ -151,7 +151,7 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | [I3: Repeatable workflow acceptance](i3-workflow-acceptance.md) | done (#42); 477 unit/Host and 131 hidden e2e tests; real-model workflow evidence |
 
-| [I6: Integrated daily radar acceptance](i6-radar-integration.md) | in progress (#57); main integration and real owner workflow acceptance |
+| [I6: Integrated daily radar acceptance](i6-radar-integration.md) | in review (#57); 524 unit/Host tests, 165 desktop tests, installed owner app and real calendar/restart acceptance |
 
 ## Reusable procedures
 

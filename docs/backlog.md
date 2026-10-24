@@ -1,6 +1,6 @@
 # Development Backlog
 
-**I6, in progress:** [Integrated daily radar acceptance](tasks/i6-radar-integration.md) carries reviewed B11c and D8 into current main, verifies the owner application update and audits the real daily reporting chain. PR #55 and #56 merged into feature branches; main delivery is pending I6. I5 (#54) and B11b (#53) are merged into main.
+**I6, in review (#57):** [Integrated daily radar acceptance](tasks/i6-radar-integration.md) carries reviewed B11c and D8 into current main, includes the verified owner application update and three real calendar-triggered daily reporting chains. The final chain read all eleven sources, captured complete inputs and survived an installed-app restart without duplicate delivery. PR #55 and #56 merged into feature branches; main delivery is pending I6. I5 (#54) and B11b (#53) are merged into main.
 
 Active delivery scope (2026-10-24): [I6 / PR #57](https://github.com/VesperZephyr/OpenBot/pull/57) targets main directly with B11c summaries, D8 unified chat and continuous activity, and source-evidence corrections found during live radar acceptance. B11b (#53), I5 (#54), role research (#45), B27a (#46), B27b (#47), I4 (#48), D6 (#49) and D7 (#51) are merged into main. Backup/restore (B14d), history scaling (B14c), templates (B13e) and signed updates (B14f) remain subsequent work. OAuth, optional model review and Phase 3 remain separate specs.
 
