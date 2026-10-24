@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -18,13 +18,25 @@ const options = {
 	useWasm: false,
 };
 export default function PdfReader({ base64, zoom }: { base64: string; zoom: number }) {
+	const container = useRef<HTMLDivElement>(null);
+	const [width, setWidth] = useState(300);
+	useEffect(() => {
+		const node = container.current;
+		if (!node) return;
+		const observer = new ResizeObserver(() => {
+			const style = getComputedStyle(node);
+			setWidth(Math.max(200, Math.floor(node.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight))));
+		});
+		observer.observe(node);
+		return () => observer.disconnect();
+	}, []);
 	// Effect-based PDF loading keeps binary ownership stable before the first page commits.
 	const data = useMemo(() => ({ data: Uint8Array.from(atob(base64), (char) => char.charCodeAt(0)) }), [base64]);
 	const [pages, setPages] = useState(0),
 		[page, setPage] = useState(1),
 		[error, setError] = useState(false);
 	return (
-		<div className="pdf-reader">
+		<div className="pdf-reader" ref={container}>
 			<div className="pdf-controls">
 				<button aria-label={t("Previous page")} disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
 					←
@@ -54,6 +66,7 @@ export default function PdfReader({ base64, zoom }: { base64: string; zoom: numb
 					<Page
 						suspense={false}
 						pageNumber={page}
+						width={width}
 						scale={zoom / 100}
 						loading={<ReaderLoading />}
 						renderAnnotationLayer={false}

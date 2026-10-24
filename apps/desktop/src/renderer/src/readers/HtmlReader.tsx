@@ -5,6 +5,7 @@ import { errorMessage } from "../store";
 import { useReader } from "../reader-store";
 import { ReaderLoading } from "../FileWorkspace";
 export default function HtmlReader({ html, zoom }: { html: string; zoom: number }) {
+	const resizing = useReader((state) => state.resizing);
 	const viewport = useRef<HTMLDivElement>(null),
 		current = useRef<string | undefined>(undefined),
 		local = useRef<string | undefined>(undefined);
@@ -62,21 +63,31 @@ export default function HtmlReader({ html, zoom }: { html: string; zoom: number 
 		const node = viewport.current,
 			id = state?.id;
 		if (!node || !id) return;
+		const modalOpen = () => [...document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"], .dialog-backdrop')].some((el) => el.offsetParent !== null);
+		let covered = modalOpen();
 		const update = () => {
 			const rect = node.getBoundingClientRect();
 			void window.openbot
-				.readerBounds(id, { x: rect.x, y: rect.y, width: rect.width, height: rect.height, zoom: zoom / 100 })
+				.readerBounds(id, { x: rect.x, y: rect.y, width: resizing || covered ? 0 : rect.width, height: resizing || covered ? 0 : rect.height, zoom: zoom / 100 })
 				.catch(() => {});
 		};
 		const observer = new ResizeObserver(update);
 		observer.observe(node);
+		for (const group of document.querySelectorAll(".workspace-split, .conversation-split")) observer.observe(group);
+		// Native views sit above the renderer, so hide them while an app modal owns interaction.
+		const modals = new MutationObserver(() => {
+			const next = modalOpen();
+			if (next !== covered) { covered = next; update(); }
+		});
+		modals.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "role", "hidden"] });
 		window.addEventListener("resize", update);
 		update();
 		return () => {
 			observer.disconnect();
+			modals.disconnect();
 			window.removeEventListener("resize", update);
 		};
-	}, [state?.id, zoom]);
+	}, [state?.id, zoom, resizing]);
 	const act = async (action: "navigate" | "back" | "forward" | "reload", url?: string) => {
 		setError("");
 		try {

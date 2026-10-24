@@ -158,8 +158,9 @@ export default function MarkdownReader({ text, zoom, workspacePath }: { text: st
 	return (
 		<div className="markdown-reader">
 			{outline.length > 1 && (
-				<nav className="reader-outline" aria-label={t("Document outline")}>
-					<p>{t("On this page")}</p>
+				<details className="reader-outline">
+					<summary>{t("On this page")}</summary>
+                    <nav aria-label={t("Document outline")}>
 					{outline.map((item) => (
 						<button
 							key={item.id}
@@ -169,7 +170,8 @@ export default function MarkdownReader({ text, zoom, workspacePath }: { text: st
 							{item.label}
 						</button>
 					))}
-				</nav>
+                    </nav>
+				</details>
 			)}
 			<article ref={article} className="reading-prose" style={{ fontSize: (16 * zoom) / 100 }}>
 				<ReactMarkdown

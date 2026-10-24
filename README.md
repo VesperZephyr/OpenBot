@@ -30,7 +30,7 @@ OpenBot is currently built for **one person on one Mac**. Give your Bots names, 
 | Capability | What you can do today |
 | --- | --- |
 | **Work with files and the terminal** | Read, search, write and edit authorized local files; run commands; follow long-running work in the background. |
-| **Keep usable results** | Attach text, Markdown, CSV or images in private chats. Click result filenames in the chat to read formatted Markdown, HTML pages, PDF, images or CSV inside OpenBot; export saved copies after a restart. |
+| **Keep usable results** | Attach text, Markdown, CSV or images in private chats. Click result filenames in the chat to read formatted Markdown, HTML pages, PDF, images or CSV in a resizable right-hand panel while continuing the conversation; export saved copies after a restart. |
 | **Research the web** | Search with a configured Tavily key; read pages and official Atom/RSS feeds, retaining full-page date/version context when needed. |
 | **Personalize every Bot** | Choose names, roles, instructions and generated or uploaded avatars. A small star identifies your permanent personal assistant; Specialists can use their own model and memory. |
 | **Remember and reuse** | Inspect where notes came from, correct or forget them, explicitly share useful context, and pin reviewed `SKILL.md` procedures to a Bot. |

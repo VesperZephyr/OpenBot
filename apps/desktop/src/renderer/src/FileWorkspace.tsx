@@ -33,6 +33,14 @@ export function FileWorkspace() {
 	const [zoom, setZoom] = useState(100),
 		[source, setSource] = useState(false);
 	const listGeneration = useRef(0);
+	const panel = useRef<HTMLElement>(null);
+	useEffect(() => {
+		const opener = document.activeElement as HTMLElement | null;
+		panel.current?.focus();
+		return () => {
+			if (opener?.isConnected) opener.focus();
+		};
+	}, []);
 	useEffect(() => {
 		if (!open || !browse) return;
 		let active = true;
@@ -122,8 +130,12 @@ export function FileWorkspace() {
 		}
 	};
 	return (
-		<div className="reader-backdrop">
-			<section className={`file-workspace ${expanded ? "reader-expanded" : ""}`} role="dialog" aria-modal="true" aria-label={t("Files")}>
+		<aside ref={panel} tabIndex={-1} className={`file-workspace ${expanded ? "reader-expanded" : ""}`} aria-label={t("Files")}
+            onKeyDown={(event) => {
+                if (event.key === "Escape" && !event.nativeEvent.isComposing && !event.defaultPrevented) {
+                    event.preventDefault(); event.stopPropagation(); close();
+                }
+            }}>
 				<header className="reader-topbar">
 					<div className="reader-title">
 						<InterfaceIcon name="file" />
@@ -164,10 +176,10 @@ export function FileWorkspace() {
 								{t("Export copy")}
 							</button>
 						)}
-						<button aria-label={t(expanded ? "Show file list" : "Expand reader")} onClick={() => useReader.setState({ browse: !browse })}>
-							{expanded ? "⊟" : "⛶"}
+						<button aria-label={t(expanded ? "Show file list" : "Hide file list")} onClick={() => useReader.setState({ browse: !browse })}>
+							<InterfaceIcon name="file" />
 						</button>
-						<button data-dialog-close aria-label={t("Close preview")} onClick={close}>
+						<button aria-label={t("Close preview")} onClick={close}>
 							×
 						</button>
 					</div>
@@ -333,7 +345,6 @@ export function FileWorkspace() {
 						)}
 					</main>
 				</div>
-			</section>
-		</div>
+		</aside>
 	);
 }

@@ -1,4 +1,4 @@
-import { FileWorkspace } from "./FileWorkspace";
+import { WorkspaceLayout } from "./WorkspaceLayout";
 import { openFiles } from "./reader-store";
 import { AppearanceSelect } from "./appearance";
 import { InterfaceIcon } from "./InterfaceIcon";
@@ -100,8 +100,7 @@ export function App() {
 
 	return (
 		<div className="app">
-            <FileWorkspace />
-			<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />
+            <WorkspaceLayout sidebar={<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />}>
 			<main className="main">
 				{host.status !== "ready" && (
 					<div className={`banner banner-${host.status}`}>
@@ -144,6 +143,7 @@ export function App() {
 					</>
 				)}
 			</main>
+            </WorkspaceLayout>
 			{newMenu && (
 				<div className="dialog-backdrop">
 					<div className="dialog new-conversation" role="dialog" aria-label={t("New conversation")}>

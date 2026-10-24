@@ -1,6 +1,6 @@
 # Development Backlog
 
-**D9, in progress:** [Files and read-only previews](tasks/d9-file-reading.md) makes AI result filenames clickable in the message stream, opening focused Markdown, HTML, PDF, image and CSV readers. It also adds a secondary Files browser. HTML uses Electron’s isolated embedded browser; no editor or model browser-control capability. Delivery targets main and depends on I6 / #57.
+**D9, in review ([#58](https://github.com/VesperZephyr/OpenBot/pull/58)):** [Files and read-only previews](tasks/d9-file-reading.md) makes AI result filenames clickable in the message stream, opening Markdown, HTML, PDF, image and CSV readers in a resizable right-hand panel. It also adds a secondary Files browser. HTML uses Electron’s isolated embedded browser; no editor or model browser-control capability. Delivery targets main and depends on I6 / #57.
 
 **I6, in review (#57):** [Integrated daily radar acceptance](tasks/i6-radar-integration.md) carries reviewed B11c and D8 into current main, includes the verified owner application update and three real calendar-triggered daily reporting chains. The final chain read all eleven sources, captured complete inputs and survived an installed-app restart without duplicate delivery. PR #55 and #56 merged into feature branches; main delivery is pending I6. I5 (#54) and B11b (#53) are merged into main.
 
