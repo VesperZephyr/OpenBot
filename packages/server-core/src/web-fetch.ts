@@ -120,7 +120,9 @@ function readHtml(html: string, status: number, url: URL, fullPage: boolean): Pa
 	const { document } = parseHTML(html);
 	const title = document.title.replace(/\s+/g, " ").trim();
 	for (const element of document.querySelectorAll("time[datetime], relative-time[datetime]")) {
-		if (!element.textContent?.trim()) element.textContent = element.getAttribute("datetime") ?? "";
+		const datetime = element.getAttribute("datetime") ?? "";
+		const label = element.textContent?.trim() ?? "";
+		if (datetime && !label.includes(datetime)) element.textContent = label ? `${label} (${datetime})` : datetime;
 	}
 	for (const element of document.querySelectorAll("a[href], img[src]")) {
 		const attribute = element.tagName === "A" ? "href" : "src";

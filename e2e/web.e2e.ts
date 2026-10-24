@@ -103,13 +103,13 @@ describe("Web search", () => {
 	});
 
 	it("keeps date and version context when the model requests complete page extraction", async () => {
-		h.model.script({ tool: "web_fetch", args: { url: "https://releases.example.org/changelog", mode: "page" } }, { text: "Release 1.2 is dated 2026-10-23; the source does not specify a time zone." });
+		h.model.script({ tool: "web_fetch", args: { url: "https://releases.example.org/changelog", mode: "page" } }, { text: "Release 1.2 is dated 2026-10-23T01:00:00Z; the full page preserves its UTC timestamp." });
 		await h.send("Read the full page to recover the missing version and date.");
 		await h.page().locator(".transcript").getByText("Release 1.2 is dated 2026-10-23", { exact: false }).waitFor();
 		const output = JSON.stringify(h.model.requests.at(-1)?.messages);
 		expect(output).toContain("extraction_mode: page");
 		expect(output).toContain("Release 1.2");
-		expect(output).toContain("2026-10-23");
+		expect(output).toContain("23 Oct 01:00 (2026-10-23T01:00:00Z)");
 		await h.shot("05-release-page");
 	});
 });

@@ -1,8 +1,8 @@
 # B11c: Scheduled summaries of routine reports
 
-Status: in review — [PR #55](https://github.com/VesperZephyr/OpenBot/pull/55)
+Status: integrated in [I6 / PR #57](https://github.com/VesperZephyr/OpenBot/pull/57), targeting main; original review and verification below.
 Branch: task/b11c-scheduled-report-summaries
-Depends on: B11b / PR #53. Until that prerequisite lands, review this branch against `task/b11b-group-routine-reports`; retarget main after it lands.
+Depends on: B11b (merged into main in PR #53). I6 carries this implementation into main.
 
 ## Goal and product boundary
 

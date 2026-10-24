@@ -151,6 +151,8 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | [I3: Repeatable workflow acceptance](i3-workflow-acceptance.md) | done (#42); 477 unit/Host and 131 hidden e2e tests; real-model workflow evidence |
 
+| [I6: Integrated daily radar acceptance](i6-radar-integration.md) | in progress (#57); main integration and real owner workflow acceptance |
+
 ## Reusable procedures
 
 | Task | Status |
@@ -182,7 +184,7 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | --- | --- |
 | [B11a: Local scheduled routines](b11a-local-routines.md) | done (#41); 477 unit/Host and 127 hidden desktop tests |
 | [B11b: Scheduled group reports](b11b-group-routine-reports.md) | done (#53); 512 unit/Host and 157 hidden desktop tests; bounded live-source acceptance |
-| [B11c: Scheduled report summaries](b11c-scheduled-report-summaries.md) | integrated by I6 (main PR pending); 519 unit/Host and 161 hidden desktop tests; five-request real-model composition/restart check |
+| [B11c: Scheduled report summaries](b11c-scheduled-report-summaries.md) | integrated by I6 / PR #57; 519 unit/Host and 161 hidden desktop tests; five-request real-model composition/restart check |
 
 ## Per-role methods
 
@@ -213,12 +215,10 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Spec | Status |
 | --- | --- |
 | [D7: White canvas and focused interactions](d7-chat-interaction.md) | done (#51); 506 unit and 153 desktop tests pass |
+| [D8: Unified chat and continuous activity feedback](d8-chat-experience.md) | integrated by I6 / PR #57; 520 unit/Host and 167 hidden desktop tests |
 
-| [D8: Unified chat and continuous activity feedback](d8-chat-experience.md) | integrated by I6 (main PR pending); 520 unit/Host and 167 hidden desktop tests |
 ## Regression efficiency
 
 | Task | Status |
 | --- | --- |
 | [I5: E2E coverage and execution efficiency](i5-e2e-efficiency.md) | done (#54); two full parallel regressions pass |
-
-| [I6: Integrated daily radar acceptance](i6-radar-integration.md) | in progress; main integration and real owner workflow acceptance |
