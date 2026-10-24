@@ -16,7 +16,7 @@ type Reader = {
 	bounds: boolean;
 	loading: boolean;
 };
-const readers = new Map<number, Reader>();
+const readers = new Map<string, Reader>();
 const sessions = new Set<number>();
 function allowed(reader: Reader, url: string) {
 	return isWebPage(url) || previewDocuments.read(url, reader.owner.id) !== undefined;
@@ -37,23 +37,25 @@ function publish(reader: Reader) {
 	if (!reader.owner.isDestroyed() && !reader.view.webContents.isDestroyed()) reader.owner.send(CHANNELS.readerState, state(reader));
 }
 function find(owner: WebContents, id: unknown): Reader {
-	const reader = readers.get(owner.id);
-	if (!reader || reader.id !== id || reader.view.webContents.isDestroyed()) throw Error("This page is closed");
+	const reader = typeof id === "string" ? readers.get(id) : undefined;
+	if (!reader || reader.owner.id !== owner.id || reader.view.webContents.isDestroyed()) throw Error("This page is closed");
 	return reader;
 }
 export function closeReader(ownerId: number, id?: unknown) {
-	const reader = readers.get(ownerId);
-	if (!reader || (id !== undefined && reader.id !== id)) return;
-	readers.delete(ownerId);
-	if (!reader.window.isDestroyed()) reader.window.contentView.removeChildView(reader.view);
-	if (!reader.view.webContents.isDestroyed()) reader.view.webContents.close({ waitForBeforeUnload: false });
+	for (const reader of readers.values()) {
+		if (reader.owner.id !== ownerId || (id !== undefined && reader.id !== id)) continue;
+		readers.delete(reader.id);
+		if (!reader.window.isDestroyed()) reader.window.contentView.removeChildView(reader.view);
+		if (!reader.view.webContents.isDestroyed()) reader.view.webContents.close({ waitForBeforeUnload: false });
+	}
 }
 export function openReader(owner: WebContents, url: unknown): ReaderBrowserState {
 	if (typeof url !== "string" || (!isWebPage(url) && previewDocuments.read(url, owner.id) === undefined))
 		throw Error("Enter an HTTP or HTTPS page address");
 	const window = BrowserWindow.fromWebContents(owner);
 	if (!window) throw Error("No application window");
-	closeReader(owner.id);
+	if ([...readers.values()].filter((reader) => reader.owner.id === owner.id).length >= 12)
+		throw Error("Close a tab before opening another (12 tabs maximum).");
 	const partition = session.fromPartition(`openbot-reader-${owner.id}`);
 	if (!sessions.has(owner.id)) {
 		sessions.add(owner.id);
@@ -86,6 +88,7 @@ export function openReader(owner: WebContents, url: unknown): ReaderBrowserState
 		owner.once("destroyed", () => {
 			closeReader(ownerId);
 			previewDocuments.clear(ownerId);
+			sessions.delete(ownerId);
 			void partition.clearStorageData();
 		});
 		owner.on("did-start-navigation", (_event, _url, _inPlace, isMainFrame) => {
@@ -106,11 +109,11 @@ export function openReader(owner: WebContents, url: unknown): ReaderBrowserState
 			webSecurity: true,
 			allowRunningInsecureContent: false,
 			webviewTag: false,
-			backgroundThrottling: false,
+			backgroundThrottling: true,
 		},
 	});
 	const reader: Reader = { id: randomUUID(), owner, window, view, error: "", bounds: false, loading: true };
-	readers.set(owner.id, reader);
+	readers.set(reader.id, reader);
 	view.setVisible(false);
 	view.setBackgroundColor("#ffffff");
 	window.contentView.addChildView(view);
@@ -171,7 +174,7 @@ export function openReader(owner: WebContents, url: unknown): ReaderBrowserState
 	});
 	void wc.loadURL(url).catch((error) => {
 		if (error.code === "ERR_ABORTED" || error.errno === -3) return;
-		if (readers.get(owner.id) === reader && !wc.isDestroyed()) {
+		if (readers.get(reader.id) === reader && !wc.isDestroyed()) {
 			reader.error = String(error.message ?? error);
 			reader.loading = false;
 			view.setVisible(false);
@@ -212,6 +215,14 @@ export function readerBounds(owner: WebContents, id: unknown, value: unknown): v
 		height: Math.max(0, Math.min(h - top, Math.round(Number(height)))),
 	};
 	reader.bounds = bounds.width > 0 && bounds.height > 0;
+	if (reader.bounds) {
+		// Only one native tab may cover the renderer, including during concurrent load completion.
+		for (const other of readers.values())
+			if (other !== reader && other.owner.id === owner.id) {
+				other.bounds = false;
+				other.view.setVisible(false);
+			}
+	}
 	reader.view.setBounds(bounds);
 	reader.view.webContents.setZoomFactor(Number(zoom));
 	reader.view.setVisible(reader.bounds && !reader.loading && !reader.error);

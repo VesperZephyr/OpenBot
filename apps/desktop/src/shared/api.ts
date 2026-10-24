@@ -123,7 +123,7 @@ export type OpenBotApi = {
 	readonly readerBounds: (id: string, bounds: { x: number; y: number; width: number; height: number; zoom: number }) => Promise<void>;
 	readonly readerClose: (id: string) => Promise<void>;
 	readonly onReaderState: (listener: (state: ReaderBrowserState) => void) => () => void;
-	readonly openFile: () => Promise<import("@openbot/protocol").ReaderFile | null>;
+	readonly openFile: () => Promise<(import("@openbot/protocol").ReaderFile & { selectionId: string }) | null>;
 	readonly previewHtml: (html: string) => Promise<string>;
 	readonly closeHtmlPreview: (url: string) => Promise<void>;
 	readonly pickAvatar: () => Promise<import("@openbot/protocol").AvatarUpload | null>;

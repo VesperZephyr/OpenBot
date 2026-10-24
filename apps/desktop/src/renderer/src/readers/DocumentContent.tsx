@@ -11,8 +11,12 @@ export default function DocumentContent({
 	source,
 	zoom,
 	workspacePath,
+	active,
+	tabId,
 }: {
 	file: ReaderFile;
+	active: boolean;
+	tabId: string;
 	source: boolean;
 	zoom: number;
 	workspacePath?: string | undefined;
@@ -27,7 +31,7 @@ export default function DocumentContent({
 			) : file.mediaType === "text/markdown" ? (
 				<MarkdownReader text={text} zoom={zoom} workspacePath={workspacePath} />
 			) : file.mediaType === "text/html" ? (
-				<HtmlReader html={text} zoom={zoom} />
+				<HtmlReader html={text} zoom={zoom} active={active} tabId={tabId} />
 			) : file.mediaType === "application/pdf" ? (
 				<PdfReader base64={file.base64 ?? ""} zoom={zoom} />
 			) : file.mediaType.startsWith("image/") ? (

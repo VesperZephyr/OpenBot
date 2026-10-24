@@ -7,7 +7,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeSlug from "rehype-slug";
 import { t } from "../i18n";
 import { api, report } from "../store";
-import { useReader } from "../reader-store";
+import { openSelection, openWebPage } from "../reader-store";
 import "katex/dist/katex.min.css";
 import "highlight.js/styles/github.css";
 const remarkPlugins = [remarkGfm, remarkMath];
@@ -145,8 +145,8 @@ export default function MarkdownReader({ text, zoom, workspacePath }: { text: st
 						const path = href && workspacePath ? relativePath(href, workspacePath) : undefined;
 						if (path) {
 							event.preventDefault();
-							useReader.setState({ selection: { kind: "workspace", path, name: path.split("/").at(-1) ?? path } });
-						} else if (!href?.startsWith("https://")) event.preventDefault();
+							openSelection({ kind: "workspace", path, name: path.split("/").at(-1) ?? path });
+						} else { event.preventDefault(); if (href) openWebPage(href); }
 					}}
 				>
 					{children}

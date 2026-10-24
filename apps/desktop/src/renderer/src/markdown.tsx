@@ -1,7 +1,8 @@
+import { openWebPage } from "./reader-store";
 import { t } from "./i18n";
 /**
  * GitHub-flavored Markdown for assistant messages. Model output is untrusted: the HTML is sanitized, raw HTML in the
- * source is dropped, and links open in the user's browser through main's window-open handler. Code blocks carry a Copy
+ * source is dropped, and HTTP(S) links open in the right-hand reader. Code blocks carry a Copy
  * button; clicks are handled by delegation, and the text goes to the clipboard through main.
  */
 import DOMPurify from "dompurify";
@@ -62,6 +63,8 @@ export function Markdown({ text, streaming = false }: { readonly text: string; r
 
 function copyCode(event: MouseEvent<HTMLDivElement>): void {
 	if (!(event.target instanceof Element)) return;
+	const link = event.target.closest("a");
+	if (link) { event.preventDefault(); openWebPage(link.href); return; }
 	const button = event.target.closest(".code-copy");
 	const code = button?.parentElement?.querySelector("pre")?.textContent;
 	if (button === null || button === undefined || code === undefined || code === null) return;

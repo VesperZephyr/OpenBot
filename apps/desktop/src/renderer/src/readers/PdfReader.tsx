@@ -24,6 +24,7 @@ export default function PdfReader({ base64, zoom }: { base64: string; zoom: numb
 		const node = container.current;
 		if (!node) return;
 		const observer = new ResizeObserver(() => {
+			if (!node.clientWidth) return;
 			const style = getComputedStyle(node);
 			setWidth(Math.max(200, Math.floor(node.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight))));
 		});

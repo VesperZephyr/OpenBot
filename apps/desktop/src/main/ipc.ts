@@ -1,6 +1,7 @@
+const readerSelectionKey = randomUUID();
 import { openReader, closeReader, readerAction, readerBounds } from "./reader-browser";
 import { previewDocuments } from "./preview-documents";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { translate } from "../shared/i18n";
 import type { ArtifactRef } from "@openbot/protocol";
 /**
@@ -118,7 +119,7 @@ export function registerIpc({ host, isTrustedFrame, language, onSettings }: IpcO
 			if (selected.filePaths.length !== 1) throw Error("Choose one file");
 			const result = await host.call("files.open", { path: selected.filePaths[0]! });
 			check();
-			return result;
+			return { ...result, selectionId: createHmac("sha256", readerSelectionKey).update(selected.filePaths[0]!).digest("hex") };
 		} finally {
 			event.sender.removeListener("did-start-navigation", expire);
 		}

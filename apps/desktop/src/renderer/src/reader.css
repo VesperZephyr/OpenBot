@@ -600,3 +600,29 @@
 @container chat (max-width: 460px) {
  .chat-panel .group-view .conversation-header .details-toggle { font-size: 16px; }
 }
+
+.reader-tabs-header { display: flex; align-items: stretch; min-width: 0; flex: none; border-bottom: 1px solid var(--border); }
+.reader-tabs { display: flex; overflow-x: auto; min-width: 0; flex: 1; scrollbar-width: thin; }
+.reader-tab { display: flex; flex: 0 0 auto; align-items: center; max-width: 220px; min-width: 90px; border-right: 1px solid var(--border); border-bottom: 2px solid transparent; }
+.reader-tab[data-active="true"] { border-bottom-color: var(--accent); background: var(--surface-raised); }
+.reader-tab [role="tab"] { display: flex; align-items: center; gap: 7px; min-width: 0; height: 42px; padding: 0 10px; flex: 1; font-size: 12px; border-radius: 0; }
+.reader-tab [role="tab"] span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reader-tab-close, .reader-add-tab { flex: none; width: 28px; height: 36px; align-self: center; }
+.reader-panel-tools { display: flex; align-items: center; flex: none; gap: 2px; padding: 3px; }
+.reader-panel-tools button { width: 26px; height: 26px; }
+.reader-panel-tools svg { width: 16px; }
+.reader-tab-content { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.reader-tab-content[hidden] { display: none; }
+.reader-document-controls { padding: 4px 12px; border-bottom: 1px solid var(--border); }
+.reader-document-controls:empty { display: none; }
+.reader-page-form { display: flex; gap: 6px; flex: none; }
+.reader-page-form input { min-width: 0; width: 0; flex: 1; }
+.reader-page-form button { flex: none; padding: 6px; font-size: 12px; }
+.reader-notice { font-size: 12px; margin: 0; padding: 8px 12px; }
+.reader-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.file-browser { overflow: auto; }
+.file-browser > * { flex-shrink: 0; }
+.file-browser .file-entries { flex: none; min-height: 40px; max-height: 180px; }
+.reader-layout > .reader-empty { flex: 1; min-height: 0; height: auto; overflow: auto; }
+.file-workspace:not(:has(.reader-tab-content)) .file-browser { max-height: none; flex: 1; }
+.file-workspace:not(:has(.reader-tab-content)) .reader-empty { display: none; }

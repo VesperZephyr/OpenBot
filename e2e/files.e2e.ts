@@ -27,6 +27,8 @@ const api = (name: string, params = {}): Promise<any> =>
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 15000 });
 const dialog = () => h.page().getByRole("complementary", { name: "Files", exact: true });
 const open = async (name: string) => {
+	const browse = dialog().getByRole("button", { name: "Show file list", exact: true });
+	if (await browse.count()) await browse.click();
 	await dialog().locator(".file-entries").getByRole("button", { name, exact: true }).click();
 };
 beforeAll(async () => {
@@ -39,7 +41,9 @@ beforeAll(async () => {
 			res.end("loaded");
 		} else {
 			res.setHeader("Content-Type", "text/html");
-			res.end("<h1>Linked source page</h1><p>This page opens inside OpenBot.</p>");
+			res.end(
+				"<title>Source details</title><h1>Linked source page</h1><p>This page opens inside OpenBot.</p><button onclick=\"this.textContent='Web state retained'\">Check web state</button>",
+			);
 		}
 	});
 	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -49,7 +53,7 @@ beforeAll(async () => {
 			const ws = join(run, "workspace");
 			await mkdir(join(ws, "reports"));
 			for (const [name, body] of Object.entries({
-				"brief.md": markdown,
+				"brief.md": `${markdown}\n[Web source](${site}/page)\n`,
 				"related.md": "# Related research\n\nBacked by evidence.",
 				"interactive.html": html
 					.replace("https://example.invalid/reader-canary", `${site}/api`)
@@ -81,6 +85,9 @@ beforeAll(async () => {
 });
 afterEach(async ({ task }) => {
 	if (task.result?.state === "fail") await h.shot("failure");
+	if (!(await dialog().count()) && (await h.page().getByRole("button", { name: "Files", exact: true }).count()))
+		await h.page().getByRole("button", { name: "Files", exact: true }).click();
+	while (await h.page().locator(".reader-tab-close").count()) await h.page().locator(".reader-tab-close").last().click();
 });
 afterAll(async () => {
 	await h?.close();
@@ -106,7 +113,9 @@ it("opens a formatted Markdown reader with outline, GFM, math, code, images and 
 	await dialog().getByRole("button", { name: "Competitor radar", exact: true }).click();
 	await h.shot("01-markdown-en");
 	await dialog().getByRole("button", { name: "Source", exact: true }).click();
-	expect(await dialog().locator(".reader-source").textContent()).toBe(markdown);
+	expect(await dialog().locator(".reader-tab-content:not([hidden]) .reader-source").textContent()).toBe(
+		`${markdown}\n[Web source](${site}/page)\n`,
+	);
 	await dialog().getByRole("button", { name: "Reading", exact: true }).click();
 	await dialog().getByRole("link", { name: "Related note", exact: true }).click();
 	await dialog().getByRole("heading", { name: "Related research" }).waitFor();
@@ -133,6 +142,7 @@ it("shows loading and ignores a late result when the selected file changes", asy
 		await open("related.md");
 		await dialog().getByRole("status").filter({ hasText: "Opening file…" }).waitFor();
 		await h.shot("05-loading");
+		await dialog().getByRole("button", { name: "Close related.md", exact: true }).click();
 		await open("brief.md");
 		await dialog().getByRole("heading", { name: "Competitor radar", exact: true }).waitFor();
 		await h.app().evaluate(() => {
@@ -181,37 +191,51 @@ it("renders HTML resources and linked pages in an isolated embedded browser", as
 			}
 		}),
 	).toBe("blocked");
-	const viewport = await h.page().locator(".reader-web-viewport").boundingBox();
+	const viewport = await h.page().locator(".reader-tab-content:not([hidden]) .reader-web-viewport").boundingBox();
 	const bounds = await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getBounds());
 	expect(Math.abs(bounds.x - viewport!.x)).toBeLessThan(2);
 	expect(Math.abs(bounds.width - viewport!.width)).toBeLessThan(2);
 	const resize = (await h.page().getByRole("separator", { name: "Resize file preview" }).boundingBox())!;
-    await h.page().mouse.move(resize.x + resize.width / 2, resize.y + 100);
-    await h.page().mouse.down();
-    await poll(() => h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible())).toBe(false);
-    await h.page().mouse.move(resize.x - 70, resize.y + 100, { steps: 8 });
-    await h.page().mouse.up();
-    await poll(() => h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible())).toBe(true);
-    const resized = (await h.page().locator(".reader-web-viewport").boundingBox())!;
-    await poll(async () => {
-        const bounds = await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getBounds());
-        return Math.abs(bounds.x - resized.x) + Math.abs(bounds.width - resized.width);
-    }).toBeLessThan(3);
-    await h.page().getByRole("button", { name: "New", exact: true }).click();
-    await h.page().getByRole("dialog", { name: "New conversation" }).waitFor();
-    await poll(() => h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible())).toBe(false);
-    await h.page().getByRole("dialog", { name: "New conversation" }).getByRole("button", { name: "Close", exact: true }).click();
-    await poll(() => h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible())).toBe(true);
-    await h.page().getByRole("button", { name: "Conversation details", exact: true }).click();
-    const profile = h.page().getByRole("dialog", { name: "Conversation details", exact: true });
-    await profile.waitFor();
-    await poll(() => h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible())).toBe(false);
-    await h.page().keyboard.press("Shift+Tab");
-    expect(await profile.evaluate((el) => el.contains(document.activeElement))).toBe(true);
-    await h.page().keyboard.press("Escape");
-    await profile.waitFor({ state: "detached" });
-    await poll(() => h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible())).toBe(true);
-    await page.getByRole("button", { name: "Reviewed 1" }).waitFor();
+	await h.page().mouse.move(resize.x + resize.width / 2, resize.y + 100);
+	await h.page().mouse.down();
+	await poll(() =>
+		h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible()),
+	).toBe(false);
+	await h.page().mouse.move(resize.x - 70, resize.y + 100, { steps: 8 });
+	await h.page().mouse.up();
+	await poll(() =>
+		h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible()),
+	).toBe(true);
+	const resized = (await h.page().locator(".reader-tab-content:not([hidden]) .reader-web-viewport").boundingBox())!;
+	await poll(async () => {
+		const bounds = await h
+			.app()
+			.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getBounds());
+		return Math.abs(bounds.x - resized.x) + Math.abs(bounds.width - resized.width);
+	}).toBeLessThan(3);
+	await h.page().getByRole("button", { name: "New", exact: true }).click();
+	await h.page().getByRole("dialog", { name: "New conversation" }).waitFor();
+	await poll(() =>
+		h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible()),
+	).toBe(false);
+	await h.page().getByRole("dialog", { name: "New conversation" }).getByRole("button", { name: "Close", exact: true }).click();
+	await poll(() =>
+		h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible()),
+	).toBe(true);
+	await h.page().getByRole("button", { name: "Conversation details", exact: true }).click();
+	const profile = h.page().getByRole("dialog", { name: "Conversation details", exact: true });
+	await profile.waitFor();
+	await poll(() =>
+		h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible()),
+	).toBe(false);
+	await h.page().keyboard.press("Shift+Tab");
+	expect(await profile.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+	await h.page().keyboard.press("Escape");
+	await profile.waitFor({ state: "detached" });
+	await poll(() =>
+		h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible()),
+	).toBe(true);
+	await page.getByRole("button", { name: "Reviewed 1" }).waitFor();
 	await page.screenshot({ path: join(h.run, "02-html-content-en.png") });
 	await h.shot("02-html-shell-en");
 	const oldUrl = page.url();
@@ -262,6 +286,9 @@ it("opens native selections without attaching or inference and preserves chat dr
 	);
 	await dialog().getByRole("button", { name: "Open file", exact: true }).click();
 	await dialog().getByRole("heading", { name: "Native selection", exact: true }).waitFor();
+	await dialog().getByRole("button", { name: "Open file", exact: true }).click();
+	await dialog().getByRole("heading", { name: "Native selection", exact: true }).waitFor();
+	expect(await dialog().getByRole("tablist", { name: "Open files and pages" }).getByRole("tab").count()).toBe(1);
 	expect(await h.page().locator(".attachment-chips .artifact-card").count()).toBe(0);
 	expect(h.model.requests).toHaveLength(0);
 	await dialog().getByRole("button", { name: "Close preview", exact: true }).click();
@@ -273,50 +300,143 @@ it("opens native selections without attaching or inference and preserves chat dr
 	expect(await composer.inputValue()).toBe("Keep this draft");
 	expect(await dialog().count()).toBe(0);
 });
+it("keeps Markdown, PDF and multiple native pages in independent tabs", async () => {
+	const tabs = dialog().getByRole("tablist", { name: "Open files and pages" });
+	const select = (name: string) => tabs.getByRole("tab", { name, exact: true }).click();
+	const active = () => dialog().locator(".reader-tab-content:not([hidden])");
+	await open("long.md");
+	await active()
+		.getByText(/END_OF_DOCUMENT/)
+		.waitFor();
+	await active()
+		.locator(".reader-document")
+		.evaluate((node) => (node.scrollTop = 500));
+	const scroll = await active()
+		.locator(".reader-document")
+		.evaluate((node) => node.scrollTop);
+	expect(scroll).toBeGreaterThan(100);
+	await open("brief.md");
+	await active().getByRole("heading", { name: "Competitor radar", exact: true }).waitFor();
+	await active().getByRole("button", { name: "Zoom in", exact: true }).click();
+	await open("reader.pdf");
+	await active().getByText("Page 1 of 2", { exact: true }).waitFor();
+	await active().getByRole("button", { name: "Next page", exact: true }).click();
+	await active().getByText("Page 2 of 2", { exact: true }).waitFor();
+	await open("interactive.html");
+	const local = await nativePage();
+	await local.getByRole("button", { name: "Review findings" }).click();
+	await local.getByRole("button", { name: "Reviewed 1" }).waitFor();
+	const originalUrl = local.url();
+	await dialog().getByRole("button", { name: "Open file or page" }).click();
+	await dialog().getByRole("textbox", { name: "Page address" }).fill("file:///etc/passwd");
+	await dialog().getByRole("button", { name: "Open page", exact: true }).click();
+	await dialog().getByRole("alert").filter({ hasText: "Enter an HTTP or HTTPS page address" }).waitFor();
+	await dialog().getByRole("textbox", { name: "Page address" }).fill(`${site}/page`);
+	await dialog().getByRole("button", { name: "Open page", exact: true }).click();
+	await tabs.getByRole("tab", { name: "Source details", exact: true }).waitFor();
+	const web = h
+		.app()
+		.context()
+		.pages()
+		.find((page) => page.url() === `${site}/page`)!;
+	await web.getByRole("button", { name: "Check web state" }).click();
+	await web.getByRole("button", { name: "Web state retained" }).waitFor();
+	await select("interactive.html");
+	await local.getByRole("button", { name: "Reviewed 1" }).waitFor();
+	await poll(() =>
+		h
+			.app()
+			.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.filter((view) => view.getVisible()).length),
+	).toBe(1);
+	await select("brief.md");
+	await poll(() =>
+		h
+			.app()
+			.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.filter((view) => view.getVisible()).length),
+	).toBe(0);
+	expect(await active().getByRole("button", { name: "Reset zoom" }).textContent()).toContain("110%");
+	await select("reader.pdf");
+	await active().getByText("Page 2 of 2", { exact: true }).waitFor();
+	await select("long.md");
+	expect(
+		await active()
+			.locator(".reader-document")
+			.evaluate((node) => node.scrollTop),
+	).toBe(scroll);
+	await open("brief.md");
+	expect(await tabs.getByRole("tab").count()).toBe(5);
+	await select("Source details");
+	await web.getByRole("button", { name: "Web state retained" }).waitFor();
+	await dialog().getByRole("button", { name: "Open file or page" }).click();
+	await dialog().getByRole("textbox", { name: "Page address" }).fill(`${site}/page`);
+	await dialog().getByRole("button", { name: "Open page", exact: true }).click();
+	expect(await tabs.getByRole("tab").count()).toBe(5);
+	await web.getByRole("button", { name: "Web state retained" }).waitFor();
+	await dialog().getByRole("button", { name: "Close Source details", exact: true }).click();
+	await poll(async () => web.isClosed()).toBe(true);
+	await tabs.getByRole("tab", { name: "interactive.html", exact: true }).focus();
+	await h.page().keyboard.press("Home");
+	expect(await tabs.getByRole("tab", { name: "long.md", exact: true }).getAttribute("aria-selected")).toBe("true");
+	await h.page().keyboard.press("End");
+	await h.page().keyboard.press("Delete");
+	await poll(async () => local.isClosed()).toBe(true);
+	await expect(h.page().evaluate((url) => (window as any).openbot.readerOpen(url), originalUrl)).rejects.toThrow("address");
+	expect(await tabs.getByRole("tab", { name: "reader.pdf", exact: true }).getAttribute("aria-selected")).toBe("true");
+	await select("brief.md");
+	await active().getByRole("link", { name: "Web source", exact: true }).click();
+	await tabs.getByRole("tab", { name: "Source details", exact: true }).waitFor();
+	await select("brief.md");
+	await h.shot("07-multiple-reader-tabs");
+	expect(h.model.requests).toHaveLength(0);
+});
 it("keeps chat usable beside the reader and remembers both resizable columns", async () => {
-    await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1440, 900));
-    const composer = h.page().locator(".compose-area textarea");
-    await h.page().getByRole("button", { name: "Files", exact: true }).click();
-    await open("brief.md");
-    await dialog().getByRole("button", { name: "Hide file list", exact: true }).click();
-    const reader = h.page().locator(".reader-panel");
-    const chat = h.page().locator(".chat-panel");
-    const nav = h.page().locator(".navigation-panel");
-    const boxes = await Promise.all([nav.boundingBox(), chat.boundingBox(), reader.boundingBox()]);
-    expect(boxes[0]!.x + boxes[0]!.width).toBeLessThanOrEqual(boxes[1]!.x);
-    expect(boxes[1]!.x + boxes[1]!.width).toBeLessThanOrEqual(boxes[2]!.x);
-    expect(await dialog().getAttribute("aria-modal")).toBeNull();
-    await composer.fill("Chat remains usable beside the report");
-    h.model.script({ chunks: ["I can ", "read alongside you."], chunkDelayMs: 300 });
-    await composer.press("Enter");
-    await h.page().getByText("I can read alongside you.", { exact: true }).waitFor();
-    await dialog().getByRole("heading", { name: "Competitor radar", exact: true }).waitFor();
-    await composer.fill("Keep this unsent question");
-    const divider = h.page().getByRole("separator", { name: "Resize file preview" });
-    const before = (await reader.boundingBox())!.width;
-    const grip = (await divider.boundingBox())!;
-    await h.page().mouse.move(grip.x + grip.width / 2, grip.y + 150);
-    await h.page().mouse.down();
-    await h.page().mouse.move(grip.x - 120, grip.y + 150, { steps: 12 });
-    await h.page().mouse.up();
-    expect((await reader.boundingBox())!.width).toBeGreaterThan(before + 60);
-    const navDivider = h.page().getByRole("separator", { name: "Resize chat list" });
-    const navWidth = (await nav.boundingBox())!.width;
-    await navDivider.focus(); await h.page().keyboard.press("ArrowRight");
-    expect((await nav.boundingBox())!.width).toBeGreaterThan(navWidth);
-    expect((await h.page().locator(".conversation-title").boundingBox())!.width).toBeGreaterThanOrEqual(70);
-    const saved = { nav: (await nav.boundingBox())!.width, reader: (await reader.boundingBox())!.width };
-    await h.shot("06-three-column-resized");
-    await dialog().getByRole("button", { name: "Close preview" }).click();
-    expect(await composer.inputValue()).toBe("Keep this unsent question");
-    await h.page().getByRole("button", { name: "Files", exact: true }).click();
-    await poll(async () => Math.abs((await reader.boundingBox())!.width - saved.reader)).toBeLessThan(3);
-    await h.page().reload();
-    await h.page().getByRole("button", { name: "Files", exact: true }).click();
-    await poll(async () => Math.abs((await reader.boundingBox())!.width - saved.reader)).toBeLessThan(3);
-    expect(Math.abs((await nav.boundingBox())!.width - saved.nav)).toBeLessThan(3);
-    expect(await composer.inputValue()).toBe("Keep this unsent question");
-    await dialog().getByRole("button", { name: "Close preview" }).click();
+	await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1440, 900));
+	const composer = h.page().locator(".compose-area textarea");
+	await h.page().getByRole("button", { name: "Files", exact: true }).click();
+	await open("brief.md");
+	await dialog().getByRole("button", { name: "Hide file list", exact: true }).click();
+	const reader = h.page().locator(".reader-panel");
+	const chat = h.page().locator(".chat-panel");
+	const nav = h.page().locator(".navigation-panel");
+	const boxes = await Promise.all([nav.boundingBox(), chat.boundingBox(), reader.boundingBox()]);
+	expect(boxes[0]!.x + boxes[0]!.width).toBeLessThanOrEqual(boxes[1]!.x);
+	expect(boxes[1]!.x + boxes[1]!.width).toBeLessThanOrEqual(boxes[2]!.x);
+	expect(await dialog().getAttribute("aria-modal")).toBeNull();
+	await composer.fill("Chat remains usable beside the report");
+	h.model.script({ chunks: ["I can ", `read alongside you.\n\n[Official source](${site}/page)`], chunkDelayMs: 300 });
+	await composer.press("Enter");
+	await h.page().getByText("I can read alongside you.", { exact: true }).waitFor();
+	await dialog().getByRole("heading", { name: "Competitor radar", exact: true }).waitFor();
+	await h.page().locator(".chat-panel").getByRole("link", { name: "Official source", exact: true }).click();
+	await dialog().getByRole("tab", { name: "Source details", exact: true }).waitFor();
+	await dialog().getByRole("button", { name: "Close Source details", exact: true }).click();
+	await composer.fill("Keep this unsent question");
+	const divider = h.page().getByRole("separator", { name: "Resize file preview" });
+	const before = (await reader.boundingBox())!.width;
+	const grip = (await divider.boundingBox())!;
+	await h.page().mouse.move(grip.x + grip.width / 2, grip.y + 150);
+	await h.page().mouse.down();
+	await h.page().mouse.move(grip.x - 120, grip.y + 150, { steps: 12 });
+	await h.page().mouse.up();
+	expect((await reader.boundingBox())!.width).toBeGreaterThan(before + 60);
+	const navDivider = h.page().getByRole("separator", { name: "Resize chat list" });
+	const navWidth = (await nav.boundingBox())!.width;
+	await navDivider.focus();
+	await h.page().keyboard.press("ArrowRight");
+	expect((await nav.boundingBox())!.width).toBeGreaterThan(navWidth);
+	expect((await h.page().locator(".conversation-title").boundingBox())!.width).toBeGreaterThanOrEqual(70);
+	const saved = { nav: (await nav.boundingBox())!.width, reader: (await reader.boundingBox())!.width };
+	await h.shot("06-three-column-resized");
+	await dialog().getByRole("button", { name: "Close preview" }).click();
+	expect(await composer.inputValue()).toBe("Keep this unsent question");
+	await h.page().getByRole("button", { name: "Files", exact: true }).click();
+	await poll(async () => Math.abs((await reader.boundingBox())!.width - saved.reader)).toBeLessThan(3);
+	await h.page().reload();
+	await h.page().getByRole("button", { name: "Files", exact: true }).click();
+	await poll(async () => Math.abs((await reader.boundingBox())!.width - saved.reader)).toBeLessThan(3);
+	expect(Math.abs((await nav.boundingBox())!.width - saved.nav)).toBeLessThan(3);
+	expect(await composer.inputValue()).toBe("Keep this unsent question");
+	await dialog().getByRole("button", { name: "Close preview" }).click();
 });
 it("supports Chinese dark mode and the minimum window size", async () => {
 	await api("settings.update", { language: "zh-CN" });
@@ -336,6 +456,15 @@ it("supports Chinese dark mode and the minimum window size", async () => {
 			.page()
 			.locator(".file-workspace")
 			.evaluate((el) => el.scrollWidth <= el.clientWidth),
+	).toBe(true);
+	for (const name of ["long.md", "reader.pdf", "related.md"])
+		await h.page().locator(".file-entries").getByRole("button", { name, exact: true }).click();
+	await h.page().getByRole("tab", { name: "brief.md", exact: true }).click();
+	expect(
+		await h
+			.page()
+			.locator(".reader-tabs")
+			.evaluate((el) => el.scrollWidth > el.clientWidth),
 	).toBe(true);
 	await h.shot("04-markdown-zh-dark-min");
 	await h.page().getByRole("button", { name: "关闭预览", exact: true }).click();

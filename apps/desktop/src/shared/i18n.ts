@@ -2,6 +2,12 @@
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
 	"Workspace": "工作区",
+"Open files and pages": "已打开的文件和网页",
+"Open file or page": "打开文件或网页",
+"Close {name}": "关闭 {name}",
+"Page address": "网页地址",
+"Open page": "打开网页",
+"Close a tab before opening another (12 tabs maximum).": "最多打开 12 个标签，请先关闭一个标签。",
 	"Could not display this image": "无法显示此图片",
 	"The page stopped. Reload to try again.": "网页已停止，请重新加载。",
 	"This address cannot open in the reader": "无法在阅读器中打开此地址",

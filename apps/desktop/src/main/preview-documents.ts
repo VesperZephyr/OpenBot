@@ -7,7 +7,7 @@ export class PreviewDocuments {
 	create(owner: number, html: unknown): string {
 		if (typeof html !== "string" || Buffer.byteLength(html, "utf8") > 2 * 1024 * 1024) throw Error("HTML exceeds the preview limit");
 		const owned = [...this.#documents].filter(([, value]) => value.owner === owner);
-		while (owned.length >= 4) this.#documents.delete(owned.shift()![0]);
+		if (owned.length >= 12) throw Error("Close a tab before opening another (12 tabs maximum).");
 		const url = `preview://document/${randomUUID()}`;
 		this.#documents.set(url, { owner, html });
 		return url;

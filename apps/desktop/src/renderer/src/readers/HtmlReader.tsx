@@ -2,16 +2,28 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReaderBrowserState } from "../../../shared/api";
 import { t } from "../i18n";
 import { errorMessage } from "../store";
-import { useReader } from "../reader-store";
+import { closeReaderTab, setReaderTitle, useReader } from "../reader-store";
 import { ReaderLoading } from "../FileWorkspace";
-export default function HtmlReader({ html, zoom }: { html: string; zoom: number }) {
+export default function HtmlReader({
+	html,
+	url: pageUrl,
+	zoom,
+	active: visible,
+	tabId,
+}: {
+	html?: string;
+	url?: string;
+	zoom: number;
+	active: boolean;
+	tabId: string;
+}) {
 	const resizing = useReader((state) => state.resizing);
 	const viewport = useRef<HTMLDivElement>(null),
 		current = useRef<string | undefined>(undefined),
 		local = useRef<string | undefined>(undefined);
 	const [state, setState] = useState<ReaderBrowserState>(),
 		[error, setError] = useState(""),
-		[starting, setStarting] = useState(html !== undefined);
+		[starting, setStarting] = useState(true);
 	useEffect(() => {
 		let active = true,
 			id: string | undefined,
@@ -19,36 +31,35 @@ export default function HtmlReader({ html, zoom }: { html: string; zoom: number 
 		const off = window.openbot.onReaderState((next) => {
 			if (active && next.id === current.current) {
 				if (next.closed) {
-					useReader.setState({ open: false });
+					closeReaderTab(tabId);
 					return;
 				}
 				setState(next);
+				if (pageUrl) setReaderTitle(tabId, next.title);
 			}
 		});
-		if (html !== undefined)
-			void window.openbot
-				.previewHtml(html)
-				.then(async (value) => {
-					url = value;
-					local.current = value;
-					if (!active) {
-						void window.openbot.closeHtmlPreview(value);
-						return;
-					}
-					const opened = await window.openbot.readerOpen(value);
-					id = opened.id;
-					if (active) {
-						current.current = id;
-						setState(opened);
-						setStarting(false);
-					} else await window.openbot.readerClose(id);
-				})
-				.catch((e) => {
-					if (active) {
-						setError(t(errorMessage(e)));
-						setStarting(false);
-					}
-				});
+		void (html !== undefined ? window.openbot.previewHtml(html) : Promise.resolve(pageUrl!))
+			.then(async (value) => {
+				url = html !== undefined ? value : undefined;
+				local.current = url;
+				if (!active) {
+					if (url) void window.openbot.closeHtmlPreview(url);
+					return;
+				}
+				const opened = await window.openbot.readerOpen(value);
+				id = opened.id;
+				if (active) {
+					current.current = id;
+					setState(opened);
+					setStarting(false);
+				} else await window.openbot.readerClose(id);
+			})
+			.catch((e) => {
+				if (active) {
+					setError(t(errorMessage(e)));
+					setStarting(false);
+				}
+			});
 		return () => {
 			active = false;
 			off();
@@ -58,17 +69,26 @@ export default function HtmlReader({ html, zoom }: { html: string; zoom: number 
 			current.current = undefined;
 			local.current = undefined;
 		};
-	}, [html]);
+	}, [html, pageUrl, tabId]);
 	useLayoutEffect(() => {
 		const node = viewport.current,
 			id = state?.id;
 		if (!node || !id) return;
-		const modalOpen = () => [...document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"], .dialog-backdrop')].some((el) => el.getClientRects().length > 0);
+		const modalOpen = () =>
+			[...document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"], .dialog-backdrop')].some(
+				(el) => el.getClientRects().length > 0,
+			);
 		let covered = modalOpen();
 		const update = () => {
 			const rect = node.getBoundingClientRect();
 			void window.openbot
-				.readerBounds(id, { x: rect.x, y: rect.y, width: resizing || covered ? 0 : rect.width, height: resizing || covered ? 0 : rect.height, zoom: zoom / 100 })
+				.readerBounds(id, {
+					x: rect.x,
+					y: rect.y,
+					width: !visible || resizing || covered ? 0 : rect.width,
+					height: !visible || resizing || covered ? 0 : rect.height,
+					zoom: zoom / 100,
+				})
 				.catch(() => {});
 		};
 		const observer = new ResizeObserver(update);
@@ -77,7 +97,10 @@ export default function HtmlReader({ html, zoom }: { html: string; zoom: number 
 		// Native views sit above the renderer, so hide them while an app modal owns interaction.
 		const modals = new MutationObserver(() => {
 			const next = modalOpen();
-			if (next !== covered) { covered = next; update(); }
+			if (next !== covered) {
+				covered = next;
+				update();
+			}
 		});
 		modals.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "role", "hidden"] });
 		window.addEventListener("resize", update);
@@ -87,7 +110,7 @@ export default function HtmlReader({ html, zoom }: { html: string; zoom: number 
 			modals.disconnect();
 			window.removeEventListener("resize", update);
 		};
-	}, [state?.id, zoom, resizing]);
+	}, [state?.id, zoom, resizing, visible]);
 	const act = async (action: "navigate" | "back" | "forward" | "reload", url?: string) => {
 		setError("");
 		try {
@@ -113,7 +136,7 @@ export default function HtmlReader({ html, zoom }: { html: string; zoom: number 
 				<span className="reader-web-address" title={state?.url.startsWith("http") ? state.url : undefined}>
 					{state?.url.startsWith("http") ? state.url : t("HTML preview")}
 				</span>
-				{state?.url.startsWith("http") && (
+				{local.current && state?.url.startsWith("http") && (
 					<button
 						type="button"
 						onClick={() => {

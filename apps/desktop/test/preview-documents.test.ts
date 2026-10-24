@@ -15,8 +15,11 @@ it("bounds document bytes and retained documents per window, including navigatio
 	const documents = new PreviewDocuments(),
 		first = documents.create(1, "first"),
 		other = documents.create(2, "other");
-	for (let i = 0; i < 4; i++) documents.create(1, String(i));
-	expect(documents.read(first)).toBeUndefined();
+	for (let i = 0; i < 11; i++) documents.create(1, String(i));
+	expect(() => documents.create(1, "overflow")).toThrow("12 tabs");
+	expect(documents.read(first)).toBe("first");
+	documents.revoke(1, first);
+	expect(documents.create(1, "replacement")).toMatch(/^preview:/);
 	expect(documents.read(other)).toBe("other");
 	expect(() => documents.create(1, "文".repeat(700000))).toThrow("limit");
 	expect(() => documents.create(1, {})).toThrow();
