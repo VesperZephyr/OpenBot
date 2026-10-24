@@ -1,8 +1,8 @@
 # D9: Files and read-only document previews
 
-Status: in review — [PR #58](https://github.com/VesperZephyr/OpenBot/pull/58)
+Status: done — merged in [PR #58](https://github.com/VesperZephyr/OpenBot/pull/58)
 Branch: task/d9-file-reading
-Depends on: I6 integration candidate (#57), B15a
+Depends on: I6 (merged in #57), B15a
 
 ## Goal
 
@@ -21,15 +21,9 @@ Make local files and conversation results easy to discover and read inside OpenB
 
 - The right-hand panel holds up to 12 independently closeable file/page tabs. Opening an already-open workspace path, artifact ID, native file selection identity or canonical HTTP(S) URL selects its existing tab. Distinct native files with the same filename remain distinct. The limit is explicit and never evicts an open tab silently.
 - In-session tab switching preserves document scroll, zoom/source mode, PDF page, browser navigation and page interaction state. Inactive panels are hidden and not keyboard-focusable. Browser views are retained but invisible and background-throttled. Closing a tab destroys its view and revokes its preview URL; late asynchronous loads cannot recreate a closed tab.
-- Tabs support arrow keys, Home/End and Delete. Closing the selected tab selects the next neighbor, then the previous; closing the last shows the file/page chooser. Tabs share available width down to a bounded minimum, then a horizontally scrollable tab bar handles additional tabs and narrow panes. The plus button opens the existing file chooser and an HTTP(S) page-address form. Chat and document web links open in right-hand tabs.
+- Tabs support arrow keys, Home/End and Delete. Closing the selected tab selects the next neighbor, then the previous; closing the last shows the file/page chooser. A horizontally scrollable tab bar handles long names and narrow panes. The plus button opens the existing file chooser and an HTTP(S) page-address form. Chat and document web links open in right-hand tabs.
 - Closing the panel releases document/browser instances and keeps tab selections (including bounded native-picked content in memory) for reopening in this app session; restarting the app does not restore private file contents or web pages. No editor, browser profile management, downloads or model browser tools.
 - Extend desktop tests for multiple document types, scroll/zoom/page state, native-page state and visibility, duplicate detection, close/focus/resource cleanup, URL validation, tab overflow and Chinese layouts.
-
-## Reader polish acceptance
-
-- Use Lucide SVGs through the existing icon component, with consistent reader icon sizes, stroke weight, centered 28-pixel controls and accessible names/tooltips. Keep the current application palette and typography; remove decorative rotation from file cards.
-- Keep zoom controls together for every format and place source/export actions in a separate trailing group. Long filenames truncate in tabs while retaining their extension, while cards wrap without squeezing their icon or actions. Loading copy distinguishes web pages from files and remains centered in short panes.
-- Verify a real Bot-generated Markdown/interactive HTML pair published to the radar group, opened from message cards and switched in the right panel. Preserve HTML filter state, Markdown reading state, chat drafts and both resizable columns. Keep personal reports outside the repository; add a synthetic group-pair regression and inspect light/dark/narrow screenshots.
 
 ## Boundaries and limits
 
@@ -42,7 +36,7 @@ Make local files and conversation results easy to discover and read inside OpenB
 
 ## Open-source decision
 
-[react-markdown](https://github.com/remarkjs/react-markdown) and its unified plugins provide a mature React syntax tree and GFM extension model (MIT). [React-PDF](https://github.com/wojtekmaj/react-pdf) (MIT), backed by [PDF.js](https://github.com/mozilla/pdf.js) (Apache-2.0), provides local PDF rendering. [Papa Parse](https://github.com/mholt/PapaParse) (MIT) supplies CSV parsing. [react-resizable-panels](https://github.com/bvaughn/react-resizable-panels) (MIT) supplies accessible split panes and layout persistence. [Lucide React](https://lucide.dev/guide/react) supplies static, tree-shaken SVG icons; its license notice is bundled with reader dependencies. Chromium supplies HTML layout; [Electron guidance](https://www.electronjs.org/docs/latest/tutorial/security) and the [WebContentsView](https://www.electronjs.org/docs/latest/api/web-contents-view) define isolation.
+[react-markdown](https://github.com/remarkjs/react-markdown) and its unified plugins provide a mature React syntax tree and GFM extension model (MIT). [React-PDF](https://github.com/wojtekmaj/react-pdf) (MIT), backed by [PDF.js](https://github.com/mozilla/pdf.js) (Apache-2.0), provides local PDF rendering. [Papa Parse](https://github.com/mholt/PapaParse) (MIT) supplies CSV parsing. [react-resizable-panels](https://github.com/bvaughn/react-resizable-panels) (MIT) supplies accessible split panes and layout persistence. Chromium supplies HTML layout; [Electron guidance](https://www.electronjs.org/docs/latest/tutorial/security) and the [WebContentsView](https://www.electronjs.org/docs/latest/api/web-contents-view) define isolation.
 
 [Streamdown](https://streamdown.ai/docs) is appropriate for streaming messages but replacing the accepted D8 streaming implementation is unnecessary for static files. [react-doc-viewer](https://github.com/cyntler/react-doc-viewer) has a broader format abstraction, but some formats depend on externally accessible documents/services; individual local renderers fit OpenBot's offline ownership and UI better. Shiki is another strong syntax renderer; rehype-highlight avoids a second asynchronous grammar pipeline for this bounded reader.
 
@@ -60,11 +54,14 @@ None. The owner confirmed an embedded browser that opens pages. This is a user-o
 
 ## Acceptance evidence
 
-- Boundary and type checks pass. The 537-test unit suite passed before the final CSS tab-sizing refinement; later full checks passed 535 tests with two disk-heavy cases timing out under local contention. Both affected files (11 tests) passed an isolated single-worker rerun without changing assertions or timeouts. Full hidden `pnpm run e2e` passed 175 tests across 46 files, including the group Markdown/HTML card pair and responsive tab sizing.
-- Inspected generated-file, resized three-column, Markdown, PDF, long-name group file pairs and Chinese dark/minimum-window screenshots. Isolated agent-browser exploration verified the divider, embedded HTML interaction and page state after switching file tabs.
-- ScriptedModel cases cover both pointer/keyboard dividers and width persistence, simultaneous chat streaming and reading, drafts, generated file cards, responsive Markdown/PDF, HTML resize/modal ownership, formats/errors and Chinese/dark/minimum-width layouts. Multi-tab coverage also checks icon geometry, grouped zoom controls, visible extensions and close buttons for long filenames. It verifies Markdown scroll/zoom, PDF page, two native page states and visibility, duplicate workspace/native/web opens, keyboard navigation/closure, URL validation, chat/document links and narrow tab overflow.
-- Built and installed `0.0.0-d9.20261024.4` after backing up the previous app and local data; deep/strict signature verification passed. The configured real model generated and published a new Markdown/interactive HTML pair from the existing verified radar report. This was a reading/delivery acceptance, not a new competitor crawl. Both message cards open in separate right-hand tabs in the installed app.
-- Installed-app inspection verified the overseas filter survives switching to Markdown and back, narrowing/restoring the pane preserves page interaction, file extensions and close buttons remain visible, and closing HTML selects the Markdown with its 110% zoom retained. Both file tabs are left available for inspection. Private screenshots and report contents remain outside Git.
+- `pnpm run check` passed 537 tests across 81 files. The full hidden `pnpm run e2e` passed 174 tests across 46 files for the tabbed three-column layout.
+- Inspected generated-file, resized three-column, Markdown, PDF and Chinese dark/minimum-window screenshots. Isolated agent-browser exploration verified the divider, embedded HTML interaction and page state after switching file tabs.
+- ScriptedModel cases cover both pointer/keyboard dividers and width persistence, simultaneous chat streaming and reading, drafts, generated file cards, responsive Markdown/PDF, HTML resize/modal ownership, formats/errors and Chinese/dark/minimum-width layouts. Multi-tab coverage verifies Markdown scroll/zoom, PDF page, two native page states and visibility, duplicate workspace/native/web opens, keyboard navigation/closure, URL validation, chat/document links and narrow tab overflow.
+- Built and installed `0.0.0-d9.20261024.3` after backing up the previous app and local data; deep/strict signature verification passed. Opened the real AI-published radar Markdown from its message filename and an official Electron documentation page in separate right-hand tabs. The page loaded inside the app; switching back retained the report and both tabs beside the conversation/composer. Earlier installed acceptance verified both dividers.
 - Rechecked all three enabled daily schedules (07:08, 07:10 and 07:47 Asia/Singapore), unchanged revisions/report dependencies, exactly one copy of each accepted report and unchanged model configuration after restart.
-- Native installed acceptance covers the actual generated Markdown/HTML pair; earlier acceptance also opened a live HTTP(S) page. Automated desktop acceptance separately covers independent browser visibility and PDF page retention. File previews themselves do not invoke a model.
+- Native installed acceptance covers the real Markdown and live HTTP(S) page. Automated desktop acceptance separately covers multiple local HTML interactions, independent browser state/visibility and PDF page retention; no new model call was needed for preview verification.
 - The package remains ad-hoc signed for local acceptance, not a Developer ID/notarized release. Owner data and screenshots stay outside Git.
+
+## Follow-up
+
+[D10: Reader polish and real report acceptance](d10-reader-polish.md) tracks control alignment, adaptive file tabs and the subsequent real Markdown/HTML delivery check.
