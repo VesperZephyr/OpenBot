@@ -19,6 +19,12 @@ Deliver the reviewed scheduled summaries and chat experience together on current
 - Exercise the actual scheduled admission, both researcher publications and Core's summary with a bounded real-provider run. A temporary near-future daily schedule may validate the same calendar path, but must be labelled acceptance and restored to the owner's daily times. Do not claim this proves multi-day availability.
 - Inspect app lifecycle availability and restart deduplication. Local schedules require the Mac awake and OpenBot running; report remaining native gates explicitly.
 
+## Live-audit retrieval correction (ready, 2026-10-24)
+
+The Host currently rejects official GitHub Atom feeds as non-text while the public API returns a rate limit on this Mac. Extend existing `web_fetch` MIME recognition to Atom (`application/atom+xml`) and RSS (`application/rss+xml`); preserve the feed as source XML, including original published/updated fields and links, through existing bounded character pagination. Do not equate an Atom updated timestamp with original publication, interpret feed content as instructions, execute XML/HTML, expand external entities, fetch linked resources or add credentials. Existing public-address checks, redirects, timeout, error statuses and policy routing remain unchanged. A source feed may be incomplete; instructions must not claim full-window coverage without reaching its boundary.
+
+The body byte cap must not silently return a successful complete document: reject an oversized HTTP body with a clear size-limit error before parsing. Exactly-at-limit responses remain readable. This prevents a cropped feed from supporting a false no-release claim. Verify feed MIME/dates, pagination, error statuses and byte-limit handling in unit tests; verify a routed feed read and dated answer through the desktop using ScriptedModel.
+
 ## Steps
 
 1. Merge the reviewed feature branch into current main on this task branch; resolve documentation only unless regression reveals a contract-preserving defect.

@@ -62,7 +62,7 @@ export function createWebFetch(options: WebFetchOptions = {}): WebToolHandler {
 				const response = await fetch(url, {
 					redirect: "manual",
 					signal: timeout,
-					headers: { "user-agent": "OpenBot/0.0", accept: "text/html, text/plain, application/json;q=0.9, */*;q=0.5" },
+					headers: { "user-agent": "OpenBot/0.0", accept: "text/html, text/plain, application/json;q=0.9, application/atom+xml;q=0.9, application/rss+xml;q=0.9, */*;q=0.5" },
 				});
 				const location = response.headers.get("location");
 				if (response.status >= 300 && response.status < 400 && location !== null) {
@@ -72,7 +72,7 @@ export function createWebFetch(options: WebFetchOptions = {}): WebToolHandler {
 					continue;
 				}
 				const type = response.headers.get("content-type") ?? "";
-				if (!/^(text\/|application\/(json|xml|xhtml))/.test(type)) {
+				if (!/^(?:text\/[^;\s]+|application\/(?:json|xml|xhtml\+xml|atom\+xml|rss\+xml))(?:\s*;|$)/i.test(type)) {
 					await response.body?.cancel();
 					return { status: "failed", output: `${url.href} returned ${type || "an unknown type"}, which is not text` };
 				}
@@ -189,12 +189,12 @@ async function readCapped(response: Response, maxBytes: number): Promise<string>
 	for (;;) {
 		const { done, value } = await reader.read();
 		if (done) break;
-		chunks.push(value);
 		total += value.byteLength;
-		if (total >= maxBytes) {
+		if (total > maxBytes) {
 			await reader.cancel();
-			break;
+			throw new Error(`Response exceeds the ${maxBytes}-byte limit; content was not fully retrieved. Use a smaller source or feed page.`);
 		}
+		chunks.push(value);
 	}
 	return Buffer.concat(chunks).toString("utf8");
 }

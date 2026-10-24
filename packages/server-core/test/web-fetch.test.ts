@@ -21,6 +21,12 @@ const routes: Record<string, { status: number; file?: string; body?: string; typ
 	"/broken": { status: 500, body: "<html><body><p>Internal error</p></body></html>" },
 	"/long": { status: 200, body: longArticle },
 	"/moved": { status: 301, location: "/article" },
+	"/atom": { status: 200, body: '<feed><entry><title>v1.2</title><published>2026-10-23T01:00:00Z</published><updated>2026-10-24T02:00:00Z</updated><content type="html">&lt;p&gt;Recovery fix&lt;/p&gt;</content></entry></feed>', type: 'application/atom+xml; charset=utf-8' },
+	"/rss": { status: 200, body: '<rss><channel><item><title>v1.2</title><pubDate>Fri, 23 Oct 2026 01:00:00 GMT</pubDate></item></channel></rss>', type: 'application/rss+xml' },
+	"/atom-rate-limit": { status: 429, body: '<error>rate limited</error>', type: 'application/atom+xml' },
+	"/binary": { status: 200, body: 'binary', type: 'application/octet-stream' },
+	"/oversize": { status: 200, body: 'x'.repeat(2 * 1024 * 1024 + 1), type: 'text/plain' },
+	"/exact-limit": { status: 200, body: 'x'.repeat(2 * 1024 * 1024), type: 'text/plain' },
 	"/plain": { status: 200, body: "just text", type: "text/plain" },
 };
 
@@ -112,6 +118,29 @@ describe("web_fetch", () => {
 		const outcome = await fetchPage({ url: `${origin}/plain` }, signal);
 		expect(outcome.status).toBe("succeeded");
 		expect(outcome.output).toContain("just text");
+	});
+
+	it("preserves feed publication and modification dates without treating XML as HTML", async () => {
+		const atom = await fetchPage({ url: `${origin}/atom` }, signal);
+		expect(atom.status).toBe("succeeded");
+		expect(atom.output).toContain('<published>2026-10-23T01:00:00Z</published>');
+		expect(atom.output).toContain('<updated>2026-10-24T02:00:00Z</updated>');
+		expect(atom.output).toContain('&lt;p&gt;Recovery fix&lt;/p&gt;');
+		const rss = await fetchPage({ url: `${origin}/rss` }, signal);
+		expect(rss.status).toBe("succeeded");
+		expect(rss.output).toContain('<pubDate>Fri, 23 Oct 2026 01:00:00 GMT</pubDate>');
+		expect((await fetchPage({ url: `${origin}/atom-rate-limit` }, signal)).status).toBe("failed");
+		expect((await fetchPage({ url: `${origin}/binary` }, signal)).status).toBe("failed");
+	});
+
+	it("refuses oversized bodies instead of presenting silent truncation as complete coverage", async () => {
+		const oversized = await fetchPage({ url: `${origin}/oversize` }, signal);
+		expect(oversized.status).toBe("failed");
+		expect(oversized.output).toContain('content was not fully retrieved');
+		const exact = await fetchPage({ url: `${origin}/exact-limit` }, signal);
+		expect(exact.status).toBe("succeeded");
+		expect(exact.truncated).toBe(true);
+		expect(exact.output).toContain('of 2097152');
 	});
 
 	it("refuses a blocked host reached through a redirect", async () => {
