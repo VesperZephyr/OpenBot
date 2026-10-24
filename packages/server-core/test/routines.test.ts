@@ -440,3 +440,137 @@ it("retains twenty finished group occurrences without losing published history",
 	await service.sweep();
 	expect(await runtime.groups().posts(reportTo.groupId)).toHaveLength(22);
 });
+
+async function composition(waitMinutes = 20) {
+	await radar();
+	const first = await create("source-a", { name: "Source A", reportTo });
+	const second = await service.change({ action: "create", requestId: "source-b", botId: "peer", fields: { ...fields, name: "Source B", reportTo } });
+	const reportInputs = { sources: [first, second].map((r) => ({ routineId: r.routineId, revision: r.revision })), windowHours: 24, waitMinutes };
+	const summary = await create("summary", { name: "Daily summary", reportTo, reportInputs });
+	return { first, second, summary, reportInputs };
+}
+async function sourceReport(r: import("@openbot/protocol").Routine, at: number, text: string, options: Partial<import("@openbot/protocol").RoutineOccurrence> = {}) {
+	const occurrenceId = `fixture:${r.routineId}:${at}:${options.test ? "test" : "scheduled"}`;
+	await runtime.routines().change((s) => {
+		s.occurrences[occurrenceId] = { occurrenceId, routineId: r.routineId, botId: r.botId, revision: r.revision, channelId: `source_${at}`, name: r.name, scheduledAt: at, createdAt: now, test: false, instructions: "Source", skills: [], state: "completed", report: text, reportTo, ...options };
+	});
+	await runtime.groups().publishRoutine(occurrenceId);
+	return occurrenceId;
+}
+it("requires distinct exact ordinary sources in the same group and rejects composition cycles", async () => {
+	const { first, summary, reportInputs } = await composition();
+	await expect(create("private-summary", { reportInputs })).rejects.toThrow("Choose a group");
+	for (const sources of [[], [reportInputs.sources[0]!, reportInputs.sources[0]!], [{ routineId: first.routineId, revision: 99 }], [{ routineId: summary.routineId, revision: 1 }]]) {
+		await expect(create(`invalid-${JSON.stringify(sources)}`, { reportTo, reportInputs: { ...reportInputs, sources } })).rejects.toThrow("Source routines changed");
+	}
+	await expect(service.change({ action: "update", requestId: "self", routineId: first.routineId, expectedRevision: 1, fields: { ...fields, reportTo, reportInputs: { ...reportInputs, sources: [reportInputs.sources[0]!] } } })).rejects.toThrow("Source routines changed");
+	const privateSource = await create("private-source");
+	await expect(create("cross-private", { reportTo, reportInputs: { ...reportInputs, sources: [{ routineId: privateSource.routineId, revision: 1 }] } })).rejects.toThrow("Source routines changed");
+	await runtime.groups().change({ action: "create", requestId: "other-group", groupId: "group_other", expectedRevision: 0, fields: { name: "Other", objective: "Other", memberIds: ["bot", "peer"], leadBotId: "bot" } }, now);
+	await expect(create("cross-group", { reportTo: { groupId: "group_other", groupRevision: 1 }, reportInputs })).rejects.toThrow("Source routines changed");
+});
+it("waits without a Run, then freezes both published inputs before admission and survives restart", async () => {
+	const { first, second, summary } = await composition();
+	const o = await service.test(summary.routineId, 1, "compose");
+	expect(submit).not.toHaveBeenCalled();
+	await sourceReport(first, now - 60000, "A: [Official](https://example.com/a)");
+	await service.sweep();
+	expect(submit).not.toHaveBeenCalled();
+	await sourceReport(second, now - 30000, "B: [Official](https://example.com/b)");
+	await service.sweep();
+	expect(submit).toHaveBeenCalledTimes(1);
+	const snapshot = (await history(summary.routineId))[0]!.inputSnapshot!;
+	expect(snapshot.entries.map((e) => e.status)).toEqual(["ready", "ready"]);
+	expect(submit.mock.calls[0]![2]).toContain("untrusted data");
+	expect(submit.mock.calls[0]![2]).toContain("https://example.com/b");
+	await sourceReport(second, now - 10000, "LATE_REPLACEMENT");
+	await service.close(); await runtime.close(); await open(); createService();
+	await service.sweep();
+	expect((await history(summary.routineId))[0]?.inputSnapshot).toEqual(snapshot);
+	expect(submit).toHaveBeenCalledTimes(1);
+	await finish(); await service.sweep();
+	expect((await runtime.groups().posts(reportTo.groupId)).filter((p) => p.routine?.occurrenceId === o.occurrenceId)).toHaveLength(1);
+	expect((await runtime.groups().posts(reportTo.groupId)).at(-1)?.routine?.inputs).toEqual({ ready: 2, total: 2 });
+});
+it("automatically admits a scheduled partial summary at its deadline without stale, future or test reports", async () => {
+	const { first, second, summary } = await composition(1);
+	// Keep source schedules outside this clock window; there is deliberately no current source work.
+	await runtime.routines().change((s) => { for (const r of [first, second]) s.routines[r.routineId] = { ...r, nextAt: now + 86400000 }; });
+	now = summary.nextAt;
+	await sourceReport(first, now - 86400000, "STALE");
+	await sourceReport(first, now + 1, "FUTURE");
+	await sourceReport(second, now - 1, "TEST_ONLY", { test: true });
+	await service.sweep();
+	expect(submit).not.toHaveBeenCalled();
+	now += 60000;
+	await service.sweep();
+	expect(submit).toHaveBeenCalledTimes(1);
+	const input = (await history(summary.routineId)).find((o) => o.state === "pending")!.inputSnapshot!;
+	expect(input.entries.map((e) => e.status)).toEqual(["missing", "missing"]);
+	for (const marker of ["STALE", "FUTURE", "TEST_ONLY"]) expect(JSON.stringify(input)).not.toContain(marker);
+	await sourceReport(first, summary.nextAt - 1, "AFTER_DEADLINE");
+	await service.sweep();
+	expect((await history(summary.routineId)).find((o) => o.inputSnapshot)?.inputSnapshot).toEqual(input);
+	await finish();
+	expect((await runtime.groups().posts(reportTo.groupId)).at(-1)?.routine?.inputs).toEqual({ ready: 0, total: 2 });
+});
+it("reports the latest failure or skip instead of falling back to an earlier successful report", async () => {
+	const { first, second, summary } = await composition();
+	await sourceReport(first, now - 2000, "OLD_SUCCESS");
+	await sourceReport(first, now - 1000, "Current failure", { state: "failed" });
+	await sourceReport(second, now - 1000, "", { state: "skipped", published: true });
+	await service.test(summary.routineId, 1, "failures");
+	const input = (await history(summary.routineId))[0]!.inputSnapshot!;
+	expect(input.entries.map((e) => e.status)).toEqual(["failed", "skipped"]);
+	expect(JSON.stringify(input)).not.toContain("OLD_SUCCESS");
+	expect(submit).toHaveBeenCalledTimes(1);
+});
+it("source changes atomically revoke pending and settled-unpublished summaries until reconfirmed", async () => {
+	const { first, second, summary, reportInputs } = await composition(0);
+	await sourceReport(first, now - 1000, "A"); await sourceReport(second, now - 1000, "B");
+	const o = await service.test(summary.routineId, 1, "withdraw");
+	const run = (await runtime.runsStore().list())[0]!;
+	expect(await service.admissible(run)).toBe(true);
+	await runtime.routines().change((s) => { s.occurrences[o.occurrenceId] = { ...s.occurrences[o.occurrenceId]!, state: "completed", report: "MUST_NOT_PUBLISH" }; s.routines[first.routineId] = { ...first, revision: 2, instructions: "Changed source" }; });
+	expect(await service.admissible(run)).toBe(false);
+	expect((await service.detail(summary.routineId)).routine).toMatchObject({ inputsBlocked: true, enabled: false, revision: 2 });
+	await runtime.groups().publishRoutine(o.occurrenceId);
+	expect(JSON.stringify(await runtime.groups().posts(reportTo.groupId))).not.toContain("MUST_NOT_PUBLISH");
+	await expect(service.change({ action: "resume", routineId: summary.routineId, expectedRevision: 2, requestId: "resume-blocked" })).rejects.toThrow("Source routines changed");
+	await service.change({ action: "update", routineId: summary.routineId, expectedRevision: 2, requestId: "confirm-inputs", fields: { ...fields, reportTo, reportInputs: { ...reportInputs, sources: [{ routineId: first.routineId, revision: 2 }, reportInputs.sources[1]!] } } });
+	await service.test(summary.routineId, 3, "after-confirm");
+	// A report from the previous source revision is not silently reused.
+	expect((await history(summary.routineId)).find((x) => x.revision === 3)?.inputSnapshot?.entries[0]?.status).toBe("missing");
+});
+it("bounds UTF-8 source text and retains frozen evidence after source history pruning", async () => {
+	const { first, second, summary } = await composition(0);
+	await sourceReport(first, now - 2000, "界".repeat(6000));
+	await sourceReport(second, now - 1000, "Test source", { test: true });
+	await service.test(summary.routineId, 1, "bounded");
+	const captured = (await history(summary.routineId))[0]!.inputSnapshot!;
+	expect(Buffer.byteLength(captured.entries[0]!.text!)).toBeLessThanOrEqual(8192);
+	expect(captured.entries[0]?.truncated).toBe(true);
+	expect(captured.entries[0]?.text).not.toContain("�");
+	expect(captured.entries[1]?.test).toBe(true);
+	await runtime.routines().change((s) => { for (const o of Object.values(s.occurrences)) if (o.routineId !== summary.routineId) delete s.occurrences[o.occurrenceId]; });
+	await finish();
+	expect((await history(summary.routineId))[0]?.inputSnapshot).toEqual(captured);
+	await service.test(summary.routineId, 1, "after-source-pruning");
+	expect((await history(summary.routineId)).find((o) => o.occurrenceId.endsWith(":after-source-pruning"))?.inputSnapshot?.entries.map((e) => e.status)).toEqual(["ready", "ready"]);
+});
+it("gives a caught-up summary its configured wait after wake and keeps the original reporting window", async () => {
+	const { first, second, summary } = await composition(10);
+	// A daily calendar occurrence missed by thirty minutes, with current source runs still missing.
+	await service.change({ action: "update", routineId: summary.routineId, requestId: "daily", expectedRevision: 1, fields: { ...fields, reportTo, reportInputs: summary.reportInputs!, schedule: { kind: "daily", time: "08:00", timezone: "UTC" } } });
+	const scheduled = (await service.detail(summary.routineId)).routine.nextAt;
+	now = scheduled + 30 * 60000;
+	await runtime.routines().change((s) => { for (const r of [first, second]) s.routines[r.routineId] = { ...r, nextAt: now + 86400000 }; });
+	await service.sweep();
+	expect(submit).not.toHaveBeenCalled();
+	now += 10 * 60000;
+	await service.sweep();
+	const input = (await history(summary.routineId)).find((o) => o.inputSnapshot)?.inputSnapshot!;
+	expect(input.windowEnd).toBe(scheduled);
+	expect(input.capturedAt).toBe(now);
+	expect(submit).toHaveBeenCalledTimes(1);
+});

@@ -32,7 +32,9 @@ afterAll(async () => {
 });
 describe("Lifecycle gates", () => {
 	it("queues without provider traffic, persists pause, and resumes only explicitly", async () => {
-		await h.page().getByRole("button", { name: "Pause all", exact: true }).click();
+		await h.page().getByRole("button", { name: "Settings", exact: true }).click();
+        await h.page().getByRole("button", { name: "Pause all", exact: true }).click();
+        await h.page().getByRole("button", { name: "Back to chat", exact: true }).click();
 		await expect.poll(async () => (await api("lifecycle.get")).transitioning).toBe(false);
 		h.model.script({ text: "Queued work completed." });
 		await h.send("Handle this after resume");

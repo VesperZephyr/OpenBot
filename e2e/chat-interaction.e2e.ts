@@ -44,7 +44,9 @@ it('pauses actual execution and explicitly resumes an interrupted task without r
     await h.send('Write once, then wait');
     await h.page().getByRole('group', {name:'Approval request'}).getByRole('button', {name:'Allow once',exact:true}).click();
     await expect.poll(() => readFile(join(h.workspace,'d7-count.txt'),'utf8').catch(()=> '')).toBe('once\n');
+    await settings();
     await button('Pause all').click();
+    await button('Back to chat').click();
     await expect.poll(async () => (await api('lifecycle.get')).transitioning).toBe(false);
     await button('Resume and continue').waitFor();
     await h.app().evaluate(({powerMonitor}) => powerMonitor.emit('lock-screen'));

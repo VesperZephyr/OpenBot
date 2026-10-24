@@ -104,8 +104,8 @@ it("keeps group/public and private read cursors independent, including delayed a
 	await poll(async () => h.page().locator(".sidebar .roster-name").allTextContents()).toEqual([
 		"OpenBot",
 		"Reviewer",
-		"Alpha",
 		"Research studio",
+		"Alpha",
 	]);
 });
 
