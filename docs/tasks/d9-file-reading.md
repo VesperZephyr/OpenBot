@@ -46,6 +46,10 @@ None. The owner confirmed an embedded browser that opens pages. This is a user-o
 
 ## Acceptance evidence
 
-- Required checks and desktop acceptance are repeated for the docked three-column layout before handoff.
+- `pnpm run check` passed 534 tests across 80 files. The full hidden `pnpm run e2e` passed 173 tests across 46 files for the docked three-column layout.
+- Inspected generated-file, resized three-column, Markdown, PDF and Chinese dark/minimum-window screenshots. Isolated agent-browser exploration verified the divider and embedded HTML interaction.
 - ScriptedModel cases cover both pointer/keyboard dividers and width persistence, simultaneous chat streaming and reading, drafts, generated file cards, responsive Markdown/PDF, HTML resize/modal ownership, formats/errors and Chinese/dark/minimum-width layouts.
+- Built and installed `0.0.0-d9.20261024.2` after backing up the previous app and local data; deep/strict signature verification passed. Opened the real AI-published radar Markdown from its message filename in the right-hand panel and adjusted both dividers in the installed app. The report, conversation and composer remain visible together.
+- Rechecked all three enabled daily schedules (07:08, 07:10 and 07:47 Asia/Singapore), unchanged revisions/report dependencies, exactly one copy of each accepted report and unchanged model configuration after restart.
+- HTML interaction, linked navigation and PDF assets passed native installed-reader checks before docking; the final docked build passed HTML bounds/modal interaction and PDF resize desktop cases. Native inspection of the docked Markdown is recorded separately from those automated checks.
 - The package remains ad-hoc signed for local acceptance, not a Developer ID/notarized release. Owner data and screenshots stay outside Git.
