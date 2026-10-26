@@ -15,7 +15,7 @@ export function ReportInputsEditor({ value, sources, onChange }: {
 			<p className="muted">{t("Choose source tasks in this group. Their reports are provided automatically; no daily message is needed.")}</p>
 			{!sources.length && <p>{t("Create an ordinary report routine in this group first.")}</p>}
 			{sources.map((r) => <label className="routine-input-option" key={r.routineId}>
-				<input type="checkbox" checked={value.sources.some((s) => s.routineId === r.routineId)} disabled={value.sources.length >= 6 && !value.sources.some((s) => s.routineId === r.routineId)} onChange={(e) => onChange({ ...value, sources: e.target.checked ? [...value.sources, { routineId: r.routineId, revision: r.revision }] : value.sources.filter((s) => s.routineId !== r.routineId) })} />{r.name}
+				<input type="checkbox" checked={value.sources.some((s) => s.routineId === r.routineId)} disabled={value.sources.length >= 6 && !value.sources.some((s) => s.routineId === r.routineId)} onChange={(e) => onChange({ ...value, sources: e.target.checked ? [...value.sources, { routineId: r.routineId, revision: r.executionRevision ?? r.revision }] : value.sources.filter((s) => s.routineId !== r.routineId) })} />{r.name}
 			</label>)}
 			{value.sources.filter((ref) => !sources.some((s) => s.routineId === ref.routineId)).map((ref) => <label className="routine-input-option" key={ref.routineId}>
 				<input type="checkbox" checked onChange={() => onChange({ ...value, sources: value.sources.filter((s) => s.routineId !== ref.routineId) })} />{t("Unavailable source routine")}

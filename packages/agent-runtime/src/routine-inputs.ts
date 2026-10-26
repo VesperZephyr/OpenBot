@@ -11,7 +11,7 @@ export function validReportInputs(routines: Routines, reportTo: Routine["reportT
 		new Set(inputs.sources.map((s) => s.routineId)).size === inputs.sources.length &&
 		inputs.sources.every((ref) => {
 			const source = routines[ref.routineId];
-			return !!source && source.routineId !== ownId && source.revision === ref.revision && source.enabled &&
+			return !!source && source.routineId !== ownId && (source.executionRevision ?? source.revision) === ref.revision && source.enabled &&
 				!source.deleted && !source.destinationBlocked && !source.inputsBlocked && !source.reportInputs &&
 				source.reportTo?.groupId === reportTo.groupId && source.reportTo.groupRevision === reportTo.groupRevision;
 		});

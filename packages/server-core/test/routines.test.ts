@@ -204,7 +204,8 @@ it("reconciles persisted admission and report publication after lost responses",
 			throw Error("Lost publication");
 		}
 	});
-	await expect(finish()).rejects.toThrow("Lost publication");
+	await finish();
+	expect((await service.list()).scheduler?.faults).toHaveLength(1);
 	expect((await history(r.routineId))[0]?.published).not.toBe(true);
 	await service.close();
 	await runtime.close();
@@ -573,4 +574,111 @@ it("gives a caught-up summary its configured wait after wake and keeps the origi
 	expect(input.windowEnd).toBe(scheduled);
 	expect(input.capturedAt).toBe(now);
 	expect(submit).toHaveBeenCalledTimes(1);
+});
+
+it("keeps pending occurrences and summary bindings across name-only edits and restart", async () => {
+	await radar();
+	const source = await create("rename-source", { reportTo });
+	const summary = await create("rename-summary", {
+		reportTo,
+		reportInputs: { sources: [{ routineId: source.routineId, revision: 1 }], windowHours: 24, waitMinutes: 0 },
+	});
+	const occurrence = await service.test(source.routineId, 1, "pending-rename");
+	const renamed = await service.change({
+		action: "update",
+		requestId: "rename",
+		routineId: source.routineId,
+		expectedRevision: 1,
+		fields: { ...fields, reportTo, name: "New name" },
+	});
+	expect(renamed).toMatchObject({ revision: 2, executionRevision: 1, enabled: true });
+	expect((await service.detail(summary.routineId)).routine).toMatchObject({ enabled: true });
+	expect((await history(source.routineId))[0]).toMatchObject({ occurrenceId: occurrence.occurrenceId, revision: 1, state: "pending" });
+	const group = (await runtime.groups().get(reportTo.groupId))!;
+	await runtime
+		.groups()
+		.change(
+			{
+				action: "update",
+				groupId: group.groupId,
+				requestId: "rename-group",
+				expectedRevision: group.revision,
+				fields: { name: "Renamed radar", objective: group.objective, memberIds: group.memberIds, leadBotId: group.leadBotId! },
+			},
+			now,
+		);
+	expect((await runtime.groups().get(group.groupId))!).toMatchObject({ revision: 2, deliveryRevision: 1 });
+	expect((await service.detail(source.routineId)).routine.enabled).toBe(true);
+	await expect(
+		service.change({
+			action: "update",
+			requestId: "stale",
+			routineId: source.routineId,
+			expectedRevision: 1,
+			fields: { ...fields, reportTo },
+		}),
+	).rejects.toThrow("changed");
+	await service.close();
+	await runtime.close();
+	await open();
+	createService();
+	await service.sweep();
+	expect((await service.detail(summary.routineId)).routine.enabled).toBe(true);
+	await service.change({
+		action: "update",
+		requestId: "workflow",
+		routineId: source.routineId,
+		expectedRevision: 2,
+		fields: { ...fields, reportTo, instructions: "Different workflow" },
+	});
+	expect((await service.detail(source.routineId)).routine).toMatchObject({ revision: 3, executionRevision: 2 });
+	expect((await service.detail(summary.routineId)).routine).toMatchObject({ enabled: false, inputsBlocked: true });
+});
+it("isolates a broken occurrence, backs off, and reconciles its original identity after recovery", async () => {
+	const first = await create("broken"),
+		second = await create("healthy");
+	const bad = await service.test(first.routineId, 1, "broken-test");
+	const original = runtime.snapshot.bind(runtime);
+	const snapshot = vi
+		.spyOn(runtime, "snapshot")
+		.mockImplementation((botId, channel) =>
+			channel === bad.channelId ? Promise.reject(Error("private error content")) : original(botId, channel),
+		);
+	now += 300000;
+	await service.sweep();
+	expect((await service.list()).scheduler?.faults).toEqual([
+		expect.objectContaining({ occurrenceId: bad.occurrenceId, failures: 1, retryAt: now + 2000 }),
+	]);
+	expect((await runtime.runsStore().list()).some((r) => r.requestIds.some((id) => id.startsWith(`routine:${second.routineId}:`)))).toBe(
+		true,
+	);
+	const attempts = snapshot.mock.calls.filter((c) => c[1] === bad.channelId).length;
+	await service.sweep();
+	expect(snapshot.mock.calls.filter((c) => c[1] === bad.channelId)).toHaveLength(attempts);
+	snapshot.mockRestore();
+	now += 2000;
+	await service.sweep();
+	expect((await service.list()).scheduler?.faults).toHaveLength(0);
+	expect((await runtime.runsStore().list()).filter((r) => r.requestIds.includes(bad.occurrenceId))).toHaveLength(1);
+});
+it("isolates invalid due schedules and surfaces global scan errors without failing startup", async () => {
+	const first = await create("bad-schedule"),
+		second = await create("healthy-schedule");
+	await runtime.routines().change((s) => {
+		s.routines[first.routineId] = { ...s.routines[first.routineId]!, schedule: { kind: "daily", time: "07:00", timezone: "Invalid/Zone" } };
+	});
+	now += 300000;
+	await service.start();
+	expect((await service.list()).scheduler?.faults[0]?.routineId).toBe(first.routineId);
+	expect((await history(second.routineId))[0]?.runId).toBeDefined();
+	const store = runtime.routines();
+	const access = vi.spyOn(runtime, "routines").mockReturnValue({
+		...store,
+		read: async () => {
+			throw Error("storage failed");
+		},
+	});
+	await service.sweep();
+	access.mockRestore();
+	expect((await service.list()).scheduler?.faults.some((f) => f.key === "scheduler")).toBe(true);
 });

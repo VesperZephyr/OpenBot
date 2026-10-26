@@ -132,6 +132,7 @@ const group = strict({
 	memberIds: Type.Array(text),
 	leadBotId: Type.Union([text, Type.Null()]),
 	revision,
+	deliveryRevision: Type.Optional(revision),
 	status: Type.Enum(["active", "dissolved"]),
 	createdAt: Type.Number(),
 });

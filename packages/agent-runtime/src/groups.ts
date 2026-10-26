@@ -57,6 +57,13 @@ export function canonicalGroup(value: unknown): string {
 			.join(",")}}`;
 	return JSON.stringify(value);
 }
+function nameOnlyGroupChange(group: Group, change: GroupChange): boolean {
+	return (
+		change.action === "update" &&
+		canonicalGroup({ ...change.fields, name: group.name }) ===
+			canonicalGroup({ name: group.name, objective: group.objective, memberIds: group.memberIds, leadBotId: group.leadBotId })
+	);
+}
 function validate(doc: State, change: GroupChange, bots: readonly BotProfile[]): void {
 	if (!/^group_[a-zA-Z0-9_-]{1,128}$/.test(change.groupId)) fail("Invalid group change");
 	const old = doc.groups[change.groupId];
@@ -109,6 +116,7 @@ export async function detachGroupBot(tx: Tx, botId: string): Promise<void> {
 	for (const group of Object.values(doc.groups))
 		if (group.status === "active" && group.memberIds.includes(botId)) {
 			group.memberIds = group.memberIds.filter((id) => id !== botId);
+			group.deliveryRevision = (group.deliveryRevision ?? group.revision) + 1;
 			group.revision++;
 			if (group.leadBotId === botId) group.leadBotId = null;
 			invalidate(doc, group);
@@ -160,8 +168,8 @@ export function groupStore(
 				const group = doc.groups[o.reportTo.groupId];
 				const routine = state.routines[o.routineId];
 				const bot = (await bots(tx)).find((b) => b.botId === o.botId);
-				if (o.destinationBlocked || !routine || routine.deleted || routine.revision !== o.revision ||
-					!group || group.status !== "active" || group.revision !== o.reportTo.groupRevision ||
+				if (o.destinationBlocked || !routine || routine.deleted || (routine.executionRevision ?? routine.revision) !== o.revision ||
+					!group || group.status !== "active" || (group.deliveryRevision ?? group.revision) !== o.reportTo.groupRevision ||
 					!group.memberIds.includes(o.botId) || bot?.status !== "active") {
 					o.destinationBlocked = true;
 					o.reason = ROUTINE_DESTINATION_BLOCKED;
@@ -226,6 +234,7 @@ export function groupStore(
 								...doc.groups[change.groupId]!,
 								...change.fields,
 								revision: change.expectedRevision + 1,
+								deliveryRevision: (doc.groups[change.groupId]!.deliveryRevision ?? doc.groups[change.groupId]!.revision) + (nameOnlyGroupChange(doc.groups[change.groupId]!, change) ? 0 : 1),
 								...(change.action === "dissolve" ? { status: "dissolved" as const } : {}),
 							};
 				if (intentId) {

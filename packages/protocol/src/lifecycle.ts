@@ -11,6 +11,8 @@ export type LifecycleRecord = {
 	readonly revision: number;
 	readonly userPaused: boolean;
 	readonly needsResume: boolean;
+	/** Successful suspend reconciliation permits new work on wake, never replay of interrupted actions. */
+	readonly autoResume?: boolean;
 	readonly lastReason?: LifecycleReason;
 };
 export type LifecycleState = LifecycleRecord & {

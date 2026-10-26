@@ -48,7 +48,18 @@ describe("Lifecycle gates", () => {
 		await h.page().getByText("Queued work completed.", { exact: true }).waitFor();
 		await h.shot("02-resumed");
 	});
-	it("stops approved execution on simulated lock and never replays it on unlock or resume", async () => {
+ it("keeps authorized work running across lock and unlock without a resume prompt", async () => {
+  h.model.script({text:"Background work completed while locked.",delayMs:700});
+  await h.send("Continue in the background");
+  await native("lock-screen");
+  await expect.poll(async()=>(await api("lifecycle.get")).locked).toBe(true);
+  expect((await api("lifecycle.get")).blocked).toBe(false);
+  await h.page().getByText("Background work completed while locked.",{exact:true}).waitFor();
+  await native("unlock-screen");
+  await expect.poll(async()=>(await api("lifecycle.get")).needsResume).toBe(false);
+ });
+
+	it("stops approved execution on suspend and never replays it after automatic wake", async () => {
 		h.model.script({
 			tool: "local_exec",
 			args: {
@@ -60,19 +71,13 @@ describe("Lifecycle gates", () => {
 		await h.page().getByRole("group", { name: "Approval request" }).getByRole("button", { name: "Allow once", exact: true }).click();
 		await expect.poll(async () => readFile(join(h.workspace, "lifecycle-count.txt"), "utf8").catch(() => "")).toBe("once\n");
 		const before = h.model.requests.length;
-		await native("lock-screen");
-		await h.page().getByText("Mac locked", { exact: true }).waitFor();
+		await native("suspend");
 		await expect.poll(async () => (await api("lifecycle.get")).transitioning).toBe(false);
 		await h.page().getByText("Task interrupted", { exact: true }).waitFor();
-		expect(await h.page().getByRole("button", { name: "Resume work", exact: true }).isDisabled()).toBe(true);
-		await native("unlock-screen");
-		await expect.poll(async () => (await api("lifecycle.get")).locked).toBe(false);
-		expect((await api("lifecycle.get")).blocked).toBe(true);
-		expect(h.model.requests).toHaveLength(before);
-		await h.shot("03-interrupted");
-		await h.page().getByRole("button", { name: "Resume work", exact: true }).click();
+		await native("resume");
 		await expect.poll(async () => (await api("lifecycle.get")).blocked).toBe(false);
 		expect(h.model.requests).toHaveLength(before);
+		await h.shot("03-interrupted");
 		expect(await readFile(join(h.workspace, "lifecycle-count.txt"), "utf8")).toBe("once\n");
 		h.model.script({ text: "Reviewed committed actions; no repeated command." });
 		await h.page().getByRole("button", { name: "Continue task", exact: true }).click();
@@ -88,7 +93,8 @@ describe("Lifecycle gates", () => {
 		await expect.poll(async () => (await api("lifecycle.get")).transitioning).toBe(false);
 		await h.page().getByRole("group", { name: "Approval request" }).waitFor({ state: "hidden" });
 		await native("resume");
-		expect((await api("lifecycle.get")).blocked).toBe(true);
+		await expect.poll(async () => (await api("lifecycle.get")).blocked).toBe(false);
+		await api("lifecycle.pause");
 		h.model.script({ text: "New queued request answered." });
 		await h.send("New request after interruption");
 		const before = h.model.requests.length;

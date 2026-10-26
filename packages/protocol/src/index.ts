@@ -107,6 +107,8 @@ export type Group = Omit<GroupFields, "leadBotId"> & {
 	readonly leadBotId: string | null;
 	readonly groupId: string;
 	readonly revision: number;
+	/** Destination authority; name-only edits preserve this version. */
+	readonly deliveryRevision?: number;
 	readonly status: "active" | "dissolved";
 	readonly createdAt: number;
 };

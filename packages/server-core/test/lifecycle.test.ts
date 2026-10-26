@@ -39,17 +39,13 @@ describe("lifecycle authority", () => {
 		await f.controller.native(native(1));
 		expect(f.controller.state.blocked).toBe(false);
 		await f.controller.native(native(3, { locked: true }));
-		expect(f.controller.state.blocked).toBe(true);
+		expect(f.controller.state).toMatchObject({ blocked: false, locked: true, needsResume: false });
 		await f.controller.native(native(2));
 		expect(f.controller.state.locked).toBe(true);
 		expect(() => f.controller.native(native(4, { sourceId: "other" }))).toThrow("source");
 		await f.controller.native(native(4));
-		expect(f.controller.state.blocked).toBe(true);
-		expect(f.resume).toHaveBeenCalledTimes(1);
-		await f.controller.resume();
 		expect(f.controller.state.blocked).toBe(false);
-		await f.controller.resume();
-		expect(f.resume).toHaveBeenCalledTimes(2);
+		expect(f.suspend).not.toHaveBeenCalled();
 	});
 	it("aborts generation synchronously and only renews its signal on explicit safe resume", async () => {
 		const f = fixture(true);
@@ -155,3 +151,42 @@ describe("lifecycle authority", () => {
 		expect(f.saved.needsResume).toBe(true);
 	});
 });
+
+ it("automatically admits new work after confirmed suspend without clearing user pause or failed stop", async () => {
+		const f = fixture(true);
+		await f.controller.start();
+		await f.controller.native(native(1));
+		await f.controller.native(native(2, { suspended: true }));
+		expect(f.saved.autoResume).toBe(true);
+		await f.controller.native(native(3, { locked: true }));
+		expect(f.controller.state).toMatchObject({ blocked: false, needsResume: false, locked: true });
+		await f.controller.pause();
+		await f.controller.native(native(4, { suspended: true }));
+		await f.controller.native(native(5));
+		expect(f.controller.state).toMatchObject({ blocked: true, userPaused: true });
+		await f.controller.resume();
+		f.suspend.mockRejectedValueOnce(Error("uncertain"));
+		await expect(f.controller.native(native(6, { suspended: true }))).rejects.toThrow();
+		await f.controller.native(native(7));
+		expect(f.controller.state).toMatchObject({ blocked: true, autoResume: false });
+ });
+ it("restores confirmed suspend eligibility but retains legacy recovery and a racing user pause", async () => {
+		const f = fixture(true);
+		await f.controller.start();
+		await f.controller.native(native(1));
+		await f.controller.native(native(2, { suspended: true }));
+		const reopened = new LifecycleController(f.options);
+		await reopened.start();
+		await reopened.native(native(1));
+		expect(reopened.state.blocked).toBe(false);
+		await reopened.native(native(2, { suspended: true }));
+		const gate = Promise.withResolvers<void>();
+		f.store.write.mockImplementationOnce(async () => gate.promise);
+		const wake = reopened.native(native(3));
+		await Promise.resolve();
+		const pause = reopened.pause();
+		gate.resolve();
+		await wake.catch(() => {});
+		await pause;
+		expect(reopened.state).toMatchObject({ blocked: true, userPaused: true });
+ });
