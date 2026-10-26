@@ -1,6 +1,6 @@
 # Development Backlog
 
-**B11d, in review:** [Unattended workflow reliability](tasks/b11d-unattended-reliability.md): background availability through lock/wake, name-only changes preserving report bindings, isolated scheduler failures and visible retry health.
+**B11d, in review (#60):** [Unattended workflow reliability](tasks/b11d-unattended-reliability.md): background availability through lock/wake, name-only changes preserving report bindings, isolated scheduler failures and visible retry health.
 
 **D10, done (#59):** [Reader polish and real report acceptance](tasks/d10-reader-polish.md) unifies SVG controls, groups zoom actions, preserves file extensions in adaptive tabs and verifies real Markdown/HTML delivery from group message cards in the installed app.
 

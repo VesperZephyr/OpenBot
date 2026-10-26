@@ -185,7 +185,7 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | [B11a: Local scheduled routines](b11a-local-routines.md) | done (#41); 477 unit/Host and 127 hidden desktop tests |
 | [B11b: Scheduled group reports](b11b-group-routine-reports.md) | done (#53); 512 unit/Host and 157 hidden desktop tests; bounded live-source acceptance |
 | [B11c: Scheduled report summaries](b11c-scheduled-report-summaries.md) | done through I6 / PR #57; 519 unit/Host and 161 hidden desktop tests; five-request real-model composition/restart check |
-| [B11d: Unattended workflow reliability](b11d-unattended-reliability.md) | in review; 542 unit/Host tests, 177 desktop tests and bounded real-provider acceptance |
+| [B11d: Unattended workflow reliability](b11d-unattended-reliability.md) | in review (#60); 542 unit/Host tests, 177 desktop tests and bounded real-provider acceptance |
 
 ## Per-role methods
 

@@ -1,6 +1,6 @@
 # B11d: Unattended workflow reliability
 
-Status: in review
+Status: in review (#60)
 Branch: task/b11d-unattended-reliability
 Depends on: I6, D10 (merged in #57 and #59)
 Architecture: Sections 5.8 and 8.1; existing Host, Pi store and Executor boundaries
