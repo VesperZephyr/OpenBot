@@ -793,14 +793,18 @@ Closing the conversation window leaves the menu-bar application, Host Runtime, a
 | Conversation window closes | The application, Host, admitted Runs, and routines continue while the Mac is awake and required permissions remain available |
 | User pauses a Bot or takes control | Block new tools for that Run, gate its browser window or revoke the desktop lease, and reconcile the active invocation before continuation |
 | User quits the application | Stop admission, preserve queued messages, cancel supervised active work, flush state, stop the browser and helpers; unresolved effects remain visible on next launch |
-| Mac sleeps or the session locks | Gate execution and invalidate desktop control; a sleep transition may interrupt work before it can be reconciled |
-| Mac wakes or the session unlocks | Reconcile active executions, refresh permissions and display state, coalesce missed routine occurrences, and require explicit continuation before new desktop input |
+| Session locks | Keep authorized non-interactive background work available; future desktop/browser input must independently gate on lock state |
+| Mac sleeps | Gate execution and reconcile supervised actions; uncertain effects remain interrupted |
+| Mac wakes | After confirmed suspend reconciliation, automatically admit eligible new work and coalesced routine occurrences; never replay interrupted actions |
+| Session unlocks | Update native state without pausing or restarting background work |
 | Display, focus, or session changes | Revalidate the target and capture a fresh frame before dependent desktop input; observed unsafe changes pause control |
 | Browser exits or crashes | Gate browser tools, reconcile in-flight browser invocations as `unknown` when their effect is uncertain, and relaunch with the same profile |
 | Executor, native helper, or connector exits | Block dependent tools, reconcile receipts and command state, then restart the process if appropriate |
 | Host Runtime exits | The executor loses its parent lease, stops accepting work, revokes input, and attempts to terminate supervised commands and connector servers |
 
-[B14b](tasks/b14b-lifecycle-gates.md) implements a Host-owned global execution gate. Desktop main supplies ordered native lock/sleep/quit observations; Desktop-launched Hosts wait for the first full snapshot before scheduling. Pause all, lock and suspend persist a recovery requirement, preserve unadmitted messages, withdraw interrupted approval waits and stop supervised work. Unlock and wake do not resume automatically. Explicit Resume admits the preserved queue; an interrupted private task requires a separate Continue action, while an interrupted group chain requires a new user request. An idle quit does not add a recovery prompt.
+[B14b](tasks/b14b-lifecycle-gates.md) supplies the Host execution gate; [B11d](tasks/b11d-unattended-reliability.md) separates native lock state from non-interactive work admission. Desktop-launched Hosts wait for an ordered native snapshot. Lock alone does not cancel model, file, command, network or connector work. Commands still run as the user; lock is not an OS sandbox. No model-driven interactive browser/desktop control is implemented here.
+
+Suspend gates execution synchronously, interrupts active Runs and quiesces the Executor. Optional `LifecycleRecord.autoResume` is persisted only after confirmed quiescence, allowing new queued/scheduled work on wake. User pause, unsuccessful reconciliation, legacy recovery and quit recovery remain explicit. Interrupted private tasks require Continue; interrupted group chains require a new request. An idle quit adds no recovery prompt. Native source, sequence and epoch checks prevent a racing pause from being cleared by wake.
 
 The gate is checked before policy, after asynchronous authority checks, after approval, and at executor transport admission. `execution.quiesce` is a private target-bound exchange; a missing or uncertain acknowledgement keeps work blocked. Interrupted Runs retain intent and become terminal `needs_attention` only with an honest settlement record. A committed answer remains completed. Lifecycle events and receipts contain metadata rather than prompts or command output. The first increment has sidebar controls; menu-bar Pause all, per-Bot pause, native control leases, login items and routines retain their separate delivery scope.
 
@@ -901,3 +905,9 @@ Product stores, transcripts, memory, configuration and diagnostics stay on the M
 ### Product foundation integration (I1)
 
 [I1](tasks/i1-product-foundation.md) validates observation, artifacts, lifecycle, policy and usage together. `artifact_publish` is a file-read capability with a dedicated bounded Ask first predicate in the settings selector. Publication's canonical source participates in read-grant revocation and executor revision fences. A stale invocation cannot create a new copy; a verified immutable publication receipt can reconcile after source removal without renewed file authority. The copy is not rolled back by cancellation. Private executor IPC retains correlated, target-bound artifact, quiescence and policy-control exchanges with bounded waits.
+
+### Unattended reliability (B11d)
+
+`Group.revision` and `Routine.revision` protect edits. Optional `deliveryRevision` and `executionRevision` protect report destinations and source workflow bindings; legacy records fall back to `revision`. A name-only update preserves the semantic version and existing occurrence/input snapshots. Other updates retain conservative invalidation. `reportTo.groupRevision` is a delivery version, and occurrence/report-input revisions are execution versions. Desktop editors and structured group-management results carry these optional fields.
+
+Routine reconciliation isolates each occurrence and each due schedule. Failures retry with original identities and exponential delays from two to sixty seconds. `routines.list.scheduler` reports process-local fault identities, failure/retry times, attempt counts and the last successful scan; diagnostics never contain prompts or raw provider errors. Startup rebuilds diagnostics by reconciliation. Global preparation/storage failure blocks the scan; a bad individual record cannot block healthy work or Host readiness. Durable Runs, occurrences and publication receipts remain authoritative.

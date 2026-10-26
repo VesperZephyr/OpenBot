@@ -1,6 +1,6 @@
 # D10: Reader polish and real report acceptance
 
-Status: in review
+Status: done — merged in PR #59
 Branch: task/d10-reader-polish
 Depends on: D9 (merged in #58), I6 (merged in #57)
 Architecture: existing desktop readers and immutable file artifacts; no protocol or module-boundary changes

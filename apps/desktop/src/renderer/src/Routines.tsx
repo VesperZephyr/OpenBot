@@ -31,7 +31,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 	const [selected, setSelected] = useState<string | undefined>(view.kind === "routines" ? view.routineId : undefined),
 		[occurrence, setOccurrence] = useState<string | undefined>(view.kind === "routines" ? view.occurrenceId : undefined),
 		[detail, setDetail] = useState<RoutineDetail>();
-	const [draft, setDraft] = useState<RoutineFields | undefined>(() => initialGroup ? { ...empty(), reportTo: { groupId: initialGroup.groupId, groupRevision: initialGroup.revision } } : undefined),
+	const [draft, setDraft] = useState<RoutineFields | undefined>(() => initialGroup ? { ...empty(), reportTo: { groupId: initialGroup.groupId, groupRevision: initialGroup.deliveryRevision ?? initialGroup.revision } } : undefined),
 		[botId, setBotId] = useState(() => initialGroup ? bots.find((b) => b.status === "active" && initialGroup.memberIds.includes(b.botId))?.botId ?? "" : ""),
 		[revision, setRevision] = useState(0);
 	const [review, setReview] = useState<RoutineChange>(),
@@ -102,8 +102,8 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 	const edit = (r?: Routine) => {
 		setDraft(
 			r ? { name: r.name, instructions: r.instructions, schedule: r.schedule, catchUpHours: r.catchUpHours, skills: r.skills,
-				...(r.reportInputs ? { reportInputs: { ...r.reportInputs, sources: r.reportInputs.sources.map((ref) => ({ ...ref, revision: list?.routines.find((s) => s.routineId === ref.routineId)?.revision ?? ref.revision })) } } : {}),
-				...(r.reportTo ? { reportTo: { ...r.reportTo, groupRevision: groups.find((g) => g.groupId === r.reportTo?.groupId)?.revision ?? r.reportTo.groupRevision } } : {}) } : empty(),
+				...(r.reportInputs ? { reportInputs: { ...r.reportInputs, sources: r.reportInputs.sources.map((ref) => ({ ...ref, revision: (() => { const source = list?.routines.find((s) => s.routineId === ref.routineId); return source ? source.executionRevision ?? source.revision : ref.revision; })() })) } } : {}),
+				...(r.reportTo ? { reportTo: { ...r.reportTo, groupRevision: (() => { const group = groups.find((g) => g.groupId === r.reportTo?.groupId); return group ? group.deliveryRevision ?? group.revision : r.reportTo.groupRevision; })() } } : {}) } : empty(),
 		);
 		setBotId(r?.botId ?? bots.find((b) => b.status === "active")?.botId ?? "");
 		setRevision(r?.revision ?? 0);
@@ -125,12 +125,12 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 		detail?.history.find((o) => o.occurrenceId === occurrence) ??
 		detail?.history.find((o) => o.state === "running" || o.state === "pending");
 	const destinationName = (fields: RoutineFields) => fields.reportTo ? groups.find((g) => g.groupId === fields.reportTo?.groupId)?.name ?? t("Unavailable group") : t("Bot's private chat");
-	const destinationValid = !draft?.reportTo || groups.some((g) => g.groupId === draft.reportTo?.groupId && g.status === "active" && g.revision === draft.reportTo.groupRevision && g.memberIds.includes(botId));
+	const destinationValid = !draft?.reportTo || groups.some((g) => g.groupId === draft.reportTo?.groupId && g.status === "active" && (g.deliveryRevision ?? g.revision) === draft.reportTo.groupRevision && g.memberIds.includes(botId));
 	useEffect(() => {
 		if (selectedOccurrence) resultElement.current?.scrollIntoView({ block: "nearest" });
 	}, [selectedOccurrence?.occurrenceId]);
 	const sourceRoutines = (list?.routines ?? []).filter((r) => r.routineId !== selected && r.enabled && !r.deleted && !r.destinationBlocked && !r.inputsBlocked && !r.reportInputs && r.reportTo?.groupId === draft?.reportTo?.groupId && r.reportTo?.groupRevision === draft?.reportTo?.groupRevision);
-	const inputsValid = !draft?.reportInputs || (!!draft.reportTo && draft.reportInputs.sources.length > 0 && draft.reportInputs.sources.every((ref) => sourceRoutines.some((r) => r.routineId === ref.routineId && r.revision === ref.revision)));
+	const inputsValid = !draft?.reportInputs || (!!draft.reportTo && draft.reportInputs.sources.length > 0 && draft.reportInputs.sources.every((ref) => sourceRoutines.some((r) => r.routineId === ref.routineId && (r.executionRevision ?? r.revision) === ref.revision)));
 
 	return (
 		<section className="routine-panel" aria-label={t("Routines")}>
@@ -174,6 +174,12 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 					<button disabled={busy} onClick={() => void work(() => api["routines.presence"]({ absenceDays: absence, resume: true }))}>
 						{t("Resume schedules from now")}
 					</button>
+				</div>
+			)}
+			{!!list?.scheduler?.faults.length && (
+				<div role="alert" className="message-error">
+					<p>{t("Scheduled work needs attention. Other tasks continue; failed tasks retry automatically.")}</p>
+					{list.scheduler.faults.map((fault) => <p key={fault.key}>{list.routines.find((r) => r.routineId === fault.routineId)?.name ?? t("Scheduler")} · {t("Next retry")}: {new Date(fault.retryAt).toLocaleTimeString()}</p>)}
 				</div>
 			)}
 			{error && (
@@ -266,7 +272,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 									setDraft((previous) => {
 										if (!previous) return previous;
 										const { reportTo: _reportTo, reportInputs: _inputs, ...fields } = previous;
-										return group ? { ...fields, reportTo: { groupId: group.groupId, groupRevision: group.revision } } : fields;
+										return group ? { ...fields, reportTo: { groupId: group.groupId, groupRevision: group.deliveryRevision ?? group.revision } } : fields;
 									});
 								}}>
 									<option value="">{t("Bot's private chat")}</option>

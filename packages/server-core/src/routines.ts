@@ -9,6 +9,7 @@ import {
 	type RoutineDetail,
 	type RoutineFields,
 	type RoutineList,
+	type RoutineSchedulerFault,
 	type RoutineOccurrence,
 	type SkillRef,
 } from "@openbot/protocol";
@@ -26,6 +27,21 @@ const canonical = (v: unknown): string =>
 					.map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`)
 					.join(",")}}`
 			: JSON.stringify(v);
+function nameOnlyRoutineChange(previous: Routine, fields: RoutineFields): boolean {
+	const { name, instructions, schedule, catchUpHours, skills, reportTo, reportInputs } = previous;
+	return (
+		canonical({ ...fields, name }) ===
+		canonical({
+			name,
+			instructions,
+			schedule,
+			catchUpHours,
+			skills,
+			...(reportTo ? { reportTo } : {}),
+			...(reportInputs ? { reportInputs } : {}),
+		})
+	);
+}
 function fail(message: string): never {
 	throw new ProtocolError("invalid_request", message);
 }
@@ -57,6 +73,8 @@ export class Routines {
 	#line: Promise<unknown> = Promise.resolve();
 	#timer?: ReturnType<typeof setInterval>;
 	#closed = false;
+	readonly #faults = new Map<string, RoutineSchedulerFault>();
+	#lastScanAt: number | undefined;
 	#sweeping: Promise<void> | undefined;
 	private readonly options: {
 		runtime: BotRuntime;
@@ -78,6 +96,28 @@ export class Routines {
 		this.#line = result;
 		return result;
 	}
+	async #isolate(key: string, work: () => Promise<void>, identity: { routineId?: string; occurrenceId?: string } = {}): Promise<void> {
+		const old = this.#faults.get(key);
+		if (old && old.retryAt > this.options.now()) return;
+		try {
+			await work();
+			if (this.#faults.delete(key)) this.options.changed();
+		} catch {
+			const failures = (old?.failures ?? 0) + 1,
+				failedAt = this.options.now();
+			this.#faults.set(key, {
+				key,
+				...identity,
+				failures,
+				failedAt,
+				retryAt: failedAt + Math.min(60000, 2000 * 2 ** Math.min(failures - 1, 5)),
+				message: "Scheduled work could not be reconciled. Retrying automatically; other tasks can continue.",
+			});
+			console.error(JSON.stringify({ type: "routine.reconciliation_failed", key, ...identity, failures, at: failedAt }));
+			this.options.changed();
+		}
+	}
+
 	get #store() {
 		return this.options.runtime.routines();
 	}
@@ -100,7 +140,7 @@ export class Routines {
 	async start(): Promise<void> {
 		await this.sweep();
 		this.#timer = setInterval(() => {
-			void this.sweep().catch(() => {});
+			void this.sweep();
 		}, 1000);
 		this.#timer.unref();
 	}
@@ -139,6 +179,7 @@ export class Routines {
 		const s = await this.#store.read();
 		return {
 			routines: Object.values(s.routines).filter((r) => !r.deleted),
+			scheduler: { ...(this.#lastScanAt === undefined ? {} : { lastScanAt: this.#lastScanAt }), faults: [...this.#faults.values()] },
 			absenceDays: s.absenceDays,
 			lastActiveAt: s.lastActiveAt,
 			absencePaused: s.absencePaused,
@@ -190,12 +231,20 @@ export class Routines {
 			if (!botId || (!["pause", "delete"].includes(input.action) && (await this.options.runtime.getBot(botId))?.status !== "active"))
 				fail("Choose an active Bot");
 			const reportTo = input.action === "create" || input.action === "update" ? input.fields.reportTo : current?.reportTo;
-			if (input.action === "resume" && current?.destinationBlocked) fail("Report destination changed. Edit the routine to confirm its group again.");
+			if (input.action === "resume" && current?.destinationBlocked)
+				fail("Report destination changed. Edit the routine to confirm its group again.");
 			const reportInputs = input.action === "create" || input.action === "update" ? input.fields.reportInputs : current?.reportInputs;
-			if (input.action === "resume" && current?.inputsBlocked) fail("Source routines changed. Edit this routine to confirm its report inputs again.");
-			const destination = reportTo && !["pause", "delete"].includes(input.action) ? {
-				botId, reportTo, ...(reportInputs ? { reportInputs } : {}), ...(current ? { routineId: current.routineId } : {}),
-			} : undefined;
+			if (input.action === "resume" && current?.inputsBlocked)
+				fail("Source routines changed. Edit this routine to confirm its report inputs again.");
+			const destination =
+				reportTo && !["pause", "delete"].includes(input.action)
+					? {
+							botId,
+							reportTo,
+							...(reportInputs ? { reportInputs } : {}),
+							...(current ? { routineId: current.routineId } : {}),
+						}
+					: undefined;
 			const now = this.options.now(),
 				id = current?.routineId ?? `routine_${randomUUID()}`;
 			const result = await this.options.changeAuthority(() =>
@@ -229,9 +278,11 @@ export class Routines {
 						if (!previous || previous.deleted) fail("Routine is unavailable");
 						if (previous.revision !== input.expectedRevision)
 							throw new ProtocolError("request_conflict", "Routine changed; refresh before saving");
+						const nameOnly = input.action === "update" && nameOnlyRoutineChange(previous, input.fields);
 						r = {
 							...previous,
 							revision: previous.revision + 1,
+							executionRevision: (previous.executionRevision ?? previous.revision) + (nameOnly ? 0 : 1),
 							...(input.action === "update"
 								? {
 										...input.fields,
@@ -245,10 +296,16 @@ export class Routines {
 									? { enabled: true, nextAt: scheduleAt(previous.schedule, previous.anchor, now, "next") }
 									: { enabled: false, deleted: input.action === "delete" }),
 						};
-						if (input.action === "update" && !input.fields.reportInputs) { const { reportInputs: _inputs, ...withoutInputs } = r; r = withoutInputs; }
-						if (input.action === "update" && !input.fields.reportTo) { const { reportTo: _reportTo, ...privateRoutine } = r; r = privateRoutine; }
+						if (input.action === "update" && !input.fields.reportInputs) {
+							const { reportInputs: _inputs, ...withoutInputs } = r;
+							r = withoutInputs;
+						}
+						if (input.action === "update" && !input.fields.reportTo) {
+							const { reportTo: _reportTo, ...privateRoutine } = r;
+							r = privateRoutine;
+						}
 						for (const o of Object.values(s.occurrences))
-							if (o.routineId === id && pending(o))
+							if (!nameOnly && o.routineId === id && pending(o))
 								s.occurrences[o.occurrenceId] = { ...o, stopped: true, reason: "Routine changed or stopped" };
 					}
 					s.routines[id] = r;
@@ -268,7 +325,7 @@ export class Routines {
 			occurrenceId,
 			routineId: r.routineId,
 			botId: r.botId,
-			revision: r.revision,
+			revision: r.executionRevision ?? r.revision,
 			channelId: `routine_${createHash("sha256").update(occurrenceId).digest("hex")}`,
 			name: r.name,
 			scheduledAt,
@@ -295,11 +352,16 @@ export class Routines {
 			if ((await this.options.runtime.getBot(r.botId))?.status !== "active") fail("Choose an active Bot");
 			if (Object.values(s.occurrences).some((o) => o.routineId === routineId && pending(o))) fail("A routine run is already pending");
 			const o = this.#occurrence(r, this.options.now(), requestId);
-			await this.#store.change((s) => {
-				s.occurrences[o.occurrenceId] = o;
-				s.receipts[requestId] = { fingerprint, result: o };
-				s.lastActiveAt = this.options.now();
-			}, r.reportTo ? { botId: r.botId, reportTo: r.reportTo, routineId: r.routineId, ...(r.reportInputs ? { reportInputs: r.reportInputs } : {}) } : undefined);
+			await this.#store.change(
+				(s) => {
+					s.occurrences[o.occurrenceId] = o;
+					s.receipts[requestId] = { fingerprint, result: o };
+					s.lastActiveAt = this.options.now();
+				},
+				r.reportTo
+					? { botId: r.botId, reportTo: r.reportTo, routineId: r.routineId, ...(r.reportInputs ? { reportInputs: r.reportInputs } : {}) }
+					: undefined,
+			);
 			await this.#reconcile();
 			this.options.changed();
 			return o;
@@ -320,7 +382,7 @@ export class Routines {
 			!o.stopped &&
 			!!r &&
 			!r.deleted &&
-			r.revision === o.revision &&
+			(r.executionRevision ?? r.revision) === o.revision &&
 			(o.test || (r.enabled && !s.absencePaused)) &&
 			r.targetId === this.options.targetId &&
 			(await this.options.runtime.getBot(run.botId))?.status === "active"
@@ -360,49 +422,58 @@ export class Routines {
 	}
 	sweep(): Promise<void> {
 		if (this.#sweeping) return this.#sweeping;
-		this.#sweeping = this.#serial(async () => {
-			if (this.#closed) return;
-			await this.prepare();
-			await this.#reconcile();
-			if (!this.options.canRun()) return;
-			const now = this.options.now(),
-				state = await this.#store.read();
-			if (state.absencePaused) return;
-			for (const r of Object.values(state.routines)) {
-				if (!r.enabled || r.deleted || r.nextAt > now) continue;
-				const bot = await this.options.runtime.getBot(r.botId);
-				if (bot?.status !== "active") continue;
-				const latest = scheduleAt(r.schedule, r.anchor, now, "previous"),
-					nextAt = scheduleAt(r.schedule, r.anchor, now, "next");
-				const busy = Object.values(state.occurrences).some((o) => o.routineId === r.routineId && pending(o));
-				const eligible = now - latest <= Math.max(60000, r.catchUpHours * 3600000) && !busy;
-				await this.#store.change((s) => {
-					const current = s.routines[r.routineId];
-					if (!current || current.revision !== r.revision || current.nextAt !== r.nextAt) return;
-					s.routines[r.routineId] = { ...current, nextAt };
-					if (latest > r.nextAt || !eligible) {
-						const skip = this.#occurrence(r, eligible ? scheduleAt(r.schedule, r.anchor, latest - 1, "previous") : latest);
-						s.occurrences[skip.occurrenceId] = {
-							...skip,
-							state: "skipped",
-							skippedFrom: r.nextAt,
-							endedAt: now,
-							published: true,
-							reason: busy
-								? "Skipped because a previous run is still pending"
-								: "Missed occurrences were coalesced or outside the catch-up window",
-						};
-					}
-					if (eligible) {
-						const o = this.#occurrence(r, latest);
-						s.occurrences[o.occurrenceId] = o;
-					}
-					retain(s, r.routineId);
-				});
-				this.options.changed();
-			}
-			await this.#reconcile();
-		}).finally(() => {
+		this.#sweeping = this.#serial(() =>
+			this.#isolate("scheduler", async () => {
+				if (this.#closed) return;
+				await this.prepare();
+				await this.#reconcile();
+				if (!this.options.canRun()) return;
+				const now = this.options.now(),
+					state = await this.#store.read();
+				if (state.absencePaused) return;
+				for (const r of Object.values(state.routines)) {
+					await this.#isolate(
+						`routine:${r.routineId}`,
+						async () => {
+							if (!r.enabled || r.deleted || r.nextAt > now) return;
+							const bot = await this.options.runtime.getBot(r.botId);
+							if (bot?.status !== "active") return;
+							const latest = scheduleAt(r.schedule, r.anchor, now, "previous"),
+								nextAt = scheduleAt(r.schedule, r.anchor, now, "next");
+							const busy = Object.values(state.occurrences).some((o) => o.routineId === r.routineId && pending(o));
+							const eligible = now - latest <= Math.max(60000, r.catchUpHours * 3600000) && !busy;
+							await this.#store.change((s) => {
+								const current = s.routines[r.routineId];
+								if (!current || current.revision !== r.revision || current.nextAt !== r.nextAt) return;
+								s.routines[r.routineId] = { ...current, nextAt };
+								if (latest > r.nextAt || !eligible) {
+									const skip = this.#occurrence(r, eligible ? scheduleAt(r.schedule, r.anchor, latest - 1, "previous") : latest);
+									s.occurrences[skip.occurrenceId] = {
+										...skip,
+										state: "skipped",
+										skippedFrom: r.nextAt,
+										endedAt: now,
+										published: true,
+										reason: busy
+											? "Skipped because a previous run is still pending"
+											: "Missed occurrences were coalesced or outside the catch-up window",
+									};
+								}
+								if (eligible) {
+									const o = this.#occurrence(r, latest);
+									s.occurrences[o.occurrenceId] = o;
+								}
+								retain(s, r.routineId);
+							});
+							this.options.changed();
+						},
+						{ routineId: r.routineId },
+					);
+				}
+				await this.#reconcile();
+				this.#lastScanAt = this.options.now();
+			}),
+		).finally(() => {
 			this.#sweeping = undefined;
 		});
 		return this.#sweeping;
@@ -410,114 +481,131 @@ export class Routines {
 	async #save(o: RoutineOccurrence): Promise<void> {
 		await this.#store.change((s) => {
 			const previous = s.occurrences[o.occurrenceId];
-			s.occurrences[o.occurrenceId] = JSON.parse(JSON.stringify({
-				...o,
-				...(previous?.stopped ? { stopped: true, reason: previous.reason } : {}),
-				...(previous?.inputSnapshot ? { inputSnapshot: previous.inputSnapshot } : {}),
-				...(previous?.inputsBlocked ? { inputsBlocked: true } : {}),
-				...(previous?.destinationBlocked ? { destinationBlocked: true } : {}),
-				...(previous?.published ? { published: true } : {}),
-			}));
+			s.occurrences[o.occurrenceId] = JSON.parse(
+				JSON.stringify({
+					...o,
+					...(previous?.stopped ? { stopped: true, reason: previous.reason } : {}),
+					...(previous?.inputSnapshot ? { inputSnapshot: previous.inputSnapshot } : {}),
+					...(previous?.inputsBlocked ? { inputsBlocked: true } : {}),
+					...(previous?.destinationBlocked ? { destinationBlocked: true } : {}),
+					...(previous?.published ? { published: true } : {}),
+				}),
+			);
 			retain(s, o.routineId);
 		});
 		this.options.changed();
 	}
 	async #reconcile(): Promise<void> {
-		for (let o of Object.values((await this.#store.read()).occurrences)) {
-			if (o.state === "skipped" || o.published) continue;
-			const r = (await this.#store.read()).routines[o.routineId],
-				bot = await this.options.runtime.getBot(o.botId);
-			let run = (await this.options.runtime.runsStore().list()).find((run) => run.requestIds.includes(o.occurrenceId));
-			if (pending(o)) {
-				const allowed =
-					!!r &&
-					!r.deleted &&
-					r.revision === o.revision &&
-					!o.stopped &&
-					bot?.status === "active" &&
-					(o.test || (r.enabled && !(await this.#store.read()).absencePaused));
-				if (!allowed) {
-					if (run && !isTerminal(run.state)) {
-						if (run.state === "running" && !this.options.canRun()) continue;
-						await this.options.runs.cancel(run.runId);
-						run = await this.options.runtime.runsStore().get(run.runId);
-					}
+		const state = await this.#store.read();
+		for (const [key, fault] of this.#faults) {
+			if (
+				fault.occurrenceId
+					? !state.occurrences[fault.occurrenceId]
+					: fault.routineId && (!state.routines[fault.routineId] || state.routines[fault.routineId]?.deleted)
+			)
+				this.#faults.delete(key);
+		}
+		for (const occurrence of Object.values(state.occurrences)) {
+			await this.#isolate(`occurrence:${occurrence.occurrenceId}`, () => this.#reconcileOccurrence(occurrence), {
+				routineId: occurrence.routineId,
+				occurrenceId: occurrence.occurrenceId,
+			});
+		}
+	}
+	async #reconcileOccurrence(o: RoutineOccurrence): Promise<void> {
+		if (o.state === "skipped" || o.published) return;
+		const r = (await this.#store.read()).routines[o.routineId],
+			bot = await this.options.runtime.getBot(o.botId);
+		let run = (await this.options.runtime.runsStore().list()).find((run) => run.requestIds.includes(o.occurrenceId));
+		if (pending(o)) {
+			const allowed =
+				!!r &&
+				!r.deleted &&
+				(r.executionRevision ?? r.revision) === o.revision &&
+				!o.stopped &&
+				bot?.status === "active" &&
+				(o.test || (r.enabled && !(await this.#store.read()).absencePaused));
+			if (!allowed) {
+				if (run && !isTerminal(run.state)) {
+					if (run.state === "running" && !this.options.canRun()) return;
+					await this.options.runs.cancel(run.runId);
+					run = await this.options.runtime.runsStore().get(run.runId);
+				}
+				if (!run) {
+					o = {
+						...o,
+						state: "cancelled",
+						endedAt: this.options.now(),
+						report: o.reason ?? "Routine stopped; completed actions are not undone",
+					};
+					await this.#save(o);
+				}
+			} else if (!run && this.options.canRun()) {
+				if (o.reportInputs) {
+					const captured = await this.#store.captureInputs(o.occurrenceId, this.options.now());
+					if (!captured?.inputSnapshot || captured.stopped) return;
+					o = captured;
+				}
+				try {
+					await this.options.runtime.ensureChannel(o.botId, o.channelId);
+					await this.options.runs.submit(
+						o.botId,
+						o.occurrenceId,
+						`Scheduled workflow: ${o.name}\nScheduled time: ${new Date(o.scheduledAt).toISOString()}\n\n${o.instructions}${reportInputPrompt(o)}\n\nUse current source data. If required data is missing or an action fails, report the limitation explicitly. Do not invent a successful result. Existing approvals apply.`,
+						{ channelId: o.channelId, origin: "routine", separate: true, skills: o.skills },
+					);
+				} catch (error) {
+					run = (await this.options.runtime.runsStore().list()).find((run) => run.requestIds.includes(o.occurrenceId));
 					if (!run) {
 						o = {
 							...o,
-							state: "cancelled",
+							state: "failed",
 							endedAt: this.options.now(),
-							report: o.reason ?? "Routine stopped; completed actions are not undone",
+							report: "Routine could not start. Check the selected model, sources and pinned skills.",
+							reason: error instanceof ProtocolError ? error.message : "Routine admission failed",
 						};
 						await this.#save(o);
 					}
-				} else if (!run && this.options.canRun()) {
-					if (o.reportInputs) {
-						const captured = await this.#store.captureInputs(o.occurrenceId, this.options.now());
-						if (!captured?.inputSnapshot || captured.stopped) continue;
-						o = captured;
-					}
-					try {
-						await this.options.runtime.ensureChannel(o.botId, o.channelId);
-						await this.options.runs.submit(
-							o.botId,
-							o.occurrenceId,
-							`Scheduled workflow: ${o.name}\nScheduled time: ${new Date(o.scheduledAt).toISOString()}\n\n${o.instructions}${reportInputPrompt(o)}\n\nUse current source data. If required data is missing or an action fails, report the limitation explicitly. Do not invent a successful result. Existing approvals apply.`,
-							{ channelId: o.channelId, origin: "routine", separate: true, skills: o.skills },
-						);
-					} catch (error) {
-						run = (await this.options.runtime.runsStore().list()).find((run) => run.requestIds.includes(o.occurrenceId));
-						if (!run) {
-							o = {
-								...o,
-								state: "failed",
-								endedAt: this.options.now(),
-								report: "Routine could not start. Check the selected model, sources and pinned skills.",
-								reason: error instanceof ProtocolError ? error.message : "Routine admission failed",
-							};
-							await this.#save(o);
-						}
-					}
-					run ??= (await this.options.runtime.runsStore().list()).find((run) => run.requestIds.includes(o.occurrenceId));
 				}
-				if (run && pending(o)) {
-					const activeState = run.state === "queued" ? "pending" : "running";
-					if (o.runId !== run.runId || o.state !== activeState) {
-						o = { ...o, runId: run.runId, state: activeState };
-						await this.#save(o);
-					}
-					const snapshot = await this.options.runtime.snapshot(o.botId, o.channelId);
-					for (const item of snapshot.items)
-						if (item.kind === "tool" && !["pending", "running"].includes(item.status))
-							this.options.settled(o.botId, item.id, snapshot.conversationId);
-					if (isTerminal(run.state)) {
-						const input = run.inputs[0],
-							unknown = snapshot.items.some((i) => i.kind === "tool" && i.status === "interrupted");
-						const text = input?.submissionId ? await this.options.runtime.submissionAnswer(o.botId, input.submissionId, o.channelId) : "";
-						// A routine channel holds exactly one occurrence. Keep confirmed files even when a later step fails.
-						const artifacts = snapshot.items.flatMap((item) =>
-							item.kind === "tool" && item.status === "succeeded" && item.artifact ? [item.artifact] : [],
-						);
-						o = {
-							...o,
-							state: unknown ? "needs_attention" : (run.state as RoutineOccurrence["state"]),
-							endedAt: run.endedAt ?? this.options.now(),
-							report: boundedText(text || run.error || o.reason || "Routine ended without a completed answer"),
-							artifacts: artifacts.slice(0, 20),
-						};
-						await this.#save(o);
-					}
+				run ??= (await this.options.runtime.runsStore().list()).find((run) => run.requestIds.includes(o.occurrenceId));
+			}
+			if (run && pending(o)) {
+				const activeState = run.state === "queued" ? "pending" : "running";
+				if (o.runId !== run.runId || o.state !== activeState) {
+					o = { ...o, runId: run.runId, state: activeState };
+					await this.#save(o);
+				}
+				const snapshot = await this.options.runtime.snapshot(o.botId, o.channelId);
+				for (const item of snapshot.items)
+					if (item.kind === "tool" && !["pending", "running"].includes(item.status))
+						this.options.settled(o.botId, item.id, snapshot.conversationId);
+				if (isTerminal(run.state)) {
+					const input = run.inputs[0],
+						unknown = snapshot.items.some((i) => i.kind === "tool" && i.status === "interrupted");
+					const text = input?.submissionId ? await this.options.runtime.submissionAnswer(o.botId, input.submissionId, o.channelId) : "";
+					// A routine channel holds exactly one occurrence. Keep confirmed files even when a later step fails.
+					const artifacts = snapshot.items.flatMap((item) =>
+						item.kind === "tool" && item.status === "succeeded" && item.artifact ? [item.artifact] : [],
+					);
+					o = {
+						...o,
+						state: unknown ? "needs_attention" : (run.state as RoutineOccurrence["state"]),
+						endedAt: run.endedAt ?? this.options.now(),
+						report: boundedText(text || run.error || o.reason || "Routine ended without a completed answer"),
+						artifacts: artifacts.slice(0, 20),
+					};
+					await this.#save(o);
 				}
 			}
-			if (!pending(o) && !o.published) {
-				if (o.reportTo) {
-					await this.options.runtime.groups().publishRoutine(o.occurrenceId);
-					await this.#store.change((s) => retain(s, o.routineId));
-					this.options.changed();
-				} else {
-					if (bot && bot.status !== "deleted") await this.options.runtime.publishRoutineReport(o.botId, o);
-					await this.#save({ ...o, published: true });
-				}
+		}
+		if (!pending(o) && !o.published) {
+			if (o.reportTo) {
+				await this.options.runtime.groups().publishRoutine(o.occurrenceId);
+				await this.#store.change((s) => retain(s, o.routineId));
+				this.options.changed();
+			} else {
+				if (bot && bot.status !== "deleted") await this.options.runtime.publishRoutineReport(o.botId, o);
+				await this.#save({ ...o, published: true });
 			}
 		}
 	}

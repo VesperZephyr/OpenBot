@@ -499,7 +499,7 @@ export class HostService {
 		await this.authority.reconcile();
   await this.routines.prepare();
   await this.#runs.start();
-		if (this.lifecycle.state.needsResume) await this.lifecycle.pause("recovery").catch(() => {});
+		if (this.lifecycle.state.needsResume && !this.lifecycle.state.autoResume) await this.lifecycle.pause("recovery").catch(() => {});
 		await this.groups.start();
 		await this.background.start();
   await this.routines.start();

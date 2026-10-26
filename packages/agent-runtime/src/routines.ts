@@ -14,9 +14,10 @@ export async function invalidateRoutineDestinations(tx: Tx, group: Group): Promi
 	const state = await tx.doc(RoutinesDoc);
 	for (const r of Object.values(state.routines)) {
 		if (r.deleted || r.reportTo?.groupId !== group.groupId || r.destinationBlocked) continue;
-		if (group.status === "active" && group.revision === r.reportTo.groupRevision && group.memberIds.includes(r.botId)) continue;
+		if (group.status === "active" && (group.deliveryRevision ?? group.revision) === r.reportTo.groupRevision && group.memberIds.includes(r.botId)) continue;
 		r.enabled = false;
 		r.destinationBlocked = true;
+		r.executionRevision = (r.executionRevision ?? r.revision) + 1;
 		r.revision++;
 		for (const o of Object.values(state.occurrences)) {
 			if (o.routineId !== r.routineId || o.published || o.state === "skipped") continue;
@@ -32,6 +33,7 @@ function invalidateReportInputs(state: Stored<RoutineState>): void {
 		if (!r.reportInputs || r.deleted || r.inputsBlocked || r.destinationBlocked || validReportInputs(state.routines, r.reportTo, r.reportInputs, r.routineId)) continue;
 		r.enabled = false;
 		r.inputsBlocked = true;
+		r.executionRevision = (r.executionRevision ?? r.revision) + 1;
 		r.revision++;
 		for (const o of Object.values(state.occurrences)) {
 			if (o.routineId !== r.routineId || o.published || o.state === "skipped") continue;
@@ -77,10 +79,10 @@ export function routineStore(harness: Harness, context: Context) {
 				const o = state.occurrences[occurrenceId];
 				if (!o) return;
 				const r = state.routines[o.routineId];
-				if (o.reportInputs && !o.inputSnapshot && !o.stopped && r?.revision === o.revision && !r.deleted) {
+				if (o.reportInputs && !o.inputSnapshot && !o.stopped && r && (r.executionRevision ?? r.revision) === o.revision && !r.deleted) {
 					const group = (await tx.doc(GroupsDoc));
 					const destination = o.reportTo && group.groups[o.reportTo.groupId];
-					if (destination?.status === "active" && destination.revision === o.reportTo?.groupRevision && destination.memberIds.includes(o.botId)) {
+					if (destination?.status === "active" && (destination.deliveryRevision ?? destination.revision) === o.reportTo?.groupRevision && destination.memberIds.includes(o.botId)) {
 						const snapshot = captureReportInputs(state.routines, state.occurrences, group.posts[destination.groupId] ?? [], o, now);
 						if (snapshot) o.inputSnapshot = JSON.parse(JSON.stringify(snapshot));
 					}
@@ -92,7 +94,7 @@ export function routineStore(harness: Harness, context: Context) {
 			return harness.commit(async (tx) => {
 				if (destination) {
 					const group = (await tx.doc(GroupsDoc)).groups[destination.reportTo.groupId];
-					if (!group || group.status !== "active" || group.revision !== destination.reportTo.groupRevision || !group.memberIds.includes(destination.botId))
+					if (!group || group.status !== "active" || (group.deliveryRevision ?? group.revision) !== destination.reportTo.groupRevision || !group.memberIds.includes(destination.botId))
 						throw new ProtocolError("invalid_request", ROUTINE_DESTINATION_BLOCKED);
 				}
 				const state = await tx.doc(RoutinesDoc);

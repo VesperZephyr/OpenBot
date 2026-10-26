@@ -1,12 +1,14 @@
 # Development Backlog
 
-**D10, in review:** [Reader polish and real report acceptance](tasks/d10-reader-polish.md) unifies SVG controls, groups zoom actions, preserves file extensions in adaptive tabs and verifies real Markdown/HTML delivery from group message cards in the installed app.
+**B11d, in review:** [Unattended workflow reliability](tasks/b11d-unattended-reliability.md): background availability through lock/wake, name-only changes preserving report bindings, isolated scheduler failures and visible retry health.
+
+**D10, done (#59):** [Reader polish and real report acceptance](tasks/d10-reader-polish.md) unifies SVG controls, groups zoom actions, preserves file extensions in adaptive tabs and verifies real Markdown/HTML delivery from group message cards in the installed app.
 
 **D9, done ([#58](https://github.com/VesperZephyr/OpenBot/pull/58)):** [Files and read-only previews](tasks/d9-file-reading.md) provides clickable message filenames, resizable right-hand file/page tabs with independent reading state, a Files browser and isolated embedded HTML.
 
 **I6, done (#57):** [Integrated daily radar acceptance](tasks/i6-radar-integration.md) delivers B11c scheduled summaries, D8 unified chat and source-evidence corrections to main. The installed owner application passed three real calendar-triggered reporting chains; the final chain read all eleven sources and survived restart without duplicate delivery.
 
-Active delivery scope (2026-10-24): D10 reader polish follows merged I6 and D9. Backup/restore (B14d), history scaling (B14c), templates (B13e) and signed updates (B14f) remain subsequent work. OAuth, optional model review and Phase 3 remain separate specs.
+Active delivery scope (2026-10-26): B11d unattended reliability follows merged D10. Backup/restore (B14d), history scaling (B14c), templates (B13e) and signed updates (B14f) remain subsequent work. OAuth, optional model review and Phase 3 remain separate specs.
 
 **D8, done through I6 / PR #57:** [Unified chats and continuous activity](tasks/d8-chat-experience.md) provides mixed private/group navigation, member avatars, compact Settings and real streamed Markdown/loading feedback.
 

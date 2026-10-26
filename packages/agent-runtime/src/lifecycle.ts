@@ -5,6 +5,7 @@ const LifecycleDoc = defineDoc<{
 	revision: number;
 	userPaused: boolean;
 	needsResume: boolean;
+	autoResume?: boolean;
 	lastReason?: NonNullable<LifecycleRecord["lastReason"]>;
 }>({ kind: "openbot.lifecycle", version: 1, scope: "session", initial: () => ({ revision: 0, userPaused: false, needsResume: false }) });
 export interface LifecycleStore {
@@ -20,6 +21,7 @@ export function lifecycleStore(harness: Harness, context: Context): LifecycleSto
 			await harness.commit(async (tx) => {
 				const doc = await tx.doc(LifecycleDoc);
 				delete doc.lastReason;
+				delete doc.autoResume;
 				Object.assign(doc, JSON.parse(JSON.stringify(record)));
 			}, context);
 		},

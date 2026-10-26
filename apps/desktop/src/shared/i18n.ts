@@ -1,6 +1,10 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
+ "Scheduled work needs attention. Other tasks continue; failed tasks retry automatically.": "部分定时任务需要关注。其他任务继续运行，失败任务将自动重试。",
+ "Scheduler": "调度器",
+ "Next retry": "下次重试",
+
 	"Workspace": "工作区",
 "Open files and pages": "已打开的文件和网页",
 "Open file or page": "打开文件或网页",

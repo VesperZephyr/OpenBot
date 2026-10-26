@@ -39,7 +39,12 @@ export class LifecycleController {
 			targetId: this.#options.targetId,
 			nativeReady: this.#ready,
 			blocked:
-				this.#latch || this.#record.userPaused || this.#record.needsResume || !this.#ready || Object.values(this.#native).some(Boolean),
+				this.#latch ||
+				this.#record.userPaused ||
+				this.#record.needsResume ||
+				!this.#ready ||
+				this.#native.suspended ||
+				this.#native.quitting,
 			transitioning: this.#transitioning,
 			...(this.#error ? { error: this.#error } : {}),
 		};
@@ -59,8 +64,11 @@ export class LifecycleController {
 	}
 	async #pause(reason: LifecycleReason): Promise<LifecycleState> {
 		this.#transitioning = true;
+		const automatic =
+			reason === "suspended" && !this.#record.userPaused && (!this.#record.needsResume || this.#record.autoResume === true) && !this.#error;
 		this.#record = {
 			...this.#record,
+			autoResume: false,
 			revision: this.#record.revision + 1,
 			userPaused: this.#record.userPaused || reason === "user",
 			needsResume:
@@ -77,6 +85,10 @@ export class LifecycleController {
 			await this.#options.store.write(this.#record);
 			persisted = true;
 			await this.#options.suspend(reason);
+			if (automatic) {
+				await this.#options.store.write({ ...this.#record, autoResume: true });
+				this.#record = { ...this.#record, autoResume: true };
+			}
 			this.#error = undefined;
 		} catch (error) {
 			if (!persisted) await this.#options.suspend(reason).catch(() => {});
@@ -96,12 +108,26 @@ export class LifecycleController {
 		this.#seq = value.seq;
 		this.#ready = true;
 		this.#native = { locked: value.locked, suspended: value.suspended, quitting: value.quitting };
-		const reason = value.quitting ? "quitting" : value.suspended ? "suspended" : value.locked ? "locked" : undefined;
+		const reason = value.quitting ? "quitting" : value.suspended ? "suspended" : undefined;
 		if (reason) return this.pause(reason);
 		this.#publish();
 		const epoch = this.#epoch;
 		return this.#serial(async () => {
-			if (epoch === this.#epoch && !this.#record.userPaused && !this.#record.needsResume && !Object.values(this.#native).some(Boolean)) {
+			if (
+				epoch === this.#epoch &&
+				this.#record.autoResume &&
+				!this.#record.userPaused &&
+				!this.#error &&
+				!this.#native.suspended &&
+				!this.#native.quitting
+			)
+				return this.#resume(epoch);
+			if (
+				epoch === this.#epoch &&
+				!this.#record.userPaused &&
+				!this.#record.needsResume &&
+				!(this.#native.suspended || this.#native.quitting)
+			) {
 				if (this.#execution.signal.aborted) this.#execution = new AbortController();
 				this.#latch = false;
 				try {
@@ -122,39 +148,40 @@ export class LifecycleController {
 	}
 	resume(): Promise<LifecycleState> {
 		const epoch = this.#epoch;
-		return this.#serial(async () => {
-			if (epoch !== this.#epoch) throw new ProtocolError("invalid_request", "The Mac is not ready to resume work.");
-			if (!this.state.blocked) return this.state;
-			if (!this.#ready || Object.values(this.#native).some(Boolean))
+		return this.#serial(() => this.#resume(epoch));
+	}
+	async #resume(epoch: number): Promise<LifecycleState> {
+		if (epoch !== this.#epoch) throw new ProtocolError("invalid_request", "The Mac is not ready to resume work.");
+		if (!this.state.blocked) return this.state;
+		if (!this.#ready || this.#native.suspended || this.#native.quitting)
+			throw new ProtocolError("invalid_request", "The Mac is not ready to resume work.");
+		this.#transitioning = true;
+		this.#publish();
+		try {
+			if (this.#error) await this.#options.suspend("recovery");
+			const next: LifecycleRecord = { revision: this.#record.revision + 1, userPaused: false, needsResume: false };
+			await this.#options.store.write(next);
+			if (epoch !== this.#epoch || this.#native.suspended || this.#native.quitting) {
+				await this.#options.store.write(this.#record);
 				throw new ProtocolError("invalid_request", "The Mac is not ready to resume work.");
-			this.#transitioning = true;
-			this.#publish();
-			try {
-				if (this.#error) await this.#options.suspend("recovery");
-				const next: LifecycleRecord = { revision: this.#record.revision + 1, userPaused: false, needsResume: false };
-				await this.#options.store.write(next);
-				if (epoch !== this.#epoch || Object.values(this.#native).some(Boolean)) {
-					await this.#options.store.write(this.#record);
-					throw new ProtocolError("invalid_request", "The Mac is not ready to resume work.");
-				}
-				this.#record = next;
-				if (this.#execution.signal.aborted) this.#execution = new AbortController();
-				this.#latch = false;
-				this.#error = undefined;
-				await this.#options.resume();
-			} catch (error) {
-				this.#latch = true;
-				this.#execution.abort();
-				this.#record = { ...this.#record, needsResume: true };
-				this.#error = "Work could not resume. Review the lifecycle status.";
-				await this.#options.store.write(this.#record).catch(() => {});
-				throw error;
-			} finally {
-				this.#transitioning = false;
-				this.#publish();
 			}
-			return this.state;
-		});
+			this.#record = next;
+			if (this.#execution.signal.aborted) this.#execution = new AbortController();
+			this.#latch = false;
+			this.#error = undefined;
+			await this.#options.resume();
+		} catch (error) {
+			this.#latch = true;
+			this.#execution.abort();
+			this.#record = { ...this.#record, needsResume: true };
+			this.#error = "Work could not resume. Review the lifecycle status.";
+			await this.#options.store.write(this.#record).catch(() => {});
+			throw error;
+		} finally {
+			this.#transitioning = false;
+			this.#publish();
+		}
+		return this.state;
 	}
 	#publish() {
 		this.#options.changed(this.state);

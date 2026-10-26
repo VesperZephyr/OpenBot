@@ -42,6 +42,8 @@ export type Routine = RoutineFields & {
 	readonly botId: string;
 	readonly targetId: string;
 	readonly revision: number;
+	/** Workflow authority; name-only edits preserve this version. */
+	readonly executionRevision?: number;
 	readonly enabled: boolean;
 	readonly deleted: boolean;
 	readonly createdAt: number;
@@ -75,7 +77,17 @@ export type RoutineOccurrence = {
 	readonly published?: boolean;
 	readonly skippedFrom?: number;
 };
+export type RoutineSchedulerFault = {
+	readonly key: string;
+	readonly routineId?: string;
+	readonly occurrenceId?: string;
+	readonly failures: number;
+	readonly failedAt: number;
+	readonly retryAt: number;
+	readonly message: string;
+};
 export type RoutineList = {
+	readonly scheduler?: { readonly lastScanAt?: number; readonly faults: readonly RoutineSchedulerFault[] };
 	readonly routines: readonly Routine[];
 	readonly absenceDays: number;
 	readonly lastActiveAt: number;
