@@ -1,6 +1,6 @@
 # I7: Official changelog pagination
 
-Status: in progress
+Status: in review (#63)
 Branch: task/i7-official-changelog-pagination
 Depends on: I6; installed B4a candidate for safe multibyte output continuation
 Architecture: sections 5.2 and 5.8; existing web_fetch and configured routines
@@ -41,3 +41,13 @@ These are observed official website interfaces, not a versioned API SLA. Changes
 
 ## Open questions
 None.
+
+## Verification (2026-10-27)
+
+- `pnpm run check --maxWorkers=4`: boundaries, type checking and 575 tests across 85 files passed.
+- Final full `pnpm run e2e`: 185 tests across 49 files passed. The new official-pagination scenario and screenshots were inspected; actual public pages and the installed group were explored with agent-browser.
+- Existing installed B4a candidate retained. Real calendar-triggered eleven-source chain: 38 domestic + 28 international successful reads, both reports published, automatic zero-tool Core summary with exact ready/untruncated snapshots.
+- Offline audit of actual model-visible receipts: ZCode two cumulative pages / 13 versions, and TRAE twelve API pages / 115 headings / 1,900 unique content blocks plus the declared root. All requested source response ranges reconstructed and hashes verified, with no missing/repeated page or unresolved content reference.
+- A separate group note reports the acceptance tool's independent validation, distinct from the researchers' own claims. Publication precision and the partial auxiliary OpenCode page remain explicit.
+- Restored enabled 07:08 / 07:10 / 07:47 schedules and current summary bindings. Full installed restart retained exact reports/history, one post per occurrence, open lifecycle and zero scheduler faults. App returned to normal launch without a debugging port.
+- [Detailed acceptance and remaining limits](../acceptance/official-pagination-2026-10-27.md). No new runtime capability, installation dependency or release publication.

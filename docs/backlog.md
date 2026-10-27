@@ -10,7 +10,7 @@
 
 **I6, done (#57):** [Integrated daily radar acceptance](tasks/i6-radar-integration.md) delivers B11c scheduled summaries, D8 unified chat and source-evidence corrections to main. The installed owner application passed three real calendar-triggered reporting chains; the final chain read all eleven sources and survived restart without duplicate delivery.
 
-Active delivery scope (2026-10-27): B11d is merged and installed; the existing eleven-source radar completed real catch-up and source-by-source review ([evidence](acceptance/radar-installed-2026-10-27.md)). B14d backup/restore is the active independent batch, followed by history scaling (B14c), templates (B13e) and signed updates (B14f). OAuth, optional model review and Phase 3 remain separate specs.
+Active delivery scope (2026-10-27): B11d is merged and installed; the existing eleven-source radar completed real catch-up and source-by-source review ([evidence](acceptance/radar-installed-2026-10-27.md)). B14d backup/restore is merged in #61. I7 official source pagination is the active workflow batch; B4a / #62 remains independent, followed by history scaling (B14c), templates (B13e) and signed updates (B14f). OAuth, optional model review and Phase 3 remain separate specs.
 
 **D8, done through I6 / PR #57:** [Unified chats and continuous activity](tasks/d8-chat-experience.md) provides mixed private/group navigation, member avatars, compact Settings and real streamed Markdown/loading feedback.
 
@@ -20,7 +20,7 @@ References: study MiniMax Code without copying; distinguish official facts and o
 
 ## Competitor radar delivery
 
-**I7, in progress (#63):** [Official changelog pagination](tasks/i7-official-changelog-pagination.md) uses ZCode cumulative official pages and TRAE China's public JSON endpoint through existing web_fetch. B4a / #62 remains independent; current catalogue closure is checked separately from HTTP extraction and publication precision.
+**I7, in review (#63):** [Official changelog pagination](tasks/i7-official-changelog-pagination.md) uses ZCode cumulative official pages and TRAE China's public JSON endpoint through existing web_fetch. B4a / #62 remains independent; current catalogue closure is checked separately from HTTP extraction and publication precision. [Real acceptance](acceptance/official-pagination-2026-10-27.md) verified ZCode 13 versions and TRAE 115 entries, automatic group summary and restart without duplicates.
 
 
 **Retrieval-quality follow-up:** retain pagination metadata across character and byte/line limits, complete relevant changelog continuations, and separate publication time, modification time and date-only evidence. The [October 27 audit](acceptance/radar-installed-2026-10-27.md) records incomplete histories and corrected claims; B14d does not implement this retrieval change.

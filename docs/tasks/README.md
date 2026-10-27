@@ -232,4 +232,4 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Task | Status |
 | --- | --- |
-| [I7: Official changelog pagination](i7-official-changelog-pagination.md) | in progress (#63); configured workflow and acceptance, no new runtime capability |
+| [I7: Official changelog pagination](i7-official-changelog-pagination.md) | in review (#63); configured workflow and acceptance, no new runtime capability |

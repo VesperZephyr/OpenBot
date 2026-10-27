@@ -1,7 +1,7 @@
 # OpenBot Technical Plan
 
 
-Active delivery scope (2026-10-27): I6 / #57 and D9 / #58 are merged into main. D10 / #59 is merged. B11d is merged in #60 and installed; it improves unattended lifecycle, rename-safe bindings and scheduler fault isolation. The radar uses two configured Specialists and the existing Core; identities and monitored sources remain configuration. Backup/restore (B14d) is the active independent batch; history scaling (B14c), templates (B13e) and signed updates (B14f) follow. B9c OAuth, B12b optional model review and Phase 3 remain deferred.
+Active delivery scope (2026-10-27): I6 / #57 and D9 / #58 are merged into main. D10 / #59 is merged. B11d is merged in #60 and installed; it improves unattended lifecycle, rename-safe bindings and scheduler fault isolation. The radar uses two configured Specialists and the existing Core; identities and monitored sources remain configuration. Backup/restore (B14d) is merged in #61. I7 official changelog pagination is the active workflow batch; B4a safe output pagination remains a separate PR #62; history scaling (B14c), templates (B13e) and signed updates (B14f) follow. B9c OAuth, B12b optional model review and Phase 3 remain deferred.
 
 Last updated: 2026-10-27.
 
@@ -29,7 +29,7 @@ Desktop delivery (2026-10-22): [D6](tasks/d6-desktop-design.md) delivers the own
 
 | Component | State | Verified by |
 | --- | --- | --- |
-| Official source pagination (I7) | In progress (#63): configured ZCode/TRAE official GET continuations using existing web_fetch | [Spec](tasks/i7-official-changelog-pagination.md); offline output/range/catalogue audit and synthetic Host coverage |
+| Official source pagination (I7) | In review (#63): configured ZCode/TRAE official GET continuations using existing web_fetch | [Spec](tasks/i7-official-changelog-pagination.md); 575 unit/Host/audit tests, 185 desktop tests; [real catalogue acceptance](acceptance/official-pagination-2026-10-27.md) |
 | Local backup/restore (B14d) | Merged (#61): native Settings selection, offline versioned snapshots, staged validation, crash rollback and paused recovery; same Mac/account | 564 unit/Host tests; 182-case full desktop pass plus seven final backup cases; bundled delete/restore, real command interruption, crash recovery and isolated UI inspection; [spec](tasks/b14d-backup-restore.md) |
 | Unattended reliability (B11d) | Merged (#60), installed October 27: lock permits background work; confirmed suspend admits new work on wake; separate edit/semantic versions; isolated scheduler faults and health | 542 unit/Host tests, 177 desktop tests and five-request real-provider chain passed; [initial evidence](acceptance/unattended-reliability-2026-10-26.md), [installed eleven-source audit](acceptance/radar-installed-2026-10-27.md) |
 | Integrated radar acceptance (I6) | Merged in PR #57: main integration, Atom/RSS support, bounded full-page extraction and exact source timestamps; installed owner app and restored daily workflow | 524 unit/Host + 165 hidden desktop tests; all eleven live sources, three real scheduled chains, complete 2/2 summary inputs and restart deduplication; [spec](tasks/i6-radar-integration.md) |

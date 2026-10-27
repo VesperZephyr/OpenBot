@@ -13,10 +13,10 @@ it("reads remote HTML and JSON continuations, retaining product/date precision a
 		{ text: "Both official catalogues reached their terminal page. Dates remain date-only: exact-window publication is unverified. TRAE and TRAE APP remain separate." },
 	);
 	await h.send("Read both official catalogues through their remote terminal pages, preserving dates and product variants.");
-	await h.page().getByText("Both official catalogues reached their terminal page.", { exact: false }).waitFor();
+	await h.page().locator(".transcript").getByText("Both official catalogues reached their terminal page.", { exact: false }).waitFor();
 	const messages = JSON.stringify(h.model.requests.at(-1)?.messages);
 	for (const value of ['has_more\\\":false', 'total_entries\\\":11', '2026-10-26', 'TRAE APP', "Earlier body"]) expect(messages).toContain(value);
 	await h.page().locator(".steps-row").last().locator("summary").first().click();
-	await h.page().getByText("Both official catalogues reached their terminal page.", { exact: false }).scrollIntoViewIfNeeded();
+	await h.page().locator(".transcript").getByText("Both official catalogues reached their terminal page.", { exact: false }).scrollIntoViewIfNeeded();
 	await h.shot("01-official-pagination");
 });
