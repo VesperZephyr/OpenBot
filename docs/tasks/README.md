@@ -227,3 +227,9 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Task | Status |
 | --- | --- |
 | [I5: E2E coverage and execution efficiency](i5-e2e-efficiency.md) | done (#54); two full parallel regressions pass |
+
+## Official source pagination
+
+| Task | Status |
+| --- | --- |
+| [I7: Official changelog pagination](i7-official-changelog-pagination.md) | in review (#63); configured workflow and acceptance, no new runtime capability |
