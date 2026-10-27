@@ -1198,3 +1198,5 @@ export type { ArtifactRef, ArtifactContent, ArtifactOperation, ArtifactOperation
 
 export { READER_LIMITS } from "./reader.ts";
 export type { ReaderFile, FileListing, FileEntry } from "./reader.ts";
+
+export type { BackupRequest, BackupResult } from "./backup.ts";

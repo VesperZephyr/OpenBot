@@ -856,3 +856,5 @@ export {
 export { memoryUpdate } from "./memory-tool.ts";
 export { Coalescer, COALESCE_WINDOW_MS, type Timers } from "./coalescer.ts";
 export { ConversationFeed, type ConversationFeedOptions } from "./conversation-feed.ts";
+
+export { LocalBackups } from "./backup.ts";

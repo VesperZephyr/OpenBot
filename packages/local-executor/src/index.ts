@@ -258,3 +258,5 @@ export { SkillStore } from "./skills.ts";
 export { ConnectorSupervisor } from "./connectors.ts";
 
 export { listReaderFiles, readWorkspaceFile, readSelectedFile } from "./reader.ts";
+
+export { validateExecutorBackup } from "./backup.ts";

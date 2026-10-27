@@ -1586,3 +1586,6 @@ function checkRoleSkills(refs: readonly SkillRef[] | undefined, proposal?: BotMa
  if (refs.length > SKILL_LIMITS.attachments || !refs.every(validSkillRef) || new Set(refs.map(ref => ref.name)).size !== refs.length)
   throw new ProtocolError("invalid_request", "Select up to two distinct skills");
 }
+
+/** Advance deliberately when a backup requires migration; the Pi baseline remains diagnostic provenance. */
+export const BACKUP_RUNTIME_VERSION = "openbot-agent-runtime/1;pi-b45e0ebcc5ae2fc42a6f2f23104d10e656e6bedb";

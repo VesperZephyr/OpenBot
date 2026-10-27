@@ -26,6 +26,8 @@ async function bundleRuntime() {
 	await build({
 		entryPoints: {
 			host: join(apps, "local-server", "src", "main.ts"),
+			maintenance: join(apps, "local-server", "src", "maintenance.ts"),
+			"backup-check": join(apps, "local-executor", "src", "backup-check.ts"),
 			executor: join(apps, "local-executor", "src", "main.ts"),
 			"codemode-worker": join(apps, "..", "packages", "agent-runtime", "src", "codemode-worker.ts"),
 		},

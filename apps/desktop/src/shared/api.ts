@@ -114,6 +114,8 @@ export type ReaderBrowserState = {
 	closed?: boolean;
 };
 export type OpenBotApi = {
+	reloadAfterRestore(): Promise<void>;
+	readonly backup: (action: "export" | "restore") => Promise<import("@openbot/protocol").BackupResult | null>;
 	readonly readerOpen: (url: string) => Promise<ReaderBrowserState>;
 	readonly readerAction: (
 		id: string,
@@ -148,6 +150,8 @@ export type OpenBotApi = {
 
 /** IPC channel names between preload and main. */
 export const CHANNELS = {
+	backup: "openbot:backup",
+	reloadAfterRestore: "openbot:reload-after-restore",
 	readerOpen: "openbot:reader-open",
 	readerAction: "openbot:reader-action",
 	readerBounds: "openbot:reader-bounds",

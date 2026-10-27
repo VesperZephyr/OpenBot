@@ -1,3 +1,4 @@
+import { BackupSettings, RestoreNotice } from "./BackupSettings";
 import { WorkspaceLayout } from "./WorkspaceLayout";
 import { openFiles } from "./reader-store";
 import { AppearanceSelect } from "./appearance";
@@ -102,6 +103,7 @@ export function App() {
 		<div className="app">
             <WorkspaceLayout sidebar={<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />}>
 			<main className="main">
+				<RestoreNotice />
 				{host.status !== "ready" && (
 					<div className={`banner banner-${host.status}`}>
 						{host.status === "starting" ? t("Starting OpenBot…") : t("OpenBot stopped. {detail}", { detail: host.detail ?? "" })}
@@ -1175,6 +1177,7 @@ function Settings() {
 				</ul>
 			</div>
 			<CredentialStorage />
+			<BackupSettings />
 			<WebSearchSettings />
 			<div id="settings-permissions">
 				<CommandSettings />

@@ -1,3 +1,4 @@
+import { DesktopBackups } from "./backups";
 import { previewDocuments } from "./preview-documents";
 import { createRequire } from "node:module";
 import { credentialStorageLocation, DesktopCredentials, type NativeKeychain } from "./credentials";
@@ -58,6 +59,7 @@ let window: BrowserWindow | undefined;
 let tray: Tray | undefined;
 let language: Language = "en";
 let quitting = false;
+let quitReady = false;
 
 /** Development and test overrides; a packaged app ignores them, so the environment cannot redirect its keys or limits. */
 const DEV_OVERRIDES = ["OPENBOT_WORKSPACE", "OPENBOT_TAVILY_BASE_URL", "OPENBOT_MAX_ACTIVE_RUNS", "OPENBOT_EXEC_YIELD_MS"] as const;
@@ -66,6 +68,7 @@ const forwarded = (names: readonly string[]): Record<string, string> =>
 
 const hostEnvironment: NodeJS.ProcessEnv = {
 	OPENBOT_DESKTOP_LIFECYCLE: "1",
+	OPENBOT_APP_VERSION: app.getVersion(),
 	PATH: process.env.PATH ?? "",
 	HOME: process.env.HOME ?? "",
 	USER: process.env.USER ?? "",
@@ -110,6 +113,12 @@ const host = new HostProcess({
 		if (state.status === "ready") void nativeLifecycle.ready();
 		window?.webContents.send(CHANNELS.hostState, state);
 	},
+});
+
+const backups = new DesktopBackups({
+ host, node: runtime.node,
+ entry: app.isPackaged ? join(process.resourcesPath, "host/maintenance.mjs") : resolve(app.getAppPath(), "../local-server/src/maintenance.ts"),
+ dataDirectory, env: hostEnvironment, language: () => language,
 });
 
 const nativeLifecycle = new NativeLifecycleBridge(host, () =>
@@ -209,14 +218,19 @@ function createTray(): Tray {
 app.on("second-instance", showWindow);
 app.on("activate", showWindow);
 app.on("before-quit", (event) => {
+	if (quitReady) return;
+	event.preventDefault();
 	if (quitting) return;
 	quitting = true;
-	event.preventDefault();
 	attentionWatcher.stop();
-	void nativeLifecycle
-		.update({ quitting: true })
+	void backups
+		.shutdown()
+		.then(() => nativeLifecycle.update({ quitting: true }))
 		.finally(() => host.stop())
-		.finally(() => app.quit());
+		.finally(() => {
+			quitReady = true;
+			app.quit();
+		});
 });
 
 void app.whenReady().then(async () => {
@@ -227,6 +241,7 @@ void app.whenReady().then(async () => {
 	if (devServerUrl === undefined) serveAppScheme(join(__dirname, "../renderer"));
 	registerIpc({
 		host,
+		backups,
 		isTrustedFrame: (url) => isTrustedRendererUrl(url),
 		language: () => language,
 		onSettings: (settings) => {
@@ -250,6 +265,12 @@ void app.whenReady().then(async () => {
 	powerMonitor.on("unlock-screen", () => void nativeLifecycle.update({ locked: false }));
 
 	hostEnvironment.PATH = await resolveLoginPath(process.env);
+	try {
+  await backups.recover();
+ } catch {
+  host.blockStartup(translate(language, "Restore recovery failed. Data and rollback copies have been kept; the Host remains stopped."));
+  return;
+ }
 	if (!quitting) host.start();
 });
 
