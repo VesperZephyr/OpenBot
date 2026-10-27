@@ -1,6 +1,6 @@
 # Development Backlog
 
-**B14d, in review (#61):** [Consistent local backup and restore](tasks/b14d-backup-restore.md): native Settings workflow, offline snapshots, validation, rollback and paused recovery.
+**B14d, done (#61):** [Consistent local backup and restore](tasks/b14d-backup-restore.md): native Settings workflow, offline snapshots, validation, rollback and paused recovery.
 
 **B11d, done (#60):** [Unattended workflow reliability](tasks/b11d-unattended-reliability.md): background availability through lock/wake, name-only changes preserving report bindings, isolated scheduler failures and visible retry health.
 
@@ -10,7 +10,7 @@
 
 **I6, done (#57):** [Integrated daily radar acceptance](tasks/i6-radar-integration.md) delivers B11c scheduled summaries, D8 unified chat and source-evidence corrections to main. The installed owner application passed three real calendar-triggered reporting chains; the final chain read all eleven sources and survived restart without duplicate delivery.
 
-Active delivery scope (2026-10-27): B11d is merged and installed; the existing eleven-source radar completed real catch-up and source-by-source review ([evidence](acceptance/radar-installed-2026-10-27.md)). B14d backup/restore is the active independent batch, followed by history scaling (B14c), templates (B13e) and signed updates (B14f). OAuth, optional model review and Phase 3 remain separate specs.
+Active delivery scope (2026-10-27): B11d is merged and installed; the existing eleven-source radar completed real catch-up and source-by-source review ([evidence](acceptance/radar-installed-2026-10-27.md)). B14d backup/restore is merged. B4a web pagination is the active owner-requested repair, followed by history scaling (B14c), templates (B13e) and signed updates (B14f). OAuth, optional model review and Phase 3 remain separate specs.
 
 **D8, done through I6 / PR #57:** [Unified chats and continuous activity](tasks/d8-chat-experience.md) provides mixed private/group navigation, member avatars, compact Settings and real streamed Markdown/loading feedback.
 
@@ -20,7 +20,7 @@ References: study MiniMax Code without copying; distinguish official facts and o
 
 ## Competitor radar delivery
 
-**Retrieval-quality follow-up:** retain pagination metadata across character and byte/line limits, complete relevant changelog continuations, and separate publication time, modification time and date-only evidence. The [October 27 audit](acceptance/radar-installed-2026-10-27.md) records incomplete histories and corrected claims; B14d does not implement this retrieval change.
+**B4a, in progress (#62):** [Reliable web pagination](tasks/b4a-web-pagination.md) will retain pagination metadata across character and byte/line limits, complete relevant changelog continuations, and separate publication time, modification time and date-only evidence. The [October 27 audit](acceptance/radar-installed-2026-10-27.md) records incomplete histories and corrected claims; B14d does not implement this retrieval change.
 
 **B11b, done (#53):** [Scheduled reports in group conversations](tasks/b11b-group-routine-reports.md). Two independent hunter routines publish attributable reports into a confirmed group, with exact history links, restart deduplication and revocation when membership changes. The [workflow](workflows/competitor-radar.md) records source selection, daily windows and unavailable-source handling. Automated acceptance and a bounded two-source real-model check are recorded in the spec. Automatic scheduled composition is implemented in B11c below; conversational routine proposals remain a separate follow-up.
 

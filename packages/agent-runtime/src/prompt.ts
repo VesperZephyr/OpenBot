@@ -118,6 +118,7 @@ function toolGuidance(tools: ReadonlySet<string>): string | undefined {
 			"- A search that finds nothing does not prove something does not exist; say what you searched for.",
 		);
 	}
+	if (fetch) lines.push("- For long web sources, inspect the returned range, document_status and next_offset before drawing conclusions. Continue with the exact offset, URL, mode and contentHash until the relevant coverage is established. A content_changed failure requires restarting; never join different document versions. End of extracted content does not prove complete site history or JavaScript-loaded entries. Report incomplete coverage, exhausted budgets and unavailable sources as unverified, never as no update. Distinguish original publication from modification, tag/commit time and date-only evidence; preserve timezone/precision and state uncertainty at reporting boundaries.");
 	return lines.length === 0 ? undefined : lines.join("\n");
 }
 

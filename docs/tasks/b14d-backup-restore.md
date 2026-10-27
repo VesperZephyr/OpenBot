@@ -1,6 +1,6 @@
 # B14d: Consistent local backup and restore
 
-Status: in review (#61)
+Status: done (#61) (#61)
 Branch: task/b14d-backup-restore
 Depends on: B11d (#60), B14e, B15a and B10
 

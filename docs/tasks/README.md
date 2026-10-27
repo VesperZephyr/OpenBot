@@ -78,6 +78,7 @@ Phase 1 (MVP) implementation is merged into `main`. Historical verification is r
 | [B1](b1-durable-approvals.md) | Durable approvals and executor receipts | done     |
 | [B2](b2-runs.md)              | Runs, queue, cancellation, and steering | done     |
 | [B3](b3-coding-tools.md)      | Coding-agent tools                      | done     |
+| [B4a](b4a-web-pagination.md) | Reliable web pagination and research coverage | in progress (#62) |
 | [B4](b4-web-research.md)      | Web research                            | done     |
 | [B5](b5-always-allow.md)      | Always allow and folder grants          | done     |
 | [B6](b6-bot-quality.md)       | Bot quality and memory                  | done     |
@@ -176,7 +177,7 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Spec | Status |
 | --- | --- |
-| [B14d: Consistent local backup and restore](b14d-backup-restore.md) | in review (#61); 564 checks, seven backup desktop cases and bundled export/delete/restore verification |
+| [B14d: Consistent local backup and restore](b14d-backup-restore.md) | done (#61); 564 checks, seven backup desktop cases and bundled export/delete/restore verification |
 | [B14e: Desktop-owned Keychain credentials](b14e-main-credentials.md) | done (#38); 433 unit/Host and 115 hidden e2e tests; native/real-model evidence in the spec; Developer ID gate open |
 
 ## Local scheduling
