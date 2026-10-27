@@ -1,6 +1,6 @@
 # B14d: Consistent local backup and restore
 
-Status: in progress
+Status: in review (#61)
 Branch: task/b14d-backup-restore
 Depends on: B11d (#60), B14e, B15a and B10
 
@@ -34,6 +34,17 @@ Export a consistent local snapshot and restore it without duplicating work or lo
 - Failure during replacement recovers original data; successful restoration retains a valid rollback snapshot.
 - Credentials/configuration/workspace originals are excluded and existing local credentials remain unchanged.
 - Native cancellation is inert; UI shows progress, success, failure and paused recovery; hidden e2e and packaged maintenance verification pass.
+
+## Verification — 2026-10-27
+
+- `pnpm run check`: 564 tests passed. The final run used `pnpm run check --maxWorkers=4`, keeping all assertions and timeouts unchanged. Two preceding default-concurrency repeats hit existing artifact/spill filesystem timeouts; the artifact suite passed alone and the complete bounded-concurrency run passed.
+- `pnpm run e2e`: all 182 cases in 48 files passed before the final two recovery cases were added. Final `e2e/backups.e2e.ts`: all seven passed, including startup rollback, damaged-journal fail-closed UI and interruption of a real approved command. CI runs the expanded 184-case suite on the PR.
+- Restored after deleting all original managed fixture roots and the workspace report source. Compared complete local/shared memory state, Bot/group/routine identities, pinned skill revision/content and immutable report bytes. An already-due routine remained paused through restore and restart without a provider request.
+- Unit fault injection exits an actual replacement child process without finally handlers; a fresh service rolls it back idempotently. Desktop startup independently recovered a partially replaced database. A damaged journal left the Host stopped with an explicit banner and retained original data.
+- The active-command case wrote its first marker, was interrupted by native-confirmed backup, retained a cancelled receipt and never wrote its later marker or replayed after restart. Existing credentials/configuration canaries remained unchanged; sensitive/configuration and workspace roots were absent from the snapshot.
+- Native selection/confirmation cancellation and renderer-navigation expiry were checked. Inspected `01-backup-exported.png`, `02-restored-paused.png`, `03-invalid-keeps-data.png`, `04-chinese-small.png` and `05-recovery-blocked.png` under `e2e/.run/backups/`. Agent-browser separately clicked export/restore in an isolated hidden app; the restored banner, recovery path and pause gate were visible.
+- Packaged `0.0.0-b14d.20261027.1` with the pinned bundled Node. From an unrelated temporary directory, bundled Host/executor and offline helpers exported, deleted originals, restored and reopened the same Bot memory with user pause retained. `codesign --verify --deep --strict` passed the ad-hoc application bundle. No Developer ID, notarization or release publication is claimed.
+- The owner's installed app remains merged #60, `0.0.0-b11d.20261027.1`; its real eleven-source acceptance is [recorded separately](../acceptance/radar-installed-2026-10-27.md). No B14d restore was performed on owner data.
 
 ## Open questions
 

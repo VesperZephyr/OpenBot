@@ -1,6 +1,6 @@
 # OpenBot Architecture
 
-Status: first-release design baseline. Last updated: 2026-10-22.
+Status: first-release design baseline. Last updated: 2026-10-27.
 
 This document defines the target product shape, repository layout, module boundaries, interfaces, source dependencies, and development sequence. M0 is complete; the Host Runtime and a chat-only desktop shell exist ahead of their milestones. [The technical plan](technical-plan.md) tracks which parts are implemented and how each milestone is broken down; everything else below requires implementation and validation.
 

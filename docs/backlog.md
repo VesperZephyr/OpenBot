@@ -1,6 +1,6 @@
 # Development Backlog
 
-**B14d, in progress:** [Consistent local backup and restore](tasks/b14d-backup-restore.md): native Settings workflow, offline snapshots, validation, rollback and paused recovery.
+**B14d, in review (#61):** [Consistent local backup and restore](tasks/b14d-backup-restore.md): native Settings workflow, offline snapshots, validation, rollback and paused recovery.
 
 **B11d, done (#60):** [Unattended workflow reliability](tasks/b11d-unattended-reliability.md): background availability through lock/wake, name-only changes preserving report bindings, isolated scheduler failures and visible retry health.
 
