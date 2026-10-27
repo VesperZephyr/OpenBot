@@ -78,7 +78,7 @@ Phase 1 (MVP) implementation is merged into `main`. Historical verification is r
 | [B1](b1-durable-approvals.md) | Durable approvals and executor receipts | done     |
 | [B2](b2-runs.md)              | Runs, queue, cancellation, and steering | done     |
 | [B3](b3-coding-tools.md)      | Coding-agent tools                      | done     |
-| [B4a](b4a-web-pagination.md) | Reliable web pagination and research coverage | in progress (#62) |
+| [B4a](b4a-web-pagination.md) | Reliable web pagination and research coverage | in review (#62) |
 | [B4](b4-web-research.md)      | Web research                            | done     |
 | [B5](b5-always-allow.md)      | Always allow and folder grants          | done     |
 | [B6](b6-bot-quality.md)       | Bot quality and memory                  | done     |

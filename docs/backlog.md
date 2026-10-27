@@ -20,7 +20,7 @@ References: study MiniMax Code without copying; distinguish official facts and o
 
 ## Competitor radar delivery
 
-**B4a, in progress (#62):** [Reliable web pagination](tasks/b4a-web-pagination.md) will retain pagination metadata across character and byte/line limits, complete relevant changelog continuations, and separate publication time, modification time and date-only evidence. The [October 27 audit](acceptance/radar-installed-2026-10-27.md) records incomplete histories and corrected claims; B14d does not implement this retrieval change.
+**B4a, in review (#62):** [Reliable web pagination](tasks/b4a-web-pagination.md) retains continuation metadata within character, byte and line budgets and detects changed documents. The [installed eleven-source acceptance](acceptance/web-pagination-2026-10-27.md) completed all extracted pages, both reports and Core's automatic summary, then verified restart and restored schedules. Dynamic load-more content, finite feed history and date-only boundaries remain explicit research limitations.
 
 **B11b, done (#53):** [Scheduled reports in group conversations](tasks/b11b-group-routine-reports.md). Two independent hunter routines publish attributable reports into a confirmed group, with exact history links, restart deduplication and revocation when membership changes. The [workflow](workflows/competitor-radar.md) records source selection, daily windows and unavailable-source handling. Automated acceptance and a bounded two-source real-model check are recorded in the spec. Automatic scheduled composition is implemented in B11c below; conversational routine proposals remain a separate follow-up.
 

@@ -1,6 +1,6 @@
 # B4a: Reliable web pagination and research coverage
 
-Status: in progress
+Status: in review (#62)
 Branch: task/b4a-web-pagination
 Depends on: B4, I6, B11d
 Architecture: sections 5.1–5.2 (routed Host research tools)
@@ -44,3 +44,12 @@ Live sources can change between reads; the content hash makes that visible and m
 
 ## Open questions
 None.
+
+## Verification (2026-10-27)
+
+- `pnpm run check --maxWorkers=4`: boundaries, type checking, 569 unit/Host tests across 84 files passed.
+- `pnpm run e2e`: all 185 desktop tests across 48 files passed on the final full run. The new routed pagination case reconstructs three multilingual output pages including the final publication timestamp. Screenshots inspected; installed group explored with agent-browser.
+- Packaged and installed `0.0.0-b4a.20261027.1` after stopped-data/application backup; ad-hoc signature verified.
+- Existing real group completed both calendar-triggered hunter reports (16 + 26 successful fetches, full eleven-source extracted content) and Core's automatic zero-tool summary. Source hashes and contiguous ranges were checked. Each report remained below the summary input limit and both snapshots were ready/untruncated.
+- Original 07:08 / 07:10 / 07:47 schedules restored and enabled with refreshed source bindings. Restart retained identical report text and occurrence history, exactly one group post per occurrence, open lifecycle and zero scheduler faults.
+- [Per-source acceptance](../acceptance/web-pagination-2026-10-27.md) records precise publication evidence, static/dynamic coverage and remaining limits. Dynamic load-more content and exhaustive site history remain unverified, explicitly stated in the delivered summary.

@@ -145,6 +145,7 @@ describe("Web search", () => {
 		expect(pages[2]).toContain("<published>2026-10-26T23:30:00Z</published>");
 		const bodies = pages.map(o => o.slice(o.indexOf("\n\n") + 2)).join("");
 		expect(bodies).toBe('<feed><updated>2026-10-27T03:00:00Z</updated>\n' + ('正文😀' + 'x'.repeat(20) + '\n').repeat(3500) + '<entry><title>LAST-RELEASE</title><published>2026-10-26T23:30:00Z</published></entry></feed>');
+		await h.page().locator(".steps-row").last().locator("summary").first().click();
 		const cards = h.page().locator(".tool-card", { hasText: url });
 		await cards.last().locator("summary").click();
 		await h.shot("06-long-feed-complete");
