@@ -1,6 +1,6 @@
 # Development Backlog
 
-**B14d, in review (#61):** [Consistent local backup and restore](tasks/b14d-backup-restore.md): native Settings workflow, offline snapshots, validation, rollback and paused recovery.
+**B14d, done (#61):** [Consistent local backup and restore](tasks/b14d-backup-restore.md): native Settings workflow, offline snapshots, validation, rollback and paused recovery.
 
 **B11d, done (#60):** [Unattended workflow reliability](tasks/b11d-unattended-reliability.md): background availability through lock/wake, name-only changes preserving report bindings, isolated scheduler failures and visible retry health.
 
@@ -19,6 +19,9 @@ Each batch needs a ready task spec in [`tasks/`](tasks/README.md) before executi
 References: study MiniMax Code without copying; distinguish official facts and observations in the [Grok Bot research](research/grok-bot.md) and [client interaction research](tasks/d2-grok-ui-research.md); use the vendored Pi baseline and traceable patches for runtime work.
 
 ## Competitor radar delivery
+
+**I7, in progress (#63):** [Official changelog pagination](tasks/i7-official-changelog-pagination.md) uses ZCode cumulative official pages and TRAE China's public JSON endpoint through existing web_fetch. B4a / #62 remains independent; current catalogue closure is checked separately from HTTP extraction and publication precision.
+
 
 **Retrieval-quality follow-up:** retain pagination metadata across character and byte/line limits, complete relevant changelog continuations, and separate publication time, modification time and date-only evidence. The [October 27 audit](acceptance/radar-installed-2026-10-27.md) records incomplete histories and corrected claims; B14d does not implement this retrieval change.
 
