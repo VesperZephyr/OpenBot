@@ -172,10 +172,11 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | [B9a: Supervised local stdio connectors](b9a-stdio-connectors.md) | done (#37) |
 | [B9b: HTTPS MCP sessions](b9b-https-connectors.md) | done (#39); 461 unit/Host and 120 hidden e2e tests |
 
-## Credential ownership
+## Local data and credential ownership
 
 | Spec | Status |
 | --- | --- |
+| [B14d: Consistent local backup and restore](b14d-backup-restore.md) | in review (#61); 564 checks, seven backup desktop cases and bundled export/delete/restore verification |
 | [B14e: Desktop-owned Keychain credentials](b14e-main-credentials.md) | done (#38); 433 unit/Host and 115 hidden e2e tests; native/real-model evidence in the spec; Developer ID gate open |
 
 ## Local scheduling
@@ -185,7 +186,7 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | [B11a: Local scheduled routines](b11a-local-routines.md) | done (#41); 477 unit/Host and 127 hidden desktop tests |
 | [B11b: Scheduled group reports](b11b-group-routine-reports.md) | done (#53); 512 unit/Host and 157 hidden desktop tests; bounded live-source acceptance |
 | [B11c: Scheduled report summaries](b11c-scheduled-report-summaries.md) | done through I6 / PR #57; 519 unit/Host and 161 hidden desktop tests; five-request real-model composition/restart check |
-| [B11d: Unattended workflow reliability](b11d-unattended-reliability.md) | in review (#60); 542 unit/Host tests, 177 desktop tests and bounded real-provider acceptance |
+| [B11d: Unattended workflow reliability](b11d-unattended-reliability.md) | done (#60); installed eleven-source audit October 27; 542 unit/Host tests, 177 desktop tests and bounded real-provider acceptance |
 
 ## Per-role methods
 

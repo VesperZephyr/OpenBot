@@ -1,6 +1,6 @@
 # B11d: Unattended workflow reliability
 
-Status: in review (#60)
+Status: done (#60)
 Branch: task/b11d-unattended-reliability
 Depends on: I6, D10 (merged in #57 and #59)
 Architecture: Sections 5.8 and 8.1; existing Host, Pi store and Executor boundaries
@@ -46,3 +46,5 @@ None.
 - The new `unattended-reliability` desktop scenario uses actual Electron, Host and Executor processes with a scripted provider. Scheduled admission publishes both sources and the summary while an invalid peer schedule retries; all three reports are calendar occurrences, the summary has 2/2 inputs, and restart adds no duplicate reports or model requests. English and Chinese fault screenshots were inspected.
 - `scripts/acceptance/unattended-reliability.mts` passed with the configured Opus 5.5 provider, isolated data and a maximum of eight inference requests. It used five requests, two successful official-source fetches, three completed scheduled group reports and 2/2 summary inputs. Rename happened during an actual inference request; the lock event remained active throughout reporting. Fault repair, automatic wake admission and restart deduplication passed. The group report, routine history and source-report links were explored with agent-browser.
 - [Acceptance evidence and limits](../acceptance/unattended-reliability-2026-10-26.md). Physical OS lock/sleep, a full unattended overnight run, packaged identity/signing and the owner's complete monitoring roster are not claimed as verified. Owner configuration and the installed app were not changed.
+
+Installed owner acceptance and the full eleven-source audit are recorded in [October 27 acceptance](../acceptance/radar-installed-2026-10-27.md).

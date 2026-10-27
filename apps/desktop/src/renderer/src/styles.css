@@ -1122,3 +1122,8 @@ button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--text) 28%, 
 .memory-note-actions button { padding: 4px 7px; font-size: 12px; }
 .memory-source { border-top: 1px solid var(--border); padding-top: 10px; display: grid; gap: 10px; font-size: 12px; overflow-wrap: anywhere; }
 .memory-source pre, .memory-share-review pre { max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: 8px; background: var(--surface-raised); border-radius: 6px; }
+
+.backup-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.backup-settings [role="status"], .restore-notice { overflow-wrap: anywhere; }
+.backup-settings [role="alert"] { color: var(--danger, #b42318); }
+.restore-notice { flex: 0 0 auto; max-height: 35vh; overflow: auto; }

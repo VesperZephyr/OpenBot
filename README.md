@@ -167,6 +167,8 @@ OpenBot's desktop, Host Runtime, conversation store and executor run on your Mac
 | `~/.openbot/models.json` | Optional model-provider configuration |
 | macOS Keychain | API keys saved through the app |
 
+**Backup and restore:** Settings → General can save a local snapshot of conversations, memory, schedules, saved attachments, skills and execution records. Backups are unencrypted and restore only on the same Mac/account. The app pauses work, validates the selected snapshot and saves a recovery copy before replacing data; work stays paused afterward. Model credentials/configuration, browser profiles, logs and original workspace files are excluded. See the [backup contract](docs/tasks/b14d-backup-restore.md) for limits.
+
 **Local storage does not mean offline inference.** Relevant messages, memory and selected file content are sent to the model endpoint you configure. Web search and connectors contact their configured services. Removing a local artifact or editing memory does not erase prior provider requests, backups or every historical journal entry.
 
 All Bots share your Mac, workspace and grants. A Specialist's role is not a security boundary. Commands run as your macOS user; a working directory is not a filesystem sandbox. OpenBot evaluates policy before tool dispatch and checks executor grants again, but an approved shell command can have effects beyond its current directory. Cancellation does not guarantee rollback of an external effect.

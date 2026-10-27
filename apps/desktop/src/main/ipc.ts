@@ -1,3 +1,4 @@
+import type { DesktopBackups } from "./backups";
 const readerSelectionKey = randomUUID();
 import { openReader, closeReader, readerAction, readerBounds } from "./reader-browser";
 import { previewDocuments } from "./preview-documents";
@@ -20,6 +21,7 @@ import type { HostProcess } from "./host";
 
 export type IpcOptions = {
 	readonly host: HostProcess;
+	readonly backups?: DesktopBackups;
 	readonly language?: () => Language;
 	readonly onSettings?: (settings: RedactedSettings) => void;
 	/** Accepts only the application's own renderer document. */
@@ -30,8 +32,9 @@ const allowed: ReadonlySet<string> = new Set(RENDERER_METHODS);
 /** Copy buttons carry code blocks; anything larger is not a copy the user meant. */
 const MAX_CLIPBOARD_CHARS = 1_000_000;
 
-export function registerIpc({ host, isTrustedFrame, language, onSettings }: IpcOptions): void {
+export function registerIpc({ host, backups, isTrustedFrame, language, onSettings }: IpcOptions): void {
 	const folders = new FolderSelections();
+	const restored = new WeakSet<Electron.WebContents>();
 	const checkFrame = (event: IpcMainInvokeEvent): void => {
 		if (event.senderFrame !== event.sender.mainFrame || !isTrustedFrame(event.senderFrame?.url ?? ""))
 			throw new Error("[invalid_request] Call from an untrusted frame");
@@ -39,6 +42,11 @@ export function registerIpc({ host, isTrustedFrame, language, onSettings }: IpcO
 	ipcMain.handle(CHANNELS.call, async (event, method: unknown, params: unknown) => {
 		checkFrame(event);
 		if (typeof method !== "string" || !allowed.has(method)) throw new Error(`[unknown_method] ${String(method)}`);
+		if (backups?.busy) {
+			if (!/\.(get|list|status|snapshot|wait|search|read|preview)$/.test(method)) throw new Error("Backup maintenance is running; wait for completion");
+			await backups.idle();
+			checkFrame(event);
+		}
 		// The allowlist check above narrows `method` to a renderer method.
 		const rendererMethod = method as RendererMethod;
 		try {
@@ -68,6 +76,21 @@ export function registerIpc({ host, isTrustedFrame, language, onSettings }: IpcO
 			if (error instanceof ProtocolError) throw new Error(`[${error.code}] ${error.message}`);
 			throw error;
 		}
+	});
+
+	ipcMain.handle(CHANNELS.reloadAfterRestore, (event) => {
+		checkFrame(event);
+		if (!restored.delete(event.sender)) throw Error("No completed restore to reload");
+		setImmediate(() => { if (!event.sender.isDestroyed()) event.sender.reload(); });
+	});
+	ipcMain.handle(CHANNELS.backup, async (event, action: unknown, ...extra: unknown[]) => {
+		checkFrame(event);
+		if ((action !== "export" && action !== "restore") || extra.length || !backups) throw Error("Invalid backup operation");
+		const window = BrowserWindow.fromWebContents(event.sender);
+		if (!window) throw Error("No application window");
+		const result = await backups.run(window, action);
+		if (result?.action === "restore") restored.add(event.sender);
+		return result;
 	});
 
 	ipcMain.handle(CHANNELS.readerOpen, (event, url: unknown) => {

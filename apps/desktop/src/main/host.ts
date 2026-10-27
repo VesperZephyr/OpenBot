@@ -59,6 +59,7 @@ export class HostProcess {
 	}
 
 	start(): void {
+		this.#stopping = false;
 		this.#setState({ status: "starting" });
 		const child = spawn(this.#options.node, ["--disable-warning=ExperimentalWarning", this.#options.entry], {
 			stdio: ["ignore", "pipe", "pipe", "ipc"],
@@ -106,6 +107,12 @@ export class HostProcess {
 		// The Host answers each request with the result type of its method.
 		const result = (await promise) as HostResult<M>;
 		return result;
+	}
+
+	/** A failed offline recovery must remain visible without admitting a partially restored Host. */
+	blockStartup(detail: string): void {
+		this.#stopping = true;
+		this.#setState({ status: "stopped", detail });
 	}
 
 	/** Disconnect the IPC channel, which makes the Host flush and exit; force it after a timeout. */

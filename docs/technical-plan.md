@@ -1,9 +1,9 @@
 # OpenBot Technical Plan
 
 
-Active delivery scope (2026-10-26): I6 / #57 and D9 / #58 are merged into main. D10 / #59 is merged. B11d improves unattended lifecycle, rename-safe bindings and scheduler fault isolation. The radar uses two configured Specialists and the existing Core; identities and monitored sources remain configuration. Backup/restore (B14d), history scaling (B14c), templates (B13e) and signed updates (B14f) remain subsequent work. B9c OAuth, B12b optional model review and Phase 3 remain deferred.
+Active delivery scope (2026-10-27): I6 / #57 and D9 / #58 are merged into main. D10 / #59 is merged. B11d is merged in #60 and installed; it improves unattended lifecycle, rename-safe bindings and scheduler fault isolation. The radar uses two configured Specialists and the existing Core; identities and monitored sources remain configuration. Backup/restore (B14d) is the active independent batch; history scaling (B14c), templates (B13e) and signed updates (B14f) follow. B9c OAuth, B12b optional model review and Phase 3 remain deferred.
 
-Last updated: 2026-10-26.
+Last updated: 2026-10-27.
 
 This plan turns [the architecture](architecture.md) into an ordered sequence of work. The architecture defines contracts and boundaries; this document records what exists, what each milestone builds, how each step is verified, and which decisions are still open. When the two disagree, fix the architecture first, then update this plan.
 
@@ -29,7 +29,8 @@ Desktop delivery (2026-10-22): [D6](tasks/d6-desktop-design.md) delivers the own
 
 | Component | State | Verified by |
 | --- | --- | --- |
-| Unattended reliability (B11d) | In review (#60): lock permits background work; confirmed suspend admits new work on wake; separate edit/semantic versions; isolated scheduler faults and health | 542 unit/Host tests, 177 desktop tests and five-request real-provider chain passed; [evidence](acceptance/unattended-reliability-2026-10-26.md) |
+| Local backup/restore (B14d) | In review (#61): native Settings selection, offline versioned snapshots, staged validation, crash rollback and paused recovery; same Mac/account | 564 unit/Host tests; 182-case full desktop pass plus seven final backup cases; bundled delete/restore, real command interruption, crash recovery and isolated UI inspection; [spec](tasks/b14d-backup-restore.md) |
+| Unattended reliability (B11d) | Merged (#60), installed October 27: lock permits background work; confirmed suspend admits new work on wake; separate edit/semantic versions; isolated scheduler faults and health | 542 unit/Host tests, 177 desktop tests and five-request real-provider chain passed; [initial evidence](acceptance/unattended-reliability-2026-10-26.md), [installed eleven-source audit](acceptance/radar-installed-2026-10-27.md) |
 | Integrated radar acceptance (I6) | Merged in PR #57: main integration, Atom/RSS support, bounded full-page extraction and exact source timestamps; installed owner app and restored daily workflow | 524 unit/Host + 165 hidden desktop tests; all eleven live sources, three real scheduled chains, complete 2/2 summary inputs and restart deduplication; [spec](tasks/i6-radar-integration.md) |
 | Unified chat and activity feedback (D8) | Merged through I6 / PR #57: mixed Bot/group ordering, member avatars, compact navigation, shared live Markdown/activity and group settlement observation | 520 unit/Host and 167 hidden desktop tests; isolated agent-browser exploration and theme/locale screenshots inspected; [spec](tasks/d8-chat-experience.md) |
 | Scheduled report summaries (B11c) | Merged through I6 / PR #57: confirmed source versions, bounded waiting, frozen report text/provenance, input coverage and source-change revocation; uses existing Core and configured Specialists | 519 unit/Host and 161 hidden desktop tests; five-request real-model composition/restart check passed; [spec](tasks/b11c-scheduled-report-summaries.md) |
@@ -110,6 +111,7 @@ These are deliberate shortcuts or missing pieces in implemented code. Each one i
 | Desktop forwards a minimal environment: `$NAME` key references in `models.json` cannot resolve. Login-shell PATH discovery is implemented separately by B8a and does not import credentials | `apps/desktop/src/main/index.ts` | Before the first release: settle explicit credential references versus the documented Keychain / `!command` setup |
 | B15a supports bounded text/images and plaintext HTML results; Office/PDF extraction, group input propagation, complete journal erasure and artifact maintenance are not implemented | `local-executor`, `agent-runtime`, Desktop | Separate artifact follow-ups |
 | macOS notifications, dock badge, and power assertion are unit-tested as logic only | `apps/desktop/src/main` | Owner's packaged run |
+| Web pagination can lose continuation metadata to the runtime byte/line limit; date-only and modification timestamps need explicit uncertainty | October 27 installed radar audit | Separate retrieval-quality batch |
 | Observation delivery is bounded, but full transcript snapshot size and retained renderer caches still grow with history | `apps/desktop/src/renderer/src/store.ts` | Backlog B14c |
 | Packaged native lifecycle event delivery remains unverified; B14b forwards and gates simulated events | `apps/desktop/src/main/index.ts` | Native release acceptance |
 | HTTPS connectors require explicit Connect after failure/restart; idle GET notifications, stream resumption, OAuth and endpoint edits are not implemented | `local-executor`, Connect apps | Separate connector follow-ups |

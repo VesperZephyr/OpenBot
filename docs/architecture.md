@@ -1,6 +1,6 @@
 # OpenBot Architecture
 
-Status: first-release design baseline. Last updated: 2026-10-22.
+Status: first-release design baseline. Last updated: 2026-10-27.
 
 This document defines the target product shape, repository layout, module boundaries, interfaces, source dependencies, and development sequence. M0 is complete; the Host Runtime and a chat-only desktop shell exist ahead of their milestones. [The technical plan](technical-plan.md) tracks which parts are implemented and how each milestone is broken down; everything else below requires implementation and validation.
 
@@ -826,7 +826,11 @@ The Pi SQLite adapter uses WAL with `synchronous = NORMAL` at the reviewed basel
 
 Clearing current memory is not data erasure. Retained memory versions, Pi journal entries, conversation context, backups and prior provider requests may still contain old facts. New topic excludes earlier conversation context from subsequent requests while retaining the current memory document.
 
-A backup includes consistent snapshots of application and executor state, artifact contents, the skill library, and version records. Pause writes or use verified backup APIs; copying a live SQLite file alone is insufficient. The browser profile and user project files require their own chosen backup scope. Credentials remain in the Keychain.
+[B14d](tasks/b14d-backup-restore.md) implements same-Mac/account local directory snapshots. Desktop main owns folder selection and interruption/replacement confirmation, persists user pause, and requires confirmed Host/executor shutdown. The offline Host maintenance entry holds the same exclusive Host lock, composes the server-core snapshot service and uses agent-runtime to force a paused restored lifecycle. An offline executor helper validates its own process/file-mutation records without starting adapters. Desktop continues to depend only on protocol.
+
+Version-1 snapshots contain the Host SQLite database, executor ledgers, saved attachment bytes/metadata and reviewed skill library. SQLite is checkpointed and copied databases use DELETE journal mode so read-only verification cannot create WAL sidecars in the archive. The manifest records application, protocol, runtime/Pi compatibility provenance, Mac/account binding, exact scope and per-file lengths/SHA-256. Bounded validation rejects unsupported versions, unsafe paths, symbolic links, changed/missing/extra files, invalid databases and unfinished executor process/file records. Credentials, model configuration, browser profiles, logs, temporary output spills and original workspace files are excluded.
+
+Restore validates and stages content, verifies a Core profile and writes the pause gate without resuming Pi. It saves a pre-restore snapshot, journals allowlisted root replacements and keeps rollback copies. Startup rolls back an uncommitted transaction before starting the Host; committed transactions finish cleanup. UI reload occurs through main after the replacement Host is ready. Export and restore leave work paused for deliberate continuation. Cross-machine migration, encryption, scheduled/cloud backup and workspace backups require separate scope.
 
 Record application, Pi, protocol, and data-format versions for diagnosis and upgrades. Use `botId`, `runId`, and `invocationId` to correlate logs. Operational logs exclude credentials and secret values and avoid collecting full file content, page content, or screenshots by default. Verify migrations against a backup before advancing the data format.
 

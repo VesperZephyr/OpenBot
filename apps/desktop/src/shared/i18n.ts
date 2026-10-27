@@ -1,6 +1,23 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
+	"Backup and restore": "备份与恢复",
+	"Restore recovery failed. Data and rollback copies have been kept; the Host remains stopped.": "恢复中断数据失败。数据和回滚副本已保留，Host 保持停止。",
+	"Create backup": "创建备份",
+	"Restore backup": "恢复备份",
+	"Save conversations, memories, schedules, attachments, skills and execution records. Restore on this Mac and account.": "保存聊天、记忆、日程、附件、技能和执行记录，可在本台 Mac 的同一账户恢复。",
+	"Backups contain private data without encryption. Model credentials, browser profiles and workspace originals are excluded.": "备份包含未加密的私人数据，不包含模型凭据、浏览器资料和工作区原文件。",
+	"Preparing backup maintenance\u2026 Work will stay paused afterward.": "正在准备备份维护… 完成后工作将保持暂停。",
+	"Backup saved. Work remains paused; resume when ready.": "备份已保存。工作保持暂停，准备好后可恢复工作。",
+	"Backup restored. Work remains paused; review before resuming.": "备份已恢复。工作保持暂停，请检查后再继续。",
+	"Previous data saved to": "原数据已保存至",
+	"Choose where to save the backup": "选择备份保存位置",
+	"Choose an OpenBot backup folder": "选择 OpenBot 备份文件夹",
+	"Pause work and create a local backup?": "暂停工作并创建本地备份？",
+	"Replace local OpenBot data with this backup?": "用此备份替换本地 OpenBot 数据？",
+	"Running work will be interrupted. The backup contains private conversations and files without encryption. Work stays paused afterward.": "正在运行的任务将被中断。备份包含未加密的私人聊天和文件，完成后工作保持暂停。",
+	"Running work will be interrupted. Current data is saved as a recovery backup. Credentials and workspace originals stay on this Mac. Restored work stays paused.": "正在运行的任务将被中断。当前数据会另存为恢复备份，凭据和工作区原文件保留在本机。恢复后工作保持暂停。",
+
  "Scheduled work needs attention. Other tasks continue; failed tasks retry automatically.": "部分定时任务需要关注。其他任务继续运行，失败任务将自动重试。",
  "Scheduler": "调度器",
  "Next retry": "下次重试",
