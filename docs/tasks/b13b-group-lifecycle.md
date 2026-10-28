@@ -1,6 +1,6 @@
 # B13b: Group Lifecycle
 
-Status: implemented, in review
+Status: done (product foundation merged through B26; see task index)
 Branch: task/b13b-group-lifecycle
 Depends on: B13a, B18
 Architecture: Sections 5.7, 6.5, 8.3

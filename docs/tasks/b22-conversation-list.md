@@ -1,6 +1,6 @@
 # B22: Conversation List Previews and Unread State
 
-Status: in review
+Status: done (product foundation merged through B26; see task index)
 Branch: task/b22-conversation-list
 Depends on: B21, B13c
 Architecture: Sections 5.1, 6.5, 7.1, 8

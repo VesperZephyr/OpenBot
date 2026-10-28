@@ -1,6 +1,6 @@
 # I7: Official changelog pagination
 
-Status: in review (#63)
+Status: done (#63; merge 838b032)
 Branch: task/i7-official-changelog-pagination
 Depends on: I6; installed B4a candidate for safe multibyte output continuation
 Architecture: sections 5.2 and 5.8; existing web_fetch and configured routines

@@ -1,6 +1,6 @@
 # B6: Bot Quality and Memory
 
-Status: in review
+Status: done (Phase 1 MVP merged; see task index)
 Branch: task/b6-bot-quality
 Depends on: none
 Architecture: Sections 4.4 (Pi integration: sections, documents, reset, compaction), 5.1 (Host tools), 5.7 (memory), 6.1 (`bots.memory.*`)

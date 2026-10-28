@@ -1,6 +1,6 @@
 # B17: Permanent Default Core Bot
 
-Status: in review
+Status: done (product foundation merged through B26; see task index)
 Branch: task/b17-core-bot
 Depends on: B16
 Architecture: Sections 5.1, 5.7, 6.5, 8.3

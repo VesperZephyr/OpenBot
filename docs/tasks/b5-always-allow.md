@@ -1,6 +1,6 @@
 # B5: Always Allow and Folder Grants
 
-Status: in review
+Status: done (Phase 1 MVP merged; see task index)
 Branch: task/b5-always-allow
 Depends on: B1
 Architecture: Sections 1.1 (commands cannot be confined), 5.2 (grants), 5.3 (policy order, Always allow, revocation)

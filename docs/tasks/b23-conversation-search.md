@@ -1,6 +1,6 @@
 # B23: Local Conversation Search and Unread Filtering
 
-Status: implemented, awaiting review (PR #20)
+Status: done (product foundation merged through B26; see task index)
 Branch: task/b23-conversation-search
 Depends on: B22 (PR #19), B21
 Architecture: Sections 5.1, 6.1, 7.1, 8

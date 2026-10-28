@@ -1,6 +1,6 @@
 # B13c: Core Entry and Bounded Bot Collaboration
 
-Status: in review
+Status: done (product foundation merged through B26; see task index)
 Branch: task/b13c-collaboration
 Depends on: B13b
 Architecture: Sections 5.7, 7.2, 8.2

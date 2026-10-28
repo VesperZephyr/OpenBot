@@ -1,6 +1,6 @@
 # B8: Installable Build
 
-Status: in review
+Status: done (Phase 1 MVP merged; see task index)
 Branch: task/b8-installable-build
 Depends on: none to build; B3–B7 to ship (B8 packages whatever is merged)
 Architecture: Sections 3 (bundled Node, Host and executor outside `app.asar`), 6.4 (fuses, `app://`, signing)

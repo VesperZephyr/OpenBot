@@ -176,7 +176,7 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Spec | Status |
 | --- | --- |
-| [B14d: Consistent local backup and restore](b14d-backup-restore.md) | in review (#61); 564 checks, seven backup desktop cases and bundled export/delete/restore verification |
+| [B14d: Consistent local backup and restore](b14d-backup-restore.md) | done (#61); 564 checks, seven backup desktop cases and bundled export/delete/restore verification |
 | [B14e: Desktop-owned Keychain credentials](b14e-main-credentials.md) | done (#38); 433 unit/Host and 115 hidden e2e tests; native/real-model evidence in the spec; Developer ID gate open |
 
 ## Local scheduling
@@ -232,4 +232,14 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Task | Status |
 | --- | --- |
-| [I7: Official changelog pagination](i7-official-changelog-pagination.md) | in review (#63); configured workflow and acceptance, no new runtime capability |
+| [I7: Official changelog pagination](i7-official-changelog-pagination.md) | done (#63); configured workflow and acceptance, no new runtime capability |
+
+## History scaling
+
+| Task | Status |
+| --- | --- |
+| [B14c: Bounded history reading and persistent search](b14c-history-scaling.md) | ready; design only, implementation not started |
+
+## Independent web runtime review
+
+[B4a: Reliable web pagination and research coverage](https://github.com/VesperZephyr/OpenBot/pull/62) remains open as of October 28, 2026. Its task spec is on `task/b4a-web-pagination` and is not yet in main. I7 is merged in #63; its installed acceptance used the B4a candidate and does not establish that #62 is merged.

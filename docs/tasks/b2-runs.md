@@ -1,6 +1,6 @@
 # B2: Runs, Queue, Cancellation, and Steering
 
-Status: in review
+Status: done (Phase 1 MVP merged; see task index)
 Branch: task/b2-runs
 Depends on: none (B1 recommended first; they touch different files except `server-core/src/index.ts`)
 Architecture: Sections 6.1 (`messages.submit`, `runs.cancel`), 7.2 (scheduling)

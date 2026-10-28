@@ -1,6 +1,6 @@
 # B15b: Durable Background Command Completion
 
-Status: implemented; in review in [PR #36](https://github.com/VesperZephyr/OpenBot/pull/36)
+Status: done (#36)
 Branch: task/b15b-background-completion; PR target: main
 Depends on: verified B10 candidate `e30cf9eeaba057fea709e8e06af6b034d47068c4` (#35), including I1 #34 and B14b/B12a
 Architecture: Sections 5.1–5.3, 6.2 and 7.2

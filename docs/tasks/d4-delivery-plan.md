@@ -1,6 +1,6 @@
 # D4: Post-B26 Delivery Plan
 
-Status: in review; documentation only
+Status: done (#28); documentation only
 Branch: task/d4-delivery-roadmap; pull request target: main
 Depends on: merged B26, D1/D2/D3 and the supplied Grok research
 Architecture: Sections 2, 4, 5, 7, 8, 10 and 11

@@ -1,6 +1,6 @@
 # B9a: Supervised Local Stdio Connectors
 
-Status: implemented, in review ([PR #37](https://github.com/VesperZephyr/OpenBot/pull/37))
+Status: done (#37)
 Branch: task/b9a-stdio-connectors; PR target: main
 Depends on: verified B15b `2dfdc1c` (#36), including B12a, B14b and B10
 Architecture: Sections 5.1–5.3, 5.6, 5.9 and 6.2

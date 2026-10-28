@@ -1,6 +1,6 @@
 # B16: Built-in and Custom Model Setup
 
-Status: in review
+Status: done (product foundation merged through B26; see task index)
 Branch: task/b16-model-sources
 Depends on: B7, B8, D1
 Architecture: Sections 5.9, 6.1, 6.5, 8.3

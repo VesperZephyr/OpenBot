@@ -1,9 +1,9 @@
 # OpenBot Technical Plan
 
 
-Active delivery scope (2026-10-27): I6 / #57 and D9 / #58 are merged into main. D10 / #59 is merged. B11d is merged in #60 and installed; it improves unattended lifecycle, rename-safe bindings and scheduler fault isolation. The radar uses two configured Specialists and the existing Core; identities and monitored sources remain configuration. Backup/restore (B14d) is merged in #61. I7 official changelog pagination is the active workflow batch; B4a safe output pagination remains a separate PR #62; history scaling (B14c), templates (B13e) and signed updates (B14f) follow. B9c OAuth, B12b optional model review and Phase 3 remain deferred.
+Active delivery scope (2026-10-28): I6 (#57), D9 (#58), D10 (#59), B11d (#60), B14d (#61) and I7 (#63) are merged into main, now `838b032`. B4a safe output pagination remains open in [PR #62](https://github.com/VesperZephyr/OpenBot/pull/62); I7's installed acceptance used that separate candidate. [B14c history scaling](tasks/b14c-history-scaling.md) has a ready spec but no implementation. Templates (B13e) and signed updates (B14f) follow. B9c OAuth, B12b optional model review and Phase 3 remain deferred.
 
-Last updated: 2026-10-27.
+Last updated: 2026-10-28.
 
 This plan turns [the architecture](architecture.md) into an ordered sequence of work. The architecture defines contracts and boundaries; this document records what exists, what each milestone builds, how each step is verified, and which decisions are still open. When the two disagree, fix the architecture first, then update this plan.
 
@@ -29,7 +29,8 @@ Desktop delivery (2026-10-22): [D6](tasks/d6-desktop-design.md) delivers the own
 
 | Component | State | Verified by |
 | --- | --- | --- |
-| Official source pagination (I7) | In review (#63): configured ZCode/TRAE official GET continuations using existing web_fetch | [Spec](tasks/i7-official-changelog-pagination.md); 575 unit/Host/audit tests, 185 desktop tests; [real catalogue acceptance](acceptance/official-pagination-2026-10-27.md) |
+| Official source pagination (I7) | Merged (#63): configured ZCode/TRAE official GET continuations using existing web_fetch | [Spec](tasks/i7-official-changelog-pagination.md); 575 unit/Host/audit tests, 185 desktop tests; [real catalogue acceptance](acceptance/official-pagination-2026-10-27.md) |
+| History scaling (B14c) | Ready design only: bounded timeline windows, persistent derived search, bounded renderer caches and virtualization; canonical group storage unchanged | [Spec](tasks/b14c-history-scaling.md); no implementation/performance acceptance yet |
 | Local backup/restore (B14d) | Merged (#61): native Settings selection, offline versioned snapshots, staged validation, crash rollback and paused recovery; same Mac/account | 564 unit/Host tests; 182-case full desktop pass plus seven final backup cases; bundled delete/restore, real command interruption, crash recovery and isolated UI inspection; [spec](tasks/b14d-backup-restore.md) |
 | Unattended reliability (B11d) | Merged (#60), installed October 27: lock permits background work; confirmed suspend admits new work on wake; separate edit/semantic versions; isolated scheduler faults and health | 542 unit/Host tests, 177 desktop tests and five-request real-provider chain passed; [initial evidence](acceptance/unattended-reliability-2026-10-26.md), [installed eleven-source audit](acceptance/radar-installed-2026-10-27.md) |
 | Integrated radar acceptance (I6) | Merged in PR #57: main integration, Atom/RSS support, bounded full-page extraction and exact source timestamps; installed owner app and restored daily workflow | 524 unit/Host + 165 hidden desktop tests; all eleven live sources, three real scheduled chains, complete 2/2 summary inputs and restart deduplication; [spec](tasks/i6-radar-integration.md) |
@@ -100,7 +101,7 @@ D9 validation exposed an existing Code Mode timing edge: admission and deadline 
 
 [D5 memory research](research/memory-design.md) is a dated research baseline. B27a subsequently implemented topic provenance, owner corrections/forget protection and explicit shared facts. Bounded retrieval and semantic contradiction handling remain research; future index/schema changes need a separate ready spec and B14d backup/migration compatibility.
 
-[D1: Core Bot, Specialist Bots, and Model Sources](tasks/d1-bot-product-design.md) is a design proposal for the next product increment. Current code has per-Bot instructions and memory, and a protected Core identity, with Core-only model-facing Specialist management. B13b adds Core-only group management and user-directed group tasks. All duplicated Bots start with empty memory and conversation history. B19 provides revisioned memory and Prompt controls; Pi continues to own agent execution and compaction. B13a isolates group contexts from direct chat; B13c implements bounded group delegation and ownership transfer. Cross-group dispatch and direct-chat peer collaboration remain out of scope. Memory history is bounded in the active document, but complete erasure from the journal, backups and prior provider requests is not implemented.
+[D1: Core Bot, Specialist Bots, and Model Sources](tasks/d1-bot-product-design.md) is the accepted design behind the merged product foundation. Current code has per-Bot instructions and memory, and a protected Core identity, with Core-only model-facing Specialist management. B13b adds Core-only group management and user-directed group tasks. All duplicated Bots start with empty memory and conversation history. B19 provides revisioned memory and Prompt controls; Pi continues to own agent execution and compaction. B13a isolates group contexts from direct chat; B13c implements bounded group delegation and ownership transfer. Cross-group dispatch and direct-chat peer collaboration remain out of scope. Memory history is bounded in the active document, but complete erasure from the journal, backups and prior provider requests is not implemented.
 
 B21 keeps unsent drafts and send recovery in the desktop renderer partition. Host receipts remain authoritative; uncertain sends require explicit retry with the original request ID. B22 adds local durable latest-message/read projections for private chats and groups; automatic reading requires a visible focused native window and a rendered timeline at its end. B23 adds literal history search and conversation-level unread filtering through a rebuildable in-memory runtime corpus. Queries never load transcripts, call a model or enter diagnostics; historical result navigation suppresses automatic read acknowledgements. Corpus memory and startup cost grow with retained text; a persistent index/worker requires a separate large-history spec. Group pin/hide, manual mark-unread, transcript virtualization remain separate UI work. B15a supplies immutable artifact copies; D9 expands their reader while keeping model admission unchanged. Office documents, relative HTML folder bundles and large document virtualization remain separate work.
 
@@ -112,8 +113,8 @@ These are deliberate shortcuts or missing pieces in implemented code. Each one i
 | Desktop forwards a minimal environment: `$NAME` key references in `models.json` cannot resolve. Login-shell PATH discovery is implemented separately by B8a and does not import credentials | `apps/desktop/src/main/index.ts` | Before the first release: settle explicit credential references versus the documented Keychain / `!command` setup |
 | B15a supports bounded text/images and plaintext HTML results; Office/PDF extraction, group input propagation, complete journal erasure and artifact maintenance are not implemented | `local-executor`, `agent-runtime`, Desktop | Separate artifact follow-ups |
 | macOS notifications, dock badge, and power assertion are unit-tested as logic only | `apps/desktop/src/main` | Owner's packaged run |
-| Web pagination can lose continuation metadata to the runtime byte/line limit; date-only and modification timestamps need explicit uncertainty | October 27 installed radar audit | Separate retrieval-quality batch |
-| Observation delivery is bounded, but full transcript snapshot size and retained renderer caches still grow with history | `apps/desktop/src/renderer/src/store.ts` | Backlog B14c |
+| Web pagination can lose continuation metadata to the runtime byte/line limit; date-only and modification timestamps need explicit uncertainty | October 27 installed radar audit | B4a / #62, still open; I7 / #63 covers configured official-site pagination |
+| Observation delivery is bounded, but full transcript snapshot size and retained renderer caches still grow with history | `apps/desktop/src/renderer/src/store.ts` | [B14c ready spec](tasks/b14c-history-scaling.md) |
 | Packaged native lifecycle event delivery remains unverified; B14b forwards and gates simulated events | `apps/desktop/src/main/index.ts` | Native release acceptance |
 | HTTPS connectors require explicit Connect after failure/restart; idle GET notifications, stream resumption, OAuth and endpoint edits are not implemented | `local-executor`, Connect apps | Separate connector follow-ups |
 | Developer ID credential identity and continuity across updates remain unverified; native evidence uses a separately sealed ad-hoc probe, not a release-signed OpenBot | `apps/desktop/native`, `scripts/verify-keychain.mjs` | Native release acceptance |
@@ -134,6 +135,8 @@ These are deliberate shortcuts or missing pieces in implemented code. Each one i
 
 ## 3. Milestone Plans
 
+These are milestone contracts spanning implemented and planned capabilities, not a current execution queue. Section 1 and the task index own delivery status; B14c is the next prepared spec.
+
 The milestones below follow the architecture's capability areas. Delivery is phased; [the backlog](backlog.md) owns the batch order:
 
 | Phase | Milestone content it delivers |
@@ -144,7 +147,7 @@ The milestones below follow the architecture's capability areas. Delivery is pha
 
 The milestone sections stay as the reference for what each area needs; where a phase-1 batch takes part of a milestone, the batch's spec is authoritative.
 
-### M1: Host and Local Execution (next)
+### M1: Host and Local Execution (implemented; original milestone contracts)
 
 Goal: a Bot uses file and command tools on the local target through Tool Router and a separate executor process, with grants, approvals, receipts, and replay-safe recovery. Architecture Sections 5.1 to 5.3, 6.2, 7, and 8.2.
 

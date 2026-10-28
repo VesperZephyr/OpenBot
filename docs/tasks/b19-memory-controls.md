@@ -1,6 +1,6 @@
 # B19: Bot Instructions and Memory Controls
 
-Status: implemented, in review
+Status: done (#12)
 Branch: task/b19-memory-controls
 Depends on: B18 (merged)
 Architecture: Sections 5.1, 5.7, 8.3

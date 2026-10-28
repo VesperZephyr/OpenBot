@@ -1,6 +1,6 @@
 # D3: Application Capabilities and Local Code Mode
 
-Status: accepted direction; B24 implemented in PR #23, B25/B26 draft behind implementation gates
+Status: accepted direction; B24/B25/B26 implemented and merged (see task index)
 Branch: task/d3-app-capabilities
 Baseline: B23, commit d1635bc; vendored Pi b45e0ebcc5ae2fc42a6f2f23104d10e656e6bedb
 Date: 2026-10-18

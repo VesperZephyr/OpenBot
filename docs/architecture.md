@@ -630,6 +630,8 @@ When another target is added, it receives its own `targetId`, capability adverti
 
 ### 6.4 Desktop Application
 
+[B14c](tasks/b14c-history-scaling.md) is a ready, unimplemented design for bounded history windows, persistent derived search and virtualized reading. Its sidecar is disposable, remains behind the agent-runtime adapter and does not change Pi ownership or authoritative group storage. Existing full-history presentation remains the implementation baseline until that batch lands.
+
 `apps/desktop` is an Electron application built with electron-vite and packaged with electron-builder. Its interaction model follows Grok Bot's desktop app (Section 6.5).
 
 ```text

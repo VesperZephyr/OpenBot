@@ -1,6 +1,6 @@
 # B3: Coding-Agent Tools
 
-Status: in review
+Status: done (Phase 1 MVP merged; see task index)
 Branch: task/b3-coding-tools
 Depends on: B1 (receipt ledger, orphan guard)
 Architecture: Sections 5.1 (executor tools), 5.2 (tool set; expected-content check for edits), 6.2 (executor protocol)

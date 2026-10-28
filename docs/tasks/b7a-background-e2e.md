@@ -1,6 +1,6 @@
 # B7a: Background Desktop Tests
 
-Status: in review
+Status: done (#5)
 Branch: task/b7a-background-e2e
 Depends on: B7
 Architecture: Section 6.4 (desktop lifecycle)
