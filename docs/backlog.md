@@ -10,7 +10,7 @@
 
 **I6, done (#57):** [Integrated daily radar acceptance](tasks/i6-radar-integration.md) delivers B11c scheduled summaries, D8 unified chat and source-evidence corrections to main. The installed owner application passed three real calendar-triggered reporting chains; the final chain read all eleven sources and survived restart without duplicate delivery.
 
-Active delivery scope (2026-10-27): B11d is merged and installed; the existing eleven-source radar completed real catch-up and source-by-source review ([evidence](acceptance/radar-installed-2026-10-27.md)). B14d backup/restore is merged. B4a web pagination is the active owner-requested repair, followed by history scaling (B14c), templates (B13e) and signed updates (B14f). OAuth, optional model review and Phase 3 remain separate specs.
+Active delivery scope (2026-10-28): B11d (#60), B14d (#61) and I7 (#63) are merged. B4a web pagination remains in review in #62, with installed eleven-source acceptance. History scaling is a separate candidate in #64; templates (B13e) and signed updates (B14f) follow. OAuth, optional model review and Phase 3 remain deferred.
 
 **D8, done through I6 / PR #57:** [Unified chats and continuous activity](tasks/d8-chat-experience.md) provides mixed private/group navigation, member avatars, compact Settings and real streamed Markdown/loading feedback.
 
@@ -21,6 +21,8 @@ References: study MiniMax Code without copying; distinguish official facts and o
 ## Competitor radar delivery
 
 **B4a, in review (#62):** [Reliable web pagination](tasks/b4a-web-pagination.md) retains continuation metadata within character, byte and line budgets and detects changed documents. The [installed eleven-source acceptance](acceptance/web-pagination-2026-10-27.md) completed all extracted pages, both reports and Core's automatic summary, then verified restart and restored schedules. Dynamic load-more content, finite feed history and date-only boundaries remain explicit research limitations.
+
+**I7, done (#63):** [Official changelog pagination](tasks/i7-official-changelog-pagination.md) uses ZCode cumulative official pages and TRAE China's public JSON endpoint through existing web_fetch. B4a / #62 remains independent; current catalogue closure is checked separately from HTTP extraction and publication precision. [Real acceptance](acceptance/official-pagination-2026-10-27.md) verified ZCode 13 versions and TRAE 115 entries, automatic group summary and restart without duplicates.
 
 **B11b, done (#53):** [Scheduled reports in group conversations](tasks/b11b-group-routine-reports.md). Two independent hunter routines publish attributable reports into a confirmed group, with exact history links, restart deduplication and revocation when membership changes. The [workflow](workflows/competitor-radar.md) records source selection, daily windows and unavailable-source handling. Automated acceptance and a bounded two-source real-model check are recorded in the spec. Automatic scheduled composition is implemented in B11c below; conversational routine proposals remain a separate follow-up.
 

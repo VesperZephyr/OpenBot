@@ -53,3 +53,7 @@ None.
 - Existing real group completed both calendar-triggered hunter reports (16 + 26 successful fetches, full eleven-source extracted content) and Core's automatic zero-tool summary. Source hashes and contiguous ranges were checked. Each report remained below the summary input limit and both snapshots were ready/untruncated.
 - Original 07:08 / 07:10 / 07:47 schedules restored and enabled with refreshed source bindings. Restart retained identical report text and occurrence history, exactly one group post per occurrence, open lifecycle and zero scheduler faults.
 - [Per-source acceptance](../acceptance/web-pagination-2026-10-27.md) records precise publication evidence, static/dynamic coverage and remaining limits. Dynamic load-more content and exhaustive site history remain unverified, explicitly stated in the delivered summary.
+
+## Integration verification (2026-10-28)
+
+Validated with main at `838b032`, including merged I7/#63. Both pagination acceptance records are retained; the configured radar budget is 48 domestic and 32 international `web_fetch` calls. `pnpm run check` passed boundaries, TypeScript and 580 tests across 85 files. The full background `pnpm run e2e` passed 186 tests across 49 files in 340.45 seconds, including multilingual output continuation and official HTML/JSON catalogue pagination. Both pagination screenshots were inspected. `git diff --check` and 195 relative documentation links passed. This integration check used isolated scripted fixtures; it did not repeat the installed real-provider acceptance above.
