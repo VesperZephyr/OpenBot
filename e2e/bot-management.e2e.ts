@@ -12,6 +12,8 @@ const idle = async () => {
 	await expect
 		.poll(async () => (await methods("conversations.snapshot", { botId: (await roster()).find((b: any) => b.kind === "core").botId })).run)
 		.toBeUndefined();
+	// History and live controls arrive independently; the next proposal must not match the previous approval card.
+	await expect.poll(() => h.page().getByRole("group", { name: "Approval request" }).count()).toBe(0);
 };
 beforeAll(async () => {
 	h = await launchApp("bot-management");
