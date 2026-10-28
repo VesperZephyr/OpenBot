@@ -7,6 +7,7 @@
  * Private, loopback, and link-local addresses are refused, including after redirects and DNS resolution, so a page
  * cannot steer the Host into the local network.
  */
+import { createHash } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { Readability } from "@mozilla/readability";
@@ -19,6 +20,11 @@ const TIMEOUT_MS = 30_000;
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 /** Characters of Markdown per page of output. */
 const PAGE_CHARS = 40_000;
+// Leave headroom below the routed runtime's 50 KiB / 2000-line output limit.
+const PAGE_BYTES = 48 * 1024;
+const PAGE_LINES = 1900;
+const METADATA_BYTES = 4096;
+const METADATA_LINES = 32;
 const MAX_REDIRECTS = 5;
 /** Below this much visible text a page with a barrier (login form, bot check) has nothing else worth reading. */
 const SUBSTANTIAL_TEXT = 200;
@@ -80,7 +86,7 @@ export function createWebFetch(options: WebFetchOptions = {}): WebToolHandler {
 				const page = /^(text\/html|application\/xhtml)/i.test(type)
 					? readHtml(body, response.status, url, args.mode === "page")
 					: { outcome: statusOutcome(response.status), markdown: body.trim() };
-				return render(url, response.status, page, offset);
+				return render(url, response.status, page, offset, args.mode === "page" ? "page" : "article", args.contentHash);
 			}
 		} catch (error) {
 			if (signal.aborted) throw error;
@@ -91,27 +97,52 @@ export function createWebFetch(options: WebFetchOptions = {}): WebToolHandler {
 
 type Page = { readonly outcome: RetrievalOutcome; readonly markdown: string; readonly title?: string; readonly fullPage?: boolean };
 
-function render(url: URL, status: number, page: Page, offset: number): ToolOutcome {
-	const header = [`URL: ${url.href}`, `Status: ${status}`];
-	if (page.title !== undefined && page.title !== "") header.push(`Title: ${page.title}`);
-	header.push(`retrieval_outcome: ${page.outcome}`);
-	if (page.fullPage) header.push("extraction_mode: page (includes navigation; verify dates and product context)");
-	if (page.outcome !== "usable_content") header.push(NEXT_STEP[page.outcome]);
-	const outcomeStatus = page.outcome === "usable_content" ? "succeeded" : "failed";
+function render(url: URL, status: number, page: Page, offset: number, mode: "article" | "page", expectedHash: unknown): ToolOutcome {
+	const hash = createHash("sha256").update(page.markdown).digest("hex");
+	if (expectedHash !== undefined && expectedHash !== hash) return {
+		status: "failed", output: "content_changed: The extracted document does not match contentHash. Coverage is unverified. Restart at offset 0; do not combine ranges from different documents.",
+	};
 	const total = page.markdown.length;
-	if (total === 0) return { status: outcomeStatus, output: `${header.join("\n")}\n\n(no readable text)` };
-	if (offset >= total) return { status: "failed", output: `${header.join("\n")}\n\noffset ${offset} is past the end of the page (${total} characters)` };
-	let end = Math.min(offset + PAGE_CHARS, total);
-	if (end < total) {
-		// Prefer a line break in the last quarter of the page so a paragraph is not split mid-sentence.
-		const lineBreak = page.markdown.lastIndexOf("\n", end);
-		if (lineBreak > offset + PAGE_CHARS * 0.75) end = lineBreak + 1;
-		const code = page.markdown.charCodeAt(end - 1);
-		if (code >= 0xd800 && code <= 0xdbff) end -= 1;
+	if (offset > 0 && (offset >= total || /[\uDC00-\uDFFF]/.test(page.markdown[offset]!) && /[\uD800-\uDBFF]/.test(page.markdown[offset - 1]!))) {
+		return { status: "failed", output: `Invalid offset ${offset} for ${total} characters. Use the exact next_offset from the previous response.` };
 	}
-	const text = page.markdown.slice(offset, end);
-	const continuation = end < total ? `\n\n[Characters ${offset}–${end} of ${total}. Call web_fetch with offset ${end} to continue.]` : "";
-	return { status: outcomeStatus, output: `${header.join("\n")}\n\n${text}${continuation}`, ...(end < total ? { truncated: true } : {}) };
+	const end = pageEnd(page.markdown, offset);
+	const more = end < total;
+	const header = [`URL: ${url.href}`, `Status: ${status}`];
+	if (page.title) header.push(`Title: ${page.title.replace(/\s+/g, " ")}`);
+	header.push(`retrieval_outcome: ${page.outcome}`, `extraction_mode: ${mode}${page.fullPage ? " (includes navigation; verify dates and product context)" : ""}`);
+	if (page.outcome !== "usable_content") header.push(NEXT_STEP[page.outcome]);
+	header.push(
+		`content_hash: ${hash}`,
+		`Characters ${offset}–${end} of ${total} (UTF-16; end exclusive)`,
+		`document_status: ${more ? "partial" : "end_of_extracted_document"}`,
+		`next_offset: ${more ? end : "none"}`,
+		more ? `Call web_fetch with offset ${end} to continue; use the same URL, mode "${mode}" and contentHash "${hash}".` : "No further text in this extraction; this does not prove complete site history or publication timing.",
+		"Coverage: only the range below was returned. Follow relevant continuations and source links; incomplete coverage is not evidence of no update.",
+	);
+	const metadata = header.join("\n") + "\n\n";
+	if (Buffer.byteLength(metadata) > METADATA_BYTES || metadata.split("\n").length > METADATA_LINES) {
+		return { status: "failed", output: "Page metadata exceeds the output budget; content was not delivered. Coverage is unverified. Try a shorter source URL or another official endpoint." };
+	}
+	return {
+		status: page.outcome === "usable_content" ? "succeeded" : "failed",
+		output: metadata + (total === 0 ? "(no readable text)" : page.markdown.slice(offset, end)),
+		...(more ? { truncated: true } : {}),
+	};
+}
+
+/** Bound the body before composing metadata so no downstream truncation can skip undelivered text. */
+function pageEnd(text: string, offset: number): number {
+	let end = offset, bytes = 0, lines = 1, lastBreak = offset;
+	while (end < text.length) {
+		const char = String.fromCodePoint(text.codePointAt(end)!);
+		const size = Buffer.byteLength(char);
+		if (end + char.length - offset > PAGE_CHARS || bytes + size > PAGE_BYTES - METADATA_BYTES || (char === "\n" && lines >= PAGE_LINES - METADATA_LINES)) break;
+		bytes += size;
+		end += char.length;
+		if (char === "\n") { lines += 1; lastBreak = end; }
+	}
+	return end < text.length && lastBreak > offset + (end - offset) * 0.75 ? lastBreak : end;
 }
 
 function readHtml(html: string, status: number, url: URL, fullPage: boolean): Page {

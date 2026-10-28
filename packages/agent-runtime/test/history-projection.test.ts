@@ -10,6 +10,10 @@ import { HistoryProjection } from "../src/history-projection.ts";
 import { seedHistory } from "./history-fixture.ts";
 import { scriptedModels } from "../src/testing.ts";
 
+// Worker readiness is setup for correctness checks; performance budgets are asserted in history-scaling e2e.
+const expectIndexState = (readState: () => string, state: "ready" | "unavailable") =>
+	expect.poll(readState, { timeout: 10000 }).toBe(state);
+
 it("builds bounded public windows and reopens checked source checkpoints", async () => {
 	const root = await mkdtemp(join(tmpdir(), "openbot-history-projection-")),
 		databasePath = join(root, "openbot.sqlite");
@@ -22,10 +26,7 @@ it("builds bounded public windows and reopens checked source checkpoints", async
 	const options = { path: join(root, "cache", "history.sqlite"), databasePath, channels: async () => [], changed: () => {} };
 	let projection = new HistoryProjection(harness, BACKGROUND_CONTEXT, options);
 	try {
-		const ready = async () => {
-			for (let i = 0; i < 1000 && projection.status().state === "building"; i++) await delay(10);
-			expect(projection.status().state).toBe("ready");
-		};
+		const ready = () => expectIndexState(() => projection.status().state, "ready");
 		await ready();
 		const latest = await projection.window({ conversationKey: "bot:history_0", position: { kind: "latest" } });
 		expect(latest.status).toBe("ready");
@@ -92,15 +93,15 @@ it("restarts once, keeps execution receipts independent of the worker, and expli
 			(s) => snapshots.push(s.items),
 			(outcome) => outcomes.push(outcome),
 		);
-		await expect.poll(() => runtime.historyStatus().state).toBe("ready");
+		await expectIndexState(() => runtime.historyStatus().state, "ready");
 		const first = await runtime.historyWindow({ conversationKey: "bot:probe", position: { kind: "latest" } });
 		await clients[0]!.worker.terminate();
-		await expect.poll(() => clients.length).toBe(2);
-		await expect.poll(() => runtime.historyStatus().state).toBe("ready");
+		await expect.poll(() => clients.length, { timeout: 10000 }).toBe(2);
+		await expectIndexState(() => runtime.historyStatus().state, "ready");
 		const rebuilt = await runtime.historyWindow({ conversationKey: "bot:probe", position: { kind: "latest" } });
 		expect(first.status === "ready" && rebuilt.status === "ready" && first.window.generation !== rebuilt.window.generation).toBe(true);
 		await clients[1]!.worker.terminate();
-		await expect.poll(() => runtime.historyStatus().state).toBe("unavailable");
+		await expectIndexState(() => runtime.historyStatus().state, "unavailable");
 		await runtime.submitAndWait("probe", "receipt-input", "Run the receipt probe");
 		await expect.poll(() => outcomes.length).toBe(1);
 		expect(outcomes[0]).toMatchObject({ tool: "receipt_probe", status: "succeeded" });
@@ -111,7 +112,7 @@ it("restarts once, keeps execution receipts independent of the worker, and expli
 			retryable: true,
 		});
 		await runtime.retryHistory();
-		await expect.poll(() => runtime.historyStatus().state).toBe("ready");
+		await expectIndexState(() => runtime.historyStatus().state, "ready");
 		const ready = await runtime.historyWindow({ conversationKey: "bot:probe", position: { kind: "latest" } });
 		expect(JSON.stringify(ready)).toContain("Committed receipt");
 		expect(invoked).toHaveBeenCalledTimes(1);
@@ -136,9 +137,17 @@ it("catches up missed commits and invalidates stale cursors without rereading ol
 		{ fauxAssistantMessage } = await import("@earendil-works/pi-ai/providers/faux");
 	const bot = (await harness.snapshot(BotsDoc, BACKGROUND_CONTEXT))!.bots.history_0!;
 	const options = { path: join(root, "history.sqlite"), databasePath, channels: async () => [], changed: () => {} };
+	const { vi } = await import("vitest"),
+		{ HistoryClient } = await import("../src/history-client.ts");
+	const open = HistoryClient.open;
+	// A loaded CI runner can take longer than the default one-second poll to start its worker.
+	const opened = vi.spyOn(HistoryClient, "open").mockImplementationOnce(async (...args) => {
+		await delay(1500);
+		return open(...args);
+	});
 	let projection = new HistoryProjection(harness, BACKGROUND_CONTEXT, options);
 	try {
-		await expect.poll(() => projection.status().state).toBe("ready");
+		await expectIndexState(() => projection.status().state, "ready");
 		const first = await projection.window({ conversationKey: "bot:history_0", position: { kind: "latest" } });
 		if (first.status !== "ready") throw Error();
 		await projection.close();
@@ -149,7 +158,7 @@ it("catches up missed commits and invalidates stale cursors without rereading ol
 			});
 		}, BACKGROUND_CONTEXT);
 		projection = new HistoryProjection(harness, BACKGROUND_CONTEXT, options);
-		await expect.poll(() => projection.status().state).toBe("ready");
+		await expectIndexState(() => projection.status().state, "ready");
 		const current = await projection.window({ conversationKey: "bot:history_0", position: { kind: "latest" } });
 		expect(current.status === "ready" && current.window.generation).toBe(first.window.generation);
 		expect(JSON.stringify(current)).toContain("OFFLINE_APPEND_SENTINEL");
@@ -158,6 +167,7 @@ it("catches up missed commits and invalidates stale cursors without rereading ol
 		).rejects.toThrow("History changed");
 	} finally {
 		await projection.close();
+		opened.mockRestore();
 		await harness.close(BACKGROUND_CONTEXT);
 		await rm(root, { recursive: true, force: true });
 	}
@@ -182,14 +192,14 @@ it("fails visibly on an unwritable cache location and recovers after explicit Re
 		changed: () => {},
 	});
 	try {
-		await expect.poll(() => projection.status().state).toBe("unavailable");
+		await expectIndexState(() => projection.status().state, "unavailable");
 		expect(await projection.window({ conversationKey: "bot:history_0", position: { kind: "latest" } })).toEqual({
 			status: "unavailable",
 			retryable: true,
 		});
 		await rm(path, { recursive: true });
 		await projection.retry();
-		await expect.poll(() => projection.status().state).toBe("ready");
+		await expectIndexState(() => projection.status().state, "ready");
 		const result = await projection.window({ conversationKey: "bot:history_0", position: { kind: "latest" } });
 		expect(result.status === "ready" && result.window.rows.length).toBe(2);
 	} finally {
@@ -248,7 +258,7 @@ it("matches legacy rows across compaction, reset and a tool result separated by 
 	await harness.close(BACKGROUND_CONTEXT);
 	const runtime = await BotRuntime.open({ databasePath, models: scriptedModels().models });
 	try {
-		await expect.poll(() => runtime.historyStatus().state).toBe("ready");
+		await expectIndexState(() => runtime.historyStatus().state, "ready");
 		const legacy = await runtime.snapshot("history_0");
 		let position: import("@openbot/protocol").TimelinePosition = { kind: "latest" };
 		const rows: import("@openbot/protocol").TranscriptItem[] = [];
@@ -296,7 +306,7 @@ it("coalesces commit overflow into catch-up and bounds waiting search admission"
 		await expect(projection.search("needle", ["bot:history_0"], "owner")).rejects.toThrow("busy");
 		cancelled.abort();
 		expect((await Promise.all(waiting)).every((e) => e instanceof Error)).toBe(true);
-		await expect.poll(() => projection.status().state).toBe("ready");
+		await expectIndexState(() => projection.status().state, "ready");
 		for (let i = 0; i < 300; i++)
 			notify!({ changes: [{ type: "entry", value: { conversationId: 10000 + i } }] } as any, BACKGROUND_CONTEXT);
 		const { BotsDoc } = await import("../src/bots.ts"),
@@ -397,7 +407,7 @@ it("does not reread settled Code Mode source entries for a later ordinary messag
 		changed: () => {},
 	});
 	try {
-		await expect.poll(() => projection.status().state).toBe("ready");
+		await expectIndexState(() => projection.status().state, "ready");
 		reads.length = 0;
 		await harness.commit(
 			(tx) => tx.appendEntry(id, { kind: "pi.assistant", model: [fauxAssistantMessage("AFTER_SETTLED_CODE")] }),

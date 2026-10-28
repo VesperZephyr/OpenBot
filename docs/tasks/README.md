@@ -78,6 +78,7 @@ Phase 1 (MVP) implementation is merged into `main`. Historical verification is r
 | [B1](b1-durable-approvals.md) | Durable approvals and executor receipts | done     |
 | [B2](b2-runs.md)              | Runs, queue, cancellation, and steering | done     |
 | [B3](b3-coding-tools.md)      | Coding-agent tools                      | done     |
+| [B4a](b4a-web-pagination.md) | Reliable web pagination and research coverage | done (#62) |
 | [B4](b4-web-research.md)      | Web research                            | done     |
 | [B5](b5-always-allow.md)      | Always allow and folder grants          | done     |
 | [B6](b6-bot-quality.md)       | Bot quality and memory                  | done     |
@@ -239,7 +240,3 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Task | Status |
 | --- | --- |
 | [B14c: Bounded history reading and persistent search](b14c-history-scaling.md) | implemented in #64; approved routine selector included; [acceptance](../acceptance/history-scaling-2026-10-28.md), awaiting owner review/merge |
-
-## Independent web runtime review
-
-[B4a: Reliable web pagination and research coverage](https://github.com/VesperZephyr/OpenBot/pull/62) remains open as of October 28, 2026. Its task spec is on `task/b4a-web-pagination` and is not yet in main. I7 is merged in #63; its installed acceptance used the B4a candidate and does not establish that #62 is merged.

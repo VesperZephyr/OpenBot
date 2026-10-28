@@ -1148,12 +1148,13 @@ export const TOOL_CATALOG = [
 		capability: "web",
 		destination: "host",
 		description:
-			"Fetch a public page as Markdown, or a text/JSON/XML/Atom/RSS source as text. Does not run JavaScript. Defaults to article extraction; use mode page when date/version context is missing. A usable_content outcome means readable content, not verified completeness or release timing. Long pages name an offset to continue with the same mode. Atom updated is modification time, not publication. Private/local addresses are refused.",
+			"Fetch a public page as Markdown, or a text/JSON/XML/Atom/RSS source as text. Does not run JavaScript. Defaults to article extraction; use mode page when date/version context is missing. A usable_content outcome means readable content, not verified completeness or release timing. Each page names a range, content_hash and next_offset. Continue with the same URL/mode and contentHash until relevant coverage is established. end_of_extracted_document covers only this extraction, not complete site history. Incomplete coverage never proves no update. Atom updated is modification time, not publication. Private/local addresses are refused.",
 		parameters: object(
 			{
 				url: string("An http or https URL."),
 				mode: { type: "string", enum: ["article", "page"], description: "HTML extraction: article (default) or complete server-rendered page, preserving surrounding version/date context. No JavaScript execution." },
-				offset: { type: "integer", minimum: 0, description: "Character offset into the page's Markdown to continue from." },
+				offset: { type: "integer", minimum: 0, description: "Exact next_offset returned by the previous page (UTF-16 code units)." },
+				contentHash: { type: "string", pattern: "^[a-f0-9]{64}$", description: "Previous content_hash; include on continuations to reject changed documents rather than silently skip text." },
 			},
 			["url"],
 		),

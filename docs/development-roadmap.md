@@ -1,7 +1,7 @@
 # OpenBot Development Roadmap
 
 
-Active delivery scope (2026-10-28): role memory/skills (B27a/B27b), routines and summaries (B11a–d), file readers (D9/D10), backup/restore (B14d) and official-pagination workflow acceptance (I7) are merged. Remote main is `838b032`. B4a / [#62](https://github.com/VesperZephyr/OpenBot/pull/62) is still open; I7's installed evidence used its candidate. [B14c bounded history/search](tasks/b14c-history-scaling.md) is implemented in candidate #64 with [automated acceptance](acceptance/history-scaling-2026-10-28.md), awaiting owner review/merge. B13e templates and B14f signed updates follow. OAuth, optional model review and Phase 3 remain deferred.
+Active delivery scope (2026-10-28): role memory/skills (B27a/B27b), routines and summaries (B11a–d), file readers (D9/D10), backup/restore (B14d) and official-pagination workflow acceptance (I7) are merged. Remote main is `4c64a43`, including B4a / [#62](https://github.com/VesperZephyr/OpenBot/pull/62). [B14c bounded history/search](tasks/b14c-history-scaling.md) is implemented in candidate #64 with [automated acceptance](acceptance/history-scaling-2026-10-28.md), awaiting owner review/merge. B13e templates and B14f signed updates follow. OAuth, optional model review and Phase 3 remain deferred.
 
 Status: current queue above; the dated D4 baseline and packet contracts below are retained for dependency context. Implementation status is recorded in the task index and technical plan.
 Design record: [D4: Post-B26 Delivery Plan](tasks/d4-delivery-plan.md).
@@ -255,7 +255,7 @@ A documentation update does not establish product acceptance. Native permissions
 
 ## 11. Delivery queue and execution packets
 
-Current queue: B14c (review/merge #64) → B13e (planning brief) → B14f (planning brief). Rows 0–11 and B14d below have landed; their contracts remain reference material. B4a remains an independent open review.
+Current queue: B14c (review/merge #64) → B13e (planning brief) → B14f (planning brief). Rows 0–11 and B14d below have landed; their contracts remain reference material. B4a is merged in #62.
 
 This is a dependency-driven queue for one implementation stream, not a calendar commitment. Each row is one reviewable spec/PR unless explicitly a gate. Prerequisites normally merge to `main` before dependent implementation. For the owner-authorized uninterrupted queue, [I1](tasks/i1-product-foundation.md) assembles reviewed prerequisite heads on an integration branch and validates their combined contracts before B10 starts. Dependent task branches may start from that verified candidate; each PR still targets `main` and records its dependency. Only the owner merges. A design packet may be prepared earlier. Re-estimate after each accepted increment using actual effort and defects; no dates or staffing commitments are assumed.
 
@@ -370,7 +370,7 @@ A real provider may be unavailable or lack a required modality. Record that limi
 
 ## 14. Delivery checkpoint
 
-October 27: main `838b032` contains I7/#63 and B14d/#61. B4a/#62 is open and not incorporated. B14c is implemented in candidate #64; see the active queue and dated acceptance above. The following checkpoint records the earlier P1 integration evidence.
+October 28: main `4c64a43` contains B4a/#62, I7/#63 and B14d/#61. B14c is implemented in candidate #64; see the active queue and dated acceptance above. The following checkpoint records the earlier P1 integration evidence.
 
 D4 (#28), I1 (#34), B10 (#35), B15b (#36), B9a (#37) and B14e (#38) are merged into main through `b95ade7`. I1 includes the reviewed B14a/B15a/B14b/B12a/B13d implementation heads. Their earlier evidence remains in the individual task specs.
 

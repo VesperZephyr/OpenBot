@@ -1,6 +1,6 @@
 # B14c history scaling acceptance — October 28, 2026
 
-Implementation revision: `07a2cae`. Candidate: [PR #64](https://github.com/VesperZephyr/OpenBot/pull/64), branch `task/b14c-history-scaling`. Implements the [B14c spec](../tasks/b14c-history-scaling.md), including the approved routine occurrence selector. This is local automated acceptance, not a signed/native release gate.
+Initial implementation revision: `07a2cae`. Candidate: [PR #64](https://github.com/VesperZephyr/OpenBot/pull/64), branch `task/b14c-history-scaling`. Implements the [B14c spec](../tasks/b14c-history-scaling.md), including the approved routine occurrence selector. This is local automated acceptance, not a signed/native release gate.
 
 ## Environment and reproduction
 
@@ -55,8 +55,14 @@ The bundled runtime check starts the staged Node/Host/executor/history worker, e
 
 Screenshots inspected include long-history exact search in dark mode, unavailable-history approval controls, the large-message reader, group execution details, and Chinese routine/streaming layouts at minimum width. An isolated background copy of the synthetic corpus was explored through agent-browser on port 9357: select History 0, search `Record 517:`, open the exact old row, and Jump to latest. Its screenshot is `e2e/.run/b14c-final-inspect/01-returned-latest.png`; that harness was closed.
 
+## Main integration and CI readiness
+
+The candidate incorporates main `4c64a43`, including merged B4a/#62 and I7/#63. The initial measurements and command totals above belong to `07a2cae`; the PR records the latest integrated check results.
+
+The missed-commit correctness test explicitly delays its first worker start by 1.5 seconds, reproducing a CI failure caused by the default one-second polling deadline. Worker lifecycle assertions now wait up to 10 seconds for their expected state, including restart and explicit Retry. The seven projection tests pass with this delay, and the integrated `pnpm run check` passes 596 tests across 87 files. Cold rebuild, switching, search and control-response performance thresholds remain unchanged in `history-scaling.e2e.ts`.
+
 ## Remaining limits
 
 Literal search still has linear worst-case CPU. Canonical Pi active context, the existing group/execution documents and lightweight source/settlement identity metadata remain sources of total Host memory growth; these are not moved into disposable storage. Large legacy entries must still be materialized by the public Pi read API before bounded projection. Search acceleration or canonical group-storage migration needs a separate spec.
 
-No real-model spot check, new native permission test, signing/notarization or installed release acceptance is claimed. B4a/#62 remains open and independent; I7/#63 is merged. The owner merges the candidate.
+No real-model spot check, new native permission test, signing/notarization or installed release acceptance is claimed. B4a/#62 and I7/#63 are merged into the integration base. The owner merges the candidate.

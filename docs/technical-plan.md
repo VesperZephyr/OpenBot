@@ -1,7 +1,7 @@
 # OpenBot Technical Plan
 
 
-Active delivery scope (2026-10-28): I6 (#57), D9 (#58), D10 (#59), B11d (#60), B14d (#61) and I7 (#63) are merged into main, now `838b032`. B4a safe output pagination remains open in [PR #62](https://github.com/VesperZephyr/OpenBot/pull/62); I7's installed acceptance used that separate candidate. [B14c history scaling](tasks/b14c-history-scaling.md) is implemented in candidate #64, including the approved routine occurrence selector; automated acceptance is recorded in its [evidence](acceptance/history-scaling-2026-10-28.md), awaiting owner review/merge. Templates (B13e) and signed updates (B14f) follow. B9c OAuth, B12b optional model review and Phase 3 remain deferred.
+Active delivery scope (2026-10-28): I6 (#57), D9 (#58), D10 (#59), B11d (#60), B14d (#61), B4a (#62) and I7 (#63) are merged into main, now `4c64a43`. [B14c history scaling](tasks/b14c-history-scaling.md) is implemented in candidate #64, including the approved routine occurrence selector; automated acceptance is recorded in its [evidence](acceptance/history-scaling-2026-10-28.md), awaiting owner review/merge. Templates (B13e) and signed updates (B14f) follow. B9c OAuth, B12b optional model review and Phase 3 remain deferred.
 
 Last updated: 2026-10-28.
 
@@ -29,6 +29,7 @@ Desktop delivery (2026-10-22): [D6](tasks/d6-desktop-design.md) delivers the own
 
 | Component | State | Verified by |
 | --- | --- | --- |
+| Web pagination (B4a) | Merged (#62): bounded output, exact ranges and content identity | 569 unit/Host tests, 185 desktop tests and installed eleven-source scheduled chain; [acceptance](acceptance/web-pagination-2026-10-27.md) |
 | Official source pagination (I7) | Merged (#63): configured ZCode/TRAE official GET continuations using existing web_fetch | [Spec](tasks/i7-official-changelog-pagination.md); 575 unit/Host/audit tests, 185 desktop tests; [real catalogue acceptance](acceptance/official-pagination-2026-10-27.md) |
 | History scaling (B14c) | Disposable SQLite worker; checkpointed display/search projection; bounded desktop windows and detail parts; virtualized history; independent live controls and tool settlement; private delivery/routine windows; restore invalidation | [Spec](tasks/b14c-history-scaling.md); candidate #64; [acceptance](acceptance/history-scaling-2026-10-28.md) |
 | Local backup/restore (B14d) | Merged (#61): native Settings selection, offline versioned snapshots, staged validation, crash rollback and paused recovery; same Mac/account | 564 unit/Host tests; 182-case full desktop pass plus seven final backup cases; bundled delete/restore, real command interruption, crash recovery and isolated UI inspection; [spec](tasks/b14d-backup-restore.md) |
@@ -113,7 +114,7 @@ These are deliberate shortcuts or missing pieces in implemented code. Each one i
 | Desktop forwards a minimal environment: `$NAME` key references in `models.json` cannot resolve. Login-shell PATH discovery is implemented separately by B8a and does not import credentials | `apps/desktop/src/main/index.ts` | Before the first release: settle explicit credential references versus the documented Keychain / `!command` setup |
 | B15a supports bounded text/images and plaintext HTML results; Office/PDF extraction, group input propagation, complete journal erasure and artifact maintenance are not implemented | `local-executor`, `agent-runtime`, Desktop | Separate artifact follow-ups |
 | macOS notifications, dock badge, and power assertion are unit-tested as logic only | `apps/desktop/src/main` | Owner's packaged run |
-| Web pagination can lose continuation metadata to the runtime byte/line limit; date-only and modification timestamps need explicit uncertainty | October 27 installed radar audit | B4a / #62, still open; I7 / #63 covers configured official-site pagination |
+| Finite feeds and date-only or modification timestamps do not establish complete release coverage | October 27 installed radar audit | B4a / #62 preserves bounded response continuation; I7 / #63 covers configured official-site pagination. Other source gaps remain explicit |
 | History search retains linear worst-case CPU; Pi active context and canonical group documents still scale with source data | `packages/agent-runtime/src/history-store.ts`, `groups.ts` | B14c bounds derived reads and renderer work. A canonical group migration or search accelerator needs a separate spec |
 | Packaged native lifecycle event delivery remains unverified; B14b forwards and gates simulated events | `apps/desktop/src/main/index.ts` | Native release acceptance |
 | HTTPS connectors require explicit Connect after failure/restart; idle GET notifications, stream resumption, OAuth and endpoint edits are not implemented | `local-executor`, Connect apps | Separate connector follow-ups |

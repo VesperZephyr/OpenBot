@@ -14,7 +14,7 @@ Keep opening, reading and searching retained private and group conversations res
 
 In: bounded timeline queries, a rebuildable persistent display/search projection, incremental projection updates, bounded renderer caches, virtualized private/group timelines, exact-anchor navigation, backup/restore cache invalidation and deterministic performance acceptance.
 
-Out: semantic/embedding search, new query syntax, group pin/hide, manual unread, data deletion/retention changes, new model tools, model-context changes, Pi synchronization, canonical group-storage migration, Bot templates, updates and Phase 3. B4a/#62 remains independent; I7/#63 is merged. Neither web batch is a prerequisite for local history work.
+Out: semantic/embedding search, new query syntax, group pin/hide, manual unread, data deletion/retention changes, new model tools, model-context changes, Pi synchronization, canonical group-storage migration, Bot templates, updates and Phase 3. B4a/#62 and I7/#63 are merged independent web batches. Neither web batch is a prerequisite for local history work.
 
 This batch bounds OpenBot's additional history projections, transport and renderer work. It does not claim constant total Host memory: Pi retains the active model context, and `GroupsDoc` currently stores canonical group posts and delivery records in a session document. Changing that authoritative layout needs a separate migration spec if measurements show it dominates the agreed fixture. Do not silently move canonical posts into a disposable index.
 
@@ -205,7 +205,7 @@ None. The owner-approved routine occurrence selector is part of contract 3. Cano
 
 [Final implementation evidence](../acceptance/history-scaling-2026-10-28.md) records the complete fixture, performance gates, command results, failure/recovery tests and isolated desktop inspection. [Historical groundwork](../acceptance/history-baseline-2026-10-28.md) preserves the pre-integration baseline and its narrower limits.
 
-GitHub was rechecked October 28: B4a/#62 is OPEN with no merge commit; I7/#63 is MERGED (`838b032`). B14c remains a separate candidate in #64. No merge or release was performed.
+GitHub was rechecked October 28: B4a/#62 is merged (`4c64a43`), as is I7/#63 (`838b032`). B14c incorporates current main and remains a separate candidate in #64. No B14c merge or release was performed.
 
 
 ## Implementation notes
