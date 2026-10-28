@@ -1,3 +1,4 @@
+export type { TimelinePosition, TimelineRow, TimelineWindow, WindowInput, WindowResult, DetailInput, DetailResult, IndexStatus } from "./history.ts";
 import type { ReaderFile, FileListing } from "./reader.ts";
 export * from "./avatars.ts";
 import type { BotAvatar, AvatarChange, AvatarSource, AvatarImage } from "./avatars.ts";

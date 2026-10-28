@@ -1,6 +1,6 @@
 # B14c: Bounded history reading and persistent search
 
-Status: ready (design only; implementation has not started)
+Status: blocked on the routine execution window contract; draft groundwork in #64
 Branch: task/b14c-history-scaling; pull request target: main
 Depends on: B14a, B22/B23, B24/B25, B14d, D8/D9 (all merged)
 Architecture: sections 4.2, 6.1, 6.4, 7.1 and 8.3
@@ -197,11 +197,21 @@ The largest correctness risks are a tool result appearing far after its call, in
 
 ## Open questions
 
-None for the bounded read/search increment. Canonical group-storage migration, semantic search and sublinear search acceleration are excluded. Add dated evidence here if the specified baseline or acceptance proves infeasible; do not redesign storage or weaken thresholds silently.
+### October 28, 2026: routine execution history has no bounded selector
 
-## Design verification
+Integration is blocked pending a contract decision. `packages/server-core/src/routines.ts` (`Routines.detail`) reads a complete snapshot of `selected.channelId`, and `apps/desktop/src/renderer/src/Routines.tsx` renders that snapshot for both active and historical occurrences. These channels are `routine_*` private execution conversations, distinct from the Bot's direct conversation and from group deliveries. The current window contract cannot address them. Leaving this production reader on full snapshots violates contract 3; removing its transcript loses existing execution evidence.
 
-This spec is preparation only. No B14c product implementation, performance pass, desktop run or real-model acceptance is claimed. Documentation checks and the repository check result for this design change are recorded in its PR; implementation evidence must be added separately.
+Proposed amendment for owner/design review (not yet an implemented contract): add optional `occurrenceId` to window requests for `bot:` keys, mutually exclusive with `deliveryId`. Host resolves the occurrence through the existing routine records and verifies its Bot/channel binding on every window and detail read. Use a distinct internal display partition `(conversationKey, occurrenceId)` with a selector discriminator; bind it in cursors/detail tokens and omit read receipts. Keep routine execution text out of the public `messages` corpus and model search/read. `routines.get` returns current control/approval state with omitted history; the routine details UI loads its execution evidence through these bounded windows. Apply the same row/byte/cache/DOM limits and stale-response guards, and add tests for mismatched Bot/occurrence IDs, deleted Bots, private-text exclusion, and historical routine navigation. No renderer-provided channel or internal conversation ID is accepted.
+
+The alternative is an explicit design exception that defers routine execution history, with narrower acceptance and a follow-up task; execution must not invent that exception.
+
+Canonical group-storage migration, semantic search and sublinear search acceleration remain excluded. Other implementation and performance acceptance items are still pending.
+
+## Verification
+
+Draft groundwork: [baseline and regression evidence](../acceptance/history-baseline-2026-10-28.md). The disposable store, worker and Pi projection queue have direct tests but are not connected to production reads. `pnpm run check` passes 582 tests in 87 files; the full background `pnpm run e2e` passes 185 tests in 49 files. Production API/renderer migration, the complete failure matrix, packaged worker lifecycle and full performance acceptance remain pending. The routine execution selector decision above blocks integration; the batch is not complete.
+
+The original design-only verification follows.
 
 
 Verified October 28, 2026: `git fetch origin` retains main at `838b032` (I7/#63 merged); GitHub reports B4a/#62 as OPEN with no merge commit. `git diff --check` and 276 relative Markdown links across the 38 changed/new documentation files pass. `pnpm run check --maxWorkers=4` passes boundaries, TypeScript and 575 tests across 85 files. The diff contains only `AGENTS.md` and `docs/`; no e2e, application launch, provider call or B14c performance trial was run for this documentation change.

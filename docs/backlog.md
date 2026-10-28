@@ -10,7 +10,7 @@
 
 **I6, done (#57):** [Integrated daily radar acceptance](tasks/i6-radar-integration.md) delivers B11c scheduled summaries, D8 unified chat and source-evidence corrections to main. The installed owner application passed three real calendar-triggered reporting chains; the final chain read all eleven sources and survived restart without duplicate delivery.
 
-Active delivery scope (2026-10-28): B11d (#60), B14d (#61) and I7 (#63) are merged. Remote main is `838b032`; B4a / [#62](https://github.com/VesperZephyr/OpenBot/pull/62) remains open and its runtime changes are not in main. I7's installed acceptance used the B4a candidate. [B14c history scaling](tasks/b14c-history-scaling.md) is ready for implementation; this delivery prepares its spec only. Templates (B13e) and signed updates (B14f) follow with separate ready specs. OAuth, optional model review and Phase 3 remain deferred.
+Active delivery scope (2026-10-28): B11d (#60), B14d (#61) and I7 (#63) are merged. Remote main is `838b032`; B4a / [#62](https://github.com/VesperZephyr/OpenBot/pull/62) remains open and its runtime changes are not in main. I7's installed acceptance used the B4a candidate. [B14c history scaling](tasks/b14c-history-scaling.md) has draft storage/projection groundwork in #64. Production integration is blocked on the routine execution history selector recorded in its Open questions; the batch is not complete. Templates (B13e) and signed updates (B14f) follow with separate ready specs. OAuth, optional model review and Phase 3 remain deferred.
 
 **D8, done through I6 / PR #57:** [Unified chats and continuous activity](tasks/d8-chat-experience.md) provides mixed private/group navigation, member avatars, compact Settings and real streamed Markdown/loading feedback.
 

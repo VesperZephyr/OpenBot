@@ -1,7 +1,7 @@
 # OpenBot Technical Plan
 
 
-Active delivery scope (2026-10-28): I6 (#57), D9 (#58), D10 (#59), B11d (#60), B14d (#61) and I7 (#63) are merged into main, now `838b032`. B4a safe output pagination remains open in [PR #62](https://github.com/VesperZephyr/OpenBot/pull/62); I7's installed acceptance used that separate candidate. [B14c history scaling](tasks/b14c-history-scaling.md) has a ready spec but no implementation. Templates (B13e) and signed updates (B14f) follow. B9c OAuth, B12b optional model review and Phase 3 remain deferred.
+Active delivery scope (2026-10-28): I6 (#57), D9 (#58), D10 (#59), B11d (#60), B14d (#61) and I7 (#63) are merged into main, now `838b032`. B4a safe output pagination remains open in [PR #62](https://github.com/VesperZephyr/OpenBot/pull/62); I7's installed acceptance used that separate candidate. [B14c history scaling](tasks/b14c-history-scaling.md) has draft storage/projection groundwork in #64; production integration is blocked on the routine execution history selector in its Open questions. Templates (B13e) and signed updates (B14f) follow. B9c OAuth, B12b optional model review and Phase 3 remain deferred.
 
 Last updated: 2026-10-28.
 
@@ -30,7 +30,7 @@ Desktop delivery (2026-10-22): [D6](tasks/d6-desktop-design.md) delivers the own
 | Component | State | Verified by |
 | --- | --- | --- |
 | Official source pagination (I7) | Merged (#63): configured ZCode/TRAE official GET continuations using existing web_fetch | [Spec](tasks/i7-official-changelog-pagination.md); 575 unit/Host/audit tests, 185 desktop tests; [real catalogue acceptance](acceptance/official-pagination-2026-10-27.md) |
-| History scaling (B14c) | Ready design only: bounded timeline windows, persistent derived search, bounded renderer caches and virtualization; canonical group storage unchanged | [Spec](tasks/b14c-history-scaling.md); no implementation/performance acceptance yet |
+| History scaling (B14c) | Draft sidecar, worker and Pi projection queue; not connected to production reads. Window API, renderer migration and performance acceptance remain pending | [Spec and routine-selector blocker](tasks/b14c-history-scaling.md#open-questions); #64 is a draft |
 | Local backup/restore (B14d) | Merged (#61): native Settings selection, offline versioned snapshots, staged validation, crash rollback and paused recovery; same Mac/account | 564 unit/Host tests; 182-case full desktop pass plus seven final backup cases; bundled delete/restore, real command interruption, crash recovery and isolated UI inspection; [spec](tasks/b14d-backup-restore.md) |
 | Unattended reliability (B11d) | Merged (#60), installed October 27: lock permits background work; confirmed suspend admits new work on wake; separate edit/semantic versions; isolated scheduler faults and health | 542 unit/Host tests, 177 desktop tests and five-request real-provider chain passed; [initial evidence](acceptance/unattended-reliability-2026-10-26.md), [installed eleven-source audit](acceptance/radar-installed-2026-10-27.md) |
 | Integrated radar acceptance (I6) | Merged in PR #57: main integration, Atom/RSS support, bounded full-page extraction and exact source timestamps; installed owner app and restored daily workflow | 524 unit/Host + 165 hidden desktop tests; all eleven live sources, three real scheduled chains, complete 2/2 summary inputs and restart deduplication; [spec](tasks/i6-radar-integration.md) |
@@ -114,7 +114,7 @@ These are deliberate shortcuts or missing pieces in implemented code. Each one i
 | B15a supports bounded text/images and plaintext HTML results; Office/PDF extraction, group input propagation, complete journal erasure and artifact maintenance are not implemented | `local-executor`, `agent-runtime`, Desktop | Separate artifact follow-ups |
 | macOS notifications, dock badge, and power assertion are unit-tested as logic only | `apps/desktop/src/main` | Owner's packaged run |
 | Web pagination can lose continuation metadata to the runtime byte/line limit; date-only and modification timestamps need explicit uncertainty | October 27 installed radar audit | B4a / #62, still open; I7 / #63 covers configured official-site pagination |
-| Observation delivery is bounded, but full transcript snapshot size and retained renderer caches still grow with history | `apps/desktop/src/renderer/src/store.ts` | [B14c ready spec](tasks/b14c-history-scaling.md) |
+| Observation delivery is bounded, but full transcript snapshot size and retained renderer caches still grow with history | `apps/desktop/src/renderer/src/store.ts` | [B14c integration blocker](tasks/b14c-history-scaling.md#open-questions) |
 | Packaged native lifecycle event delivery remains unverified; B14b forwards and gates simulated events | `apps/desktop/src/main/index.ts` | Native release acceptance |
 | HTTPS connectors require explicit Connect after failure/restart; idle GET notifications, stream resumption, OAuth and endpoint edits are not implemented | `local-executor`, Connect apps | Separate connector follow-ups |
 | Developer ID credential identity and continuity across updates remain unverified; native evidence uses a separately sealed ad-hoc probe, not a release-signed OpenBot | `apps/desktop/native`, `scripts/verify-keychain.mjs` | Native release acceptance |
@@ -135,7 +135,7 @@ These are deliberate shortcuts or missing pieces in implemented code. Each one i
 
 ## 3. Milestone Plans
 
-These are milestone contracts spanning implemented and planned capabilities, not a current execution queue. Section 1 and the task index own delivery status; B14c is the next prepared spec.
+These are milestone contracts spanning implemented and planned capabilities, not a current execution queue. Section 1 and the task index own delivery status; B14c is in draft implementation, with the routine-selector design decision pending.
 
 The milestones below follow the architecture's capability areas. Delivery is phased; [the backlog](backlog.md) owns the batch order:
 
