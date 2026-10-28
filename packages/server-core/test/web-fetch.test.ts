@@ -115,6 +115,56 @@ describe("web_fetch", () => {
 		for (let index = 0; index < 800; index += 1) expect(joined.split(`Paragraph ${index} `)).toHaveLength(2);
 	});
 
+	it.each([
+		["multibyte", "正文更新😀🚀".repeat(13000)],
+		["lines", Array.from({ length: 6500 }, (_, i) => `release ${i}\n`).join("") + "FINAL-ENTRY"],
+		["mixed", ("x".repeat(120) + "\n末尾😀").repeat(900)],
+	])("reconstructs %s pages without exceeding runtime byte/line budgets", async (name, text) => {
+		routes[`/${name}`] = { status: 200, body: text, type: "text/plain" };
+		let offset = 0, contentHash: string | undefined, joined = "", count = 0;
+		for (;;) {
+			const result = await fetchPage({ url: `${origin}/${name}`, offset, contentHash }, signal);
+			expect(result.status).toBe("succeeded");
+			expect(Buffer.byteLength(result.output)).toBeLessThanOrEqual(48 * 1024);
+			expect(result.output.split("\n").length).toBeLessThanOrEqual(1900);
+			contentHash ??= /content_hash: ([a-f0-9]+)/.exec(result.output)![1];
+			expect(result.output).toContain(`content_hash: ${contentHash}`);
+			const range = /Characters (\d+)–(\d+) of (\d+)/.exec(result.output)!;
+			expect(Number(range[1])).toBe(offset);
+			const body = result.output.slice(result.output.indexOf("\n\n") + 2);
+			joined += body;
+			offset = Number(range[2]);
+			expect(joined.length).toBe(offset);
+			expect(body).not.toContain("\uFFFD");
+			if (!result.truncated) { expect(result.output).toContain("document_status: end_of_extracted_document"); break; }
+			expect(result.output).toContain(`next_offset: ${offset}`);
+			expect(++count).toBeLessThan(30);
+		}
+		expect(count).toBeGreaterThan(0);
+		expect(joined).toBe(text);
+	});
+
+	it("rejects changed documents and invalid continuation boundaries", async () => {
+		routes["/changing"] = { status: 200, body: "😀" + "old content".repeat(8000), type: "text/plain" };
+		const first = await fetchPage({ url: `${origin}/changing` }, signal);
+		const contentHash = /content_hash: ([a-f0-9]+)/.exec(first.output)![1];
+		const offset = Number(/next_offset: (\d+)/.exec(first.output)![1]);
+		expect((await fetchPage({ url: `${origin}/changing`, offset: 1 }, signal)).status).toBe("failed");
+		expect((await fetchPage({ url: `${origin}/changing`, offset: 999999 }, signal)).status).toBe("failed");
+		routes["/changing"]!.body = "inserted release " + routes["/changing"]!.body;
+		const changed = await fetchPage({ url: `${origin}/changing`, offset, contentHash }, signal);
+		expect(changed.status).toBe("failed");
+		expect(changed.output).toContain("content_changed:");
+		expect(changed.output).not.toContain("end_of_extracted_document");
+	});
+
+	it("fails oversized metadata explicitly instead of dropping content or continuation", async () => {
+		routes["/title"] = { status: 200, body: `<html><head><title>${"文".repeat(3000)}</title></head><body>release details</body></html>` };
+		const result = await fetchPage({ url: `${origin}/title`, mode: "page" }, signal);
+		expect(result.status).toBe("failed");
+		expect(result.output).toContain("content was not delivered");
+	});
+
 	it("passes plain text through", async () => {
 		const outcome = await fetchPage({ url: `${origin}/plain` }, signal);
 		expect(outcome.status).toBe("succeeded");

@@ -112,4 +112,43 @@ describe("Web search", () => {
 		expect(output).toContain("23 Oct 01:00 (2026-10-23T01:00:00Z)");
 		await h.shot("05-release-page");
 	});
+	it("preserves complete multilingual pagination through Host, Pi and model input", async () => {
+		const url = "https://releases.example.org/long.atom";
+		const pages: string[] = [];
+		const capture = (request: import("./scripted-model.ts").ModelRequest) => {
+			const tool = [...request.messages].reverse().find(m => m.role === "tool")!;
+			const content = typeof tool.content === "string" ? tool.content : (tool.content as { text: string }[]).map(c => c.text).join("");
+			pages.push(content);
+			return { url, mode: "page", offset: Number(/next_offset: (\d+)/.exec(content)![1]), contentHash: /content_hash: ([a-f0-9]+)/.exec(content)![1] };
+		};
+		h.model.script(
+			{ tool: "web_fetch", args: { url, mode: "page" } },
+			{ tool: "web_fetch", args: capture },
+			{ tool: "web_fetch", args: capture },
+			{ text: "Read all three extracted feed pages. Original publication: 2026-10-26T23:30:00Z. Feed modification is separate; complete site history remains unverified." },
+		);
+		await h.send("Read every extracted page, preserving publication and coverage evidence.");
+		await h.page().locator(".transcript").getByText("Read all three extracted feed pages.", { exact: false }).waitFor();
+		const last = [...h.model.requests.at(-1)!.messages].reverse().find(m => m.role === "tool")!;
+		pages.push(typeof last.content === "string" ? last.content : (last.content as { text: string }[]).map(c => c.text).join(""));
+		let end = 0;
+		for (const output of pages) {
+			expect(Buffer.byteLength(output)).toBeLessThanOrEqual(48 * 1024);
+			expect(output).not.toContain("output truncated");
+			const range = /Characters (\d+)–(\d+) of (\d+)/.exec(output)!;
+			expect(Number(range[1])).toBe(end);
+			end = Number(range[2]);
+		}
+		expect(pages[0]).toContain("document_status: partial");
+		expect(pages[2]).toContain("document_status: end_of_extracted_document");
+		expect(pages[2]).toContain("LAST-RELEASE");
+		expect(pages[2]).toContain("<published>2026-10-26T23:30:00Z</published>");
+		const bodies = pages.map(o => o.slice(o.indexOf("\n\n") + 2)).join("");
+		expect(bodies).toBe('<feed><updated>2026-10-27T03:00:00Z</updated>\n' + ('正文😀' + 'x'.repeat(20) + '\n').repeat(3500) + '<entry><title>LAST-RELEASE</title><published>2026-10-26T23:30:00Z</published></entry></feed>');
+		await h.page().locator(".steps-row").last().locator("summary").first().click();
+		const cards = h.page().locator(".tool-card", { hasText: url });
+		await cards.last().locator("summary").click();
+		await h.shot("06-long-feed-complete");
+	});
+
 });

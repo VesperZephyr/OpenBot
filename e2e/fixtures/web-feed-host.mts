@@ -8,7 +8,9 @@ dns.lookup = ((hostname: string, options: unknown) => hostname === "releases.exa
 	: lookup(hostname, options as never)) as typeof dns.lookup;
 syncBuiltinESMExports();
 const fetch = globalThis.fetch;
+const longFeed = '<feed><updated>2026-10-27T03:00:00Z</updated>\n' + ('正文😀' + 'x'.repeat(20) + '\n').repeat(3500) + '<entry><title>LAST-RELEASE</title><published>2026-10-26T23:30:00Z</published></entry></feed>';
 globalThis.fetch = async (input, init) => {
+	if (String(input) === "https://releases.example.org/long.atom") return new Response(longFeed, { headers: { "content-type": "application/atom+xml" } });
 	if (String(input) === "https://releases.example.org/changelog") {
 		return new Response('<html><body><aside>Release 1.2 — <time datetime="2026-10-23T01:00:00Z">23 Oct 01:00</time></aside><article><p>Resume interrupted work safely.</p></article></body></html>', { headers: { "content-type": "text/html" } });
 	}
