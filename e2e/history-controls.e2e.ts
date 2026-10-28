@@ -16,10 +16,14 @@ it("keeps approvals, drafts and Stop usable when history reads fail, then recove
 	await h.app().evaluate(({ ipcMain }) => {
 		const original = (ipcMain as any)._invokeHandlers.get("openbot:call");
 		(globalThis as any).historyOriginal = original;
+		(globalThis as any).historyFail = true;
 		ipcMain.removeHandler("openbot:call");
-		ipcMain.handle("openbot:call", async (event, method, params) =>
-			method === "conversations.window" ? { status: "unavailable", retryable: true } : original(event, method, params),
-		);
+		ipcMain.handle("openbot:call", async (event, method, params) => {
+			if (method === "conversations.indexRetry") (globalThis as any).historyFail = false;
+			return method === "conversations.window" && (globalThis as any).historyFail
+				? { status: "unavailable", retryable: true }
+				: original(event, method, params);
+		});
 	});
 	try {
 		h.model.script(
@@ -43,13 +47,13 @@ it("keeps approvals, drafts and Stop usable when history reads fail, then recove
 		await expect
 			.poll(async () => (await api("bots.list")).find((b: any) => b.name === "History controls")?.lastRun?.state, { timeout: 20000 })
 			.toBe("cancelled");
+		await h.page().locator(".history-status").getByRole("button", { name: "Retry", exact: true }).click();
 	} finally {
 		await h.app().evaluate(({ ipcMain }) => {
 			ipcMain.removeHandler("openbot:call");
 			ipcMain.handle("openbot:call", (globalThis as any).historyOriginal);
 		});
 	}
-	await h.page().locator(".history-status").getByRole("button", { name: "Retry", exact: true }).click();
 	await h.page().getByText("Approved while history was unavailable.", { exact: true }).waitFor();
 	expect(await readFile(join(h.workspace, "history-control-receipts.txt"), "utf8")).toBe("receipt");
 	await h.shot("02-history-recovered");
