@@ -238,7 +238,7 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Task | Status |
 | --- | --- |
-| [B14c: Bounded history reading and persistent search](b14c-history-scaling.md) | draft #64; storage/projection groundwork, integration blocked on routine execution selector |
+| [B14c: Bounded history reading and persistent search](b14c-history-scaling.md) | implemented in #64; approved routine selector included; [acceptance](../acceptance/history-scaling-2026-10-28.md), awaiting owner review/merge |
 
 ## Independent web runtime review
 

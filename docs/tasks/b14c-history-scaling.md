@@ -1,6 +1,6 @@
 # B14c: Bounded history reading and persistent search
 
-Status: blocked on the routine execution window contract; draft groundwork in #64
+Status: in review (#64); implementation and automated acceptance complete
 Branch: task/b14c-history-scaling; pull request target: main
 Depends on: B14a, B22/B23, B24/B25, B14d, D8/D9 (all merged)
 Architecture: sections 4.2, 6.1, 6.4, 7.1 and 8.3
@@ -20,7 +20,7 @@ This batch bounds OpenBot's additional history projections, transport and render
 
 ## Baseline and design
 
-The current costs are cumulative:
+The pre-implementation costs were cumulative:
 
 - `agent-runtime/src/index.ts`: `#earlierEntries` drains all pages before the active head into `#history`; `#project` combines them with the active view. Startup observes every live Bot.
 - `agent-runtime/src/conversation-search.ts`: the entire normalized message corpus lives in a `Map`; every search scans it on the Host thread. `committedMessages` copies a whole conversation even for B24's bounded context read.
@@ -47,7 +47,7 @@ The sidecar has `PRAGMA user_version = 1` and these logical tables. Names may va
 | `details` | `(conversation_key, row_id, revision, part)`, bounded UTF-8 display-text chunks for oversized rows |
 | `tool_links` | Stable tool-call ID to its initiating row/source entry and latest committed result, so a later result updates the original row |
 
-For private group execution windows, use a separate internal partition `(conversationKey, deliveryId)` in `conversations`, `rows`, `details` and `tool_links`; never add that execution text to the public group `messages` corpus. Cursor/detail tokens bind this partition and the Host rechecks the delivery-to-group relationship on every read.
+For private group and routine execution windows, use a separate internal partition `(conversationKey, selectorKind, selectorId)` in `conversations`, `rows`, `details` and `tool_links`; never add that execution text to the public group `messages` corpus. Cursor/detail tokens bind this partition and the Host rechecks the delivery-to-group or occurrence-to-Bot relationship on every read. Routine execution text is also excluded from the public message corpus.
 
 Indexes cover conversation/ordinal, conversation/message ID, and search order `(timestamp DESC, conversation_key ASC, message_id ASC)`. Use the current code-point lexical ordering, not locale collation. Do not index thinking, tool output, injected attachment bodies or private group execution text in `messages`; reuse `directMessages`/`groupMessages` inclusion rules. Display data may contain those existing private-chat details and must stay in the appropriate private display partition. No derived row grants access.
 
@@ -126,6 +126,8 @@ Separate immutable history windows from transient Run/approval/pending/live acti
 
 Extend `WindowInput` with an optional `deliveryId` only for `group:` keys. The Host resolves that delivery to its existing execution conversation and validates its group binding. Its rows use direct transcript presentation, its cursor includes the delivery identity, and it never supplies a group read cursor. No renderer-supplied internal conversation ID is accepted. This is the existing desktop execution-detail access, not a model API.
 
+`WindowInput` also accepts optional `occurrenceId` for `bot:` keys, mutually exclusive with `deliveryId`. The Host resolves the occurrence through existing routine records and verifies its Bot/channel binding on every window and detail read; no renderer-provided channel ID is accepted. Use a distinct routine display partition, bind its selector in cursors/detail references, and never supply a read receipt or add its private execution text to public search/context reads. `routines.get` returns current control/approval state with omitted history; the details UI loads active or historical execution evidence through these windows with the same row/byte/cache/DOM bounds and stale-response guards. Verify mismatched Bot/occurrence IDs, deleted Bots, private-text exclusion and historical routine navigation.
+
 Migrate all production Desktop readers to history-omitted state plus windows. Legacy snapshot calls without `history` remain available to current fixtures during the transition, but cannot be used by production observation, native attention, search, history navigation or background report delivery. Document any remaining full-history helper as diagnostic/test-only; performance acceptance instruments production call paths to reject it.
 
 Replace the adapter's full-history `#history` cache and Host's retained historical observer snapshots. Live observers use active state and incremental durable-entry projections; their retained state cannot include earlier-topic arrays. Tool-settlement notifications must be driven by newly committed tool outcomes, not by whichever rows a user has loaded. Preserve `toolSettled` idempotence, nested Code Mode settlement and background continuation behavior. No model context or Pi scheduling changes.
@@ -197,21 +199,19 @@ The largest correctness risks are a tool result appearing far after its call, in
 
 ## Open questions
 
-### October 28, 2026: routine execution history has no bounded selector
-
-Integration is blocked pending a contract decision. `packages/server-core/src/routines.ts` (`Routines.detail`) reads a complete snapshot of `selected.channelId`, and `apps/desktop/src/renderer/src/Routines.tsx` renders that snapshot for both active and historical occurrences. These channels are `routine_*` private execution conversations, distinct from the Bot's direct conversation and from group deliveries. The current window contract cannot address them. Leaving this production reader on full snapshots violates contract 3; removing its transcript loses existing execution evidence.
-
-Proposed amendment for owner/design review (not yet an implemented contract): add optional `occurrenceId` to window requests for `bot:` keys, mutually exclusive with `deliveryId`. Host resolves the occurrence through the existing routine records and verifies its Bot/channel binding on every window and detail read. Use a distinct internal display partition `(conversationKey, occurrenceId)` with a selector discriminator; bind it in cursors/detail tokens and omit read receipts. Keep routine execution text out of the public `messages` corpus and model search/read. `routines.get` returns current control/approval state with omitted history; the routine details UI loads its execution evidence through these bounded windows. Apply the same row/byte/cache/DOM limits and stale-response guards, and add tests for mismatched Bot/occurrence IDs, deleted Bots, private-text exclusion, and historical routine navigation. No renderer-provided channel or internal conversation ID is accepted.
-
-The alternative is an explicit design exception that defers routine execution history, with narrower acceptance and a follow-up task; execution must not invent that exception.
-
-Canonical group-storage migration, semantic search and sublinear search acceleration remain excluded. Other implementation and performance acceptance items are still pending.
+None. The owner-approved routine occurrence selector is part of contract 3. Canonical group-storage migration, semantic search and sublinear search acceleration remain excluded.
 
 ## Verification
 
-Draft groundwork: [baseline and regression evidence](../acceptance/history-baseline-2026-10-28.md). The disposable store, worker and Pi projection queue have direct tests but are not connected to production reads. `pnpm run check` passes 582 tests in 87 files; the full background `pnpm run e2e` passes 185 tests in 49 files. Production API/renderer migration, the complete failure matrix, packaged worker lifecycle and full performance acceptance remain pending. The routine execution selector decision above blocks integration; the batch is not complete.
+[Final implementation evidence](../acceptance/history-scaling-2026-10-28.md) records the complete fixture, performance gates, command results, failure/recovery tests and isolated desktop inspection. [Historical groundwork](../acceptance/history-baseline-2026-10-28.md) preserves the pre-integration baseline and its narrower limits.
 
-The original design-only verification follows.
+GitHub was rechecked October 28: B4a/#62 is OPEN with no merge commit; I7/#63 is MERGED (`838b032`). B14c remains a separate candidate in #64. No merge or release was performed.
 
 
-Verified October 28, 2026: `git fetch origin` retains main at `838b032` (I7/#63 merged); GitHub reports B4a/#62 as OPEN with no merge commit. `git diff --check` and 276 relative Markdown links across the 38 changed/new documentation files pass. `pnpm run check --maxWorkers=4` passes boundaries, TypeScript and 575 tests across 85 files. The diff contains only `AGENTS.md` and `docs/`; no e2e, application launch, provider call or B14c performance trial was run for this documentation change.
+## Implementation notes
+
+- `HistoryProjection` reads Pi through the adapter, with a selected-conversation priority and checkpointed batches. `HistoryStore` owns worker-only SQLite data; `HistoryClient` bounds transport/admission and cancellation. Hash-bound opaque detail references keep maximum-length source IDs within the token limit.
+- `ConversationActivity` observes committed tool outcomes independently of display state, including Code Mode children. Production observers emit empty history arrays. Live tool identity/status overlays remain separate from immutable rows, and unchanged Code Mode execution digests do not reread earlier tool bodies. The latest failed user Run supplies retry metadata even when its input is outside the visible window. Approvals render from live state while indexing is unavailable.
+- The desktop pins `@tanstack/react-virtual` **3.14.23**. Its installed types and [official API](https://tanstack.com/virtual/latest/docs/api/virtualizer) provide `measureElement`, stable item keys, end anchoring and a bounded range extractor. Successful tool groups mount children only when opened; groups are split into bounded blocks and their mounted children count toward the range budget.
+- `e2e/history-scaling.e2e.ts` seeds the full synthetic corpus through public Pi APIs. Its Host fixture rejects production full snapshot/observer calls and records content-free batch/source-read counters. Performance artifacts and screenshots stay under ignored `e2e/.run/history-scaling/`.
+- Offline maintenance opens Pi with history disabled. Packaged runtime verification starts the bundled history worker, exports without the sidecar, restores and verifies a new generation before shutdown.

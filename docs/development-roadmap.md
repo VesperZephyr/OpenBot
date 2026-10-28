@@ -1,7 +1,7 @@
 # OpenBot Development Roadmap
 
 
-Active delivery scope (2026-10-28): role memory/skills (B27a/B27b), routines and summaries (B11a–d), file readers (D9/D10), backup/restore (B14d) and official-pagination workflow acceptance (I7) are merged. Remote main is `838b032`. B4a / [#62](https://github.com/VesperZephyr/OpenBot/pull/62) is still open; I7's installed evidence used its candidate. Next is [B14c bounded history/search](tasks/b14c-history-scaling.md), with a ready design spec and no implementation yet, then B13e templates and B14f signed updates. OAuth, optional model review and Phase 3 remain deferred.
+Active delivery scope (2026-10-28): role memory/skills (B27a/B27b), routines and summaries (B11a–d), file readers (D9/D10), backup/restore (B14d) and official-pagination workflow acceptance (I7) are merged. Remote main is `838b032`. B4a / [#62](https://github.com/VesperZephyr/OpenBot/pull/62) is still open; I7's installed evidence used its candidate. [B14c bounded history/search](tasks/b14c-history-scaling.md) is implemented in candidate #64 with [automated acceptance](acceptance/history-scaling-2026-10-28.md), awaiting owner review/merge. B13e templates and B14f signed updates follow. OAuth, optional model review and Phase 3 remain deferred.
 
 Status: current queue above; the dated D4 baseline and packet contracts below are retained for dependency context. Implementation status is recorded in the task index and technical plan.
 Design record: [D4: Post-B26 Delivery Plan](tasks/d4-delivery-plan.md).
@@ -10,7 +10,7 @@ Baseline: `54c2a1c` on `main`, including B26 merged in [PR #27](https://github.c
 
 This plan translates the [Grok Bot research](research/grok-bot.md) into bounded OpenBot work. The [architecture](architecture.md) owns module and authorization contracts; the [technical plan](technical-plan.md) records implementation; the [backlog](backlog.md) indexes capability batches. Existing task specs remain authoritative. Priorities below order the remaining work without expanding the current MVP acceptance scope.
 
-Unlinked future sub-batches remain planning briefs; B14c now has the linked ready spec. Before implementation, each needs one spec in `docs/tasks/` with exact protocol/schema changes, migration and recovery rules, steps, and resolved open questions. Use one task branch and pull request per spec, always targeting `main`. The owner has authorized sequential execution of the queue. Each increment still requires its ready spec before product changes.
+Unlinked future sub-batches remain planning briefs; B14c has an implementation candidate and the linked spec. Before implementation, each needs one spec in `docs/tasks/` with exact protocol/schema changes, migration and recovery rules, steps, and resolved open questions. Use one task branch and pull request per spec, always targeting `main`. The owner has authorized sequential execution of the queue. Each increment still requires its ready spec before product changes.
 
 ## 1. Product outcome and constraints
 
@@ -205,12 +205,12 @@ Use a deterministic CRM-style MCP fixture plus local source files: read current 
 
 ## 6. P2: broader access and maintainability
 
-B14d and B14e are merged; their rows retain the delivery contracts. B14c has a ready design spec, while B13e/B14f still need ready specs. Planned acceptance is not an existing test pass.
+B14d and B14e are merged; their rows retain the delivery contracts. B14c is implemented in candidate #64, while B13e/B14f still need ready specs. Planned acceptance is not an existing test pass.
 
 | Batch / prerequisites | In / out | Acceptance |
 | --- | --- | --- |
 | **B13e templates** — B10 | Versioned local export/import of profile, instructions and skill references. No public marketplace or Team Bots | Import creates a new identity and preserves Core restrictions; exported fixtures contain no memory, history, credentials or grants; missing skills/models require explicit resolution; duplicate import behavior is defined and tested |
-| **[B14c search scaling and long history](tasks/b14c-history-scaling.md), ready design** — B23/B24, B14a, B14d | Persistent/rebuildable indexing and bounded transcript rendering over existing literal search semantics. No new search syntax, group pin/hide or changed read semantics | A fixed 10,000-entry fixture renders a bounded viewport; search locates retained messages with navigation; e2e preserves scroll/read cursor during streaming and compaction; index rebuild cannot expose deleted identities |
+| **[B14c search scaling and long history](tasks/b14c-history-scaling.md), candidate #64** — B23/B24, B14a, B14d | Persistent/rebuildable indexing and bounded transcript rendering over existing literal search semantics. No new search syntax, group pin/hide or changed read semantics | A fixed 10,000-entry fixture renders a bounded viewport; search locates retained messages with navigation; e2e preserves scroll/read cursor during streaming and compaction; index rebuild cannot expose deleted identities |
 | **B14d consistent backup/restore, merged (#61)** — G0, repeat for new persisted features | Versioned consistent snapshots of Host/executor state, artifact contents and metadata, and the skill library. Browser profiles and user-project files have a separately declared scope. No automatic cloud upload | Delete the original fixture data, restore, open artifacts and load skills with identical content/versions; Bot/approval/receipt relationships survive; incompatible/corrupt backups fail before replacing active data; uncertain work never reruns automatically; credentials are not exported as plaintext |
 | **B14e credential identity, merged (#38; signed-release evidence remains open)** — G0 | Replace Host `/usr/bin/security` access with decided main-process or signed-helper ownership. No wider credential inheritance | Packaged real-Mac tests cover read/write/relaunch and signature identity; renderer APIs return only redacted metadata; connector/shell fixtures receive only authorized secrets; migration preserves existing settings without logging values |
 | **B14f signed updates** — B14d/e, certificates available | Verified update, migration failure handling and rollback-compatible data strategy. No release publication by an agent | Local update fixtures reject invalid artifacts; packaged upgrade/relaunch preserves state and credentials; failed migration retains a restorable snapshot; Developer ID/notarization evidence is recorded separately from ad-hoc builds |
@@ -255,7 +255,7 @@ A documentation update does not establish product acceptance. Native permissions
 
 ## 11. Delivery queue and execution packets
 
-Current queue: B14c (ready design) → B13e (planning brief) → B14f (planning brief). Rows 0–11 and B14d below have landed; their contracts remain reference material. B4a remains an independent open review.
+Current queue: B14c (review/merge #64) → B13e (planning brief) → B14f (planning brief). Rows 0–11 and B14d below have landed; their contracts remain reference material. B4a remains an independent open review.
 
 This is a dependency-driven queue for one implementation stream, not a calendar commitment. Each row is one reviewable spec/PR unless explicitly a gate. Prerequisites normally merge to `main` before dependent implementation. For the owner-authorized uninterrupted queue, [I1](tasks/i1-product-foundation.md) assembles reviewed prerequisite heads on an integration branch and validates their combined contracts before B10 starts. Dependent task branches may start from that verified candidate; each PR still targets `main` and records its dependency. Only the owner merges. A design packet may be prepared earlier. Re-estimate after each accepted increment using actual effort and defects; no dates or staffing commitments are assumed.
 
@@ -370,7 +370,7 @@ A real provider may be unavailable or lack a required modality. Record that limi
 
 ## 14. Delivery checkpoint
 
-October 27: main `838b032` contains I7/#63 and B14d/#61. B4a/#62 is open and not incorporated. B14c is prepared as a ready spec, not implemented; see the active queue above. The following checkpoint records the earlier P1 integration evidence.
+October 27: main `838b032` contains I7/#63 and B14d/#61. B4a/#62 is open and not incorporated. B14c is implemented in candidate #64; see the active queue and dated acceptance above. The following checkpoint records the earlier P1 integration evidence.
 
 D4 (#28), I1 (#34), B10 (#35), B15b (#36), B9a (#37) and B14e (#38) are merged into main through `b95ade7`. I1 includes the reviewed B14a/B15a/B14b/B12a/B13d implementation heads. Their earlier evidence remains in the individual task specs.
 

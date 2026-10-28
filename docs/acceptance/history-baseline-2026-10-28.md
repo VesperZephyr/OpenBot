@@ -1,12 +1,12 @@
 # B14c baseline and draft groundwork — October 28, 2026
 
-Status: partial implementation evidence, not B14c acceptance. Production integration is blocked by the routine execution selector decision in [the task spec](../tasks/b14c-history-scaling.md#open-questions).
+Status: historical baseline and initial groundwork, not final B14c acceptance. The owner approved the routine occurrence selector on October 28; production implementation and its final evidence are tracked in [the task spec](../tasks/b14c-history-scaling.md).
 
 ## Baseline measurement
 
 Measured at documentation revision `9b4e953`, whose product code matches main `838b032`, before the new projection was used. Machine: Apple M3 Pro, 38,654,705,664 bytes physical memory; Node v22.22.2. System load was not captured, so this is an exploratory baseline, not the agreed comparative performance gate.
 
-Reproduce with `node --experimental-strip-types packages/agent-runtime/test/history-baseline.mts`. The script creates and removes synthetic temporary state. It seeds 10,000 private messages, 10,000 group posts and 28 additional private conversations with 1,000 messages each. It reads only the first private conversation and group before timing search. It does not yet include the spec's complete tool/compaction/artifact/large-row fixture.
+The initial fixture and diagnostic script were committed in `07cbaf0`, before production integration; the current fixture includes additional tool, compaction, artifact and large-row cases. The script creates and removes synthetic temporary state. It seeds 10,000 private messages, 10,000 group posts and 28 additional private conversations with 1,000 messages each. It reads only the first private conversation and group before timing search. It does not yet include the spec's complete tool/compaction/artifact/large-row fixture.
 
 | Measurement | Result | Limit of this measurement |
 | --- | ---: | --- |
