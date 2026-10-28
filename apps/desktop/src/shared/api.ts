@@ -48,6 +48,7 @@ export const RENDERER_METHODS = [
 	"bots.create",
 	"bots.update",
 	"conversations.snapshot",
+ "conversations.window", "conversations.detail", "conversations.indexStatus", "conversations.indexRetry",
 	"conversations.list",
 	"conversations.search",
 	"conversations.markRead",

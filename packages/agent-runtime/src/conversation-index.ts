@@ -59,7 +59,11 @@ export function groupMessages(posts: readonly GroupPost[]): ConversationPreview[
 		.map((p) => ({ id: p.postId, senderId: p.senderId, text: p.text, at: p.at }));
 }
 export const directProjection = (snapshot: ConversationSnapshot): Projection => project(directMessages(snapshot));
-export const groupProjection = (posts: readonly GroupPost[]): Projection => project(groupMessages(posts));
+export function groupProjection(posts:readonly GroupPost[]):Projection{
+ let messageCount=0,incomingCount=0,latest:ConversationPreview|undefined;
+ for(const post of posts){if(post.kind==="delegation"||post.kind==="handoff"||!post.text.trim())continue;messageCount++;if(post.senderId!=="user")incomingCount++;latest={id:post.postId,senderId:post.senderId,text:post.text,at:post.at};}
+ return {messageCount,incomingCount,...(latest?{latest:{...latest,text:previewText(latest.text)}}:{})};
+}
 function summary(key: ConversationKey, record: RecordState): ConversationSummary {
 	const { messageCount: _count, ...state } = record;
 	return { conversationKey: key, ...state, unreadCount: state.incomingCount - state.readThrough };

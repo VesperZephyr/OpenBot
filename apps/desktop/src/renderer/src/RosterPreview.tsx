@@ -1,3 +1,4 @@
+import { api } from "./store";
 import { PersonalStar } from "./Avatar";
 import type { ConversationKey, ConversationSummary } from "@openbot/protocol";
 import { useComposer } from "./useComposer";
@@ -71,8 +72,8 @@ export function RosterPreview({
 }
 export function MarkReadButton({ conversationKey, cursor }: { conversationKey: ConversationKey; cursor?: number | undefined }) {
 	const unread = useStore((s) => s.summaries[conversationKey]?.unreadCount ?? 0);
-	return unread > 0 && cursor !== undefined ? (
-		<button className="mark-read" disabled={cursor === 0} onClick={() => void markRead(conversationKey, cursor).catch(report)}>
+	return unread > 0 ? (
+		<button className="mark-read" disabled={cursor === 0} onClick={() => void (async()=>{const result=await api["conversations.window"]({conversationKey,position:{kind:"latest"}});if(result.status==="ready"&&result.window.readCursor!==undefined)await markRead(conversationKey,result.window.readCursor);})().catch(report)}>
 			{t("Mark as read")}
 		</button>
 	) : null;

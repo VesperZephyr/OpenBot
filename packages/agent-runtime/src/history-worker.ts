@@ -22,6 +22,9 @@ port.on("message", async (request: HistoryRequest) => {
 			case "checkpoint":
 				value = store.checkpoint(request.partition);
 				break;
+			case "compactionOrdinal":
+				value = store.compactionOrdinal(request.partition, request.rowId, request.head);
+				break;
 			case "link":
 				value = store.link(request.partition, request.rowId);
 				break;
@@ -30,6 +33,9 @@ port.on("message", async (request: HistoryRequest) => {
 				break;
 			case "stageMessage":
 				store.stageMessage(request.partition, request.rowId, request.part, request.text);
+				break;
+			case "resolveDetail":
+				value = store.resolveDetail(request.key, request.token);
 				break;
 			case "detail":
 				value = store.detail(request.key, request.token, request.part);

@@ -328,6 +328,7 @@ export class LocalBackups {
 			const journal: Journal = { version: 1, id, committed: false, original };
 			durableJson(join(this.data, JOURNAL), journal);
 			journalWritten = true;
+   this.#invalidateHistory();
 			for (const [index, root] of ROOTS.entries()) {
 				if (existsSync(join(this.data, root))) renameSync(join(this.data, root), join(old, root));
 				if (existsSync(join(staged, root))) renameSync(join(staged, root), join(this.data, root));
@@ -351,6 +352,7 @@ export class LocalBackups {
 			throw error;
 		}
 	}
+ #invalidateHistory(){for(const suffix of ["","-wal","-shm"])rmSync(join(this.data,"cache",`history-v1.sqlite${suffix}`),{force:true});}
 	recover(): BackupResult {
 		const path = join(this.data, JOURNAL);
 		if (!existsSync(path)) return { action: "recover", files: 0, bytes: 0 };
@@ -363,6 +365,7 @@ export class LocalBackups {
 			j.original.some((r) => !ROOTS.includes(r as (typeof ROOTS)[number]))
 		)
 			fail("Restore journal is invalid; keep the application stopped");
+  this.#invalidateHistory();
 		const transaction = safeDirectory(join(this.data, `.restore-${j.id}`)),
 			old = safeDirectory(join(transaction, "old"));
 		if (!j.committed)

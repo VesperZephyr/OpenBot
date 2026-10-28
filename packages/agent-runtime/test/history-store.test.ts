@@ -145,7 +145,7 @@ it("atomically applies checkpoints, replays stable rows, and updates an earlier 
 	store.apply(batch);
 	store.apply(batch);
 	expect(store.displayRow(partition, "call")?.revision).toBe(1);
-	expect(store.link(partition, "call")).toEqual({ source: 42, ordinal: 5 });
+	expect(store.link(partition, "call")).toMatchObject({ source: 42, ordinal: 5 });
 	store.apply({
 		...batch,
 		checkpoint: "second",
@@ -208,4 +208,32 @@ it("reconstructs large Unicode details, invalidates changed rows, and searches a
 		messages: [],
 	});
 	expect(() => store.detail(key, row.content.kind === "large" ? row.content.detail : "", 0)).toThrow("History changed");
+});
+
+it("rolls back a disk-full batch without advancing its checkpoint", () => {
+	const partition = JSON.stringify([key, null]);
+	store.apply({ partition, key, rows: [], messages: [], checkpoint: "before", ready: true });
+	const pages = (store.db.prepare("PRAGMA page_count").get() as { page_count: number }).page_count;
+	store.db.exec(`PRAGMA max_page_count=${pages + 2}`);
+	expect(() =>
+		store.apply({
+			partition,
+			key,
+			checkpoint: "after",
+			ready: true,
+			messages: [],
+			rows: Array.from({ length: 12 }, (_, i) => ({
+				id: String(i),
+				ordinal: i,
+				source: i,
+				hash: String(i),
+				content: {
+					kind: "direct" as const,
+					item: { kind: "assistant" as const, id: String(i), parts: [{ type: "text" as const, text: "large".repeat(5000) }] },
+				},
+			})),
+		}),
+	).toThrow();
+	expect(store.checkpoint(partition)).toBe("before");
+	expect(store.displayRow(partition, "0")).toBeUndefined();
 });

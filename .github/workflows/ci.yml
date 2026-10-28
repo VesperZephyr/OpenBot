@@ -41,5 +41,6 @@ jobs:
           path: |
             e2e/.run/**/*.png
             e2e/.run/results.json
+            e2e/.run/history-scaling/performance.json
           include-hidden-files: true
           if-no-files-found: ignore

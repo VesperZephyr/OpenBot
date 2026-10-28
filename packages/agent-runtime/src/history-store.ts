@@ -5,6 +5,7 @@ import { setImmediate as yieldTurn } from "node:timers/promises";
 import {
 	APP_MAX_RESULT_BYTES,
 	ProtocolError,
+	historyPartition,
 	type ConversationKey,
 	type ConversationPreview,
 	type ConversationSearchResult,
@@ -30,6 +31,7 @@ export type DisplayWrite = {
 	id: string;
 	ordinal: number;
 	source: number;
+	resultSource?: number;
 	content: TimelineRow["content"];
 	hash: string;
 	toolIds?: string[];
@@ -68,6 +70,7 @@ function decodeCursor(value: string, binding: string, generation: string): Searc
 export class HistoryStore {
 	readonly db: DatabaseSync;
 	readonly generation: string;
+	#metadataBytes = 0;
 	constructor(path: string, source: string) {
 		this.db = new DatabaseSync(path);
 		this.db.exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=1000;");
@@ -77,26 +80,34 @@ export class HistoryStore {
    CREATE TABLE IF NOT EXISTS conversations (key TEXT PRIMARY KEY, ready INTEGER NOT NULL DEFAULT 0, checkpoint TEXT NOT NULL DEFAULT '',message_count INTEGER NOT NULL DEFAULT 0,incoming INTEGER NOT NULL DEFAULT 0);
    CREATE TABLE IF NOT EXISTS messages (sequence INTEGER PRIMARY KEY AUTOINCREMENT, conversation_key TEXT NOT NULL, id TEXT NOT NULL, sender TEXT NOT NULL, at REAL NOT NULL, original TEXT NOT NULL, normalized TEXT NOT NULL, key_order BLOB NOT NULL, id_order BLOB NOT NULL, UNIQUE(conversation_key,id));
    CREATE INDEX IF NOT EXISTS message_order ON messages(at DESC,key_order,id_order);
+ CREATE INDEX IF NOT EXISTS message_seek ON messages((-at),key_order,id_order);
+ CREATE TABLE IF NOT EXISTS stats (key TEXT PRIMARY KEY,value INTEGER NOT NULL);
    CREATE INDEX IF NOT EXISTS message_context ON messages(conversation_key,sequence);
    CREATE TABLE IF NOT EXISTS rows (partition TEXT NOT NULL,id TEXT NOT NULL,ordinal REAL NOT NULL,revision INTEGER NOT NULL,payload TEXT NOT NULL,hash TEXT NOT NULL,PRIMARY KEY(partition,id));
    CREATE UNIQUE INDEX IF NOT EXISTS timeline_order ON rows(partition,ordinal);
-   CREATE TABLE IF NOT EXISTS tool_links (partition TEXT NOT NULL, id TEXT NOT NULL, source INTEGER NOT NULL, ordinal INTEGER NOT NULL,PRIMARY KEY(partition,id));
+   CREATE TABLE IF NOT EXISTS tool_links (partition TEXT NOT NULL, id TEXT NOT NULL, source INTEGER NOT NULL, ordinal INTEGER NOT NULL,resultSource INTEGER,PRIMARY KEY(partition,id));
    CREATE TABLE IF NOT EXISTS staged_details (partition TEXT NOT NULL,id TEXT NOT NULL,part INTEGER NOT NULL,text TEXT NOT NULL,PRIMARY KEY(partition,id,part));
    CREATE TABLE IF NOT EXISTS staged_messages (partition TEXT NOT NULL,id TEXT NOT NULL,original TEXT NOT NULL, normalized TEXT NOT NULL,PRIMARY KEY(partition,id));
+   CREATE TABLE IF NOT EXISTS detail_refs (reference TEXT PRIMARY KEY,partition TEXT NOT NULL,id TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS details (partition TEXT NOT NULL,id TEXT NOT NULL,revision INTEGER NOT NULL,part INTEGER NOT NULL,text TEXT NOT NULL,PRIMARY KEY(partition,id,revision,part));
    CREATE TABLE IF NOT EXISTS display_state (partition TEXT PRIMARY KEY,revision INTEGER NOT NULL DEFAULT 0,incoming INTEGER NOT NULL DEFAULT 0,ready INTEGER NOT NULL DEFAULT 0,checkpoint TEXT NOT NULL DEFAULT '');
    PRAGMA user_version=1;`);
+		if (!(this.db.prepare("PRAGMA table_info(tool_links)").all() as { name: string }[]).some((c) => c.name === "resultSource"))
+			throw Error("Unsupported history cache");
 		const meta = this.db.prepare("SELECT source,generation FROM meta WHERE id=1").get() as
 			| { source: string; generation: string }
 			| undefined;
 		if (meta?.source !== source) {
 			this.db.exec(
-				"BEGIN; DELETE FROM messages; DELETE FROM conversations; DELETE FROM rows; DELETE FROM details; DELETE FROM display_state; DELETE FROM tool_links; DELETE FROM staged_details; DELETE FROM staged_messages; DELETE FROM meta;",
+				"BEGIN; DELETE FROM messages; DELETE FROM conversations; DELETE FROM rows; DELETE FROM details; DELETE FROM display_state; DELETE FROM tool_links; DELETE FROM staged_details; DELETE FROM staged_messages; DELETE FROM detail_refs; DELETE FROM meta;",
 			);
 			this.db.prepare("INSERT INTO meta VALUES(1,?,?)").run(source, randomUUID());
 			this.db.exec("COMMIT");
 		}
 		this.generation = (this.db.prepare("SELECT generation FROM meta WHERE id=1").get() as { generation: string }).generation;
+		this.#metadataBytes = Number(
+			(this.db.prepare("SELECT value FROM stats WHERE key='metadata'").get() as { value: number } | undefined)?.value ?? 0,
+		);
 	}
 	close() {
 		this.db.close();
@@ -114,7 +125,8 @@ export class HistoryStore {
 			const insert = this.db.prepare(
 				"INSERT INTO messages(conversation_key,id,sender,at,original,normalized,key_order,id_order) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(conversation_key,id) DO NOTHING",
 			);
-			for (const m of messages)
+			for (const m of messages) {
+				this.metadata(m);
 				insert.run(
 					m.conversationKey,
 					m.id,
@@ -125,22 +137,45 @@ export class HistoryStore {
 					sortKey(m.conversationKey),
 					sortKey(m.id),
 				);
+			}
 			if (checkpoint) this.db.prepare("UPDATE conversations SET checkpoint=? WHERE key=?").run(checkpoint.value, checkpoint.key);
 			this.db.exec("COMMIT");
 		} catch (error) {
-			this.db.exec("ROLLBACK");
+			try {
+				this.db.exec("ROLLBACK");
+			} catch {
+				/* SQLite may already have rolled back a failed write. */
+			}
 			throw error;
 		}
 	}
 
+	compactionOrdinal(partition: string, id: string, head: number) {
+		const existing = this.displayRow(partition, id);
+		if (existing) return existing.ordinal;
+		const base = head * 1024 - 512,
+			last = this.db
+				.prepare("SELECT MAX(ordinal) AS n FROM rows WHERE partition=? AND ordinal>=? AND ordinal<?")
+				.get(partition, base, head * 1024) as { n: number | null };
+		const ordinal = last.n === null ? base : last.n + 1;
+		if (ordinal >= head * 1024) throw Error("History ordinal exceeds limit");
+		return ordinal;
+	}
 	checkpoint(partition: string): string | undefined {
 		return (this.db.prepare("SELECT checkpoint FROM display_state WHERE partition=?").get(partition) as { checkpoint: string } | undefined)
 			?.checkpoint;
 	}
 	link(partition: string, id: string): { source: number; ordinal: number } | undefined {
-		return this.db.prepare("SELECT source,ordinal FROM tool_links WHERE partition=? AND id=?").get(partition, id) as
+		return this.db.prepare("SELECT source,ordinal,resultSource FROM tool_links WHERE partition=? AND id=?").get(partition, id) as
 			| { source: number; ordinal: number }
 			| undefined;
+	}
+	private metadata(m: HistoryMessage) {
+		const n = bytes({ key: m.conversationKey, id: m.id, sender: m.senderId, at: m.at, length: Number.MAX_SAFE_INTEGER });
+		if (n > this.#metadataBytes) {
+			this.#metadataBytes = n;
+			this.db.prepare("INSERT INTO stats VALUES('metadata',?) ON CONFLICT(key) DO UPDATE SET value=MAX(value,excluded.value)").run(n);
+		}
 	}
 	stageDetail(partition: string, id: string, part: number, text: string) {
 		if (Buffer.byteLength(text) > HISTORY_DETAIL_BYTES) throw Error("Detail exceeds limit");
@@ -172,13 +207,14 @@ export class HistoryStore {
 				if (old?.hash !== row.hash) {
 					const revision = (old?.revision ?? 0) + 1;
 					let content = row.content;
-					if (content.kind === "large")
+					if (content.kind === "large") {
+						const reference = fingerprint([batch.partition, row.id]);
+						this.db.prepare("INSERT OR REPLACE INTO detail_refs VALUES(?,?,?)").run(reference, batch.partition, row.id);
 						content = {
 							...content,
-							detail: Buffer.from(
-								JSON.stringify({ partition: batch.partition, id: row.id, generation: this.generation, revision }),
-							).toString("base64url"),
+							detail: Buffer.from(JSON.stringify({ reference, generation: this.generation, revision })).toString("base64url"),
 						};
+					}
 					if (bytes(content) > HISTORY_DETAIL_BYTES) throw Error("Inline row exceeds limit");
 					this.db
 						.prepare(
@@ -192,10 +228,15 @@ export class HistoryStore {
 					this.db.prepare("UPDATE display_state SET revision=revision+1 WHERE partition=?").run(batch.partition);
 				}
 				for (const id of row.toolIds ?? [])
-					this.db.prepare("INSERT OR REPLACE INTO tool_links VALUES(?,?,?,?)").run(batch.partition, id, row.source, row.ordinal);
+					this.db
+						.prepare(
+							"INSERT INTO tool_links VALUES(?,?,?,?,?) ON CONFLICT(partition,id) DO UPDATE SET source=excluded.source,ordinal=excluded.ordinal,resultSource=COALESCE(excluded.resultSource,tool_links.resultSource)",
+						)
+						.run(batch.partition, id, row.source, row.ordinal, row.resultSource ?? null);
 				this.db.prepare("DELETE FROM staged_details WHERE partition=? AND id=?").run(batch.partition, row.id);
 			}
 			for (const message of batch.messages) {
+				this.metadata(message);
 				const previous = this.db
 					.prepare("SELECT 1 FROM messages WHERE conversation_key=? AND id=?")
 					.get(message.conversationKey, message.id);
@@ -236,25 +277,38 @@ export class HistoryStore {
 				this.db.prepare("UPDATE conversations SET checkpoint=?,ready=? WHERE key=?").run(batch.checkpoint, Number(batch.ready), batch.key);
 			this.db.exec("COMMIT");
 		} catch (error) {
-			this.db.exec("ROLLBACK");
+			try {
+				this.db.exec("ROLLBACK");
+			} catch {
+				/* SQLite may already have rolled back a failed write. */
+			}
 			throw error;
 		}
 	}
-	detail(key: ConversationKey, token: string, part: number): DetailResult {
-		let data: { partition: string; id: string; generation: string; revision: number };
+	resolveDetail(key: ConversationKey, token: string): { partition: string; id: string; revision: number } {
 		try {
-			if (token.length > 2048 || !Number.isSafeInteger(part) || part < 0) throw Error();
-			data = JSON.parse(Buffer.from(token, "base64url").toString("utf8"));
+			if (token.length > 2048) throw Error();
+			const data = JSON.parse(Buffer.from(token, "base64url").toString("utf8"));
 			if (
-				Object.keys(data).sort().join() !== "generation,id,partition,revision" ||
-				JSON.parse(data.partition)[0] !== key ||
-				data.generation !== this.generation ||
+				Object.keys(data).sort().join() !== "generation,reference,revision" ||
+				typeof data.reference !== "string" ||
 				!Number.isSafeInteger(data.revision)
 			)
 				throw Error();
-		} catch {
+			if (data.generation !== this.generation) throw new ProtocolError("request_conflict", "History changed. Reload this location.");
+			const ref = this.db.prepare("SELECT partition,id FROM detail_refs WHERE reference=?").get(data.reference) as
+				| { partition: string; id: string }
+				| undefined;
+			if (!ref || JSON.parse(ref.partition)[0] !== key) throw Error();
+			return { ...ref, revision: data.revision };
+		} catch (error) {
+			if (error instanceof ProtocolError) throw error;
 			throw new ProtocolError("invalid_request", "Invalid detail reference");
 		}
+	}
+	detail(key: ConversationKey, token: string, part: number): DetailResult {
+		if (!Number.isSafeInteger(part) || part < 0) throw new ProtocolError("invalid_request", "Invalid detail part");
+		const data = this.resolveDetail(key, token);
 		const row = this.displayRow(data.partition, data.id);
 		if (!row) throw new ProtocolError("not_found", "Message is unavailable");
 		if (row.revision !== data.revision) throw new ProtocolError("request_conflict", "History changed. Reload this location.");
@@ -267,7 +321,7 @@ export class HistoryStore {
 			.get(data.partition, data.id, data.revision, part + 1);
 		return { text: chunk.text, revision: data.revision, ...(next ? { nextPart: part + 1 } : {}) };
 	}
-	context(key: ConversationKey, id: string, before: number, after: number): ConversationPreview[] {
+	context(key: ConversationKey, id: string, before: number, after: number) {
 		if ((this.db.prepare("SELECT ready FROM conversations WHERE key=?").get(key) as { ready: number } | undefined)?.ready !== 1)
 			throw Error("History is still indexing");
 		const anchor = this.db.prepare("SELECT sequence FROM messages WHERE conversation_key=? AND id=?").get(key, id) as
@@ -280,7 +334,13 @@ export class HistoryStore {
 					`SELECT id,sender AS senderId,at,substr(original,1,8193) AS text FROM messages WHERE conversation_key=? AND sequence ${op} ? ORDER BY sequence ${op === "<" ? "DESC" : "ASC"} LIMIT ?`,
 				)
 				.all(key, anchor.sequence, n) as ConversationPreview[];
-		return [...read("<", before).reverse(), ...read(">=", after + 1)];
+		const older = read("<", before + 1),
+			newer = read(">=", after + 2);
+		return {
+			messages: [...older.slice(0, before).reverse(), ...newer.slice(0, after + 1)],
+			hasBefore: older.length > before,
+			hasAfter: newer.length > after + 1,
+		};
 	}
 	displayRow(partition: string, id: string): TimelineRow | undefined {
 		const row = this.db.prepare("SELECT id,ordinal,revision,payload FROM rows WHERE partition=? AND id=?").get(partition, id) as
@@ -289,7 +349,7 @@ export class HistoryStore {
 		return row ? { id: row.id, ordinal: row.ordinal, revision: row.revision, content: JSON.parse(row.payload) } : undefined;
 	}
 	window(input: WindowInput): WindowResult {
-		const partition = JSON.stringify([input.conversationKey, input.deliveryId ?? null]);
+		const partition = historyPartition(input);
 		const state = this.db.prepare("SELECT revision,incoming,ready FROM display_state WHERE partition=?").get(partition) as
 			| { revision: number; incoming: number; ready: number }
 			| undefined;
@@ -310,7 +370,7 @@ export class HistoryStore {
 				const c = JSON.parse(Buffer.from(input.position.cursor, "base64url").toString("utf8"));
 				if (
 					Object.keys(c).sort().join() !== "boundary,direction,generation,partition,revision" ||
-					c.partition !== partition ||
+					c.partition !== fingerprint(partition) ||
 					c.generation !== this.generation ||
 					c.revision !== state.revision ||
 					!["before", "after"].includes(c.direction) ||
@@ -352,7 +412,13 @@ export class HistoryStore {
 			);
 		const token = (dir: string, edge: number) =>
 			Buffer.from(
-				JSON.stringify({ partition, generation: this.generation, revision: state.revision, direction: dir, boundary: edge }),
+				JSON.stringify({
+					partition: fingerprint(partition),
+					generation: this.generation,
+					revision: state.revision,
+					direction: dir,
+					boundary: edge,
+				}),
 			).toString("base64url");
 		const result = (): WindowResult => {
 			const first = rows[0],
@@ -371,7 +437,7 @@ export class HistoryStore {
 					atLatest: !newer,
 					...(older ? { before: token("before", first!.ordinal) } : {}),
 					...(newer ? { after: token("after", last!.ordinal) } : {}),
-					...(!newer && !input.deliveryId ? { readCursor: state.incoming } : {}),
+					...(!newer && !input.deliveryId && !input.occurrenceId ? { readCursor: state.incoming } : {}),
 				},
 			};
 		};
@@ -390,6 +456,7 @@ export class HistoryStore {
 		signal: AbortSignal,
 	): Promise<ConversationSearchResult> {
 		const binding = fingerprint([query, scope, eligible.slice().sort(lexical)]);
+		const batchSize = Math.max(1, Math.min(256, Math.floor((HISTORY_BATCH_BYTES - 1024) / Math.max(1, this.#metadataBytes + 32))));
 		const saved = cursor ? decodeCursor(cursor, binding, this.generation) : undefined;
 		for (const key of eligible)
 			if ((this.db.prepare("SELECT ready FROM conversations WHERE key=?").get(key) as { ready: number } | undefined)?.ready !== 1)
@@ -407,14 +474,14 @@ export class HistoryStore {
 				after
 					? this.db
 							.prepare(
-								"SELECT conversation_key AS key,id,sender,at,length(normalized) AS length FROM messages WHERE sequence<=? AND (at<? OR (at=? AND (key_order>? OR (key_order=? AND id_order>?)))) ORDER BY at DESC,key_order,id_order LIMIT 256",
+								"SELECT conversation_key AS key,id,sender,at,length(normalized) AS length FROM messages WHERE sequence<=? AND ((-at),key_order,id_order)>(?,?,?) ORDER BY (-at),key_order,id_order LIMIT ?",
 							)
-							.all(high, after.at, after.at, sortKey(after.key), sortKey(after.key), sortKey(after.id))
+							.all(high, -after.at, sortKey(after.key), sortKey(after.id), batchSize)
 					: this.db
 							.prepare(
-								"SELECT conversation_key AS key,id,sender,at,length(normalized) AS length FROM messages WHERE sequence<=? ORDER BY at DESC,key_order,id_order LIMIT 256",
+								"SELECT conversation_key AS key,id,sender,at,length(normalized) AS length FROM messages WHERE sequence<=? ORDER BY (-at),key_order,id_order LIMIT ?",
 							)
-							.all(high)
+							.all(high, batchSize)
 			) as { key: ConversationKey; id: string; sender: string; at: number; length: number }[];
 			if (!rows.length) break;
 			for (const row of rows) {

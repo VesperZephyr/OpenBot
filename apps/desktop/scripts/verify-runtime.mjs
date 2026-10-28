@@ -104,18 +104,24 @@ export async function verifyRuntime(stage) {
 		await start();
 		const bot = await call("bots.create", { requestId: "bundle-backup-bot", name: "Bundle backup" });
 		await call("bots.memory.update", { botId: bot.botId, expectedRevision: 0, content: "Bundled recovery canary" });
+  for(let i=0;i<200&&(await call("conversations.indexStatus")).state!=="ready";i++)await new Promise(resolve=>setTimeout(resolve,20));
+  const initial=await call("conversations.window",{conversationKey:`bot:${bot.botId}`,position:{kind:"latest"}});
+  assert.equal(initial.status,"ready");assert.deepEqual(initial.window.rows,[]);
 		await call("lifecycle.pause");
 		await stop();
 		const backup = maintenance("export", join(root, "backups"));
 		const manifest = JSON.parse(await readFile(join(backup.path, "manifest.json"), "utf8"));
 		assert.equal(manifest.producer.application, env.OPENBOT_APP_VERSION);
+ assert(!manifest.files.some(file=>file.path.startsWith("cache/")));
 		for (const name of ["openbot.sqlite", "openbot.sqlite-wal", "openbot.sqlite-shm", "executor", "attachments", "skills"])
 			await rm(join(root, "data", name), { recursive: true, force: true });
 		maintenance("restore", backup.path);
 		await start();
 		assert.equal((await call("bots.memory.get", { botId: bot.botId })).content, "Bundled recovery canary");
 		assert.equal((await call("lifecycle.get")).userPaused, true);
-		console.log("Bundled Host, executor and offline backup helpers verified: export, delete originals, restore, paused restart");
+  for(let i=0;i<200&&(await call("conversations.indexStatus")).state!=="ready";i++)await new Promise(resolve=>setTimeout(resolve,20));
+  const restored=await call("conversations.window",{conversationKey:`bot:${bot.botId}`,position:{kind:"latest"}});assert.equal(restored.status,"ready");assert.notEqual(restored.window.generation,initial.window.generation);
+		console.log("Bundled Host, executor and offline backup helpers verified: export, delete originals, restore, paused restart, disposable history worker generation");
 	} finally {
 		await stop();
 		await rm(root, { recursive: true, force: true });

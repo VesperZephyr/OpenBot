@@ -1,3 +1,6 @@
+import { ConversationActivity, type CommittedToolOutcome } from "./conversation-activity.ts";
+import { HistoryProjection } from "./history-projection.ts";
+import { dirname, join } from "node:path";
 import { partsOf, textParts, toTranscript, UNKNOWN_OUTCOME_TEXT, type MutableToolItem } from "./transcript.ts";
 export { UNKNOWN_OUTCOME_TEXT } from "./transcript.ts";
 import { defaultAvatar, type BotAvatar, type AvatarImage } from "@openbot/protocol";
@@ -72,8 +75,8 @@ import { checkMemorySize, type MemoryEdit, type MemoryCallContext, MemoryDoc } f
 import { MemoryBook } from "./memory-book.ts";
 import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
 import { botSections } from "./prompt.ts";
-import { ConversationSearchIndex, normalizeQuery } from "./conversation-search.ts";
-import { conversationIndexStore, projectConversation, directMessages } from "./conversation-index.ts";
+import { normalizeQuery } from "./conversation-search.ts";
+import { conversationIndexStore, projectConversation } from "./conversation-index.ts";
 import { groupStore, detachGroupBot } from "./groups.ts";
 import { ManagementDoc, managementStore } from "./management.ts";
 import type { PriceStamp } from "./usage.ts";
@@ -156,6 +159,7 @@ export type BotRuntimeOptions = {
 	readonly executionGate?: ModelExecutionGate;
 	/** SQLite file owned exclusively by this Host process. */
 	readonly databasePath: string;
+ readonly history?: false | {path:string;workerUrl?:string};
 	/**
 	 * Model collection. Defaults to every pi-ai built-in provider with `credentials` as their store. Tests pass a
 	 * collection with a faux provider.
@@ -222,10 +226,12 @@ export class BotRuntime {
 	#pricing: Readonly<Record<string, boolean>> = {};
 	#usageEpoch = randomUUID();
 	#usageConfigDigest: string | undefined;
-	readonly #search = new ConversationSearchIndex();
+
+ #historyProjection:HistoryProjection|undefined;
+ readonly #historyListeners=new Set<()=>void>();
+ readonly #activities=new Map<number,ConversationActivity>();
 	#coreBootstrap: Promise<BotProfile> | undefined;
-	/** Stored entries before each conversation's current head marker; entries are immutable, so one read per head. */
-	readonly #history = new Map<number, { readonly head: number; readonly entries: readonly EntryRecord[] }>();
+
 
 	private constructor(
 		harness: Harness,
@@ -357,7 +363,9 @@ export class BotRuntime {
 					extensions: [bot, connectors, ...(channel.channelId.startsWith("routine_") ? [] : [group, ...(bots[channel.botId]?.kind === "core" ? [app] : [])])],
 				});
 		}, context);
-		return new BotRuntime(harness, models, context, { bot, core, group, app, connectors }, registry, options.tools?.invoke);
+		const runtime=new BotRuntime(harness, models, context, { bot, core, group, app, connectors }, registry, options.tools?.invoke);
+  if(options.history!==false)runtime.#historyProjection=new HistoryProjection(harness,context,{path:options.history?.path??join(dirname(options.databasePath),"cache","history-v1.sqlite"),databasePath:options.databasePath,...(options.history?.workerUrl?{workerUrl:options.history.workerUrl}:{}),channels:()=>runtime.channels(),changed:()=>{for(const listener of runtime.#historyListeners)listener();}});
+  return runtime;
 	}
 
 	/** Start the scheduler so work interrupted by the last shutdown continues. Call after recovery checks pass. */
@@ -366,6 +374,8 @@ export class BotRuntime {
 	}
 
 	async close(): Promise<void> {
+  await this.#historyProjection?.close();
+  await Promise.all([...this.#activities.values()].map(activity=>activity.close()));
 		await this.#harness.close(this.#context);
 	}
 
@@ -385,21 +395,17 @@ export class BotRuntime {
 		includeHidden = false,
 		cursor?: string,
 		scope = "legacy",
+ signal?:AbortSignal,
 	) {
 		if (query.length > 200) throw new ProtocolError("invalid_request", "Search is limited to 200 characters");
 		const normalized = normalizeQuery(query);
-		return this.#search.search(normalized, eligible, JSON.stringify([normalized, unreadOnly, includeHidden, scope]), cursor);
+		return this.#historyProjection!.search(normalized, [...eligible] as import("@openbot/protocol").ConversationKey[], JSON.stringify([normalized, unreadOnly, includeHidden, scope]), cursor, signal);
 	}
 
-	async committedMessages(key: import("@openbot/protocol").ConversationKey) {
-		const bot = key.startsWith("bot:") ? await this.getBot(key.slice(4)) : undefined;
-		const exists = key.startsWith("bot:") ? !!bot && bot.status !== "deleted" : !!(await this.groups().get(key.slice(6)));
-		if (!exists) throw new ProtocolError("not_found", "Conversation is unavailable");
-		return this.#search.read(key);
-	}
+ contextMessages(key:import("@openbot/protocol").ConversationKey,id:string,before:number,after:number,signal?:AbortSignal){return this.#historyProjection!.contextMessages(key,id,before,after,signal);}
 
 	groups() {
-		return groupStore(this.#harness, this.#context, async (tx) => Object.values((await tx.doc(BotsDoc)).bots).map(toProfile), this.#search);
+		return groupStore(this.#harness, this.#context, async (tx) => Object.values((await tx.doc(BotsDoc)).bots).map(toProfile));
 	}
 
 	management() {
@@ -962,14 +968,103 @@ export class BotRuntime {
 	}
 
 	/** The Bot's conversation without pending approvals; the Host adds those (`approvals` is empty here). */
-	async snapshot(botId: BotId, channelId = "direct"): Promise<ConversationSnapshot> {
+	async snapshot(botId: BotId, channelId = "direct", history?:"omit"): Promise<ConversationSnapshot> {
 		const record = await this.#contextRecord(botId, channelId);
 		const view = await (await this.#conversation(record)).viewState(this.#context);
 		try {
-			return await this.#project(record, view.value, channelId);
+			return history==="omit" ? this.#liveSnapshot(record,view.value,channelId) : await this.#project(record, view.value, channelId);
 		} finally {
 			view.dispose();
 		}
+	}
+
+	/** History notifications carry no transcript bodies. */
+	onHistoryChanged(listener: () => void) {
+		this.#historyListeners.add(listener);
+		return () => this.#historyListeners.delete(listener);
+	}
+	historyWindow(input: import("@openbot/protocol").WindowInput) {
+		return this.#historyProjection!.window(input);
+	}
+	historyDetail(input: import("@openbot/protocol").DetailInput) {
+		return this.#historyProjection!.detail(input);
+	}
+	historyStatus() {
+		return this.#historyProjection!.status();
+	}
+	async retryHistory() {
+		await this.#historyProjection!.retry();
+		return null;
+	}
+	#activity(record: BotRecord, channelId: string) {
+		let activity = this.#activities.get(record.conversationId);
+		if (!activity) {
+			activity = new ConversationActivity(this.#harness, this.#context, record.botId, record.conversationId, channelId === "direct");
+			this.#activities.set(record.conversationId, activity);
+		}
+		return activity;
+	}
+	async executionEvidence(botId: string, channelId: string) {
+		return this.#activity(await this.#contextRecord(botId, channelId), channelId).evidence();
+	}
+	#liveSnapshot(record: BotRecord, view: ConversationView, channelId: string): ConversationSnapshot {
+		const liveDoc = view.docs[LiveDoc.definition.kind] as LiveState | undefined;
+		const live = projectLive(liveDoc),
+			pending = pendingInputs(view.docs[InboxDoc.definition.kind] as InboxState | undefined);
+		const activity = this.#activity(record, channelId);
+		return {
+			botId: record.botId,
+			conversationId: String(record.conversationId),
+			...(channelId !== "direct" ? { channelId } : {}),
+			items: [],
+			approvals: [],
+			attention: activity.attention,
+			...(live
+				? {
+						live: {
+							...live,
+							toolRunning: !!liveDoc?.tools?.some((tool) => tool.status === "running"),
+							tools: (liveDoc?.tools ?? [])
+								.filter((tool) => tool.status === "running")
+								.map((tool) => ({ callId: tool.callId, ...(tool.output ? { output: tool.output.slice(0, 8192) } : {}) })),
+						},
+					}
+				: {}),
+			...(pending.length ? { pending } : {}),
+		};
+	}
+	/** Production observation: coalesced live state and independent committed tool outcomes. */
+	async observeLive(
+		botId: string,
+		listener: (snapshot: ConversationSnapshot) => void,
+		settled: (outcome: CommittedToolOutcome) => void,
+		channelId = "direct",
+	) {
+		const record = await this.#contextRecord(botId, channelId),
+			conversation = await this.#conversation(record),
+			view = await conversation.viewState(this.#context);
+		const activity = this.#activity(record, channelId);
+		let stopped = false,
+			scheduled = false;
+		const publish = () => {
+			if (scheduled || stopped) return;
+			scheduled = true;
+			queueMicrotask(() => {
+				scheduled = false;
+				if (!stopped) listener(this.#liveSnapshot(record, view.value, channelId));
+			});
+		};
+		activity.outcomes.add(settled);
+		activity.changes.add(publish);
+		const stop = view.subscribe(publish);
+		publish();
+		return () => {
+			stopped = true;
+			stop();
+			view.dispose();
+			activity.outcomes.delete(settled);
+			activity.changes.delete(publish);
+		};
 	}
 
 	/**
@@ -1134,7 +1229,7 @@ export class BotRuntime {
 		return (await this.#harness.snapshot(AppExecutionsDoc, this.#context))?.executions[id];
 	}
 
-	/** Pi's view holds only the active context; prepend the stored entries before its head so history stays visible. */
+	/** Diagnostic/test-only full projection. Production uses live state and bounded windows. Pi's view holds only the active context; prepend the stored entries before its head so history stays visible. */
 	async #project(record: BotRecord, view: ConversationView, channelId = "direct"): Promise<ConversationSnapshot> {
 		const marker = view.entries[0]?.head === undefined ? undefined : view.entries[0];
 		const earlier = marker === undefined ? [] : await this.#earlierEntries(record, marker);
@@ -1151,7 +1246,6 @@ export class BotRuntime {
 				return item.kind === "tool" && item.tool === "codemode" && execution ? { ...item, execution } : item;
 			}),
 		};
-		if (channelId === "direct") this.#search.project(`bot:${record.botId}`, directMessages(snapshot));
 		return {
 			...snapshot,
 			conversationId: String(record.conversationId),
@@ -1160,8 +1254,7 @@ export class BotRuntime {
 	}
 
 	async #earlierEntries(record: BotRecord, marker: EntryRecord): Promise<readonly EntryRecord[]> {
-		const cached = this.#history.get(record.conversationId);
-		if (cached?.head === marker.id) return cached.entries;
+
 		const conversation = await this.#conversation(record);
 		const entries: EntryRecord[] = [];
 		let cursor: Parameters<typeof conversation.entries>[2];
@@ -1170,7 +1263,6 @@ export class BotRuntime {
 			entries.push(...page.items);
 			cursor = page.next;
 		} while (cursor !== undefined);
-		this.#history.set(record.conversationId, { head: marker.id, entries });
 		return entries;
 	}
 }

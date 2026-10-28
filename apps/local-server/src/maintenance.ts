@@ -63,7 +63,7 @@ try {
 			});
 		},
 		pauseRestored: async (databasePath) => {
-			const runtime = await BotRuntime.open({ databasePath });
+			const runtime = await BotRuntime.open({ databasePath, history:false });
 			try {
 				if (!(await runtime.listBots()).some((bot) => bot.kind === "core")) throw Error("Backup is missing the Core Bot");
 				const old = await runtime.lifecycle().read();

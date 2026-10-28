@@ -1,3 +1,4 @@
+import { HistoryTimeline } from "./HistoryTimeline";
 import { BackupSettings, RestoreNotice } from "./BackupSettings";
 import { WorkspaceLayout } from "./WorkspaceLayout";
 import { openFiles } from "./reader-store";
@@ -18,7 +19,7 @@ import {LifecycleControls,InterruptedRun} from "./Lifecycle";
 import { appManagementCapability, legacyManagementName, type AppExecution } from "@openbot/protocol";
 import { ConversationSearch } from "./ConversationSearch";
 import { ChatComposer } from "./ChatComposer";
-import { ConversationShell, DetailsPanel, Timeline, useDialogFocus } from "./ConversationUI";
+import { ConversationShell, DetailsPanel, useDialogFocus } from "./ConversationUI";
 import { MarkReadButton, RosterPreview, recentTime } from "./RosterPreview";
 import { ManagementHistory } from "./BotManagement";
 import { t } from "./i18n";
@@ -136,11 +137,11 @@ export function App() {
 									{view.kind === "settings" && <Settings />}
 									{view.kind === "skills" && <SkillLibrary />}
 									{view.kind === "connectors" && <ConnectorsPanel />}
-									{view.kind === "routines" && <RoutinesPanel renderTranscript={snapshot => <Transcript snapshot={snapshot} />} />}
+									{view.kind === "routines" && <RoutinesPanel renderTranscript={(snapshot,occurrenceId) => <HistoryTranscript snapshot={snapshot} occurrenceId={occurrenceId} />} />}
 								</div>
 							</div>
 						)}
-						{view.kind === "group" && <GroupView key={view.groupId} groupId={view.groupId} />}
+						{view.kind === "group" && <GroupView key={view.groupId} groupId={view.groupId} renderExecution={(botId,deliveryId)=><HistoryTranscript snapshot={{botId,channelId:view.groupId,items:[],approvals:[]}} conversationKey={`group:${view.groupId}`} deliveryId={deliveryId}/>}/>}
 						{view.kind === "home" && <Home onNew={() => setCreating(true)} />}
 					</>
 				)}
@@ -389,13 +390,14 @@ function Conversation({ botId }: { readonly botId: string }) {
 	const bot = useStore((state) => state.bots.find((candidate) => candidate.botId === botId));
 	const snapshot = useStore((state) => state.conversations[botId]);
 	const [editing, setEditing] = useState(false);
+ const count=useStore(state=>state.summaries[`bot:${botId}`]?.latest!==undefined);
 
 	if (bot === undefined) return null;
 	const running = snapshot?.live !== undefined || snapshot?.run !== undefined || (snapshot?.pending?.length ?? 0) > 0;
 
 	return (
 		<ConversationShell
-			className={`conversation ${snapshot === undefined || (snapshot.items.length === 0 && !running) ? "is-empty" : ""}`}
+			className={`conversation ${snapshot === undefined || (!count && !running) ? "is-empty" : ""}`}
 			label={t("Conversation with {name}", { name: bot.name })}
 			details={
 				editing && (
@@ -418,17 +420,7 @@ function Conversation({ botId }: { readonly botId: string }) {
 				</button>
 				<BotMenu bot={bot} onEdit={() => setEditing(true)} />
 			</header>
-			<Timeline
-				readCursor={snapshot?.readCursor}
-				conversationKey={`bot:${botId}`}
-				activity={`${snapshot?.items.length}:${JSON.stringify(snapshot?.live ?? null)}`}
-			>
-				{snapshot === undefined ? <ActivityIndicator label="Loading conversation" /> : (snapshot.items.length === 0 && !running) ? (
-					<EmptyConversation bot={bot} />
-				) : (
-					<Transcript snapshot={snapshot} />
-				)}
-			</Timeline>
+   {snapshot?<HistoryTranscript snapshot={snapshot} empty={<EmptyConversation bot={bot}/>} />:<ActivityIndicator label="Loading conversation"/>}
 			<ChatComposer
 				conversationKey={`bot:${botId}`}
 				label={t("Message {name}", { name: bot.name })}
@@ -467,13 +459,55 @@ function EmptyConversation({ bot }: { readonly bot: BotSummary }) {
 	);
 }
 
-function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
+function HistoryTranscript({
+	snapshot,
+	occurrenceId,
+	deliveryId,
+	conversationKey,
+	empty,
+}: {
+	snapshot: ConversationSnapshot;
+	occurrenceId?: string;
+	deliveryId?: string;
+	conversationKey?: import("@openbot/protocol").ConversationKey;
+	empty?: React.ReactNode;
+}) {
+	return (
+		<HistoryTimeline
+			conversationKey={conversationKey ?? `bot:${snapshot.botId}`}
+			{...(occurrenceId ? { occurrenceId } : {})}
+			{...(deliveryId ? { deliveryId } : {})}
+			activity={JSON.stringify(snapshot)}
+			empty={empty}
+			renderRow={(row, context) => {
+				if (row.content.kind !== "direct") return null;
+				const items = context.rows.flatMap((r) => (r.content.kind === "direct" ? [r.content.item] : [])),
+					latest = items.findLast((i) => i.kind === "assistant");
+				const retry =
+					context.atLatest && !snapshot.channelId && snapshot.retry && latest?.id === row.id
+						? { id: row.id, ...snapshot.retry }
+						: undefined;
+				const item = row.content.item;
+				const active = item.kind === "tool" && item.status === "pending" ? snapshot.live?.tools?.find(tool => tool.callId === item.id) : undefined;
+				const displayed = active && item.kind === "tool" ? { ...item, status: "running" as const, ...(active.output ? { output: active.output } : {}) } : item;
+				return (
+					<Transcript snapshot={{ ...snapshot, items: [displayed] }} historyOnly {...(retry ? { retryOverride: retry } : {})} />
+				);
+			}}
+		>
+			<Transcript snapshot={{ ...snapshot, items: [] }} />
+		</HistoryTimeline>
+	);
+}
+
+function Transcript({ snapshot,historyOnly=false,retryOverride }: { readonly snapshot: ConversationSnapshot;historyOnly?:boolean;retryOverride?:ReturnType<typeof retryTarget> }) {
 	const approvals = new Map(snapshot.approvals.map((approval) => [approval.callId, approval]));
-	const retry = snapshot.channelId?.startsWith("routine_") ? undefined : retryTarget(snapshot.items, snapshot.live !== undefined);
+	const retry = retryOverride??(snapshot.channelId ? undefined : retryTarget(snapshot.items, snapshot.live !== undefined));
 	const item = (entry: TranscriptItem) =>
 		entry.kind === "tool" ? (
 			<ToolCard
 				key={entry.id}
+    showApprovals={!historyOnly}
 				item={entry}
 				background={snapshot.backgroundTasks?.find(record=>record.taskId===entry.taskId)}
 				approval={approvals.get(entry.id)}
@@ -504,9 +538,10 @@ function Transcript({ snapshot }: { readonly snapshot: ConversationSnapshot }) {
 					</StepsRow>
 				),
 			)}
-			<PendingMessages snapshot={snapshot} />
- {!snapshot.channelId?.startsWith("routine_")&&snapshot.run?.state==="needs_attention"&&<InterruptedRun key={snapshot.run.runId} run={snapshot.run}/>}
-            {(snapshot.live || snapshot.run?.state === "running" || snapshot.run?.state === "queued") && (
+			{!historyOnly&&<PendingMessages snapshot={snapshot} />}
+ {!historyOnly&&snapshot.approvals.map(approval=><li key={approval.approvalId} className="approval-slot"><ApprovalCard approval={approval}/></li>)}
+ {!historyOnly&&!snapshot.channelId?.startsWith("routine_")&&snapshot.run?.state==="needs_attention"&&<InterruptedRun key={snapshot.run.runId} run={snapshot.run}/>}
+            {!historyOnly&&(snapshot.live || snapshot.run?.state === "running" || snapshot.run?.state === "queued") && (
                 <li className="message message-assistant is-live"><LiveReply snapshot={snapshot} /></li>
             )}
 		</ol>
@@ -594,7 +629,9 @@ function ToolCard({
 	background,
 	approval,
 	childApprovals = [],
+ showApprovals=true,
 }: {
+ readonly showApprovals?:boolean;
 	readonly item: Extract<TranscriptItem, { kind: "tool" }>;
 	readonly background?:import("@openbot/protocol").BackgroundRecord|undefined;
 	readonly approval: PendingApproval | undefined;
@@ -644,9 +681,10 @@ function ToolCard({
 					: item.status === "cancelled"
 						? t("{action} · stopped", { action: t(running) })
 						: t(done);
-	const open = waiting || item.status === "failed" || item.status === "interrupted";
+	const selected=useStore(state=>state.searchTarget?.messageId===item.id);
+ const open = selected || waiting || item.status === "failed" || item.status === "interrupted";
 	return (
-		<li data-message-id={item.id} className={`tool-card tool-${waiting ? "waiting" : item.status}`}>
+		<li data-message-id={item.id} className={`tool-card tool-${waiting ? "waiting" : item.status} ${selected?"search-target":""}`}>
 			<details open={open}>
 				<summary>
 					<span className="tool-status" aria-hidden />
@@ -672,8 +710,8 @@ function ToolCard({
 			</details>
 			{background&&<BackgroundTask record={background}/>}
 			{item.artifact && item.status === "succeeded" && <ArtifactCard artifact={item.artifact} />}
-			{approval !== undefined && <ApprovalCard approval={approval} />}
-			{childApprovals.map((child) => (
+			{showApprovals&&approval !== undefined && <ApprovalCard approval={approval} />}
+			{showApprovals&&childApprovals.map((child) => (
 				<ApprovalCard key={child.approvalId} approval={child} />
 			))}
 		</li>

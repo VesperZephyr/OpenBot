@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { tmpdir, cpus, totalmem } from "node:os";
 import { seedHistory } from "./history-fixture.ts";
 import { BotRuntime } from "../src/index.ts";
+import { ConversationSearchIndex } from "../src/conversation-search.ts";
+import { directMessages, groupMessages } from "../src/conversation-index.ts";
 import { scriptedModels } from "../src/testing.ts";
 const root = await mkdtemp(join(tmpdir(), "openbot-history-baseline-"));
 let runtime: BotRuntime | undefined;
@@ -11,17 +13,19 @@ try {
 	const started = performance.now();
 	await seedHistory(databasePath);
 	const seeded = performance.now();
-	runtime = await BotRuntime.open({ databasePath, models: scriptedModels().models });
+	runtime = await BotRuntime.open({ databasePath, models: scriptedModels().models, history: false });
 	const opened = performance.now();
 	const snapshot = await runtime.snapshot("history_0");
 	const read = performance.now();
 	const group = await runtime.groups().history("group_history");
 	const groupRead = performance.now();
-	await runtime.groups().backfillIndex();
+	const oracle = new ConversationSearchIndex();
+	oracle.project("bot:history_0", directMessages(snapshot));
+	oracle.project("group:group_history", groupMessages(group.posts));
 	const searches = [];
 	for (let i = 0; i < 35; i++) {
 		const at = performance.now();
-		runtime.searchConversations("absent literal", new Set(["bot:history_0", "group:group_history"]));
+		oracle.search("absent literal", new Set(["bot:history_0", "group:group_history"]), "baseline");
 		if (i >= 5) searches.push(performance.now() - at);
 	}
 	searches.sort((a, b) => a - b);

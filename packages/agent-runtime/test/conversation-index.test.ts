@@ -107,7 +107,7 @@ it("publishes group summaries atomically, deduplicates replies and keeps channel
 	await runtime.close();
 	runtime = await open();
 	await runtime.groups().backfillIndex();
-	expect(runtime.searchConversations("Group answer", new Set(["group:group_g"])).items).toMatchObject([{messageId: `reply:${delivery.deliveryId}`, conversationKey: "group:group_g"}]);
+	expect((await runtime.searchConversations("Group answer", new Set(["group:group_g"]))).items).toMatchObject([{messageId: `reply:${delivery.deliveryId}`, conversationKey: "group:group_g"}]);
 	expect(await row("group:group_g")).toMatchObject({ incomingCount: 1, unreadCount: 1 });
 	await runtime.groups().change({ requestId: "dissolve", action: "dissolve", groupId: "group_g", expectedRevision: 1 }, 6);
 	await runtime.conversationIndex().markRead("group:group_g", 1);

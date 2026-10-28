@@ -96,6 +96,7 @@ const runtime = await BotRuntime.open({
 	skills:()=>service.skills.list(),
  executionGate: { assertAllowed: () => service.lifecycle.assertAllowed(), signal: () => service.lifecycle.signal },
 	databasePath: join(dataDirectory, "openbot.sqlite"),
+ history:{path:join(dataDirectory,"cache","history-v1.sqlite"),...(import.meta.url.endsWith(".mjs")?{workerUrl:new URL("./history-worker.mjs",import.meta.url).href}:{})},
 	credentials,
 	tools: {
 		definitions: TOOL_DEFINITIONS,

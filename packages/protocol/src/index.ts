@@ -1,3 +1,4 @@
+export { historyPartition } from "./history.ts";
 export type { TimelinePosition, TimelineRow, TimelineWindow, WindowInput, WindowResult, DetailInput, DetailResult, IndexStatus } from "./history.ts";
 import type { ReaderFile, FileListing } from "./reader.ts";
 export * from "./avatars.ts";
@@ -132,7 +133,7 @@ export type CollaborationRoot = {
 	readonly reason?: string;
 };
 export type CollaborationSnapshot = {
-	readonly roots: readonly CollaborationRoot[];
+	readonly roots: readonly (CollaborationRoot & { readonly subject?: string })[];
 	readonly posts: readonly GroupPost[];
 	readonly tasks: readonly (GroupDelivery & { readonly conversation?: ConversationSnapshot })[];
 };
@@ -324,6 +325,8 @@ export type RunState =
 
 /** Live part of a conversation: present while a Run is active. */
 export type LiveRun = {
+ readonly toolRunning?: boolean;
+ readonly tools?: readonly { readonly callId: string; readonly output?: string }[];
 	readonly state: Extract<RunState, "running" | "waiting_approval" | "waiting_user" | "cancelling">;
 	/** Text of the response being generated, committed at Pi's progress interval. */
 	readonly partial?: readonly MessagePart[];
@@ -331,6 +334,10 @@ export type LiveRun = {
 };
 
 export type ConversationSnapshot = {
+ /** Latest failed user input, independent of the visible history window. */
+ readonly retry?:{readonly text:string;readonly artifactIds?:readonly string[];readonly skills?:readonly SkillRef[]};
+ /** Attention derived from committed outcomes, independent of the displayed history page. */
+ readonly attention?: boolean;
 	readonly backgroundTasks?:readonly import("./background.ts").BackgroundRecord[];
 	/** Incoming committed messages present in this snapshot; safe upper bound for a read acknowledgement. */
 	readonly readCursor?: number;
@@ -561,7 +568,7 @@ export type HostMethods = {
  "runs.continue":{params:{runId:string;requestId:string};result:{runId:string;state:RunRecord["state"];steered:boolean}};
 	"collaboration.stop": { params: { rootId: string }; result: null };
 	"groups.list": { params: Record<string, never>; result: readonly Group[] };
-	"groups.snapshot": { params: { groupId: string }; result: GroupSnapshot };
+	"groups.snapshot": { params: { groupId: string; history?: "omit" }; result: GroupSnapshot };
 	"groups.change": { params: GroupChange; result: Group };
 	"groups.send": { params: { groupId: string; requestId: string; text: string; recipientIds?: readonly string[] }; result: GroupPost };
 
@@ -598,7 +605,11 @@ export type HostMethods = {
 		result: BotProfile;
 	};
 	"background.stop": {params:{readonly invocationId:string};result:null};
-	"conversations.snapshot": { params: { readonly botId: BotId }; result: ConversationSnapshot };
+	"conversations.snapshot": { params: { readonly botId: BotId; readonly history?: "omit" }; result: ConversationSnapshot };
+ "conversations.window": {params: import("./history.ts").WindowInput; result: import("./history.ts").WindowResult};
+ "conversations.detail": {params: import("./history.ts").DetailInput; result: import("./history.ts").DetailResult};
+ "conversations.indexStatus": {params: Record<string,never>; result: import("./history.ts").IndexStatus};
+ "conversations.indexRetry": {params: Record<string,never>; result:null};
 	"conversations.search": {
 		params: {
 			readonly query: string;
@@ -730,6 +741,7 @@ export const HOST_METHODS = [
 	"bots.create",
 	"bots.update",
 	"conversations.snapshot",
+ "conversations.window", "conversations.detail", "conversations.indexStatus", "conversations.indexRetry",
 	"conversations.list",
 	"conversations.search",
 	"conversations.markRead",

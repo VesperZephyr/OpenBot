@@ -129,6 +129,7 @@ export class HostService {
 	readonly groups: Groups;
 	#botChanges: Promise<unknown> = Promise.resolve();
 	readonly #observation = new Observation();
+ #stopHistory:(()=>void)|undefined;
 	readonly #audit: (event: OperationAudit) => void;
 	#configWrites: Promise<unknown> = Promise.resolve();
 	readonly #runtime: BotRuntime;
@@ -275,7 +276,7 @@ export class HostService {
 			"runs.continue": ({ runId, requestId }) => this.#runs.continue(runId, requestId),
 			"collaboration.stop": ({ rootId }) => this.groups.stopTree(rootId),
 			"groups.list": () => this.#runtime.groups().list(),
-			"groups.snapshot": async ({ groupId }) => ({...await this.groups.snapshot(groupId),backgroundTasks:this.background.view(undefined,undefined,groupId)}),
+			"groups.snapshot": async ({ groupId, history }) => ({...await this.groups.snapshot(groupId,history),backgroundTasks:this.background.view(undefined,undefined,groupId)}),
 			"groups.change": (change) => this.groups.change(change),
 			"groups.send": ({ groupId, requestId, text, recipientIds }) => this.groups.send(groupId, requestId, text, recipientIds),
 			"host.status": async () => this.#status,
@@ -310,7 +311,11 @@ export class HostService {
 				this.#emit({ type: "bots.changed", payload: {} });
 				return profile;
 			},
-			"conversations.snapshot": async ({ botId }) => this.#view(await this.#runtime.snapshot(botId)),
+			"conversations.snapshot": async ({ botId, history }) => this.#view(await this.#runtime.snapshot(botId,"direct",history)),
+   "conversations.window": input=>this.#runtime.historyWindow(input),
+   "conversations.detail": input=>this.#runtime.historyDetail(input),
+   "conversations.indexStatus": async ()=>this.#runtime.historyStatus(),
+   "conversations.indexRetry": ()=>this.#runtime.retryHistory(),
 			"conversations.search": (input) => this.capabilities.desktopSearch(input),
 			"conversations.list": () => this.capabilities.desktopSummaries(),
 			"conversations.markRead": async ({ conversationKey, through }) => {
@@ -483,6 +488,7 @@ export class HostService {
 	 * restart show before Pi reruns.
 	 */
 	async start(): Promise<void> {
+  this.#stopHistory=this.#runtime.onHistoryChanged(()=>this.#observation.changed(7));
 		await this.lifecycle.start();
 		await this.#reloadModelConfig();
 		const at = this.#now();
@@ -508,6 +514,7 @@ export class HostService {
 
 	/** Call before the runtime closes: the shutdown aborts waiting calls, and their approvals must stay pending. */
 	async stop(): Promise<void> {
+ this.#stopHistory?.();
   await this.routines.close();
 		await this.background.close();
  await this.connectors.close();
@@ -739,7 +746,11 @@ export class HostService {
 	/** A queued Run's messages are not in Pi yet; they show as pending until the Run starts. */
 	#withRun(snapshot: ConversationSnapshot): ConversationSnapshot {
 		const stored = this.#runs.active(snapshot.botId, snapshot.channelId) ?? this.#runs.attention(snapshot.botId, snapshot.channelId);
-		if (stored === undefined) return snapshot;
+		if (stored === undefined) {
+   const retry=!snapshot.channelId?this.#runs.retry(snapshot.botId):undefined;
+   if(retry)return {...snapshot,retry};
+   return snapshot;
+  }
 		const { messages, inputs: _inputs, ...run } = stored;
 		if (run.state !== "queued") return { ...snapshot, run };
 		const queued = messages.map(({ requestId, text, attachments, skills }) => ({
@@ -767,37 +778,23 @@ export class HostService {
 		if (state.activity !== before || roster !== state.roster) this.#emit({ type: "bots.changed", payload: {} });
 		state.roster = roster;
 		this.#feed.publish(view);
-		for (const item of snapshot.items) {
-			if (item.kind === "tool" && item.execution)
-				for (const child of item.execution.children) {
-					if (child.state === "running" || state.settled.has(child.callId)) continue;
-					state.settled.add(child.callId);
-					if (child.capability.startsWith("app_groups_")) void this.groups.settled(botId, child.callId, child.state).catch(() => {});
-					if (child.capability.startsWith("app_bots_")) void this.management.settled(botId, child.callId, child.state).catch(() => {});
-					this.#toolSettled(botId, child.callId, snapshot.conversationId);
-				}
-			if (item.kind !== "tool" || item.status === "pending" || item.status === "running" || state.settled.has(item.id)) continue;
-			state.settled.add(item.id);
-			if (item.tool.startsWith("group_")) void this.groups.settled(botId, item.id, item.status).catch(() => {});
-			if (["bot_create", "bot_update", "bot_delete"].includes(item.tool))
-				void this.management.settled(botId, item.id, item.status).catch(() => {});
-			this.#toolSettled(botId, item.id, snapshot.conversationId);
-		}
 	}
 
 	async #observe(botId: BotId): Promise<void> {
 		if (this.#observers.has(botId)) return;
-		const state: ObserverState = { stop: () => {}, activity: "idle", settled: new Set() };
+		const state: ObserverState = { stop: () => {}, activity: "idle" };
 		this.#observers.set(botId, state);
-		state.stop = await this.#runtime.observe(botId, (snapshot) => this.#publish(botId, state, snapshot));
+		state.stop = await this.#runtime.observeLive(botId, (snapshot) => this.#publish(botId, state, snapshot), outcome=>{
+   if(outcome.tool.startsWith("group_")||outcome.tool.startsWith("app_groups_"))void this.groups.settled(botId,outcome.id,outcome.status).catch(()=>{});
+   if(["bot_create","bot_update","bot_delete"].includes(outcome.tool)||outcome.tool.startsWith("app_bots_"))void this.management.settled(botId,outcome.id,outcome.status).catch(()=>{});
+   this.#toolSettled(botId,outcome.id,outcome.conversationId);
+  });
 	}
 }
 
 type ObserverState = {
 	stop: () => void;
 	activity: BotActivity;
-	/** Tool calls whose result this observer has seen, so `toolSettled` runs once per call. */
-	readonly settled: Set<string>;
 	last?: ConversationSnapshot;
 	/** Approval count and latest Run last announced with `bots.changed`. */
 	roster?: string;
@@ -805,7 +802,7 @@ type ObserverState = {
 
 /** Live attention is separate from the durable unread cursor used by the roster. */
 function nextActivity(snapshot: ConversationSnapshot): BotActivity {
-	if (snapshot.approvals.length > 0 || snapshot.run?.state==="needs_attention") return "needs_attention";
+	if (snapshot.approvals.length > 0 || snapshot.attention || snapshot.run?.state==="needs_attention") return "needs_attention";
 	const sinceUser = snapshot.items.slice(snapshot.items.findLastIndex((item) => item.kind === "user") + 1);
 	if (sinceUser.some((item) => item.kind === "tool" && item.status === "interrupted")) return "needs_attention";
 	if (snapshot.live !== undefined) return "working";

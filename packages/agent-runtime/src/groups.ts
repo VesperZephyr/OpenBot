@@ -2,8 +2,7 @@ import { validateAppMutation } from "./app-executions.ts";
 import { RoutinesDoc, invalidateRoutineDestinations, ROUTINE_DESTINATION_BLOCKED } from "./routines.ts";
 /** Authoritative local group records. Mutations and publication commit with their replay receipts. */
 import { defineDoc, type Harness, type Tx } from "@earendil-works/pi-durable";
-import type { ConversationSearchIndex } from "./conversation-search.ts";
-import { projectConversation, groupProjection, groupMessages } from "./conversation-index.ts";
+import { projectConversation, groupProjection } from "./conversation-index.ts";
 import type { Context } from "@earendil-works/chord/context";
 import {
 	type CollaborationRoot,
@@ -130,21 +129,16 @@ export function groupStore(
 	harness: Harness,
 	context: Context,
 	bots: (tx: Tx) => Promise<readonly BotProfile[]>,
-	search: ConversationSearchIndex,
 ) {
 	const read = async (): Promise<State> =>
 		(await harness.snapshot(GroupsDoc, context)) ?? { groups: {}, posts: {}, deliveries: {}, changes: {}, requests: {}, intents: {} };
-	const indexHistory = async (id?: string) => {
-		const doc = await read();
-		for (const key of id ? [id] : Object.keys(doc.groups)) search.project(`group:${key}`, groupMessages(doc.posts[key] ?? []));
-	};
+
 	return {
 		async backfillIndex(): Promise<void> {
 			await harness.commit(async (tx) => {
 				const doc = await tx.doc(GroupsDoc);
 				for (const id of Object.keys(doc.groups)) await projectConversation(tx, `group:${id}`, groupProjection(doc.posts[id] ?? []));
 			}, context);
-			await indexHistory();
 		},
 		async history(id: string) {
 			const posts = (await read()).posts[id] ?? [];
@@ -190,7 +184,6 @@ export function groupStore(
 				o.published = true;
 				return group.groupId;
 			}, context);
-			if (groupId) await indexHistory(groupId);
 		},
 		async deliveries(): Promise<GroupDelivery[]> {
 			return Object.values((await read()).deliveries);
@@ -327,8 +320,12 @@ export function groupStore(
 				}
 				return copy(post);
 			}, context);
-			await indexHistory(groupId);
 			return post;
+		},
+		async activeRoots(groupId: string) {
+			const state = await read();
+			return Object.values(state.roots ?? {}).filter(root => root.groupId === groupId && (root.state === "running" || root.state === "paused"))
+				.map(root => ({ ...root, subject: state.posts[groupId]?.find(post => post.postId === root.postId)?.text.slice(0, 180) ?? "" }));
 		},
 		async roots(groupId?: string): Promise<CollaborationRoot[]> {
 			return Object.values((await read()).roots ?? {}).filter((r) => groupId === undefined || r.groupId === groupId);
@@ -551,7 +548,6 @@ export function groupStore(
 				await projectConversation(tx, `group:${d.groupId}`, groupProjection(doc.posts[d.groupId]!));
 			}, context);
 			const delivery = (await read()).deliveries[id];
-			if (delivery) await indexHistory(delivery.groupId);
 		},
 	};
 }

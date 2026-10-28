@@ -1,6 +1,9 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
+ "Preparing history…":"正在整理历史记录…","Loading history…":"正在加载历史记录…","History is unavailable":"暂时无法读取历史记录","Load earlier messages":"加载更早的消息","Load newer messages":"加载更新的消息","Large message":"长消息","Copy displayed parts": "复制当前显示的内容",
+	"Read full message":"阅读完整消息","Previous part":"上一部分","Next part":"下一部分","History changed. Reload this location.":"历史记录已更新，请重新打开此位置。","History is busy or still indexing. Try again.":"历史记录正忙或仍在整理，请稍后重试。",
+
 	"Backup and restore": "备份与恢复",
 	"Restore recovery failed. Data and rollback copies have been kept; the Host remains stopped.": "恢复中断数据失败。数据和回滚副本已保留，Host 保持停止。",
 	"Create backup": "创建备份",

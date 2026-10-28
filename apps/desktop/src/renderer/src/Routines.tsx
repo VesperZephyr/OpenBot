@@ -19,7 +19,7 @@ export function routineScheduleLabel(schedule: RoutineSchedule): string {
 	if (schedule.kind === "interval") return t("Every {minutes} minutes", { minutes: schedule.minutes });
 	return `${schedule.kind === "daily" ? t("Daily") : `${t("Weekly")} · ${t(weekdays[schedule.weekday - 1]!)}`} · ${schedule.time} · ${schedule.timezone}`;
 }
-export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapshot: ConversationSnapshot) => ReactNode }) {
+export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapshot: ConversationSnapshot,occurrenceId:string) => ReactNode }) {
 	const language = useStore((s) => s.settings?.language ?? "en");
 	const view = useStore((s) => s.view);
 	const groups = useStore((s) => s.groups);
@@ -545,7 +545,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 									{detail.snapshot && (
 										<details open={["pending", "running"].includes(selectedOccurrence.state)}>
 											<summary>{t("Execution details")}</summary>
-											{renderTranscript(detail.snapshot)}
+											{renderTranscript(detail.snapshot,selectedOccurrence.occurrenceId)}
 										</details>
 									)}
 								</section>

@@ -194,7 +194,10 @@ it("preserves an unknown remote effect and one attention report after response l
 	const occurrence = await result();
 	expect(occurrence.state).toBe("needs_attention");
 	expect(occurrence.artifacts).toHaveLength(1);
-	expect((await api("routines.get", { routineId: routine.routineId, occurrenceId: occurrence.occurrenceId })).snapshot.items.find((i: any) => i.tool === "mcp__crm__update_account").status).toBe("interrupted");
+	await poll(async () => {
+		const result = await api("conversations.window", { conversationKey: `bot:${core}`, occurrenceId: occurrence.occurrenceId, position: { kind: "latest" } });
+		return result.status === "ready" ? result.window.rows.find((row: any) => row.content.kind === "direct" && row.content.item.tool === "mcp__crm__update_account")?.content.item.status : undefined;
+	}).toBe("interrupted");
 	expect(crm.effects).toHaveLength(3);
 	await h.page().locator(".routine-result").scrollIntoViewIfNeeded(); await h.shot("05-unknown-en");
 	const requests = h.model.requests.length;

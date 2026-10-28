@@ -44,6 +44,12 @@ describe("HostService", () => {
 	/** Resolves with the first conversation snapshot that satisfies the predicate. */
 	let nextSnapshot: (predicate: (snapshot: ConversationSnapshot) => boolean) => Promise<ConversationSnapshot>;
 
+ async function answeredWindow(botId:string){
+  let result:Awaited<ReturnType<typeof runtime.historyWindow>>={status:"building"};
+  await expect.poll(async()=>{result=await service.handle("conversations.window",{conversationKey:`bot:${botId}`,position:{kind:"latest"}});return result.status==="ready"&&result.window.rows.some(row=>row.content.kind==="direct"&&row.content.item.kind==="assistant");}).toBe(true);
+  const ready=await runtime.historyWindow({conversationKey:`bot:${botId}`,position:{kind:"latest"}});if(ready.status!=="ready")throw Error("History is not ready");return ready.window;
+ }
+
 	beforeEach(async () => {
 		directory = await mkdtemp(join(tmpdir(), "openbot-host-"));
 		runtime = await BotRuntime.open({ databasePath: join(directory, "db.sqlite"), models: scriptedModels("Done.").models });
@@ -73,7 +79,8 @@ describe("HostService", () => {
 			emit: (event) => {
 				events.push(event.type);
 				if (event.type !== "conversation.updated") return;
-				updated.push(event.payload.botId);
+				expect(event.payload.items).toEqual([]);
+ updated.push(event.payload.botId);
 				for (const waiter of [...waiters]) {
 					if (!waiter.predicate(event.payload)) continue;
 					waiters.splice(waiters.indexOf(waiter), 1);
@@ -113,9 +120,9 @@ describe("HostService", () => {
 
 		await service.handle("settings.update", { defaultModel: SCRIPTED_MODEL });
 		await service.handle("conversations.subscribe", { botId: bot.botId });
-		const answered = nextSnapshot((s) => s.live === undefined && s.items.some((item) => item.kind === "assistant"));
+		const answered = answeredWindow(bot.botId);
 		await service.handle("messages.submit", { botId: bot.botId, requestId: "m1", text: "Hi" });
-		expect((await answered).items.map((item) => item.kind)).toEqual(["user", "assistant"]);
+		expect((await answered).rows.map((row) => row.content.kind==="direct"?row.content.item.kind:row.content.kind)).toEqual(["user", "assistant"]);
 
 		const list = await service.handle("bots.list", {});
 		expect(list.find((b) => b.botId === bot.botId)?.activity).toBe("unread");
@@ -145,7 +152,7 @@ describe("HostService", () => {
 		await service.handle("settings.update", { defaultModel: SCRIPTED_MODEL });
 		const bot = await service.handle("bots.create", { requestId: "search", name: "Reader" });
 		await service.handle("conversations.subscribe", { botId: bot.botId });
-		const answered = nextSnapshot((s) => s.botId === bot.botId && s.items.some((i) => i.kind === "assistant"));
+		const answered = answeredWindow(bot.botId);
 		await service.handle("messages.submit", { botId: bot.botId, requestId: "q", text: "SEARCH_PRIVATE_SENTINEL" });
 		await answered;
 		const snap = vi.spyOn(runtime, "snapshot");
@@ -241,7 +248,7 @@ describe("HostService", () => {
 		await service.handle("conversations.subscribe", { botId: watched.botId });
 		updated.length = 0;
 
-		const answered = nextSnapshot((s) => s.botId === watched.botId && s.live === undefined && s.items.some((i) => i.kind === "assistant"));
+		const answered = answeredWindow(watched.botId);
 		await service.handle("messages.submit", { botId: other.botId, requestId: "m-other", text: "Hi" });
 		await service.handle("messages.submit", { botId: watched.botId, requestId: "m-watched", text: "Hi" });
 		await answered;
@@ -271,7 +278,7 @@ describe("HostService", () => {
 		await service.handle("bots.update", { botId: source.botId, thinkingLevel: "high" });
 		await service.handle("bots.memory.update", { expectedRevision: 0, botId: source.botId, content: "## Preferences\n- Short answers\n" });
 		await service.handle("conversations.subscribe", { botId: source.botId });
-		const answered = nextSnapshot((s) => s.live === undefined && s.items.some((i) => i.kind === "assistant"));
+		const answered = answeredWindow(source.botId);
 		await service.handle("messages.submit", { botId: source.botId, requestId: "m1", text: "Hi" });
 		await answered;
 

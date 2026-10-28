@@ -2,7 +2,7 @@
 import { Harness, createRegistry, type ConversationId } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
 import { BotsDoc } from "../src/bots.ts";
 import { GroupsDoc } from "../src/groups.ts";
 import { BotRuntime } from "../src/index.ts";
@@ -12,7 +12,7 @@ export function historyText(i: number): string {
 	return `Record ${i}: ${i % 17 === 0 ? "NEEDLE 星图" : "archive"} — Cafe\u0301, café, Kelvin K, emoji 🦊.\n\n${"Synthetic retained evidence. ".repeat(8)}`;
 }
 export async function seedHistory(databasePath: string, count = 10000, otherCount = 28): Promise<void> {
-	const runtime = await BotRuntime.open({ databasePath, models: scriptedModels().models });
+	const runtime = await BotRuntime.open({ databasePath, history: false, models: scriptedModels().models });
 	for (let i = 0; i <= otherCount; i++) await runtime.createBot({ botId: `history_${i}`, name: `History ${i}`, createdAt: 1 });
 	await runtime.close();
 	const harness = await Harness.open(
@@ -26,14 +26,59 @@ export async function seedHistory(databasePath: string, count = 10000, otherCoun
 			const length = j === 0 ? count : 1000;
 			for (let start = 0; start < length; start += 128)
 				await harness.commit(async (tx) => {
+					let head: import("@earendil-works/pi-durable").EntryId | undefined;
 					for (let i = start; i < Math.min(start + 128, length); i++) {
-						await tx.appendEntry(bot.conversationId as ConversationId, {
+						const text = j === 0 && count >= 10000 && i === 5000 ? "🦊".repeat(524288) + " LARGE_END_NEEDLE" : historyText(i);
+						const record = await tx.appendEntry(bot.conversationId as ConversationId, {
 							kind: "pi.assistant",
-							model: [{ ...fauxAssistantMessage(historyText(i)), timestamp: Math.floor(i / 4) }],
+							model: [{ ...fauxAssistantMessage(text), timestamp: Math.floor(i / 4) }],
 						});
+						head ??= record.id;
+						if (j === 0 && count >= 10000 && i % 100 === 0) {
+							const id = `history_tool_${i}`,
+								artifact = {
+									artifactId: `artifact_history_${i}`,
+									name: `Evidence ${i}.txt`,
+									mediaType: "text/plain",
+									bytes: 20,
+									sha256: "a".repeat(64),
+									source: "result",
+									availability: "missing",
+									createdAt: i,
+								};
+							await tx.appendEntry(bot.conversationId as ConversationId, {
+								kind: "pi.assistant",
+								model: [
+									fauxAssistantMessage(
+										{ ...fauxToolCall("artifact_publish", { path: `evidence-${i}.txt` }), id },
+										{ stopReason: "toolUse" },
+									),
+								],
+							});
+							await tx.appendEntry(bot.conversationId as ConversationId, {
+								kind: "pi.tool-result",
+								model: [
+									{
+										role: "toolResult",
+										toolCallId: id,
+										toolName: "artifact_publish",
+										content: [{ type: "text", text: `Artifact ${i} published` }],
+										details: { artifact },
+										isError: false,
+										timestamp: i,
+									},
+								],
+							});
+						}
 						if (j === 0 && i > 0 && i % 500 === 0)
 							await tx.appendEntry(bot.conversationId as ConversationId, { kind: "pi.reset", head: "self" });
 					}
+					if (j === 0 && count >= 10000 && head && start % 512 === 0)
+						await tx.appendEntry(bot.conversationId as ConversationId, {
+							kind: "pi.compaction",
+							head,
+							model: [{ role: "user", content: "Synthetic summary", timestamp: start }],
+						});
 				}, BACKGROUND_CONTEXT);
 		}
 		await harness.commit(async (tx) => {

@@ -78,12 +78,12 @@ it("binds cursors to principal, filters and scope and pages past deleted/new row
 	expect(validAppOutput("bots.list",{ok:true,value:{...first,credential:"forged"}})).toBe(false);
 });
 it("returns bounded Unicode context around an exact anchor and validates outgoing data",async()=>{
-	const read=vi.spyOn(runtime,"committedMessages").mockResolvedValue(Array.from({length:25},(_,i)=>({id:`m${i}`,senderId:"a",at:i,text:'🦊汉"'.repeat(5000)})));
+	const read=vi.spyOn(runtime,"contextMessages").mockResolvedValue({messages:Array.from({length:21},(_,i)=>({id:`m${i+2}`,senderId:"a",at:i,text:'🦊汉"'.repeat(5000)})),hasBefore:true,hasAfter:true});
 	const out=await app.invokeTool(await call("app_conversations_read",{conversationKey:"bot:a",anchorMessageId:"m12",before:10,after:10}));
 	const result=value(out);expect(Buffer.byteLength(out.output)).toBeLessThanOrEqual(APP_MAX_RESULT_BYTES);
 	expect(result.messages.some((m:any)=>m.id==="m12")).toBe(true);expect(result.messages.length).toBeLessThan(21);expect(result).toMatchObject({hasBefore:true,hasAfter:true});
 	for(const m of result.messages){expect(m.truncated).toBe(true);expect(m.text).not.toMatch(/[\uD800-\uDBFF]$/);expect(Buffer.byteLength(JSON.stringify(m.text))).toBeLessThanOrEqual(8192);}
-	expect(read).toHaveBeenCalledExactlyOnceWith("bot:a");
+	expect(read).toHaveBeenCalledExactlyOnceWith("bot:a","m12",10,10,expect.any(AbortSignal));
 	expect((await app.invokeTool(await call("app_conversations_read",{conversationKey:"bot:b",anchorMessageId:"absent"}))).status).toBe("failed");
 	read.mockRestore();
 	const list=vi.spyOn(runtime,"listBots");list.mockResolvedValue([{...(await runtime.getBot("a"))!,kind:"invalid" as any}]);

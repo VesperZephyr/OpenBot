@@ -113,19 +113,7 @@ export class Groups {
 	async #observe(botId: string, groupId: string): Promise<void> {
 		const key = JSON.stringify([botId, groupId]);
 		if (this.#observers.has(key)) return;
-		const settled = new Set<string>();
-		const stop = await this.runtime.observe(
-			botId,
-			(snapshot) => {
-				this.#changed();
-				for (const item of snapshot.items)
-					if (item.kind === "tool" && !["pending", "running"].includes(item.status) && !settled.has(item.id)) {
-						settled.add(item.id);
-						this.#settled(botId, item.id, snapshot.conversationId);
-					}
-			},
-			groupId,
-		);
+  const stop=await this.runtime.observeLive(botId,()=>this.#changed(),outcome=>this.#settled(botId,outcome.id,outcome.conversationId),groupId);
 		this.#observers.set(key, stop);
 	}
 	async change(change: GroupChange, intentId?: string) {
@@ -199,18 +187,18 @@ export class Groups {
 		this.#line = work.catch(() => {});
 		return work;
 	}
-	async snapshot(groupId: string): Promise<GroupSnapshot> {
+	async snapshot(groupId: string, history?:"omit"): Promise<GroupSnapshot> {
 		const group = await this.runtime.groups().get(groupId);
 		if (!group) return fail("This group is dissolved or unavailable");
 		const all = (await this.runtime.groups().deliveries()).filter((d) => d.groupId === groupId);
-		const selected = all.filter((d) => d.state === "pending").concat(all.filter((d) => d.state !== "pending").slice(-20));
+		const selected = all.filter((d) => d.state === "pending" || d.state === "failed").concat(history==="omit"?[]:all.filter((d) => d.state !== "pending" && d.state !== "failed").slice(-20));
 		const tasks = await Promise.all(
 			selected.map(async (d) => {
 				if (d.state !== "pending" || !d.runId) return d;
 				const run = await this.runtime.runsStore().get(d.runId);
 				if (!run || isTerminal(run.state)) return d;
 				const { messages: _messages, inputs: _inputs, ...record } = run;
-				const { live, ...snapshot } = await this.runtime.snapshot(d.botId, groupId);
+				const { live, ...snapshot } = await this.runtime.snapshot(d.botId, groupId,"omit");
 				// Only the running delivery owns this channel's current approval/live state.
 				return {
 					...d,
@@ -226,7 +214,7 @@ export class Groups {
 				};
 			}),
 		);
-		return { group, roots: await this.runtime.groups().roots(groupId), ...(await this.runtime.groups().history(groupId)), tasks };
+		return { group, roots: history === "omit" ? await this.runtime.groups().activeRoots(groupId) : await this.runtime.groups().roots(groupId), ...(history==="omit"?{posts:[]}:await this.runtime.groups().history(groupId)), tasks };
 	}
 	async stopTree(rootId: string): Promise<null> {
 		await this.runtime.groups().stop(rootId);

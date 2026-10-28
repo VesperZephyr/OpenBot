@@ -59,6 +59,7 @@ export class RunScheduler {
 	readonly #observed = new Set<string>();
 	/** Each Bot's newest Run written since start, terminal ones included. */
 	readonly #latest = new Map<BotId, StoredRun>();
+	readonly #latestDirect = new Map<BotId, StoredRun>();
 	readonly #latestChannel = new Map<string, StoredRun>();
 	#line: Promise<unknown> = Promise.resolve();
 	#stopped = false;
@@ -89,6 +90,8 @@ export class RunScheduler {
 			for (const run of await this.#store.list()) {
 				if (!isTerminal(run.state) || (run.state === "needs_attention" && !run.interruption?.settledAt)) this.#runs.set(run.runId, run);
 				this.#rememberChannel(run);
+				if ((run.channelId ?? "direct") === "direct" && (this.#latestDirect.get(run.botId)?.createdAt ?? -Infinity) <= run.createdAt)
+					this.#latestDirect.set(run.botId, run);
 				const latest = this.#latest.get(run.botId);
 				if (!latest || latest.createdAt <= run.createdAt) this.#latest.set(run.botId, run);
 				if (isTerminal(run.state)) continue;
@@ -256,6 +259,16 @@ export class RunScheduler {
 		return record;
 	}
 
+	retry(botId: BotId): import("@openbot/protocol").ConversationSnapshot["retry"] {
+		const run = this.#latestDirect.get(botId),
+			input = run?.inputs.at(-1);
+		if (run?.state !== "failed" || (run.origin && run.origin !== "user") || !input) return undefined;
+		return {
+			text: input.text,
+			...(input.attachments?.length ? { artifactIds: input.attachments.map((a) => a.artifactId) } : {}),
+			...(input.skills?.length ? { skills: input.skills.map(({ name, revision, sha256 }) => ({ name, revision, sha256 })) } : {}),
+		};
+	}
 	submit(
 		botId: BotId,
 		requestId: string,
@@ -547,6 +560,8 @@ export class RunScheduler {
 		if (isTerminal(run.state) && !(run.state === "needs_attention" && !run.interruption?.settledAt)) this.#runs.delete(run.runId);
 		else this.#runs.set(run.runId, run);
 		this.#rememberChannel(run);
+		if ((run.channelId ?? "direct") === "direct" && (this.#latestDirect.get(run.botId)?.createdAt ?? -Infinity) <= run.createdAt)
+			this.#latestDirect.set(run.botId, run);
 		const latest = this.#latest.get(run.botId);
 		if (latest === undefined || latest.runId === run.runId || latest.createdAt <= run.createdAt) this.#latest.set(run.botId, run);
 		this.#changed(run.botId);
