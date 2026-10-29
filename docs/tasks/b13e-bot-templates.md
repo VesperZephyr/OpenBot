@@ -1,6 +1,6 @@
 # B13e: Bot template import and export
 
-Status: ready
+Status: implemented; owner review and merge pending
 Branch: task/b13e-bot-templates; pull request target: main
 Depends on: B10, B17/B18/B19, B27b, D6 avatars, B14d and B14c (merged)
 Architecture: sections 4.2, 5.7, 5.8, 6.1, 7.1 and 8.3
@@ -240,6 +240,10 @@ The following are required test contracts; names may be split across files but n
 | 11 | Resource/privacy bounds and package ownership hold in development and bundled runtime | Four-operation saturation, 4,096-receipt cap without eviction, 128-image existing quota and bounded IPC payload tests; sentinel content absent from diagnostics; full check/e2e and staged runtime/backup smoke |
 
 Use synthetic sentinels and local fixture files only. No real provider call is needed to prove this deterministic transfer feature; ScriptedModel verifies the eventual input/authority boundary. Native signing, notarization, distribution and cross-machine Keychain migration are not acceptance claims of B13e.
+
+## Implementation evidence
+
+See [October 29 acceptance](../acceptance/bot-templates-2026-10-29.md) for the implementation revision, checks, all eleven acceptance mappings and release limitations. The design is merged in #66; this implementation remains on `task/b13e-bot-templates` until owner merge.
 
 ## Risks
 

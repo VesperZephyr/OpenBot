@@ -33,6 +33,7 @@ OpenBot is currently built for **one person on one Mac**. Give your Bots names, 
 | **Keep usable results** | Attach text, Markdown, CSV or images in private chats. Click result filenames in the chat to read formatted Markdown, HTML pages, PDF, images or CSV in resizable right-hand tabs alongside web pages while continuing the conversation; export saved copies after a restart. |
 | **Research the web** | Search with a configured Tavily key; read pages and official Atom/RSS feeds, retaining full-page date/version context when needed. |
 | **Personalize every Bot** | Choose names, roles, instructions and generated or uploaded avatars. A small star identifies your permanent personal assistant; Specialists can use their own model and memory. |
+| **Reuse Bot templates** | Export a profile as a local `.openbot.json` file and import it as a new Specialist. Review model and exact skill choices; memory, chats, credentials and permissions stay out of the file. |
 | **Remember and reuse** | Inspect where notes came from, correct or forget them, explicitly share useful context, and pin reviewed `SKILL.md` procedures to a Bot. |
 | **Schedule repeatable work** | Review interval, daily or weekly routines, pin skill versions, test them and receive reports in private chat or a confirmed group. Compose selected reports into an automatic daily summary, with bounded waiting and clear missing inputs. |
 | **Coordinate in groups** | Let your personal assistant route group tasks, choose explicit recipients, and follow bounded delegation and handoffs. |
@@ -75,6 +76,8 @@ API keys saved in the app go to macOS Keychain. Model setup uses API credentials
 Open a Bot's **Details → Profile** to change its name, short description, instructions and avatar. **Generate options** creates original character choices locally; **Upload image** accepts PNG, JPEG or WebP and previews a centered crop. Changes take effect only when you save the profile. Renaming a Bot keeps its chosen avatar, conversation and memory.
 
 Your starred personal assistant can be customized like every other Bot and cannot be deleted. Use the **Memory** tab to inspect and edit remembered information, or expand **Model and skills** to choose how a Bot works.
+
+To reuse a profile, choose **Export template** from the Bot menu, review the included instructions and save to a new filename. Choose **New → Import template** to review a file, resolve missing models or skills and create a fresh Specialist. Templates include avatar artwork and skill references; they do not install skills or copy private history or permissions. Instructions are exported as written, so review any personal information you entered there.
 
 The chat canvas defaults to white, independently of macOS appearance. Choose **Settings → General → Appearance** for Light, Dark or System, with visual previews. Dark uses a charcoal canvas, raised surfaces and lavender actions; Light uses pale navigation, a white canvas, dark text and plum accents throughout. **Skills**, **Connect apps** and **Routines** live inside Settings; **Back to chat** returns to your conversation with its draft intact.
 
