@@ -1,5 +1,7 @@
 # Development Backlog
 
+**B14c, done (#64; merge `4d1c5c3`):** [Bounded history reading and persistent search](tasks/b14c-history-scaling.md) provides virtualized timelines, a rebuildable worker-owned search index, private routine occurrence windows and bounded large-result reading. [Final integrated acceptance](acceptance/history-scaling-2026-10-28.md#main-integration-and-ci-readiness) records 596 unit tests, 191 background e2e tests and passing macOS CI.
+
 **B14d, done (#61):** [Consistent local backup and restore](tasks/b14d-backup-restore.md): native Settings workflow, offline snapshots, validation, rollback and paused recovery.
 
 **B11d, done (#60):** [Unattended workflow reliability](tasks/b11d-unattended-reliability.md): background availability through lock/wake, name-only changes preserving report bindings, isolated scheduler failures and visible retry health.
@@ -10,7 +12,7 @@
 
 **I6, done (#57):** [Integrated daily radar acceptance](tasks/i6-radar-integration.md) delivers B11c scheduled summaries, D8 unified chat and source-evidence corrections to main. The installed owner application passed three real calendar-triggered reporting chains; the final chain read all eleven sources and survived restart without duplicate delivery.
 
-Active delivery scope (2026-10-28): B11d (#60), B14d (#61), B4a (#62) and I7 (#63) are merged. Remote main is `4c64a43`. [B14c history scaling](tasks/b14c-history-scaling.md) is implemented in [PR #64](https://github.com/VesperZephyr/OpenBot/pull/64), including private routine occurrence windows; automated acceptance is recorded in its [evidence](acceptance/history-scaling-2026-10-28.md). It awaits owner review and merge. Templates (B13e) and signed updates (B14f) follow with separate ready specs. OAuth, optional model review and Phase 3 remain deferred.
+Active delivery scope (2026-10-29): B11d (#60), B14d (#61), B4a (#62), I7 (#63) and B14c (#64) are merged. Verified main is `4d1c5c3`. The next design packet is B13e templates, followed by B14f signed updates; both remain planning briefs requiring separate ready specs. OAuth, optional model review and Phase 3 remain deferred.
 
 **D8, done through I6 / PR #57:** [Unified chats and continuous activity](tasks/d8-chat-experience.md) provides mixed private/group navigation, member avatars, compact Settings and real streamed Markdown/loading feedback.
 
@@ -52,7 +54,7 @@ References: study MiniMax Code without copying; distinguish official facts and o
 
 [B27b: Per-role skill defaults](tasks/b27b-role-skills.md) is merged in PR #47, following the owner-approved local role direction. Profile pins are exact shared-library versions; direct-user admission composes them with message attachments and freezes accepted method snapshots. Groups and routines keep their existing explicit selections. Memory provenance/correction/sharing is the separate [B27a PR #46](https://github.com/VesperZephyr/OpenBot/pull/46); neither batch introduces cloud services or new grants.
 
-B11c and B14d are done; the remaining order is B14c/B13e/B14f. Per-message skill overrides, capability readiness and broader group defaults need separate specs.
+B11c, B14d and B14c are done; the remaining order is B13e/B14f. Per-message skill overrides, capability readiness and broader group defaults need separate specs.
 
 ## Phases
 
@@ -106,7 +108,7 @@ Accepted product direction: [D1](tasks/d1-bot-product-design.md). B16/B17 establ
 - **B10. Skills, merged (#35).** Library at `<data>/skills/<name>/SKILL.md`, a `skills` prompt section listing names and descriptions, `skill_load`, `skill_save` with user confirmation, `/` in the composer to attach one.
 - **B11a. Local routines:** merged in PR #41; see the [spec](tasks/b11a-local-routines.md). Confirmed panel management, isolated occurrences, exact reports, catch-up and absence protection. Model-driven proposals are a separate follow-up without a ready spec.
 - **B13. Bots together** (architecture M4). Core-coordinated group chats, explicit mentions, bounded delegation and ownership transfer (B13a–c); B13d usage is merged through I1. Remaining work: templates (export and import without memory, history, credentials, or grants).
-- **B14. Desktop completion** (architecture M2 rest). [B14a](tasks/b14a-reliable-observation.md) implements bounded observation and reconnect recovery (merged through I1). B23 provides `Cmd+K` history search. B14b adds sidebar Pause all and lifecycle gates. B14c adds transcript virtualization in candidate #64. Remaining: richer menu-bar status, Normal and Verbose tool detail, login item, auto-update with electron-updater.
+- **B14. Desktop completion** (architecture M2 rest). [B14a](tasks/b14a-reliable-observation.md) implements bounded observation and reconnect recovery (merged through I1). B23 provides `Cmd+K` history search. B14b adds sidebar Pause all and lifecycle gates. B14c adds transcript virtualization and bounded history/search, merged in #64. Remaining: richer menu-bar status, Normal and Verbose tool detail, login item, auto-update with electron-updater.
 - **B15. Agent extras.** B15a file/image inputs and result artifacts and B15b background completion are merged. Parallel model subagents within one Bot remain separate work.
 
 ## Phase 3: Computer control (deferred)
@@ -128,7 +130,7 @@ Architecture M3 (managed browser, takeover, secret requests), M6 (desktop comput
 - [B21: Conversation experience](tasks/b21-conversation-experience.md): merged in PR #17; shared private/group shell, contextual details, local filtering/New, durable local drafts and send recovery, keyboard mentions, scroll preservation and compact task activity. English/Chinese; 229 unit tests and 54 background e2e; isolated real-model private chat, Core delegation/result return and explicit @.
 - [B22: Conversation list previews and unread state](tasks/b22-conversation-list.md): merged with the product foundation; 234 unit tests and 59 background e2e; isolated real-model private/group replies and full restart verification; local Host index, snapshot-bound durable read cursors, bilingual previews/time/counts, draft/activity precedence and recency within protected Core/pinned sections.
 - [B23: Conversation search and unread filtering](tasks/b23-conversation-search.md): merged with B22 in the product foundation; 239 unit tests and 65 background e2e; isolated real-model private/group history search and full restart; local literal matching, bounded results, unread composition, bilingual exact-message navigation, stale-response guards and draft/read preservation.
-- Remaining UI work: transcript virtualization and large-history search indexing are implemented in B14c candidate #64; group pin/hide and manual mark-unread need separate specs. Artifact previews are implemented by B15a and D9/D10.
+- Remaining UI work: transcript virtualization and large-history search indexing are merged in B14c/#64; group pin/hide and manual mark-unread need separate specs. Artifact previews are implemented by B15a and D9/D10.
 
 ## Application capability foundation (D3)
 
@@ -162,7 +164,7 @@ Attention-state mutation, UI navigation, cross-Bot memory operations, new dispat
 - **B14e:** [Desktop-owned credentials](tasks/b14e-main-credentials.md) is merged in PR #38. It replaces Host command-line Keychain access with a native main-process owner, private broker, explicit migration and bilingual status. Automated/native acceptance and release limitations are recorded in the spec.
 - **B9b:** [HTTPS MCP sessions](tasks/b9b-https-connectors.md) is merged in [PR #39](https://github.com/VesperZephyr/OpenBot/pull/39). 461 unit/Host and 120 hidden e2e tests, nine final connector scenarios and isolated real-model one-write/restart acceptance passed. Explicit TLS endpoints and private bearer credentials, bounded JSON/SSE, durable retry cooldown, honest unknown writes and bilingual connection/recovery controls.
 - **I2:** [MVP acceptance and bilingual introduction](tasks/i2-mvp-acceptance.md) is merged in PR #40. The candidate including B9b passed 461 unit/Host and 122 hidden e2e tests, useful real-model report/memory/recovery checks, and an ad-hoc DMG build with signature and checksum verification. It includes a public product screenshot and English/Chinese README. It is an acceptance increment, not an expansion of the MVP feature scope.
-- **Done (#42):** [I3 workflow acceptance](tasks/i3-workflow-acceptance.md) verifies the P1 workflow integration gate; [evidence](acceptance/workflow-2026-10-20.md) distinguishes captured research from unavailable live retrieval. Backup/restore is merged in B14d/#61; remaining work is B14c history scaling, templates and signed updates, each with its own spec. Developer ID identity, update continuity, native lifecycle and TCC remain separate release gates.
+- **Done (#42):** [I3 workflow acceptance](tasks/i3-workflow-acceptance.md) verifies the P1 workflow integration gate; [evidence](acceptance/workflow-2026-10-20.md) distinguishes captured research from unavailable live retrieval. Backup/restore and history scaling are merged in B14d/#61 and B14c/#64; remaining work is templates and signed updates, each requiring its own ready spec. Developer ID identity, update continuity, native lifecycle and TCC remain separate release gates.
 
 ## Prompt reliability and memory research
 

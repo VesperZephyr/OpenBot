@@ -1,6 +1,6 @@
 # B14c: Bounded history reading and persistent search
 
-Status: in review (#64); implementation and automated acceptance complete
+Status: done (#64; merge `4d1c5c3`, October 29, 2026)
 Branch: task/b14c-history-scaling; pull request target: main
 Depends on: B14a, B22/B23, B24/B25, B14d, D8/D9 (all merged)
 Architecture: sections 4.2, 6.1, 6.4, 7.1 and 8.3
@@ -205,7 +205,7 @@ None. The owner-approved routine occurrence selector is part of contract 3. Cano
 
 [Final implementation evidence](../acceptance/history-scaling-2026-10-28.md) records the complete fixture, performance gates, command results, failure/recovery tests and isolated desktop inspection. [Historical groundwork](../acceptance/history-baseline-2026-10-28.md) preserves the pre-integration baseline and its narrower limits.
 
-GitHub was rechecked October 28: B4a/#62 is merged (`4c64a43`), as is I7/#63 (`838b032`). B14c incorporates current main and remains a separate candidate in #64. No B14c merge or release was performed.
+GitHub was rechecked October 29: B14c/#64 is merged into main as `4d1c5c3`, following B4a/#62 (`4c64a43`) and I7/#63 (`838b032`). Final implementation head `1155092` passed 596 unit tests and 191 background e2e tests locally, plus [macOS CI](https://github.com/VesperZephyr/OpenBot/actions/runs/40827175821). No signed/native release acceptance is claimed.
 
 
 ## Implementation notes
