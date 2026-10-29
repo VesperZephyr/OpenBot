@@ -1,6 +1,6 @@
 # B11e: Bot routines and generated-file Library
 
-Status: implemented; acceptance pending in draft PR #69
+Status: implemented; verification tracked in PR #69; owner merge pending
 Branch: task/b11e-bot-routines-library
 Depends on: B11a–d, B15a, D9/D10, B14c
 Architecture: Sections 4.2, 5.2, 5.8, 6.1
@@ -50,7 +50,7 @@ Legacy files have no author metadata and remain in Shared files. Stale async rea
 
 - `pnpm run check`: 92 files / 619 tests passed locally and on [macOS CI](https://github.com/VesperZephyr/OpenBot/actions/runs/40871946049).
 - New hidden desktop acceptance: all three Bot resource scenarios passed locally and on CI. The focused resources and web suite passed all nine cases. The proposal includes a 16,300-character workflow to exercise bounded history projection.
-- The initial full local and CI desktop runs each passed 200 of 201 cases, timing out on the latest message after index rebuild. A search-jump/resize regression reproduced the same stale scroll position after the Host returned the latest response. Direct `scrollTop` writes competed with virtualizer measurement/anchor corrections. Restoration now uses virtualizer scroll commands and cancels them on user navigation. The regression failed before the fix and passed afterward; final full-suite and CI validation are pending.
+- The initial full local and CI desktop runs each passed 200 of 201 cases, timing out on the latest message after index rebuild. A search-jump/resize regression reproduced the same stale scroll position after the Host returned the latest response. Direct `scrollTop` writes competed with virtualizer measurement/anchor corrections. Restoration now uses virtualizer scroll commands and cancels them on user navigation. The regression failed before the fix and passed afterward. All four history scenarios also passed on macOS CI at `3e77d72`; final full-suite evidence is tracked in [PR #69](https://github.com/VesperZephyr/OpenBot/pull/69).
 - Inspected proposal, scoped routines, Library and Chinese 900 × 640 screenshots in `e2e/.run/bot-resources/`. Exercised Library and Preview using agent-browser against an isolated background test app. Screenshot inspection found a missing empty-state translation; it is now translated and asserted in desktop acceptance.
 - All desktop checks use isolated state and ScriptedModel. No real-model spot check, packaged native release validation, merge or installed-app update is claimed.
 
@@ -58,7 +58,7 @@ Legacy files have no author metadata and remain in Shared files. Stale async rea
 
 The [pre-optimization run](https://github.com/VesperZephyr/OpenBot/actions/runs/40877356384) took 13 minutes 8 seconds from job setup through completion: desktop testing/build took 10 minutes 25 seconds, check took 1 minute 44 seconds, and installation/Pi build took less than one minute. The history fix passed all four scenarios on this runner. Template recovery failed because ten status reads with nine real one-second delays raced a ten-second locator timeout; its remaining failures were caused by the still-open dialog.
 
-CI now runs check and three disjoint desktop shards concurrently, with two Electron workers per macOS runner. The final `Check and e2e (macOS)` gate requires check and every shard to succeed. Failure does not cancel other shards, and each uploads a separate report/screenshots plus slow-suite timings. Local `pnpm run e2e` still runs the complete suite. Inspection through Vitest's sequencer verifies all 53 files occur exactly once across shards of 18, 18 and 17 files. The controlled-clock template suite passes seven cases locally; its recovery case takes approximately 2.4 seconds instead of 11–13 seconds, with all ten recovery reads asserted. Final full local and optimized CI results remain pending.
+CI now runs check and three disjoint desktop shards concurrently, with two Electron workers per macOS runner. The final `Check and e2e (macOS)` gate requires check and every shard to succeed. Failure does not cancel other shards, and each uploads a separate report/screenshots plus slow-suite timings. Local `pnpm run e2e` still runs the complete suite. Inspection through Vitest's sequencer verifies all 53 files occur exactly once across shards of 18, 18 and 17 files. The controlled-clock template suite passes seven cases locally; its recovery case takes approximately 2.4 seconds instead of 11–13 seconds, with all ten recovery reads asserted. Final full local and optimized CI results and measured wall time are tracked in [PR #69](https://github.com/VesperZephyr/OpenBot/pull/69).
 
 ## Open questions
 

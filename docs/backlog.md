@@ -24,9 +24,9 @@ References: study MiniMax Code without copying; distinguish official facts and o
 
 [B11e](tasks/b11e-bot-routines-library.md), in progress ([#69](https://github.com/VesperZephyr/OpenBot/pull/69)): Bot details expose routine viewing, history and confirmed switches; direct chat prepares schedules for owner confirmation. Library browses published result files by trusted Bot provenance with search and the existing reader/export/removal controls. Computer remains deferred. Legacy files without provenance remain in Shared files.
 
-Implementation and the three new desktop scenarios pass. The history-rebuild acceptance failure was traced to competing DOM and virtualizer scroll corrections; restoration now uses the virtualizer's commands with a failing-before/passing-after search-jump/resize regression. Final full-suite and macOS CI validation are pending before removing the draft status.
+Implementation and the three new desktop scenarios pass. The history-rebuild acceptance failure was traced to competing DOM and virtualizer scroll corrections; restoration now uses the virtualizer's commands with a failing-before/passing-after search-jump/resize regression. Full-suite evidence and macOS CI status are tracked in PR #69.
 
-Integrated CI runs check alongside three complete, disjoint desktop shards on independent macOS runners, retaining the required aggregate check. Template recovery acceptance advances its renderer clock while asserting every status read, eliminating a real-time timeout race. Per-shard reports expose slow suites; final timing and pass evidence are recorded in the B11e spec.
+Integrated CI runs check alongside three complete, disjoint desktop shards on independent macOS runners, retaining the required aggregate check. Template recovery acceptance advances its renderer clock while asserting every status read, eliminating a real-time timeout race. Per-shard reports expose slow suites; the B11e spec links final timing and pass evidence in PR #69.
 
 ## Competitor radar delivery
 
