@@ -34,6 +34,7 @@ export class ScriptedModel {
 	async start(): Promise<string> {
 		this.#server = createServer((request, response) => {
 			let body = "";
+			request.setEncoding("utf8");
 			request.on("data", (chunk) => (body += chunk));
 			request.on("end", () => {
 				if (request.url?.endsWith("/models")) {

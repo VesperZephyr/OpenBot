@@ -28,7 +28,7 @@ Out: Computer, browser control, cloud scheduling, new schedule kinds, conversati
 1. Extend artifact provenance/filter contracts and executor tests.
 2. Add validated, routed proposal handling and structured transcript projection, with direct-user authority tests.
 3. Add Bot details tabs, scoped routine navigation, proposal review and Library using existing UI components.
-4. Extend scripted hidden desktop acceptance, run full check/e2e, inspect screenshots and explore an isolated app with agent-browser.
+4. Extend scripted hidden desktop acceptance, run full check/e2e, inspect screenshots and explore an isolated app with agent-browser. The shared ScriptedModel HTTP reader must decode UTF-8 across network chunks so multilingual acceptance observes the actual provider input.
 5. Update plan/backlog with implementation and verification; open one PR linked to this spec. Mark done only after merge.
 
 ## Acceptance
