@@ -140,10 +140,14 @@ it("recovers a lost import response after renderer reload and restart without a 
 	await h.app().evaluate(({ ipcMain }) => {
 		const original = (ipcMain as any)._invokeHandlers.get("openbot:call");
 		(globalThis as any).__templateOriginal = original;
+		(globalThis as any).__templateStatusReads = 0;
 		let lost = false;
 		ipcMain.removeHandler("openbot:call");
 		ipcMain.handle("openbot:call", async (event, method, params) => {
-			if (method === "bots.templates.status") return null;
+			if (method === "bots.templates.status") {
+				(globalThis as any).__templateStatusReads++;
+				return null;
+			}
 			const result = await original(event, method, params);
 			if (method === "bots.templates.import" && !lost) {
 				lost = true;
@@ -154,10 +158,23 @@ it("recovers a lost import response after renderer reload and restart without a 
 	});
 	await importFile();
 	await dialog().getByLabel("Template Bot name").fill("Recovered Copy");
-	await dialog().getByRole("button", { name: "Import Bot", exact: true }).click();
-	await dialog()
-		.getByText("Import result is unconfirmed. Check again or retry the same reviewed import.", { exact: true })
-		.waitFor();
+	await h.page().clock.install();
+	try {
+		await dialog().getByRole("button", { name: "Import Bot", exact: true }).click();
+		await h.page().clock.pauseAt(new Date());
+		// Exercise every recovery query without racing nine real seconds against a ten-second UI timeout.
+		await poll(async () => {
+			await h.page().clock.fastForward(1000);
+			return dialog().getByText("Import result is unconfirmed. Check again or retry the same reviewed import.", { exact: true }).isVisible();
+		}, { timeout: 10000, interval: 20 }).toBe(true);
+		expect(await h.app().evaluate(() => (globalThis as any).__templateStatusReads)).toBe(10);
+	} finally {
+		await h.page().clock.resume();
+		await h.app().evaluate(({ ipcMain }) => {
+			ipcMain.removeHandler("openbot:call");
+			ipcMain.handle("openbot:call", (globalThis as any).__templateOriginal);
+		});
+	}
 	await h.shot("05-unconfirmed");
 	const id = await h.page().evaluate(() => localStorage.getItem("openbot.pending-template-import.v1"));
 	expect(id).toBeTruthy();

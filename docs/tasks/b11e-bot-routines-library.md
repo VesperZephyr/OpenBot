@@ -11,7 +11,7 @@ Expose scheduled AI work and generated files from each Bot's details. The Bot pa
 
 ## Scope
 
-In: Bot-scoped routines entry, create/edit/history navigation, confirmed pause/resume, generated-file Library with search and existing preview/export/removal; conversational creation proposals.
+In: Bot-scoped routines entry, create/edit/history navigation, confirmed pause/resume, generated-file Library with search and existing preview/export/removal; conversational creation proposals; integrated-test stabilization and CI parallelization.
 Out: Computer, browser control, cloud scheduling, new schedule kinds, conversational editing, automatic filesystem discovery and new grants.
 
 ## Design and contracts
@@ -32,6 +32,7 @@ Out: Computer, browser control, cloud scheduling, new schedule kinds, conversati
 4. Extend scripted hidden desktop acceptance, run full check/e2e, inspect screenshots and explore an isolated app with agent-browser. The shared ScriptedModel HTTP reader must decode UTF-8 across network chunks so multilingual acceptance observes the actual provider input.
 5. Update plan/backlog with implementation and verification; open one PR linked to this spec. Mark done only after merge.
 6. Resolve the history-rebuild latest-message timeout blocking integrated acceptance. Preserve bounded indexing, reading anchors and live controls; add a deterministic regression for the identified race rather than increasing timeouts. Rerun full check/e2e and update this PR without merging.
+7. Optimize integrated CI while retaining full coverage: run check independently alongside three desktop shards on separate macOS runners, retain the existing aggregate required-check name, upload each shard's evidence and report slow suites. Advance the template lost-response recovery test with a controlled renderer clock while asserting all ten status queries; retain real Host persistence/restart and all recovery assertions.
 
 ## Acceptance
 
@@ -52,6 +53,12 @@ Legacy files have no author metadata and remain in Shared files. Stale async rea
 - The initial full local and CI desktop runs each passed 200 of 201 cases, timing out on the latest message after index rebuild. A search-jump/resize regression reproduced the same stale scroll position after the Host returned the latest response. Direct `scrollTop` writes competed with virtualizer measurement/anchor corrections. Restoration now uses virtualizer scroll commands and cancels them on user navigation. The regression failed before the fix and passed afterward; final full-suite and CI validation are pending.
 - Inspected proposal, scoped routines, Library and Chinese 900 × 640 screenshots in `e2e/.run/bot-resources/`. Exercised Library and Preview using agent-browser against an isolated background test app. Screenshot inspection found a missing empty-state translation; it is now translated and asserted in desktop acceptance.
 - All desktop checks use isolated state and ScriptedModel. No real-model spot check, packaged native release validation, merge or installed-app update is claimed.
+
+### CI optimization
+
+The [pre-optimization run](https://github.com/VesperZephyr/OpenBot/actions/runs/40877356384) took 13 minutes 8 seconds from job setup through completion: desktop testing/build took 10 minutes 25 seconds, check took 1 minute 44 seconds, and installation/Pi build took less than one minute. The history fix passed all four scenarios on this runner. Template recovery failed because ten status reads with nine real one-second delays raced a ten-second locator timeout; its remaining failures were caused by the still-open dialog.
+
+CI now runs check and three disjoint desktop shards concurrently, with two Electron workers per macOS runner. The final `Check and e2e (macOS)` gate requires check and every shard to succeed. Failure does not cancel other shards, and each uploads a separate report/screenshots plus slow-suite timings. Local `pnpm run e2e` still runs the complete suite. Inspection through Vitest's sequencer verifies all 53 files occur exactly once across shards of 18, 18 and 17 files. The controlled-clock template suite passes seven cases locally; its recovery case takes approximately 2.4 seconds instead of 11–13 seconds, with all ten recovery reads asserted. Final full local and optimized CI results remain pending.
 
 ## Open questions
 

@@ -26,6 +26,8 @@ References: study MiniMax Code without copying; distinguish official facts and o
 
 Implementation and the three new desktop scenarios pass. The history-rebuild acceptance failure was traced to competing DOM and virtualizer scroll corrections; restoration now uses the virtualizer's commands with a failing-before/passing-after search-jump/resize regression. Final full-suite and macOS CI validation are pending before removing the draft status.
 
+Integrated CI runs check alongside three complete, disjoint desktop shards on independent macOS runners, retaining the required aggregate check. Template recovery acceptance advances its renderer clock while asserting every status read, eliminating a real-time timeout race. Per-shard reports expose slow suites; final timing and pass evidence are recorded in the B11e spec.
+
 ## Competitor radar delivery
 
 **B4a, done (#62):** [Reliable web pagination](tasks/b4a-web-pagination.md) retains continuation metadata within character, byte and line budgets and detects changed documents. The [installed eleven-source acceptance](acceptance/web-pagination-2026-10-27.md) completed all extracted pages, both reports and Core's automatic summary, then verified restart and restored schedules. Dynamic load-more content, finite feed history and date-only boundaries remain explicit research limitations.
