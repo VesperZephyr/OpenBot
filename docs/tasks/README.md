@@ -245,6 +245,6 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Task | Status |
 | --- | --- |
-| [B13e: Bot template import and export](b13e-bot-templates.md) | implemented; owner merge pending; [automated acceptance](../acceptance/bot-templates-2026-10-29.md) |
+| [B13e: Bot template import and export](b13e-bot-templates.md) | done (#67; merge `718fb35`); [automated acceptance](../acceptance/bot-templates-2026-10-29.md) |
 
 B14f signed updates follows as a planning brief in the [roadmap](../development-roadmap.md#6-p2-broader-access-and-maintainability); it still needs a ready spec.

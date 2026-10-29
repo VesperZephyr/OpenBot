@@ -1,6 +1,6 @@
 # B13e: Bot template import and export
 
-Status: implemented; owner review and merge pending
+Status: done (#67; merge `718fb35`)
 Branch: task/b13e-bot-templates; pull request target: main
 Depends on: B10, B17/B18/B19, B27b, D6 avatars, B14d and B14c (merged)
 Architecture: sections 4.2, 5.7, 5.8, 6.1, 7.1 and 8.3
@@ -243,7 +243,7 @@ Use synthetic sentinels and local fixture files only. No real provider call is n
 
 ## Implementation evidence
 
-See [October 29 acceptance](../acceptance/bot-templates-2026-10-29.md) for the implementation revision, checks, all eleven acceptance mappings and release limitations. The design is merged in #66; this implementation remains on `task/b13e-bot-templates` until owner merge.
+See [October 29 acceptance](../acceptance/bot-templates-2026-10-29.md) for the implementation revision, checks, all eleven acceptance mappings and release limitations. The design is merged in #66 and the implementation in [#67](https://github.com/VesperZephyr/OpenBot/pull/67), at `718fb35`. The macOS check/e2e job passed before merge.
 
 ## Risks
 

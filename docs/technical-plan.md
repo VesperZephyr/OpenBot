@@ -1,7 +1,7 @@
 # OpenBot Technical Plan
 
 
-Active delivery scope (2026-10-29): I6 (#57), D9 (#58), D10 (#59), B11d (#60), B14d (#61), B4a (#62), I7 (#63) and B14c (#64) are merged into main, verified at `e3647b6` after the B14c status closeout #65 and B13e design #66. [B14c history scaling](tasks/b14c-history-scaling.md) includes the approved routine occurrence selector; [final integrated evidence](acceptance/history-scaling-2026-10-28.md#main-integration-and-ci-readiness) records 596 unit tests, 191 background e2e tests and passing macOS CI. [Bot templates (B13e)](tasks/b13e-bot-templates.md) is implemented on its task branch: portable profile files, native selection, explicit dependency choices and atomic import receipts. Owner merge is pending; [acceptance evidence](acceptance/bot-templates-2026-10-29.md) records automated checks and limits. Signed updates (B14f) follows and still needs a ready spec. B9c OAuth, B12b optional model review and Phase 3 remain deferred.
+Active delivery scope (2026-10-29): I6 (#57), D9 (#58), D10 (#59), B11d (#60), B14d (#61), B4a (#62), I7 (#63), B14c (#64) and B13e (#67) are merged into main, verified at `718fb35`. [B14c history scaling](tasks/b14c-history-scaling.md) includes the approved routine occurrence selector; [final integrated evidence](acceptance/history-scaling-2026-10-28.md#main-integration-and-ci-readiness) records 596 unit tests, 191 background e2e tests and passing macOS CI. [Bot templates (B13e)](tasks/b13e-bot-templates.md) is merged in #67: portable profile files, native selection, explicit dependency choices and atomic import receipts; [acceptance evidence](acceptance/bot-templates-2026-10-29.md) records automated checks and limits. Signed updates (B14f) follows and still needs a ready spec. B9c OAuth, B12b optional model review and Phase 3 remain deferred.
 
 Last updated: 2026-10-29.
 
@@ -29,7 +29,7 @@ Desktop delivery (2026-10-22): [D6](tasks/d6-desktop-design.md) delivers the own
 
 | Component | State | Verified by |
 | --- | --- | --- |
-| Bot templates (B13e) | Implementation candidate: bounded JSON with generated/PNG avatar and exact skill pins; explicit model/skill review; fresh Specialist; durable atomic receipt and backup recovery; owner merge pending | [Spec](tasks/b13e-bot-templates.md); [acceptance](acceptance/bot-templates-2026-10-29.md) |
+| Bot templates (B13e) | Merged (#67; `718fb35`): bounded JSON with generated/PNG avatar and exact skill pins; explicit model/skill review; fresh Specialist; durable atomic receipt and backup recovery | [Spec](tasks/b13e-bot-templates.md); [acceptance](acceptance/bot-templates-2026-10-29.md) |
 | Web pagination (B4a) | Merged (#62): bounded output, exact ranges and content identity | 569 unit/Host tests, 185 desktop tests and installed eleven-source scheduled chain; [acceptance](acceptance/web-pagination-2026-10-27.md) |
 | Official source pagination (I7) | Merged (#63): configured ZCode/TRAE official GET continuations using existing web_fetch | [Spec](tasks/i7-official-changelog-pagination.md); 575 unit/Host/audit tests, 185 desktop tests; [real catalogue acceptance](acceptance/official-pagination-2026-10-27.md) |
 | History scaling (B14c) | Disposable SQLite worker; checkpointed display/search projection; bounded desktop windows and detail parts; virtualized history; independent live controls and tool settlement; private delivery/routine windows; restore invalidation | [Spec](tasks/b14c-history-scaling.md); merged #64 (`4d1c5c3`); [acceptance](acceptance/history-scaling-2026-10-28.md) |
@@ -137,7 +137,7 @@ These are deliberate shortcuts or missing pieces in implemented code. Each one i
 
 ## 3. Milestone Plans
 
-These are milestone contracts spanning implemented and planned capabilities, not a current execution queue. Section 1 and the task index own delivery status; B14c is merged in #64; B13e has an implementation candidate awaiting owner merge; B14f remains a planning brief.
+These are milestone contracts spanning implemented and planned capabilities, not a current execution queue. Section 1 and the task index own delivery status; B14c is merged in #64; B13e is merged in #67; B14f remains a planning brief.
 
 The milestones below follow the architecture's capability areas. Delivery is phased; [the backlog](backlog.md) owns the batch order:
 
