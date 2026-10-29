@@ -140,24 +140,26 @@ function HistoryView({
 		restoring.current = true;
 		const saved = { ...anchor.current };
 		if (saved.following && tail) {
-			el.scrollTop = el.scrollHeight;
+			// Keep the end target through later measurements and virtualizer anchor corrections.
+			virtual.scrollToEnd();
 		} else if (saved.id) {
 			const index = rows.findIndex((r) => r.id === saved.id || r.bundle?.some((b) => b.id === saved.id));
 			if (index >= 0) {
 				const mounted = el.querySelector<HTMLElement>(`[data-index="${index}"]`);
-				if (mounted) el.scrollTop += mounted.getBoundingClientRect().top - el.getBoundingClientRect().top - saved.offset;
+				if (mounted)
+					virtual.scrollToOffset(el.scrollTop + mounted.getBoundingClientRect().top - el.getBoundingClientRect().top - saved.offset);
 				else virtual.scrollToIndex(index, { align: "start" });
 			}
 		}
 		restoredTop.current = el.scrollTop;
 		requestAnimationFrame(() => {
 			if (!alive.current || version !== restoration.current) return;
-			if (saved.following && tail) el.scrollTop = el.scrollHeight;
+			if (saved.following && tail) virtual.scrollToEnd();
 			else if (saved.id) {
 				const row = [...el.querySelectorAll<HTMLElement>("[data-message-id], [data-history-row]")].find(
 					(n) => (n.dataset.messageId ?? n.dataset.historyRow) === saved.id,
 				);
-				if (row) el.scrollTop += row.getBoundingClientRect().top - el.getBoundingClientRect().top - saved.offset;
+				if (row) virtual.scrollToOffset(el.scrollTop + row.getBoundingClientRect().top - el.getBoundingClientRect().top - saved.offset);
 			}
 			restoredTop.current = el.scrollTop;
 			requestAnimationFrame(() => {
@@ -211,6 +213,7 @@ function HistoryView({
 		}
 	};
 	const interruptRestore = () => {
+		virtual.cancelScroll();
 		restoration.current++;
 		restoring.current = false;
 		initialized.current = true;

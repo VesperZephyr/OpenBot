@@ -22,6 +22,7 @@ Out: Computer, browser control, cloud scheduling, new schedule kinds, conversati
 - Add optional trusted `botId` provenance to result ArtifactRef metadata at executor publication. Existing refs without provenance remain valid and available in Shared files; do not guess their author. Imports do not get result provenance. Publication retries retain the original receipt.
 - Extend `artifacts.list` and its private operation with optional source and botId filters, applied before the existing bounded pagination. The Library requests source=result and its Bot ID, never rescans transcripts or filesystem paths. Filtering is organization, not isolation. Existing file reader and immutable-copy behavior stay authoritative.
 - Do not change Pi vendor code or package boundaries. Keep English source copy and Chinese locale entries.
+- Timeline restoration uses virtualizer scroll commands so its end target survives asynchronous row measurements and window replacement. User scrolling cancels an in-flight restoration. Preserve bounded history windows and older reading anchors.
 
 ## Steps
 
@@ -30,6 +31,7 @@ Out: Computer, browser control, cloud scheduling, new schedule kinds, conversati
 3. Add Bot details tabs, scoped routine navigation, proposal review and Library using existing UI components.
 4. Extend scripted hidden desktop acceptance, run full check/e2e, inspect screenshots and explore an isolated app with agent-browser. The shared ScriptedModel HTTP reader must decode UTF-8 across network chunks so multilingual acceptance observes the actual provider input.
 5. Update plan/backlog with implementation and verification; open one PR linked to this spec. Mark done only after merge.
+6. Resolve the history-rebuild latest-message timeout blocking integrated acceptance. Preserve bounded indexing, reading anchors and live controls; add a deterministic regression for the identified race rather than increasing timeouts. Rerun full check/e2e and update this PR without merging.
 
 ## Acceptance
 
@@ -47,7 +49,7 @@ Legacy files have no author metadata and remain in Shared files. Stale async rea
 
 - `pnpm run check`: 92 files / 619 tests passed locally and on [macOS CI](https://github.com/VesperZephyr/OpenBot/actions/runs/40871946049).
 - New hidden desktop acceptance: all three Bot resource scenarios passed locally and on CI. The focused resources and web suite passed all nine cases. The proposal includes a 16,300-character workflow to exercise bounded history projection.
-- Full local and CI desktop runs each passed 200 of 201 cases. The remaining failure is the existing `history-scaling.e2e.ts` final wait for the latest message after index rebuild (line 217). The three-case history suite passed when rerun alone. The cause of the full-suite failure remains unresolved; acceptance item 5 is not satisfied and the PR remains a draft.
+- The initial full local and CI desktop runs each passed 200 of 201 cases, timing out on the latest message after index rebuild. A search-jump/resize regression reproduced the same stale scroll position after the Host returned the latest response. Direct `scrollTop` writes competed with virtualizer measurement/anchor corrections. Restoration now uses virtualizer scroll commands and cancels them on user navigation. The regression failed before the fix and passed afterward; final full-suite and CI validation are pending.
 - Inspected proposal, scoped routines, Library and Chinese 900 × 640 screenshots in `e2e/.run/bot-resources/`. Exercised Library and Preview using agent-browser against an isolated background test app. Screenshot inspection found a missing empty-state translation; it is now translated and asserted in desktop acceptance.
 - All desktop checks use isolated state and ScriptedModel. No real-model spot check, packaged native release validation, merge or installed-app update is claimed.
 

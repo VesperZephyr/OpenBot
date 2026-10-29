@@ -20,6 +20,7 @@ const p95 = (values: number[]) => values.sort((a, b) => a - b)[Math.ceil(values.
 beforeAll(async () => {
 	const started = performance.now();
 	h = await launchApp("history-scaling", {
+		...(process.env.OPENBOT_HISTORY_DEBUG ? { debugPort: 9342 } : {}),
 		prepare: async (run) => {
 			await mkdir(join(run, "data"), { recursive: true });
 			await seedHistory(join(run, "data", "openbot.sqlite"));
@@ -36,7 +37,10 @@ beforeAll(async () => {
 	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
 }, 120000);
 afterEach(async ({ task }) => {
-	if (task.result?.state === "fail") await h.shot("failure");
+	if (task.result?.state === "fail") {
+		await h.shot("failure");
+		if (process.env.OPENBOT_HISTORY_DEBUG) await new Promise(resolve => setTimeout(resolve, 45000));
+	}
 });
 afterAll(async () => {
 	await h?.close();
@@ -217,3 +221,18 @@ it("streams bounded detail parts from a two MiB Unicode row and keeps controls l
 	await h.page().getByText("Controls remained available during indexing.", { exact: true }).waitFor();
 	await h.shot("03-rebuilt-latest");
 }, 120000);
+
+it("keeps the latest response visible after search jumps and width changes", async () => {
+	const timeline = h.page().locator(".timeline-scroll");
+	for (const width of [1050, 900, 1200, 900, 1050, 1200]) {
+		await h.page().setViewportSize({ width, height: 760 });
+		await h.page().getByRole("searchbox").fill("Record 517:");
+		await h.page().locator(".search-result").filter({ hasText: "History 0" }).first().click();
+		await h.page().locator(".search-target").waitFor();
+		await h.page().getByRole("button", { name: /Jump to latest/ }).click();
+		await h.page().getByText("Controls remained available during indexing.", { exact: true }).waitFor({ timeout: 5000 });
+		await expect.poll(() => timeline.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop), { timeout: 5000 }).toBeLessThan(3);
+	}
+	await h.shot("04-latest-after-resize");
+	if (process.env.OPENBOT_HISTORY_DEBUG) await new Promise(resolve => setTimeout(resolve, 45000));
+});

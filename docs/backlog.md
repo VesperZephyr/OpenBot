@@ -24,7 +24,7 @@ References: study MiniMax Code without copying; distinguish official facts and o
 
 [B11e](tasks/b11e-bot-routines-library.md), in progress ([#69](https://github.com/VesperZephyr/OpenBot/pull/69)): Bot details expose routine viewing, history and confirmed switches; direct chat prepares schedules for owner confirmation. Library browses published result files by trusted Bot provenance with search and the existing reader/export/removal controls. Computer remains deferred. Legacy files without provenance remain in Shared files.
 
-Implementation and the three new desktop scenarios pass. Full-suite acceptance remains pending: local and macOS CI runs pass 200/201 desktop cases, with the existing history-rebuild latest-message wait timing out. Its isolated rerun passes; the cause remains unresolved. Keep the PR in draft until this gate is resolved.
+Implementation and the three new desktop scenarios pass. The history-rebuild acceptance failure was traced to competing DOM and virtualizer scroll corrections; restoration now uses the virtualizer's commands with a failing-before/passing-after search-jump/resize regression. Final full-suite and macOS CI validation are pending before removing the draft status.
 
 ## Competitor radar delivery
 
