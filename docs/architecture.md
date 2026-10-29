@@ -1,6 +1,6 @@
 # OpenBot Architecture
 
-Status: first-release design baseline. Last updated: 2026-10-27.
+Status: first-release design baseline. Last updated: 2026-10-29.
 
 This document defines the target product shape, repository layout, module boundaries, interfaces, source dependencies, and development sequence. M0 is complete; the Host Runtime and a chat-only desktop shell exist ahead of their milestones. [The technical plan](technical-plan.md) tracks which parts are implemented and how each milestone is broken down; everything else below requires implementation and validation.
 
@@ -495,7 +495,7 @@ The desktop offers an explicit recipient picker and @ search, visible assignment
 
 The Run scheduler composes defaults only for new direct user messages. Identical message/default references deduplicate; conflicting versions or a union above two methods fail before acceptance. The accepted Run stores explicit request references, role references and immutable procedure documents. Queueing, steering, restart, continuation and replay use those snapshots, not current profile/library state. Legacy messages retain their original replay contract. Groups, peer/background work and routines do not acquire new defaults; existing routine pins remain authoritative. Skills stay guidance under ordinary tool authorization. Older methods may remain in conversation history until a new topic starts.
 
-**Templates (planned).** A Bot can be exported as a template containing its profile, instructions, and referenced skill names, excluding memory, conversation history, credentials, and grants. Importing a template creates a new Bot.
+**Templates (B13e, ready design; not implemented).** The [B13e spec](tasks/b13e-bot-templates.md) fixes a bounded version-1 JSON format with profile instructions, generated or normalized PNG avatar, model preference and exact skill references. Export excludes memory, conversation history, credentials and grants. Desktop review explicitly resolves missing models/skills; importing always creates a new Specialist, including when the source was Core. Host/runtime commit the profile, conversation, avatar and argument-bound import receipt atomically. Native-selected files pass through main-only Host methods and the local executor; template operations are absent from model tools and Code Mode.
 
 ### 5.8 Skills and Routines
 
@@ -564,7 +564,8 @@ The transport is private IPC with versioned request, response, and event envelop
 
 | Method | Semantics |
 | --- | --- |
-| `bots.create`, `bots.update`, `bots.list`, `bots.duplicate`, `bots.delete`, `bots.export`, `bots.import` | Manage Bot profiles and templates; Duplicate copies profile and Prompt with empty memory and history; Delete cancels the Bot's Run and keeps its conversation on disk |
+| `bots.create`, `bots.update`, `bots.list`, `bots.duplicate`, `bots.delete` | Manage Bot profiles; Duplicate copies profile and Prompt with empty memory and history; Delete cancels the Bot's Run and keeps its conversation on disk |
+| `bots.templates.export/inspect/import/status` (B13e planned) | Owner-only template snapshot/review, atomic import and receipt recovery; native file selection uses separate main-only `templates.file.read/write` |
 | `bots.memory.get/update/restore`, `memory.shared.get/update/restore`, `bots.memory.note/source` | Inspect local/shared notes and history, owner-only scope moves, bounded source evidence; revision and request identity checks |
 | `conversations.list`, `conversations.markRead` | Bounded local Bot/group latest-message summaries and durable read cursors; acknowledge a rendered snapshot through its incoming-message ordinal |
 | `observation.wait` | Bounded topic invalidation with a Host stream ID and revision; one pending request per production consumer and four per Host |

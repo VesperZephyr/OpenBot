@@ -1,7 +1,7 @@
 # OpenBot Technical Plan
 
 
-Active delivery scope (2026-10-29): I6 (#57), D9 (#58), D10 (#59), B11d (#60), B14d (#61), B4a (#62), I7 (#63) and B14c (#64) are merged into main, verified at `4d1c5c3`. [B14c history scaling](tasks/b14c-history-scaling.md) includes the approved routine occurrence selector; [final integrated evidence](acceptance/history-scaling-2026-10-28.md#main-integration-and-ci-readiness) records 596 unit tests, 191 background e2e tests and passing macOS CI. Templates (B13e) is the next design packet, followed by signed updates (B14f); neither has a ready implementation spec. B9c OAuth, B12b optional model review and Phase 3 remain deferred.
+Active delivery scope (2026-10-29): I6 (#57), D9 (#58), D10 (#59), B11d (#60), B14d (#61), B4a (#62), I7 (#63) and B14c (#64) are merged into main, verified at `9898c0a` after the B14c status closeout #65. [B14c history scaling](tasks/b14c-history-scaling.md) includes the approved routine occurrence selector; [final integrated evidence](acceptance/history-scaling-2026-10-28.md#main-integration-and-ci-readiness) records 596 unit tests, 191 background e2e tests and passing macOS CI. [Bot templates (B13e)](tasks/b13e-bot-templates.md) has a ready design spec covering the portable profile, native file boundary, explicit dependency choices and transactional import receipts; no template behavior is implemented yet. Signed updates (B14f) follows and still needs a ready spec. B9c OAuth, B12b optional model review and Phase 3 remain deferred.
 
 Last updated: 2026-10-28.
 
@@ -136,7 +136,7 @@ These are deliberate shortcuts or missing pieces in implemented code. Each one i
 
 ## 3. Milestone Plans
 
-These are milestone contracts spanning implemented and planned capabilities, not a current execution queue. Section 1 and the task index own delivery status; B14c is merged in #64; B13e and B14f remain planning briefs.
+These are milestone contracts spanning implemented and planned capabilities, not a current execution queue. Section 1 and the task index own delivery status; B14c is merged in #64; B13e has a ready spec; B14f remains a planning brief.
 
 The milestones below follow the architecture's capability areas. Delivery is phased; [the backlog](backlog.md) owns the batch order:
 

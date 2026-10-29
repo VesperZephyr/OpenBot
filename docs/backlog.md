@@ -12,7 +12,7 @@
 
 **I6, done (#57):** [Integrated daily radar acceptance](tasks/i6-radar-integration.md) delivers B11c scheduled summaries, D8 unified chat and source-evidence corrections to main. The installed owner application passed three real calendar-triggered reporting chains; the final chain read all eleven sources and survived restart without duplicate delivery.
 
-Active delivery scope (2026-10-29): B11d (#60), B14d (#61), B4a (#62), I7 (#63) and B14c (#64) are merged. Verified main is `4d1c5c3`. The next design packet is B13e templates, followed by B14f signed updates; both remain planning briefs requiring separate ready specs. OAuth, optional model review and Phase 3 remain deferred.
+Active delivery scope (2026-10-29): B11d (#60), B14d (#61), B4a (#62), I7 (#63) and B14c (#64) are merged. Verified main is `9898c0a`, including the B14c status closeout #65. [B13e Bot templates](tasks/b13e-bot-templates.md) is ready for implementation; its versioned file, explicit dependency resolution and atomic import acceptance are specified. B14f signed updates follows and still needs a ready spec. OAuth, optional model review and Phase 3 remain deferred.
 
 **D8, done through I6 / PR #57:** [Unified chats and continuous activity](tasks/d8-chat-experience.md) provides mixed private/group navigation, member avatars, compact Settings and real streamed Markdown/loading feedback.
 
@@ -107,7 +107,7 @@ Accepted product direction: [D1](tasks/d1-bot-product-design.md). B16/B17 establ
 - **B9a/B9b. MCP connectors, merged (#37/#39)** (architecture M7). Executor-supervised stdio servers and HTTP sessions, credentials from the Keychain injected only into their own server, tools named `mcp__<server>__<tool>` through Tool Router with receipts, a Connect apps page.
 - **B10. Skills, merged (#35).** Library at `<data>/skills/<name>/SKILL.md`, a `skills` prompt section listing names and descriptions, `skill_load`, `skill_save` with user confirmation, `/` in the composer to attach one.
 - **B11a. Local routines:** merged in PR #41; see the [spec](tasks/b11a-local-routines.md). Confirmed panel management, isolated occurrences, exact reports, catch-up and absence protection. Model-driven proposals are a separate follow-up without a ready spec.
-- **B13. Bots together** (architecture M4). Core-coordinated group chats, explicit mentions, bounded delegation and ownership transfer (B13a–c); B13d usage is merged through I1. Remaining work: templates (export and import without memory, history, credentials, or grants).
+- **B13. Bots together** (architecture M4). Core-coordinated group chats, explicit mentions, bounded delegation and ownership transfer (B13a–c); B13d usage is merged through I1. Remaining work: [B13e templates](tasks/b13e-bot-templates.md), ready for implementation (export and import without memory, history, credentials, or grants).
 - **B14. Desktop completion** (architecture M2 rest). [B14a](tasks/b14a-reliable-observation.md) implements bounded observation and reconnect recovery (merged through I1). B23 provides `Cmd+K` history search. B14b adds sidebar Pause all and lifecycle gates. B14c adds transcript virtualization and bounded history/search, merged in #64. Remaining: richer menu-bar status, Normal and Verbose tool detail, login item, auto-update with electron-updater.
 - **B15. Agent extras.** B15a file/image inputs and result artifacts and B15b background completion are merged. Parallel model subagents within one Bot remain separate work.
 
