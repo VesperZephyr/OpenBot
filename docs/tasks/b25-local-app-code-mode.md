@@ -1,6 +1,6 @@
 # B25: Local Read-Only Application Code Mode
 
-Status: implemented, in review in PR #24 (stacked on #23); acceptance recorded below
+Status: done (#24)
 Branch: task/b25-local-app-code-mode (based on B24 commit 510244a; PR #23 is not yet merged)
 Depends on: B24; [D3](d3-app-capabilities.md)
 Architecture: Sections 5.1, 5.10, 8.2

@@ -78,7 +78,7 @@ Phase 1 (MVP) implementation is merged into `main`. Historical verification is r
 | [B1](b1-durable-approvals.md) | Durable approvals and executor receipts | done     |
 | [B2](b2-runs.md)              | Runs, queue, cancellation, and steering | done     |
 | [B3](b3-coding-tools.md)      | Coding-agent tools                      | done     |
-| [B4a](b4a-web-pagination.md) | Reliable web pagination and research coverage | in review (#62) |
+| [B4a](b4a-web-pagination.md) | Reliable web pagination and research coverage | done (#62) |
 | [B4](b4-web-research.md)      | Web research                            | done     |
 | [B5](b5-always-allow.md)      | Always allow and folder grants          | done     |
 | [B6](b6-bot-quality.md)       | Bot quality and memory                  | done     |
@@ -234,3 +234,9 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 | Task | Status |
 | --- | --- |
 | [I7: Official changelog pagination](i7-official-changelog-pagination.md) | done (#63); configured workflow and acceptance, no new runtime capability |
+
+## History scaling
+
+| Task | Status |
+| --- | --- |
+| [B14c: Bounded history reading and persistent search](b14c-history-scaling.md) | implemented in #64; approved routine selector included; [acceptance](../acceptance/history-scaling-2026-10-28.md), awaiting owner review/merge |

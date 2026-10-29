@@ -145,9 +145,22 @@ describe("Web search", () => {
 		expect(pages[2]).toContain("<published>2026-10-26T23:30:00Z</published>");
 		const bodies = pages.map(o => o.slice(o.indexOf("\n\n") + 2)).join("");
 		expect(bodies).toBe('<feed><updated>2026-10-27T03:00:00Z</updated>\n' + ('正文😀' + 'x'.repeat(20) + '\n').repeat(3500) + '<entry><title>LAST-RELEASE</title><published>2026-10-26T23:30:00Z</published></entry></feed>');
-		await h.page().locator(".steps-row").last().locator("summary").first().click();
+		// The first two bounded fetch results exceed the inline history limit and use the part reader.
+		const large = h.page().locator(".large-history").last();
+		const nextPart = large.getByRole("button", { name: /^(Read full message|Next part)$/ });
+		await nextPart.waitFor();
+		for (let part = 0; part < 8 && (await nextPart.count()); part++) {
+			const previous = await large.locator("pre").textContent();
+			await nextPart.click();
+			await expect.poll(() => large.locator("pre").textContent()).not.toBe(previous);
+		}
+		expect(await nextPart.count()).toBe(0);
+		await large.getByRole("button", { name: "Copy displayed parts", exact: true }).click();
+		const displayed = await h.app().evaluate(({ clipboard }) => clipboard.readText());
+		expect(displayed).toContain(pages[1]);
 		const cards = h.page().locator(".tool-card", { hasText: url });
 		await cards.last().locator("summary").click();
+		await cards.last().getByText("LAST-RELEASE", { exact: false }).waitFor();
 		await h.shot("06-long-feed-complete");
 	});
 

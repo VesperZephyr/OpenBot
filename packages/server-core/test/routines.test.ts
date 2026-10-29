@@ -297,7 +297,7 @@ it("bounds UTF-8 reports and retains confirmed artifacts on a later failure", as
 	const r = await create();
 	await service.test(r.routineId, 1, "partial");
 	const run = (await runtime.runsStore().list())[0]!;
-	const snapshot = runtime.snapshot.bind(runtime);
+
 	const artifact = {
 		artifactId: "artifact_report",
 		name: "partial.md",
@@ -308,10 +308,7 @@ it("bounds UTF-8 reports and retains confirmed artifacts on a later failure", as
 		availability: "available" as const,
 		createdAt: now,
 	};
-	vi.spyOn(runtime, "snapshot").mockImplementation(async (...args) => ({
-		...(await snapshot(...args)),
-		items: [{ kind: "tool", id: "published", tool: "artifact_publish", args: { path: "partial.md" }, status: "succeeded", artifact }],
-	}));
+	vi.spyOn(runtime,"executionEvidence").mockResolvedValue({unknown:false,artifacts:[artifact]});
 	vi.spyOn(runtime, "submissionAnswer").mockResolvedValue("数据".repeat(9000));
 	await runtime
 		.runsStore()
@@ -638,9 +635,9 @@ it("isolates a broken occurrence, backs off, and reconciles its original identit
 	const first = await create("broken"),
 		second = await create("healthy");
 	const bad = await service.test(first.routineId, 1, "broken-test");
-	const original = runtime.snapshot.bind(runtime);
+	const original = runtime.executionEvidence.bind(runtime);
 	const snapshot = vi
-		.spyOn(runtime, "snapshot")
+		.spyOn(runtime, "executionEvidence")
 		.mockImplementation((botId, channel) =>
 			channel === bad.channelId ? Promise.reject(Error("private error content")) : original(botId, channel),
 		);
@@ -681,4 +678,20 @@ it("isolates invalid due schedules and surfaces global scan errors without faili
 	await service.sweep();
 	access.mockRestore();
 	expect((await service.list()).scheduler?.faults.some((f) => f.key === "scheduler")).toBe(true);
+});
+
+it("authorizes bounded occurrence windows and excludes their text from public search",async()=>{
+ const routine=await create("private-history"),occurrence=await service.test(routine.routineId,1,"private-history-run");
+ await runtime.submitAndWait("bot","private-input","PRIVATE_OCCURRENCE_SENTINEL",occurrence.channelId);
+ let window:import("@openbot/protocol").WindowResult={status:"building"};
+ await expect.poll(async()=>{window=await runtime.historyWindow({conversationKey:"bot:bot",occurrenceId:occurrence.occurrenceId,position:{kind:"latest"}});return window.status;}).toBe("ready");
+ const result=await runtime.historyWindow({conversationKey:"bot:bot",occurrenceId:occurrence.occurrenceId,position:{kind:"latest"}});if(result.status!=="ready")throw Error("History is not ready");
+ expect(result.window.readCursor).toBeUndefined();expect(JSON.stringify(result.window)).toContain("PRIVATE_OCCURRENCE_SENTINEL");
+ expect((await runtime.searchConversations("PRIVATE_OCCURRENCE_SENTINEL",new Set(["bot:bot"]))).items).toEqual([]);
+ expect((await service.detail(routine.routineId,occurrence.occurrenceId)).snapshot?.items).toEqual([]);
+ await runtime.createBot({botId:"other",name:"Other",createdAt:now});
+ await expect(runtime.historyWindow({conversationKey:"bot:other",occurrenceId:occurrence.occurrenceId,position:{kind:"latest"}})).rejects.toThrow("Occurrence is unavailable");
+ await expect(runtime.historyWindow({conversationKey:"group:group_missing",occurrenceId:occurrence.occurrenceId,position:{kind:"latest"}})).rejects.toThrow("Occurrence requires");
+ await runtime.updateBot("bot",{status:"deleted"});
+ await expect(runtime.historyWindow({conversationKey:"bot:bot",occurrenceId:occurrence.occurrenceId,position:{kind:"latest"}})).rejects.toThrow("unavailable");
 });

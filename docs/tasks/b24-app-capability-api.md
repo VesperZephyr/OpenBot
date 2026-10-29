@@ -1,6 +1,6 @@
 # B24: Authorized Application Capability API
 
-Status: implemented, in review (PR #23)
+Status: done (included in merged product foundation; see task index)
 Branch: task/b24-app-capability-api
 Depends on: B23, D3
 Architecture: Sections 4.2, 5.10, 6.1; [D3](d3-app-capabilities.md)

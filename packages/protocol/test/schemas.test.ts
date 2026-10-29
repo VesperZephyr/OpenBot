@@ -131,3 +131,14 @@ it("allows bounded avatar choices but rejects forged assets, paths, scripts and 
  for (const avatar of [{kind:"image",sha256:"a".repeat(64)},{kind:"upload",base64:"<svg/>"},{kind:"upload",base64:"a".repeat(409601)},{kind:"generated",version:2,seed:1,motif:"leaf"},{kind:"generated",version:1,seed:-1,motif:"leaf"},{kind:"generated",version:1,seed:1,motif:"leaf",path:"/private/image.png"}])
   expect(paramsError("bots.update",{...params,avatar})).toBeDefined();
 });
+
+it("bounds history selectors and rejects mixed or forged authority",()=>{
+ const base={conversationKey:"bot:reader",position:{kind:"latest"}};
+ expect(paramsError("conversations.window",base)).toBeUndefined();
+ expect(paramsError("conversations.window",{...base,occurrenceId:"routine-run"})).toBeUndefined();
+ expect(paramsError("conversations.window",{...base,conversationKey:"group:group_a",deliveryId:"delivery"})).toBeUndefined();
+ for(const extra of [{limit:0},{limit:101},{limit:1.5},{deliveryId:"delivery"},{occurrenceId:"run",deliveryId:"delivery"},{channelId:"routine_private"},{targetId:"other"},{position:{kind:"around",rowId:"x".repeat(2049)}},{position:{kind:"cursor",cursor:"x".repeat(4097)}}])expect(paramsError("conversations.window",{...base,...extra})).toBeDefined();
+ expect(paramsError("conversations.window",{...base,conversationKey:"group:group_a",occurrenceId:"run"})).toBeDefined();
+ for(const part of [-1,1.5,Number.MAX_SAFE_INTEGER+1])expect(paramsError("conversations.detail",{conversationKey:base.conversationKey,detail:"opaque",part})).toBeDefined();
+ expect(paramsError("conversations.indexRetry",{path:"/private"})).toBeDefined();
+});

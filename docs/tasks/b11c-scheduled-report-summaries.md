@@ -1,6 +1,6 @@
 # B11c: Scheduled summaries of routine reports
 
-Status: integrated in [I6 / PR #57](https://github.com/VesperZephyr/OpenBot/pull/57), targeting main; original review and verification below.
+Status: done (integrated through I6 / PR #57); original verification retained below
 Branch: task/b11c-scheduled-report-summaries
 Depends on: B11b (merged into main in PR #53). I6 carries this implementation into main.
 

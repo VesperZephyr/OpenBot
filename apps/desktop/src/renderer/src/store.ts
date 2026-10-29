@@ -1,3 +1,4 @@
+import { resetHistory } from "./history-cache";
 import { LatestRead, observe } from "../../shared/observation";
 import type { LifecycleState } from "@openbot/protocol";
 /**
@@ -30,6 +31,7 @@ export type View =
 export type SearchTarget = { conversationKey: ConversationKey; messageId: string; nonce: string };
 
 type State = {
+ historyRevision:number;
  routines:import("@openbot/protocol").RoutineList|undefined;
  connectors:readonly import("@openbot/protocol").ConnectorProfile[]|undefined;
  skills:readonly import("@openbot/protocol").SkillSummary[]|undefined;
@@ -52,6 +54,7 @@ type State = {
 };
 
 export const useStore = create<State>(() => ({
+ historyRevision:0,
  routines:undefined,
 	connectors:undefined,
  skills:undefined,
@@ -113,23 +116,23 @@ const conversationRead = new LatestRead(
 	async () => {
 		const view = useStore.getState().view;
 		await api["conversations.subscribe"]({ botId: view.kind === "bot" ? view.botId : null });
-		return view.kind === "bot" ? await api["conversations.snapshot"]({ botId: view.botId }) : undefined;
+		return view.kind === "bot" ? await api["conversations.snapshot"]({ botId: view.botId, history:"omit" }) : undefined;
 	},
 	(snapshot) => {
 		const view = useStore.getState().view;
 		if (snapshot && view.kind === "bot" && view.botId === snapshot.botId)
-			useStore.setState((s) => ({ conversations: { ...s.conversations, [snapshot.botId]: snapshot } }));
+			useStore.setState((s) => ({ conversations: { [snapshot.botId]: snapshot } }));
 	},
 );
 const groupRead = new LatestRead(
 	async () => {
 		const view = useStore.getState().view;
-		return view.kind === "group" ? await api["groups.snapshot"]({ groupId: view.groupId }) : undefined;
+		return view.kind === "group" ? await api["groups.snapshot"]({ groupId: view.groupId, history:"omit" }) : undefined;
 	},
 	(snapshot) => {
 		const view = useStore.getState().view;
 		if (snapshot && view.kind === "group" && view.groupId === snapshot.group.groupId)
-			useStore.setState((s) => ({ groupSnapshots: { ...s.groupSnapshots, [view.groupId]: snapshot } }));
+			useStore.setState((s) => ({ groupSnapshots: { [view.groupId]: snapshot } }));
 	},
 );
 const lifecycleRead = new LatestRead(
@@ -145,6 +148,7 @@ export const refreshRoutines=()=>routinesRead.request();
 const readers = [routinesRead,connectorsRead,skillsRead,summariesRead, groupsRead, botsRead, settingsRead, conversationRead, groupRead, lifecycleRead];
 let readGeneration = 0;
 function resetReads() {
+ resetHistory();
 	readGeneration++;
 	for (const reader of readers) reader.reset();
 }
@@ -255,7 +259,8 @@ async function loadAll(changes: number): Promise<void> {
 		...(changes & 8 ? [refreshSettings(), refreshLifecycle(), refreshSkills(),refreshConnectors(),refreshRoutines()] : []),
 	]);
 	if (generation !== readGeneration || useStore.getState().host.status !== "ready") return;
-	const { view, onboarding, settings, bots } = useStore.getState();
+	if(changes&7)useStore.setState(s=>({historyRevision:s.historyRevision+1}));
+ const { view, onboarding, settings, bots } = useStore.getState();
 	if (onboarding === undefined && settings) useStore.setState({ onboarding: needsOnboarding(settings, bots) });
 	if (view.kind === "home" || (view.kind === "bot" && !bots.some((bot) => bot.botId === view.botId))) {
 		const core = bots.find((b) => b.kind === "core");

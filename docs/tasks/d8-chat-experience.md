@@ -1,6 +1,6 @@
 # D8: Unified chat and continuous activity feedback
 
-Status: integrated in [I6 / PR #57](https://github.com/VesperZephyr/OpenBot/pull/57), targeting main; original review and verification below.
+Status: done (integrated through I6 / PR #57); original verification retained below
 
 ## Problem and outcome
 

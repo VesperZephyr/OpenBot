@@ -29,7 +29,7 @@ export function LiveReply({ snapshot, botId = snapshot?.botId, queued = false }:
         : paused ? "Queued until work resumes"
         : queued || state === "queued" ? "Waiting for a free slot"
         : live?.retry ? "Retrying response"
-        : tool ? "Running a tool"
+        : tool||snapshot?.live?.toolRunning ? "Running a tool"
         : text.trim() ? "Replying" : "Thinking…";
     const animated = !["Needs approval", "Waiting for your reply", "Queued until work resumes"].includes(label);
     return <div className="live-reply">

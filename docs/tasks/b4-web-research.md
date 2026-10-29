@@ -1,6 +1,6 @@
 # B4: Web Research
 
-Status: in review
+Status: done (Phase 1 MVP merged; see task index)
 Branch: task/b4-web-research
 Depends on: none
 Architecture: Sections 5.1 (Host tools `web_search`, `web_fetch`), 5.9 (secrets in the Keychain)

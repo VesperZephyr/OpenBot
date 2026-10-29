@@ -1,6 +1,6 @@
 # B4a: Reliable web pagination and research coverage
 
-Status: in review (#62)
+Status: done (#62; merge 4c64a43)
 Branch: task/b4a-web-pagination
 Depends on: B4, I6, B11d
 Architecture: sections 5.1–5.2 (routed Host research tools)

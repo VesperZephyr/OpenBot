@@ -1,6 +1,6 @@
 # B18: Core Bot Management Tools
 
-Status: in review
+Status: done (#11)
 Branch: task/b18-core-management
 Depends on: B17, B20
 Architecture: Sections 5.2, 5.7, 8.3

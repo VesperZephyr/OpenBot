@@ -1,6 +1,6 @@
 # B1: Durable Approvals and Executor Receipts
 
-Status: in review
+Status: done (Phase 1 MVP merged; see task index)
 Branch: task/b1-durable-approvals
 Depends on: none
 Architecture: Sections 5.1 (replay policy), 5.3 (approvals), 6.2 (executor protocol), 7.1, 8.2

@@ -1,6 +1,6 @@
 # B10: Reviewed Reusable Skills
 
-Status: in review (#35)
+Status: done (#35)
 Branch: task/b10-reviewed-skills; PR target: main
 Depends on: verified I1 candidate `63fb9bc397e9cbfeba30df95e73d3a1e63bc6f34` (#34), including #28–#33
 Architecture: Sections 3, 5.3, 5.8, 6 and 8

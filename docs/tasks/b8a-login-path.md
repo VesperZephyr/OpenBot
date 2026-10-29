@@ -1,6 +1,6 @@
 # B8a: Login Shell Command Path
 
-Status: in review
+Status: done (#4)
 Branch: task/b8a-login-path
 Depends on: B8, B7a (background verification)
 Architecture: Sections 3 (desktop owns Host startup), 5.9 (credential isolation)

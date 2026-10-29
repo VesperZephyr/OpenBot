@@ -20,7 +20,9 @@ function fixture() {
 	mkdirSync(join(data, "attachments"));
 	writeFileSync(join(data, "attachments", "report.md"), "# 原始报告");
 	writeFileSync(join(data, "credentials.json"), '["DO_NOT_EXPORT"]');
-	mkdirSync(join(data, "artifacts"));
+	mkdirSync(join(data,"cache"));
+ for(const suffix of ["","-wal","-shm"])writeFileSync(join(data,`cache/history-v1.sqlite${suffix}`),"DISPOSABLE_HISTORY");
+ mkdirSync(join(data, "artifacts"));
 	writeFileSync(join(data, "artifacts", "spill.txt"), "temporary");
 	const options = {
 		dataDirectory: data,
@@ -42,11 +44,13 @@ it("restores content after deletion, preserves excluded local data and retains a
 		archive = f.service.export(f.out).path!;
 	expect(existsSync(join(archive, "data/credentials.json"))).toBe(false);
 	expect(existsSync(join(archive, "data/artifacts"))).toBe(false);
+ expect(existsSync(join(archive,"data/cache"))).toBe(false);
 	rmSync(join(f.data, "attachments"), { recursive: true });
 	const db = new DatabaseSync(join(f.data, "openbot.sqlite"));
 	db.exec("update facts set value='changed'");
 	db.close();
 	const result = await f.service.restore(archive);
+ for(const suffix of ["","-wal","-shm"])expect(existsSync(join(f.data,`cache/history-v1.sqlite${suffix}`))).toBe(false);
 	expect(readFileSync(join(f.data, "attachments/report.md"), "utf8")).toBe("# 原始报告");
 	const restored = new DatabaseSync(join(f.data, "openbot.sqlite"));
 	expect(restored.prepare("select * from lifecycle").get()).toMatchObject({ paused: 1 });
@@ -104,6 +108,7 @@ it("rolls back a replacement failure", async () => {
 		},
 	});
 	await expect(service.restore(archive)).rejects.toThrow("disk fault");
+ expect(existsSync(join(f.data,"cache/history-v1.sqlite"))).toBe(false);
 	expect(readFileSync(join(f.data, "attachments/report.md"), "utf8")).toBe("current");
 	expect(existsSync(join(f.data, ".restore-journal.json"))).toBe(false);
 });

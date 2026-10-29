@@ -55,6 +55,9 @@ const SkillDocument=strict({name:SkillName,description:Type.String({minLength:1,
 const ConnectorId=Type.String({pattern:"^[a-z][a-z0-9-]{0,31}$"});
 const ConnectorRevision=Type.Integer({minimum:1,maximum:Number.MAX_SAFE_INTEGER});
 const ConnectorChange=strict({requestId:Id,connectorId:ConnectorId,expectedRevision:ConnectorRevision});
+const HistoryId=Type.String({minLength:1,maxLength:2048});
+const ConversationKey=Type.TemplateLiteral([Type.Union([Type.Literal("bot:"),Type.Literal("group:")]),Type.String()],{pattern:"^(bot|group):.+$",maxLength:262});
+const WindowBase={position:Type.Union([strict({kind:Type.Literal("latest")}),strict({kind:Type.Literal("around"),rowId:HistoryId}),strict({kind:Type.Literal("cursor"),cursor:Type.String({minLength:1,maxLength:4096})})]),limit:Type.Optional(Type.Integer({minimum:1,maximum:100}))};
 export const HOST_PARAM_SCHEMAS = {
  ...ROUTINE_SCHEMAS,
  "connectors.list":NoParams,
@@ -89,7 +92,7 @@ export const HOST_PARAM_SCHEMAS = {
 	"artifacts.remove": strict({ requestId: Id, artifactId: ArtifactId }),
 	"collaboration.stop": strict({ rootId: Type.String({ minLength: 1, maxLength: 2048 }) }),
 	"groups.list": NoParams,
-	"groups.snapshot": strict({ groupId: GroupId }),
+	"groups.snapshot": strict({ groupId: GroupId, history:Type.Optional(Type.Literal("omit")) }),
 	"groups.change": strict({
 		requestId: Id,
 		action: Type.Enum(["create", "update", "dissolve"]),
@@ -132,7 +135,14 @@ export const HOST_PARAM_SCHEMAS = {
 		pinned: Type.Optional(Type.Boolean()),
 		status: Type.Optional(Type.Enum(["active", "hidden"])),
 	}),
-	"conversations.snapshot": BotOnly,
+	"conversations.snapshot": strict({botId:Id,history:Type.Optional(Type.Literal("omit"))}),
+ "conversations.window":Type.Union([
+ strict({...WindowBase,conversationKey:ConversationKey}),
+ strict({...WindowBase,conversationKey:Type.TemplateLiteral([Type.Literal("group:"),Type.String()],{pattern:"^group:.+$",maxLength:262}),deliveryId:HistoryId}),
+ strict({...WindowBase,conversationKey:Type.TemplateLiteral([Type.Literal("bot:"),Type.String()],{pattern:"^bot:.+$",maxLength:262}),occurrenceId:HistoryId})]),
+ "conversations.detail":strict({conversationKey:ConversationKey,detail:HistoryId,part:Type.Integer({minimum:0,maximum:Number.MAX_SAFE_INTEGER})}),
+ "conversations.indexStatus":NoParams,
+ "conversations.indexRetry":NoParams,
 	"conversations.list": NoParams,
 	"conversations.search": APP_SEARCH_INPUT,
 	"conversations.markRead": strict({

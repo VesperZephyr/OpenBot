@@ -49,6 +49,7 @@ function page<T>(values: readonly T[], key: (value:T)=>string, binding: string, 
 	return result();
 }
 export class AppCapabilities {
+ #desktopSearch:AbortController|undefined;
 	private readonly runtime: BotRuntime;
 	private readonly targetId: string;
 	private readonly groupAdmissible: (run: import("@openbot/agent-runtime").StoredRun)=>Promise<boolean>;
@@ -95,7 +96,7 @@ export class AppCapabilities {
 		const result = await this.#guard(async()=> {
 			if (!descriptor) return fail("invalid_request","Unknown application capability");
 			const scope = await this.#modelScope(call);
-			const result = await this.#execute(descriptor.id,call.args,scope);
+			const result = await this.#execute(descriptor.id,call.args,scope,call.signal);
 			await this.#modelScope(call);
 			call.signal.throwIfAborted();
 			return result;
@@ -104,7 +105,8 @@ export class AppCapabilities {
 	}
 	/** Only the private desktop IPC adapter calls this method; principal is not supplied by JSON. */
 	async desktopSearch(input: HostParams<"conversations.search">) {
-		return this.#unwrap(await this.#guard(()=>this.#execute("conversations.search",input,{principal:`desktop:${this.targetId}`}))) as import("@openbot/protocol").ConversationSearchResult;
+		this.#desktopSearch?.abort();const controller=new AbortController();this.#desktopSearch=controller;
+ return this.#unwrap(await this.#guard(()=>this.#execute("conversations.search",input,{principal:`desktop:${this.targetId}`},controller.signal),controller.signal)) as import("@openbot/protocol").ConversationSearchResult;
 	}
 	async desktopRead(input: import("@openbot/protocol").AppReadInput) {
 		return this.#unwrap(await this.#guard(()=>this.#execute("conversations.read",input,{principal:`desktop:${this.targetId}`}))) as AppReadValue;
@@ -119,6 +121,7 @@ export class AppCapabilities {
 	async #guard(action: ()=>Promise<AppResult<unknown>>, signal?: AbortSignal): Promise<AppResult<unknown>> {
 		try { return await action(); } catch(error) {
 			if (signal?.aborted) return {ok:false,error:{code:"cancelled",message:"Application read was cancelled"}};
+			if(error instanceof Error && /^History /.test(error.message))return {ok:false,error:{code:"resource_limit",message:"History is busy or still indexing. Try again."}};
 			if (error instanceof AppFailure) return {ok:false,error:{code:error.code,message:error.message}};
 			if (error instanceof ProtocolError && error.code === "invalid_request") return {ok:false,error:{code:"invalid_request",message:"Invalid application request or cursor"}};
 			return {ok:false,error:{code:"not_found",message:"Application data is unavailable"}};
@@ -133,7 +136,7 @@ export class AppCapabilities {
 		const summaries = allSummaries.filter(s=>keys.has(s.conversationKey));
 		return {bots,groups,keys,summaries};
 	}
-	async #execute(id: AppCapabilityId, raw: unknown, scope: Scope): Promise<AppResult<unknown>> {
+	async #execute(id: AppCapabilityId, raw: unknown, scope: Scope, signal?:AbortSignal): Promise<AppResult<unknown>> {
 		const descriptor = appCapability(id);
 		if (!descriptor || !validAppInput(id,raw)) return fail("invalid_request","Invalid application arguments");
 		const input = raw as Input;
@@ -144,8 +147,11 @@ export class AppCapabilities {
 		let value: unknown;
 		switch(id) {
 			case "conversations.search": {
-				const eligible = new Set(summaries.filter(s=>(!input.unreadOnly || s.unreadCount>0) && (!input.conversationKey || s.conversationKey===input.conversationKey)).map(s=>s.conversationKey));
-				value=this.runtime.searchConversations(input.query!,eligible,input.unreadOnly,input.includeHidden,input.cursor,binding);break;
+				const eligible = new Set([...keys].filter(key=>(!input.unreadOnly || summaries.some(s=>s.conversationKey===key&&s.unreadCount>0)) && (!input.conversationKey || key===input.conversationKey)));
+				value=await this.runtime.searchConversations(input.query!,eligible,input.unreadOnly,input.includeHidden,input.cursor,binding,signal);
+    const current=await this.#resources(scope,input);
+    const currentKeys=[...current.keys].filter(key=>(!input.unreadOnly||current.summaries.some(s=>s.conversationKey===key&&s.unreadCount>0))&&(!input.conversationKey||key===input.conversationKey));
+    if(fingerprint([...eligible].sort())!==fingerprint(currentKeys.sort()))return fail("permission_denied","Application access changed");break;
 			}
 			case "conversations.list": value=page(summaries.filter(s=>!input.unreadOnly || s.unreadCount>0),s=>s.conversationKey,binding,input.cursor);break;
 			case "bots.list": value=page(bots.map(b=>{
@@ -153,22 +159,23 @@ export class AppCapabilities {
 				return {botId:b.botId,name:name.text,role:role.text,kind:b.kind,status:b.status,revision:b.revision,truncated:name.truncated||role.truncated};
 			}),b=>b.botId,binding,input.cursor);break;
 			case "groups.list": value=page(groups.map(g=>{const name=boundedText(g.name,1024);return {groupId:g.groupId,name:name.text,status:g.status,revision:g.revision,truncated:name.truncated};}),g=>g.groupId,binding,input.cursor);break;
-			case "conversations.read": value=await this.#read(input);break;
+			case "conversations.read": value=await this.#read(input,signal);if(!(await this.#resources(scope,{...input,includeHidden:true})).keys.has(input.conversationKey!))return fail("permission_denied","Application access changed");break;
 		}
 		const result = {ok:true as const,value};
 		if (size(result)>descriptor.maxResultBytes) return fail("resource_limit","Application result exceeds the size limit");
 		if (!validAppOutput(id,result)) return fail("resource_limit","Application result could not be validated");
 		return result;
 	}
-	async #read(input:Input): Promise<AppReadValue> {
-		const messages = await this.runtime.committedMessages(input.conversationKey!);
+	async #read(input:Input,signal?:AbortSignal): Promise<AppReadValue> {
+		const window = await this.runtime.contextMessages(input.conversationKey!,input.anchorMessageId!,input.before??3,input.after??3,signal);
+ const messages=window.messages;
 		const index = messages.findIndex(m=>m.id===input.anchorMessageId);
 		if(index<0) return fail("not_found","Message is unavailable");
 		const min=Math.max(0,index-(input.before??3)), max=Math.min(messages.length-1,index+(input.after??3));
 		const clip=(at:number)=>{const m=messages[at]!;return {id:m.id,senderId:m.senderId,at:m.at,...boundedText(m.text,8192)};};
 		let start=index,end=index;
 		const items=[clip(index)];
-		const result=():AppReadValue=>({conversationKey:input.conversationKey!,anchorMessageId:input.anchorMessageId!,messages:items,hasBefore:start>0,hasAfter:end<messages.length-1});
+		const result=():AppReadValue=>({conversationKey:input.conversationKey!,anchorMessageId:input.anchorMessageId!,messages:items,hasBefore:window.hasBefore||start>0,hasAfter:window.hasAfter||end<messages.length-1});
 		for(let distance=1;distance<=10;distance++) {
 			for(const at of [index-distance,index+distance]) {
 				if(at<min||at>max) continue;

@@ -70,6 +70,7 @@ function retain(state: RoutineState, routineId: string) {
 	for (const old of ended.slice(ROUTINE_LIMITS.history)) delete state.occurrences[old.occurrenceId];
 }
 export class Routines {
+ readonly #activityObservers=new Map<string,()=>void>();
 	#line: Promise<unknown> = Promise.resolve();
 	#timer?: ReturnType<typeof setInterval>;
 	#closed = false;
@@ -148,6 +149,7 @@ export class Routines {
 		this.#closed = true;
 		clearInterval(this.#timer);
 		await this.#line.catch(() => {});
+ for(const stop of this.#activityObservers.values())stop();this.#activityObservers.clear();
 	}
 	async activity(): Promise<null> {
 		const now = this.options.now(),
@@ -196,7 +198,7 @@ export class Routines {
 		if (occurrenceId && !selected) throw new ProtocolError("not_found", "Routine history is unavailable");
 		const bot = await this.options.runtime.getBot(routine.botId);
 		if (selected?.runId && bot?.status !== "deleted") {
-			const snapshot = await this.options.runtime.snapshot(routine.botId, selected.channelId),
+			const snapshot = await this.options.runtime.snapshot(routine.botId, selected.channelId,"omit"),
 				run = await this.options.runtime.runsStore().get(selected.runId);
 			const approvals = this.options.approvals.forBot(routine.botId, snapshot.conversationId);
 			const record = run ? (({ messages: _messages, inputs: _inputs, ...record }) => record)(run) : undefined;
@@ -570,23 +572,17 @@ export class Routines {
 				run ??= (await this.options.runtime.runsStore().list()).find((run) => run.requestIds.includes(o.occurrenceId));
 			}
 			if (run && pending(o)) {
+    if(!this.#activityObservers.has(o.channelId))this.#activityObservers.set(o.channelId,await this.options.runtime.observeLive(o.botId,()=>{},outcome=>this.options.settled(o.botId,outcome.id,outcome.conversationId),o.channelId));
 				const activeState = run.state === "queued" ? "pending" : "running";
 				if (o.runId !== run.runId || o.state !== activeState) {
 					o = { ...o, runId: run.runId, state: activeState };
 					await this.#save(o);
 				}
-				const snapshot = await this.options.runtime.snapshot(o.botId, o.channelId);
-				for (const item of snapshot.items)
-					if (item.kind === "tool" && !["pending", "running"].includes(item.status))
-						this.options.settled(o.botId, item.id, snapshot.conversationId);
-				if (isTerminal(run.state)) {
-					const input = run.inputs[0],
-						unknown = snapshot.items.some((i) => i.kind === "tool" && i.status === "interrupted");
-					const text = input?.submissionId ? await this.options.runtime.submissionAnswer(o.botId, input.submissionId, o.channelId) : "";
-					// A routine channel holds exactly one occurrence. Keep confirmed files even when a later step fails.
-					const artifacts = snapshot.items.flatMap((item) =>
-						item.kind === "tool" && item.status === "succeeded" && item.artifact ? [item.artifact] : [],
-					);
+    const evidence=await this.options.runtime.executionEvidence(o.botId,o.channelId);
+    if (isTerminal(run.state)) {
+     const input=run.inputs[0],unknown=evidence.unknown;
+     const text=input?.submissionId?await this.options.runtime.submissionAnswer(o.botId,input.submissionId,o.channelId):"";
+     const artifacts=evidence.artifacts;
 					o = {
 						...o,
 						state: unknown ? "needs_attention" : (run.state as RoutineOccurrence["state"]),
@@ -598,6 +594,7 @@ export class Routines {
 				}
 			}
 		}
+ if(!pending(o)){this.#activityObservers.get(o.channelId)?.();this.#activityObservers.delete(o.channelId);}
 		if (!pending(o) && !o.published) {
 			if (o.reportTo) {
 				await this.options.runtime.groups().publishRoutine(o.occurrenceId);

@@ -1,6 +1,6 @@
 # B20: Desktop Experience and English / Chinese
 
-Status: in review
+Status: done (#9)
 Branch: task/b20-desktop-experience
 Depends on: B17
 Architecture: Sections 5.7, 8

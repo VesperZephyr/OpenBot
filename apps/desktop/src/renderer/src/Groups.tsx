@@ -1,9 +1,10 @@
+import { HistoryTimeline } from "./HistoryTimeline";
 import { LiveReply } from "./LiveReply";
 import { Avatar, GroupAvatar } from "./Avatar";
 import { BackgroundTask } from "./BackgroundTask";
 import { ArtifactCard } from "./ArtifactCard";
 import { ChatComposer } from "./ChatComposer";
-import { ConversationShell, DetailsPanel, Timeline } from "./ConversationUI";
+import { ConversationShell, DetailsPanel } from "./ConversationUI";
 import { MarkReadButton, RosterPreview } from "./RosterPreview";
 import { useEffect, useRef, useState } from "react";
 import type { Group } from "@openbot/protocol";
@@ -151,13 +152,14 @@ export function GroupEditor({ group: liveGroup, onClose }: { group?: Group; onCl
 		</div>
 	);
 }
-export function GroupView({ groupId }: { groupId: string }) {
+export function GroupView({ groupId,renderExecution }: { groupId: string;renderExecution:(botId:string,deliveryId:string)=>React.ReactNode }) {
 	const bots = useStore((s) => s.bots);
 	const snapshot = useStore((s) => s.groupSnapshots[groupId]);
 	const [editing, setEditing] = useState(false);
 	const [dissolving, setDissolving] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [details, setDetails] = useState(false);
+ const [execution,setExecution]=useState<{botId:string;deliveryId:string}|undefined>(undefined);
 	const routines = useStore((s) => s.routines?.routines);
 	useEffect(() => {
 		void refreshGroupSnapshot().catch(report);
@@ -174,7 +176,7 @@ export function GroupView({ groupId }: { groupId: string }) {
 	return (
 		<ConversationShell
 			className="group-view"
-			details={
+			details={execution?<DetailsPanel title={t("Execution details")} onClose={()=>setExecution(undefined)}>{renderExecution(execution.botId,execution.deliveryId)}</DetailsPanel>:
 				details && (
 					<DetailsPanel title={t("Conversation details")} onClose={() => setDetails(false)}>
 						<p>{group.objective}</p>
@@ -220,14 +222,7 @@ export function GroupView({ groupId }: { groupId: string }) {
 					ⓘ
 				</button>
 			</header>
-			<Timeline
-				readCursor={snapshot.readCursor}
-				conversationKey={`group:${groupId}`}
-				activity={`${posts.length}:${JSON.stringify(tasks.map((d) => [d.state, d.conversation?.live]))}`}
-				className="group-timeline"
-			>
-				{!posts.length && (
-					<div className="group-intro">
+   <HistoryTimeline conversationKey={`group:${groupId}`} activity={JSON.stringify(snapshot)} className="group-timeline" empty={<div className="group-intro">
 						<span className="group-symbol" aria-hidden>
 							◈
 						</span>
@@ -238,12 +233,7 @@ export function GroupView({ groupId }: { groupId: string }) {
 								<span key={id}>{name(id)}</span>
 							))}
 						</div>
-					</div>
-				)}
-				{posts
-					.filter((post) => post.text.trim())
-					.map((post) => (
-						<article
+					</div>} renderRow={row=>{if(row.content.kind!=="group")return null;const post=row.content.post;return (<article
 							data-message-id={post.postId}
 							className={`group-post ${post.kind && post.kind !== "result" ? "handoff-event" : ""} ${post.senderId === "user" ? "from-user" : ""}`}
 							key={post.postId}
@@ -269,11 +259,12 @@ export function GroupView({ groupId }: { groupId: string }) {
 								{post.routine.inputs && <span>{t("Inputs ready: {ready}/{total}", post.routine.inputs)} · {t(post.routine.inputs.ready === post.routine.inputs.total ? "Complete inputs" : "Partial inputs")}</span>}
 								<button onClick={() => useStore.setState({ view: { kind: "routines", routineId: post.routine!.routineId, occurrenceId: post.routine!.occurrenceId } })}>{t("View routine")}</button>
 							</div>}
-							{post.attachments?.map((artifact) => (
+							{post.postId.startsWith("reply:")&&<button onClick={()=>setExecution({botId:post.senderId,deliveryId:post.postId.slice(6)})}>{t("Execution details")}</button>}
+ {post.attachments?.map((artifact) => (
 								<ArtifactCard key={artifact.artifactId} artifact={artifact} />
 							))}
-						</article>
-					))}
+						</article>);}}>
+
 				{snapshot.backgroundTasks?.map(record=><BackgroundTask key={record.invocationId} record={record}/>)}
 				{roots
 					.filter((r) => r.state !== "completed")
@@ -296,7 +287,7 @@ export function GroupView({ groupId }: { groupId: string }) {
 							)}
 							<details className="task-details">
 								<summary>{t("Task details")}</summary>
-							<p className="task-subject">{posts.find((p) => p.postId === root.postId)?.text.slice(0, 180)}</p>
+							<p className="task-subject">{root.subject ?? posts.find((p) => p.postId === root.postId)?.text.slice(0, 180)}</p>
 							<div className="ownership-trail">
 								{[...new Set(tasks.filter((d) => d.rootId === root.rootId && d.origin !== "result").map((d) => name(d.botId)))].join(" → ")}
 							</div>
@@ -339,7 +330,7 @@ export function GroupView({ groupId }: { groupId: string }) {
 							))}
 						</div>
 					))}
-			</Timeline>
+			</HistoryTimeline>
 			{!canSend && (
 				<p className="group-readonly">
 					{t(

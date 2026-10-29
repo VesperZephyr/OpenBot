@@ -662,3 +662,14 @@ button:not(:disabled):hover { filter:brightness(.97); }
 ::selection { background:var(--accent); color:var(--accent-ink); }
 input::placeholder, textarea::placeholder { color:var(--muted); opacity:1; }
 .appearance-choice:hover { background:var(--surface-raised); }
+
+/* History bodies are measured independently; live controls remain outside the index lifecycle. */
+.history-virtual { overflow-anchor: none; }
+.history-row { box-sizing: border-box; min-height: 1px; padding-bottom: 14px; }
+.history-row > .messages { margin: 0; padding: 0; }
+.history-row .steps-row { list-style: none; }
+.history-status { padding: 8px 20px; color: var(--muted); font-size: 12px; }
+.history-status button { margin-left: 8px; }
+.history-page { display: block; margin: 0 auto 8px; }
+.execution-timeline { height: 420px; min-height: 180px; }
+.large-history pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 480px; overflow: auto; }

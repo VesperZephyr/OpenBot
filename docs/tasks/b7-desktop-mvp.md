@@ -1,6 +1,6 @@
 # B7: Desktop MVP
 
-Status: in review
+Status: done (Phase 1 MVP merged; see task index)
 Branch: task/b7-desktop-mvp
 Depends on: B2 (Runs: `RunScheduler`, `run` on snapshots), B6 (memory, thinking level), B8 (`app://`, fuses)
 Architecture: Sections 6.1 (desktop protocol, `conversations.subscribe`, `bots.delete`), 6.4 (named methods, schema validation, coalescing, `powerSaveBlocker`), 8.3 (deleted Bots keep their conversation)

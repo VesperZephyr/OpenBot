@@ -115,6 +115,7 @@ it("acknowledges only a foreground timeline at its end, leaving history and hidd
 	h.model.script({ text: long });
 	await api("messages.submit", { botId: "bot_alpha", requestId: "long", text: "Show findings" });
 	await h.page().getByText("Finding 50: Checked evidence.", { exact: true }).waitFor();
+	await h.page().evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 	const timeline = h.page().locator(".timeline-scroll");
 	await timeline.evaluate((el) => {
 		el.scrollTop = 80;

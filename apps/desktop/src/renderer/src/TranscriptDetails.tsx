@@ -4,19 +4,20 @@ import { t } from "./i18n";
  * files a Bot wrote.
  */
 import type { TranscriptItem } from "@openbot/protocol";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { report, useStore } from "./store";
 
 /** Consecutive successful tool calls, collapsed; expanding shows each call's own row. */
-export function StepsRow({ count, children }: { readonly count: number; readonly children: ReactNode }) {
+export function StepsRow({ count, children,forceOpen=false,onExpanded }: { readonly count: number; readonly children: ReactNode|(()=>ReactNode);forceOpen?:boolean;onExpanded?:(open:boolean)=>void }) {
+ const [expanded,setExpanded]=useState(forceOpen);
 	return (
 		<li className="steps-row">
-			<details>
+			<details open={forceOpen||expanded} onToggle={e=>{setExpanded(e.currentTarget.open);onExpanded?.(e.currentTarget.open);}}>
 				<summary>
 					<span className="tool-status" aria-hidden />
 					<span className="tool-verb">{t("Ran {count} steps", {count})}</span>
 				</summary>
-				<ol className="steps-list">{children}</ol>
+				<ol className="steps-list">{(forceOpen||expanded)&&(typeof children==="function"?children():children)}</ol>
 			</details>
 		</li>
 	);
