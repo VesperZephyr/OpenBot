@@ -137,3 +137,24 @@ it("publishes immutable PDF results without widening model input formats",()=>{
  rmSync(path);expect(Buffer.from(store.content(ref.artifactId).base64!,"base64").toString()).toContain("%PDF-1.4");
  expect(()=>store.capture("bad-pdf",file("bad.pdf","not pdf"),"result")).toThrow("Invalid PDF");
 });
+
+it("filters generated files by trusted Bot before pagination and preserves legacy results", () => {
+	const path = file("report.md", "original");
+	const legacy = store.capture("legacy", path, "result");
+	const first = store.capture("bot-a", path, "result", undefined, "a");
+	const input = store.capture("input", path, "input", undefined, "a");
+	for (let i = 0; i < 201; i++) store.capture(`other-${i}`, path, "result", undefined, "b");
+	expect(store.list(0, "", { source: "result", botId: "a" }).items).toEqual([first]);
+	expect(store.list(0, "REPORT", { source: "result", botId: "b" }).nextOffset).toBe(200);
+	expect(store.list(200, "", { source: "result", botId: "b" }).items).toHaveLength(1);
+	expect(store.list(0, "missing", { botId: "a" }).items).toEqual([]);
+	expect(input.botId).toBeUndefined();
+	expect(legacy.botId).toBeUndefined();
+	rmSync(path);
+	expect(store.capture("bot-a", path, "result", undefined, "b")).toEqual(first);
+	store.close(); store = new ArtifactStore(join(root, "store"));
+	expect(store.list(0, "", { botId: "a" }).items).toEqual([first]);
+	store.remove("remove-a", first.artifactId);
+	expect(store.list(0, "", { botId: "a" }).items).toEqual([]);
+	expect(store.get(legacy.artifactId).availability).toBe("available");
+}, 30000);

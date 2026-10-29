@@ -695,3 +695,28 @@ it("authorizes bounded occurrence windows and excludes their text from public se
  await runtime.updateBot("bot",{status:"deleted"});
  await expect(runtime.historyWindow({conversationKey:"bot:bot",occurrenceId:occurrence.occurrenceId,position:{kind:"latest"}})).rejects.toThrow("unavailable");
 });
+
+it("only prepares valid direct-user proposals and leaves scheduling unchanged until confirmed", async () => {
+	const run: StoredRun = { runId: "proposal-run", botId: "bot", origin: "user", state: "running", createdAt: now, requestIds: ["request"], messages: [{ requestId: "request", text: "Schedule a report" }], inputs: [] };
+	await runtime.runsStore().put(run);
+	const call = { tool: "routine_propose", botId: "bot", runId: run.runId, conversationId: await runtime.conversationKey("bot"), callId: "proposal-call", target: { kind: "local" as const, targetId: "local" }, args: { ...fields }, signal: new AbortController().signal };
+	const result = await service.propose(call);
+	expect(result.status).toBe("succeeded");
+	expect((await service.list()).routines).toHaveLength(0);
+	expect(await service.propose(call)).toEqual(result);
+	for (const patch of [{ runId: undefined }, { target: { kind: "local" as const, targetId: "wrong" } }, { conversationId: "wrong" }, { args: { ...fields, schedule: { kind: "daily", time: "09:00", timezone: "Invalid/Zone" } } }, { args: { ...fields, reportTo: { groupId: "forged", groupRevision: 1 } } }, { args: { ...fields, instructions: "\u0001".repeat(8000) } }]) {
+		expect((await service.propose({ ...call, ...patch } as typeof call)).status).toBe("failed");
+	}
+	for (const origin of ["routine", "background", "peer"] as const) {
+		await runtime.runsStore().put({ ...run, runId: `proposal-${origin}`, origin });
+		expect((await service.propose({ ...call, runId: `proposal-${origin}` })).status).toBe("failed");
+	}
+	await runtime.ensureChannel("bot", "group-other");
+	await runtime.runsStore().put({ ...run, runId: "proposal-group", channelId: "group-other" });
+	expect((await service.propose({ ...call, runId: "proposal-group" })).status).toBe("failed");
+	await runtime.runsStore().put(run);
+	const proposal = result.routineProposal!;
+	const saved = await service.change({ action: "create", ...proposal });
+	expect(await service.change({ action: "create", ...proposal })).toEqual(saved);
+	expect((await service.list()).routines).toHaveLength(1);
+});

@@ -89,11 +89,13 @@ export function DetailsPanel({
 	onClose,
 	children,
 	modal = false,
+	heading,
 }: {
 	title: string;
 	onClose: () => void;
 	children: ReactNode;
 	modal?: boolean;
+	heading?: ReactNode;
 }) {
 	const [overlay, setOverlay] = useState(() => modal || window.innerWidth < 1200);
 	const ref = useRef<HTMLElement>(null);
@@ -136,7 +138,7 @@ export function DetailsPanel({
 				}}
 			>
 				<div className="details-heading">
-					<h2>{modal ? t("Edit profile") : title}</h2>
+					<h2>{heading ?? (modal ? t("Edit profile") : title)}</h2>
 					<button type="button" data-dialog-close aria-label={t("Close details")} onClick={onClose}>
 						×
 					</button>

@@ -140,7 +140,7 @@ process.on("message", (message: ExecutorRequest) => {
                     case "files-list": result=listReaderFiles(workspace,op.path);break;
                     case "files-read": result=readWorkspaceFile(workspace,op.path);break;
                     case "file-open": result=readSelectedFile(op.path);break;
-                    case "list": result=artifactStore.list(op.offset,op.query);break;
+                    case "list": result=artifactStore.list(op.offset,op.query,op);break;
 					case "avatar-source": result = avatarSource(op.path); break;
 					case "avatar-validate": result = validateAvatar(op.base64); break;
 					case "import":

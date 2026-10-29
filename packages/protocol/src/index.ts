@@ -5,6 +5,8 @@ import type { ReaderFile, FileListing } from "./reader.ts";
 export * from "./avatars.ts";
 import type { BotAvatar, AvatarChange, AvatarSource, AvatarImage } from "./avatars.ts";
 export * from "./routines.ts";
+import { ROUTINE_PROPOSAL_FIELDS } from "./routine-schemas.ts";
+export { ROUTINE_PROPOSAL_FIELDS, validRoutineProposalFields } from "./routine-schemas.ts";
 export * from "./memory.ts";
 import type { MemoryNote, MemoryNoteChange, MemoryScope, MemorySourceEvidence } from "./memory.ts";
 import type { CredentialStatus, CredentialMigration } from "./credentials.ts";
@@ -304,6 +306,7 @@ export type TranscriptItem =
 			/** Set when a `local_exec` call moved its command to the background. */
 			readonly taskId?: string;
 			readonly artifact?: ArtifactRef;
+	readonly routineProposal?: import("./routines.ts").RoutineProposal;
 			readonly execution?: import("./app-execution.ts").AppExecution;
 	  }
 	/** Where earlier messages left the model's context: a compaction summary or a new topic. */
@@ -565,7 +568,7 @@ export type HostMethods = {
 	"files.list": { params: { path: string }; result: FileListing };
 	"files.read": { params: { path: string }; result: ReaderFile };
 	"files.open": { params: { path: string }; result: ReaderFile };
-	"artifacts.list": { params: { offset: number; query: string }; result: ArtifactListing };
+	"artifacts.list": { params: { offset: number; query: string; source?: "input" | "result"; botId?: string }; result: ArtifactListing };
 	"artifacts.read": { params: { artifactId: string }; result: ArtifactContent };
 	"artifacts.preview": { params: { artifactId: string }; result: ArtifactContent };
 	"artifacts.remove": { params: { requestId: string; artifactId: string }; result: null };
@@ -923,6 +926,7 @@ export type ToolOutcome = {
 	/** Set when `local_exec` moved the command to the background; `task_output` and `task_stop` take it. */
 	readonly taskId?: string;
 	readonly artifact?: ArtifactRef;
+	readonly routineProposal?: import("./routines.ts").RoutineProposal;
 };
 
 /** Host to executor. */
@@ -982,6 +986,7 @@ export type ExecutorMessage =
 // Tool catalog: what the model is offered. Schemas are plain JSON Schema, which Pi validates tool arguments against.
 
 export type ToolCapability =
+ | "routines"
  | "connectors"
  | "connectors.discovery"
 	| "app.orchestrate"
@@ -1018,6 +1023,7 @@ const object = (properties: Record<string, unknown>, required: readonly string[]
 });
 
 export const TOOL_CATALOG = [
+ { name: "routine_propose", capability: "routines", destination: "host", description: "Prepare a recurring task for this Bot when the user asks to schedule work in direct chat. Provide an explicit IANA timezone for daily/weekly schedules; ask if unknown. This only creates a proposal card, never an active schedule. Tell the user to review and confirm it. Runs locally while OpenBot is open and the Mac is awake. Use empty skills unless exact reviewed references are known.", parameters: { ...ROUTINE_PROPOSAL_FIELDS } },
  {name:"skill_load", capability:"skills", destination:"host", description:"Load an exact reviewed shared skill as guidance. Use name, revision and sha256 from the skills list. It grants no permissions.", parameters:object({name:string("Skill name"),revision:integer("Exact revision"),sha256:string("Exact SHA-256")},["name","revision","sha256"])},
  {name:"skill_save", capability:"skills", destination:"host", description:"Propose saving or deleting a shared procedure in a direct user conversation. Always requires exact user review. Use expectedRevision 0 for a new name; otherwise inspect the current revision. Never include secrets or task data. No implicit grants.", parameters:object({action:{type:"string",enum:["save","delete"]},name:string("Skill name"),expectedRevision:{type:"integer",minimum:0},document:object(Object.fromEntries(["name","description","inputs","requirements","steps","validation","output","approvalBoundaries"].map(key=>[key,string(key)])),["name","description","inputs","requirements","steps","validation","output","approvalBoundaries"])},["action","name","expectedRevision"])},
 	{

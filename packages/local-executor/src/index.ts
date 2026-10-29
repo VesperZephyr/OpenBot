@@ -196,7 +196,7 @@ export class LocalExecutor {
 				signal.throwIfAborted();
 				const store = this.#options.artifactStore;
 				if (!store) throw new Error("Artifact storage is unavailable");
-				const artifact = store.capture(invocation.invocationId, path, "result", input.name);
+				const artifact = store.capture(invocation.invocationId, path, "result", input.name, invocation.botId);
 				return { status: "succeeded", output: JSON.stringify(artifact), artifact };
 			}
 			case "local_read": {

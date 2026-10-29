@@ -13,7 +13,7 @@ function current(id: string): Promise<ArtifactRef> {
 	metadataLine = next.catch(() => {});
 	return next;
 }
-export function ArtifactCard({ artifact, detach }: { artifact: ArtifactRef; detach?: () => void }) {
+export function ArtifactCard({ artifact, detach, onOpen }: { artifact: ArtifactRef; detach?: () => void; onOpen?: () => void }) {
 	const [ref, setRef] = useState(artifact),
 		[confirm, setConfirm] = useState(false),
 		[busy, setBusy] = useState(false);
@@ -37,6 +37,7 @@ export function ArtifactCard({ artifact, detach }: { artifact: ArtifactRef; deta
 			changes.removeEventListener(artifact.artifactId, refresh);
 		};
 	}, [artifact.artifactId]);
+	const preview = () => { onOpen?.(); openArtifact(ref); };
 	const available = ref.availability === "available";
 	return (
 		<div className="artifact-card" data-artifact-id={ref.artifactId}>
@@ -45,7 +46,7 @@ export function ArtifactCard({ artifact, detach }: { artifact: ArtifactRef; deta
 					<InterfaceIcon name="file" />
 				</span>
 				<div>
-					<button className="artifact-name" disabled={!available} onClick={()=>openArtifact(ref)}><strong>{ref.name}</strong></button>
+					<button className="artifact-name" disabled={!available} onClick={preview}><strong>{ref.name}</strong></button>
 					<span className="artifact-meta">
 						{Math.ceil(ref.bytes / 1024)} KB · {t(ref.source === "input" ? "Attached file" : "Result file")}
 					</span>
@@ -56,7 +57,7 @@ export function ArtifactCard({ artifact, detach }: { artifact: ArtifactRef; deta
 				<button
 					type="button"
 					disabled={busy || !available}
-                    onClick={() => openArtifact(ref)}
+                    onClick={preview}
 				>
 					{t("Preview")}
 				</button>

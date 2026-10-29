@@ -375,7 +375,7 @@ Tool Router dispatches every model-selected tool to one of two destinations. **E
 | `memory_update` | Host | Replace or append one section of the Bot's memory (8 KB of Markdown, session document `openbot.memory` keyed by Bot) | Allowed; visible and editable in the Bot's memory panel |
 | `skill_load`, `skill_save` | Host | Load a saved skill; save or revise a draft skill | Loading allowed; saving requires confirmation |
 | `bot_delegate`, `bot_handoff` | Host | Delegate a subtask or transfer ownership within the accepted group task | Active assigned Run, current membership, ancestry and root budget; local receipt and public handoff |
-| `routine_propose` (planned follow-up) | Host | Propose a new or changed routine for the user to confirm | Confirmation in the conversation |
+| `routine_propose` | Host | Prepare a new private routine for the calling Bot; return a structured proposal without scheduling | Active direct user Run and bound local target; explicit owner review/confirmation through `routines.change` |
 | `request_user_input` | Host | Ask the user a structured question or present a form step | Always allowed; the Run waits for the user |
 
 Tool Router validates arguments, the target, grants, policy, deadlines, and Run and control state. It persists dispatch intent before sending an invocation to the executor. Any `targetId` other than the bound local target is a hard error.
@@ -920,3 +920,9 @@ Product stores, transcripts, memory, configuration and diagnostics stay on the M
 `Group.revision` and `Routine.revision` protect edits. Optional `deliveryRevision` and `executionRevision` protect report destinations and source workflow bindings; legacy records fall back to `revision`. A name-only update preserves the semantic version and existing occurrence/input snapshots. Other updates retain conservative invalidation. `reportTo.groupRevision` is a delivery version, and occurrence/report-input revisions are execution versions. Desktop editors and structured group-management results carry these optional fields.
 
 Routine reconciliation isolates each occurrence and each due schedule. Failures retry with original identities and exponential delays from two to sixty seconds. `routines.list.scheduler` reports process-local fault identities, failure/retry times, attempt counts and the last successful scan; diagnostics never contain prompts or raw provider errors. Startup rebuilds diagnostics by reconciliation. Global preparation/storage failure blocks the scan; a bad individual record cannot block healthy work or Host readiness. Durable Runs, occurrences and publication receipts remain authoritative.
+
+### Bot routines and generated-file Library (B11e)
+
+Bot details expose scoped routine viewing, confirmed pause/resume and exact history navigation. Direct-user `routine_propose` uses existing schedule and skill validation, excludes group destinations, and returns a structured proposal in durable tool-result details. The trusted conversation/call identity determines its confirmation request ID; repeated confirmation uses the existing routine receipt. Preparing a proposal does not schedule work or grant authority. Group and unattended Runs are rejected.
+
+Published result metadata optionally records the executor-bound Bot ID. `artifacts.list` accepts optional Bot/source filters before bounded pagination; Desktop Library requests the current Bot and result files. This is organization, not an access boundary. Old metadata without provenance remains available through Shared files; authors are not inferred from filenames or model text. Existing immutable copies, reader, native export and removal behavior apply.

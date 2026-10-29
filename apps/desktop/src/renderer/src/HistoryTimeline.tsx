@@ -74,7 +74,7 @@ function HistoryView({
 		};
 		for (const row of pages.flatMap((p) => p.rows)) {
 			const item = row.content.kind === "direct" ? row.content.item : undefined;
-			if (item?.kind === "tool" && item.status === "succeeded" && !item.artifact && !item.taskId) {
+			if (item?.kind === "tool" && item.status === "succeeded" && !item.artifact && !item.routineProposal && !item.taskId) {
 				run.push(row);
 				if (run.length === 20) flush();
 			} else {

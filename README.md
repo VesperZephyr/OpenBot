@@ -115,7 +115,9 @@ Other tasks to try:
 
 ### Schedule a trusted workflow
 
-Open **Routines**, choose a Bot and describe the source files, steps and expected output. Review the schedule and pinned skill versions before confirming. **Test run** performs real work with the same permissions and ten-minute unattended approval expiry. Choose the Bot's private chat or a group containing that Bot as the report destination; execution details and the latest 20 finished runs stay in the panel.
+Ask a Bot in chat to schedule recurring work. The AI prepares a routine card; review and confirm it before the schedule starts. Open **Conversation details → Routines** to view tasks, switch them on or off, and open their history. The existing **Settings → Routines** editor also supports manual configuration: choose a Bot and describe the source files, steps and expected output. Review the schedule and pinned skill versions before confirming. **Test run** performs real work with the same permissions and ten-minute unattended approval expiry. Choose the Bot's private chat or a group containing that Bot as the report destination; execution details and the latest 20 finished runs stay in the panel.
+
+**Conversation details → Library** collects files published by that Bot, including routine results. Search, preview, export a copy or remove the saved local copy. Uploaded attachments and older files without Bot provenance remain in **Files → Shared files**.
 
 OpenBot must be running and the Mac awake. After sleep or restart, at most one eligible missed run is caught up; overlapping work is skipped. Seven days without interaction pauses scheduling until you explicitly resume. Both the catch-up window and inactivity limit are configurable. [Routine contract and verification](docs/tasks/b11a-local-routines.md).
 

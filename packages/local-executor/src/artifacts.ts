@@ -174,11 +174,11 @@ export class ArtifactStore {
 			return { ...ref, availability: existsSync(this.#path(id)) ? "corrupt" : "missing" };
 		}
 	}
-	list(offset: number, query: string): import("@openbot/protocol").ArtifactListing {
+	list(offset: number, query: string, filter: { source?: "input" | "result"; botId?: string } = {}): import("@openbot/protocol").ArtifactListing {
 		const rows = this.#db.prepare("select ref from artifacts where removed=0 order by rowid desc").all() as { ref: string }[];
 		const matches = rows
 			.map((row) => JSON.parse(row.ref) as StoredRef)
-			.filter((ref) => ref.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+			.filter((ref) => (!filter.source || ref.source === filter.source) && (!filter.botId || ref.botId === filter.botId) && ref.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
 		const items = matches.slice(offset, offset + 200).map((ref) => ({ ...ref, availability: "available" as const }));
 		return { items, ...(offset + items.length < matches.length ? { nextOffset: offset + items.length } : {}) };
 	}
@@ -193,7 +193,7 @@ export class ArtifactStore {
 		const text = (truncated ? bytes.subarray(0, LIMITS.previewBytes) : bytes).toString("utf8").replace(/\ufffd$/u, "");
 		return { artifact, text, truncated };
 	}
-	capture(requestId: string, path: string, source: ArtifactRef["source"] = "input", name?: string): ArtifactRef {
+	capture(requestId: string, path: string, source: ArtifactRef["source"] = "input", name?: string, botId?: string): ArtifactRef {
 		const operationId = `capture:${source}:${requestId}`,
 			args = digest(JSON.stringify([path, name ?? null]));
 		const previous = this.#operation(operationId, args);
@@ -226,6 +226,7 @@ export class ArtifactStore {
 			sha256: digest(bytes),
 			createdAt: Date.now(),
 			source,
+			...(source === "result" && botId ? { botId } : {}),
 		};
 		this.#intent(operationId, args, { action: "capture", ref });
 		const target = this.#path(ref.artifactId);
