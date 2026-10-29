@@ -4,6 +4,7 @@ export const chinese: Readonly<Record<string, string>> = {
  "Preparing routine": "正在准备定时任务", "Routine proposed": "已生成定时任务提案",
  "Library": "文件库",
  "Bot routines": "Bot 定时任务",
+ "No routines yet": "还没有定时任务",
  "Bot library": "Bot 文件库",
  "Proposed routine": "待确认的定时任务",
  "Review and confirm to start this schedule.": "查看并确认后启用此定时任务。",

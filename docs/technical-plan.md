@@ -29,7 +29,7 @@ Desktop delivery (2026-10-22): [D6](tasks/d6-desktop-design.md) delivers the own
 
 | Component | State | Verified by |
 | --- | --- | --- |
-| Bot routines and Library (B11e) | Implemented on task branch, pending review (#69): structured direct-user routine proposals, confirmed Bot switches, result-only per-Bot Library and existing file actions; legacy unassigned results stay in Shared files | [Spec](tasks/b11e-bot-routines-library.md); automated acceptance in progress |
+| Bot routines and Library (B11e) | Implemented on task branch, draft #69: structured direct-user routine proposals, confirmed Bot switches, result-only per-Bot Library and existing file actions; legacy unassigned results stay in Shared files | [Spec and evidence](tasks/b11e-bot-routines-library.md#verification--october-29-2026); 619 checks and three new desktop cases pass; full desktop 200/201, history-rebuild latest-message timeout unresolved |
 | Bot templates (B13e) | Implementation candidate: bounded JSON with generated/PNG avatar and exact skill pins; explicit model/skill review; fresh Specialist; durable atomic receipt and backup recovery; owner merge pending | [Spec](tasks/b13e-bot-templates.md); [acceptance](acceptance/bot-templates-2026-10-29.md) |
 | Web pagination (B4a) | Merged (#62): bounded output, exact ranges and content identity | 569 unit/Host tests, 185 desktop tests and installed eleven-source scheduled chain; [acceptance](acceptance/web-pagination-2026-10-27.md) |
 | Official source pagination (I7) | Merged (#63): configured ZCode/TRAE official GET continuations using existing web_fetch | [Spec](tasks/i7-official-changelog-pagination.md); 575 unit/Host/audit tests, 185 desktop tests; [real catalogue acceptance](acceptance/official-pagination-2026-10-27.md) |

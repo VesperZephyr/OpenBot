@@ -24,6 +24,8 @@ References: study MiniMax Code without copying; distinguish official facts and o
 
 [B11e](tasks/b11e-bot-routines-library.md), in progress ([#69](https://github.com/VesperZephyr/OpenBot/pull/69)): Bot details expose routine viewing, history and confirmed switches; direct chat prepares schedules for owner confirmation. Library browses published result files by trusted Bot provenance with search and the existing reader/export/removal controls. Computer remains deferred. Legacy files without provenance remain in Shared files.
 
+Implementation and the three new desktop scenarios pass. Full-suite acceptance remains pending: local and macOS CI runs pass 200/201 desktop cases, with the existing history-rebuild latest-message wait timing out. Its isolated rerun passes; the cause remains unresolved. Keep the PR in draft until this gate is resolved.
+
 ## Competitor radar delivery
 
 **B4a, done (#62):** [Reliable web pagination](tasks/b4a-web-pagination.md) retains continuation metadata within character, byte and line budgets and detects changed documents. The [installed eleven-source acceptance](acceptance/web-pagination-2026-10-27.md) completed all extracted pages, both reports and Core's automatic summary, then verified restart and restored schedules. Dynamic load-more content, finite feed history and date-only boundaries remain explicit research limitations.

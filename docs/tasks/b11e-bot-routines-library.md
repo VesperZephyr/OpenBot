@@ -1,6 +1,6 @@
 # B11e: Bot routines and generated-file Library
 
-Status: in progress
+Status: implemented; acceptance pending in draft PR #69
 Branch: task/b11e-bot-routines-library
 Depends on: B11a–d, B15a, D9/D10, B14c
 Architecture: Sections 4.2, 5.2, 5.8, 6.1
@@ -42,6 +42,14 @@ Out: Computer, browser control, cloud scheduling, new schedule kinds, conversati
 ## Risks
 
 Legacy files have no author metadata and remain in Shared files. Stale async reads must not replace a different Bot/search page. Proposal identity must survive replay and repeated confirmation without silent duplicate schedules.
+
+## Verification — October 29, 2026
+
+- `pnpm run check`: 92 files / 619 tests passed locally and on [macOS CI](https://github.com/VesperZephyr/OpenBot/actions/runs/40871946049).
+- New hidden desktop acceptance: all three Bot resource scenarios passed locally and on CI. The focused resources and web suite passed all nine cases. The proposal includes a 16,300-character workflow to exercise bounded history projection.
+- Full local and CI desktop runs each passed 200 of 201 cases. The remaining failure is the existing `history-scaling.e2e.ts` final wait for the latest message after index rebuild (line 217). The three-case history suite passed when rerun alone. The cause of the full-suite failure remains unresolved; acceptance item 5 is not satisfied and the PR remains a draft.
+- Inspected proposal, scoped routines, Library and Chinese 900 × 640 screenshots in `e2e/.run/bot-resources/`. Exercised Library and Preview using agent-browser against an isolated background test app. Screenshot inspection found a missing empty-state translation; it is now translated and asserted in desktop acceptance.
+- All desktop checks use isolated state and ScriptedModel. No real-model spot check, packaged native release validation, merge or installed-app update is claimed.
 
 ## Open questions
 

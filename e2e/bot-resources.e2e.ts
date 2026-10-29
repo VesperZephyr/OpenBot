@@ -108,6 +108,7 @@ it("keeps Chinese minimum-size tabs usable and other Bots empty", async () => {
 	await h.page().getByRole("tab", { name: "文件库", exact: true }).waitFor();
 	await h.shot("04-library-zh");
 	await h.page().getByRole("tab", { name: "定时任务", exact: true }).click();
+	await h.page().getByText("还没有定时任务", { exact: true }).waitFor();
 	await h.shot("05-routines-zh");
 	if (process.env.OPENBOT_RESOURCES_DEBUG) await new Promise(resolve => setTimeout(resolve, 45000));
 });
