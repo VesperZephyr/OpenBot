@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   unit:
-    name: Check (macOS)
+    name: Check and history performance (macOS)
     runs-on: macos-15
     timeout-minutes: 15
     steps:
@@ -29,6 +29,27 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build:pi
       - run: pnpm run check
+      - name: Download Electron
+        working-directory: apps/desktop
+        run: node node_modules/electron/install.js
+      - run: pnpm --filter @openbot/desktop run build
+      - name: Run isolated history performance acceptance
+        run: pnpm exec vitest run --config e2e/vitest.config.ts e2e/history-scaling.e2e.ts --maxWorkers=1
+      - name: Summarize history timings
+        if: always()
+        run: node scripts/ci-test-summary.mjs e2e/.run/results.json "Isolated history performance"
+      - name: Upload history screenshots and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots-history
+          path: |
+            e2e/.run/**/*.png
+            e2e/.run/results.json
+            e2e/.run/history-scaling/performance.json
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
 
   e2e:
     name: Desktop e2e (macOS, ${{ matrix.shard }}/3)
@@ -54,7 +75,7 @@ jobs:
         run: node node_modules/electron/install.js
       - run: pnpm --filter @openbot/desktop run build
       - name: Run desktop shard
-        run: pnpm exec vitest run --config e2e/vitest.config.ts --shard=${{ matrix.shard }}/3
+        run: pnpm exec vitest run --config e2e/vitest.config.ts --exclude=e2e/history-scaling.e2e.ts --shard=${{ matrix.shard }}/3
       - name: Summarize desktop timings
         if: always()
         run: node scripts/ci-test-summary.mjs e2e/.run/results.json "Desktop shard ${{ matrix.shard }}/3"

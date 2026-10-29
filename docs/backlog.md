@@ -26,7 +26,7 @@ References: study MiniMax Code without copying; distinguish official facts and o
 
 Implementation and the three new desktop scenarios pass. The history-rebuild acceptance failure was traced to competing DOM and virtualizer scroll corrections; restoration now uses the virtualizer's commands with a failing-before/passing-after search-jump/resize regression. Full-suite evidence and macOS CI status are tracked in PR #69.
 
-Integrated CI runs check alongside three complete, disjoint desktop shards on independent macOS runners, retaining the required aggregate check. Template recovery acceptance advances its renderer clock while asserting every status read, eliminating a real-time timeout race. Per-shard reports expose slow suites; the B11e spec links final timing and pass evidence in PR #69.
+Integrated CI runs check and isolated history performance acceptance alongside three disjoint desktop shards on independent macOS runners, retaining the required aggregate check. Template recovery acceptance advances its renderer clock while asserting every status read, eliminating a real-time timeout race. Per-shard reports expose slow suites; the B11e spec links final timing and pass evidence in PR #69.
 
 ## Competitor radar delivery
 
