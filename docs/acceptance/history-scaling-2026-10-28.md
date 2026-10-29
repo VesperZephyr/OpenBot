@@ -61,8 +61,10 @@ The candidate incorporates main `4c64a43`, including merged B4a/#62 and I7/#63. 
 
 The missed-commit correctness test explicitly delays its first worker start by 1.5 seconds, reproducing a CI failure caused by the default one-second polling deadline. Worker lifecycle assertions now wait up to 10 seconds for their expected state, including restart and explicit Retry. The seven projection tests pass with this delay, and the integrated `pnpm run check` passes 596 tests across 87 files. Cold rebuild, switching, search and control-response performance thresholds remain unchanged in `history-scaling.e2e.ts`.
 
+The integrated web pagination test reads oversized tool results through the bounded part reader and verifies copied output, preserving its original model-input assertions. Search uses an explicit timestamp range for indexed cursor seeks, prepared chunk reads and byte-budgeted short-message prefixes. Larger Unicode chunks reduce repeated substring work while remaining below the search byte limit. Oracle tests cover matches at prefix and chunk boundaries; the original performance thresholds remain in force.
+
 ## Remaining limits
 
-Literal search still has linear worst-case CPU. Canonical Pi active context, the existing group/execution documents and lightweight source/settlement identity metadata remain sources of total Host memory growth; these are not moved into disposable storage. Large legacy entries must still be materialized by the public Pi read API before bounded projection. Search acceleration or canonical group-storage migration needs a separate spec.
+Literal search still scans the corpus; heavily tied timestamps and oversized messages can add SQLite work. Canonical Pi active context, the existing group/execution documents and lightweight source/settlement identity metadata remain sources of total Host memory growth; these are not moved into disposable storage. Large legacy entries must still be materialized by the public Pi read API before bounded projection. Search acceleration or canonical group-storage migration needs a separate spec.
 
 No real-model spot check, new native permission test, signing/notarization or installed release acceptance is claimed. B4a/#62 and I7/#63 are merged into the integration base. The owner merges the candidate.

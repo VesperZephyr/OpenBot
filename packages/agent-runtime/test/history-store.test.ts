@@ -24,6 +24,14 @@ const texts = [
 	"\u202asecret\u202c needle",
 	"🦊".repeat(8200) + "NEEDLE" + "界".repeat(200),
 	"𐀀\ue000",
+	"🦊".repeat(250) + "NEEDLE",
+	"🦊".repeat(253) + "NEEDLE跨界" + "界".repeat(200),
+	"x".repeat(256) + "NEEDLE",
+	"🦊".repeat(506) + "NEEDLE",
+	"🦊".repeat(509) + "NEEDLE" + "界".repeat(200),
+	"x".repeat(8191) + "🦊NEEDLE" + "界".repeat(200),
+	"x".repeat(8190) + "NeEdLe",
+	"🦊".repeat(32765) + "NeEdLe" + "界".repeat(200),
 ];
 function project(values: ConversationPreview[]) {
 	store.begin(key);
@@ -35,7 +43,7 @@ it("preserves literal Unicode matching, snippets and offsets against the current
 	project(values);
 	const oracle = new ConversationSearchIndex();
 	oracle.project(key, values);
-	for (const query of ["needle", "星图", "cafe\u0301", "café", "k", "white space", "[]", ".*", "secret", "🦊", "𐀀"]) {
+	for (const query of ["needle", "星图", "cafe\u0301", "café", "k", "white space", "[]", ".*", "secret", "🦊", "🦊needle", "𐀀"]) {
 		const actual = await store.search(query, [key], "scope", undefined, signal());
 		expect(actual.items, query).toEqual(oracle.search(query, new Set([key]), "scope").items);
 	}

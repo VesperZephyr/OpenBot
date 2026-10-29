@@ -20,7 +20,6 @@ const p95 = (values: number[]) => values.sort((a, b) => a - b)[Math.ceil(values.
 beforeAll(async () => {
 	const started = performance.now();
 	h = await launchApp("history-scaling", {
-		debugPort: 9358,
 		prepare: async (run) => {
 			await mkdir(join(run, "data"), { recursive: true });
 			await seedHistory(join(run, "data", "openbot.sqlite"));

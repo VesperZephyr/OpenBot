@@ -1,5 +1,5 @@
 /** Disposable display/search data. This database never owns an execution or an approval. */
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { randomUUID, createHash } from "node:crypto";
 import { setImmediate as yieldTurn } from "node:timers/promises";
 import {
@@ -18,6 +18,7 @@ import {
 
 export const HISTORY_BATCH_BYTES = 512 * 1024;
 export const HISTORY_DETAIL_BYTES = 32 * 1024;
+const SEARCH_PREFIX_POINTS = 512;
 const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
 const fingerprint = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const lexical = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -71,6 +72,7 @@ export class HistoryStore {
 	readonly db: DatabaseSync;
 	readonly generation: string;
 	#metadataBytes = 0;
+	#searchText: StatementSync;
 	constructor(path: string, source: string) {
 		this.db = new DatabaseSync(path);
 		this.db.exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=1000;");
@@ -108,6 +110,8 @@ export class HistoryStore {
 		this.#metadataBytes = Number(
 			(this.db.prepare("SELECT value FROM stats WHERE key='metadata'").get() as { value: number } | undefined)?.value ?? 0,
 		);
+		// Reuse the chunk reader across messages instead of compiling SQL for every row in a corpus scan.
+		this.#searchText = this.db.prepare("SELECT substr(normalized,?,?) AS text FROM messages WHERE conversation_key=? AND id=?");
 	}
 	close() {
 		this.db.close();
@@ -456,7 +460,15 @@ export class HistoryStore {
 		signal: AbortSignal,
 	): Promise<ConversationSearchResult> {
 		const binding = fingerprint([query, scope, eligible.slice().sort(lexical)]);
-		const batchSize = Math.max(1, Math.min(256, Math.floor((HISTORY_BATCH_BYTES - 1024) / Math.max(1, this.#metadataBytes + 32))));
+		// Include worst-case JSON escaping for the bounded prefix when sizing each batch.
+		const prefixPoints = Math.max(
+			0,
+			Math.min(SEARCH_PREFIX_POINTS, Math.floor((HISTORY_BATCH_BYTES - 1024 - this.#metadataBytes - 32) / 6)),
+		);
+		const batchSize = Math.max(
+			1,
+			Math.min(256, Math.floor((HISTORY_BATCH_BYTES - 1024) / (this.#metadataBytes + prefixPoints * 6 + 32))),
+		);
 		const saved = cursor ? decodeCursor(cursor, binding, this.generation) : undefined;
 		for (const key of eligible)
 			if ((this.db.prepare("SELECT ready FROM conversations WHERE key=?").get(key) as { ready: number } | undefined)?.ready !== 1)
@@ -469,25 +481,28 @@ export class HistoryStore {
 		let after = saved ? { at: saved.at, key: saved.key, id: saved.id } : undefined;
 		while (hits.length < 31) {
 			signal.throwIfAborted();
-			// Only metadata is read here; text is streamed separately, including legacy oversized messages.
+			// Short messages fit in this bounded prefix; longer messages still stream through the chunk reader.
+			// The explicit timestamp bound lets SQLite seek the expression index; the tuple comparison preserves ties.
 			const rows = (
 				after
 					? this.db
 							.prepare(
-								"SELECT conversation_key AS key,id,sender,at,length(normalized) AS length FROM messages WHERE sequence<=? AND ((-at),key_order,id_order)>(?,?,?) ORDER BY (-at),key_order,id_order LIMIT ?",
+								`SELECT conversation_key AS key,id,sender,at,length(normalized) AS length,substr(normalized,1,${prefixPoints}) AS prefix FROM messages WHERE sequence<=? AND (-at)>=? AND ((-at),key_order,id_order)>(?,?,?) ORDER BY (-at),key_order,id_order LIMIT ?`,
 							)
-							.all(high, -after.at, sortKey(after.key), sortKey(after.id), batchSize)
+							.all(high, -after.at, -after.at, sortKey(after.key), sortKey(after.id), batchSize)
 					: this.db
 							.prepare(
-								"SELECT conversation_key AS key,id,sender,at,length(normalized) AS length FROM messages WHERE sequence<=? ORDER BY (-at),key_order,id_order LIMIT ?",
+								`SELECT conversation_key AS key,id,sender,at,length(normalized) AS length,substr(normalized,1,${prefixPoints}) AS prefix FROM messages WHERE sequence<=? ORDER BY (-at),key_order,id_order LIMIT ?`,
 							)
 							.all(high, batchSize)
-			) as { key: ConversationKey; id: string; sender: string; at: number; length: number }[];
+			) as { key: ConversationKey; id: string; sender: string; at: number; length: number; prefix: string }[];
 			if (!rows.length) break;
 			for (const row of rows) {
 				after = { at: row.at, key: row.key, id: row.id };
 				if (!allowed.has(row.key)) continue;
-				const found = await this.match(row.key, row.id, row.length, literal, query.length, signal);
+				const found = await this.match(
+					row.key, row.id, row.length, row.length <= prefixPoints ? row.prefix : undefined, literal, query.length, signal,
+				);
 				if (found) hits.push({ conversationKey: row.key, messageId: row.id, senderId: row.sender, at: row.at, ...found });
 				if (hits.length === 31) break;
 			}
@@ -508,41 +523,46 @@ export class HistoryStore {
 		}
 		return { items, ...(nextCursor ? { nextCursor } : {}) };
 	}
-	private async match(key: string, id: string, length: number, literal: RegExp, queryLength: number, signal: AbortSignal) {
-		const chunk = 8192,
+	private async match(
+		key: string,
+		id: string,
+		length: number,
+		prefix: string | undefined,
+		literal: RegExp,
+		queryLength: number,
+		signal: AbortSignal,
+	) {
+		signal.throwIfAborted();
+		if (prefix !== undefined) {
+			const found = literal.exec(prefix);
+			return found ? this.snippet(key, id, length, Array.from(prefix.slice(0, found.index)).length, found[0].length) : undefined;
+		}
+		// At most 128 KiB plus query/snippet overlap, within the 512-KiB search batch budget.
+		const chunkPoints = 32768,
 			overlap = queryLength + 256;
-		for (let offset = 0; offset < length; offset += chunk) {
+		for (let offset = 0; offset < length; offset += chunkPoints) {
 			signal.throwIfAborted();
-			const start = Math.max(0, offset - overlap);
-			const text = (
-				this.db
-					.prepare("SELECT substr(normalized,?,?) AS text FROM messages WHERE conversation_key=? AND id=?")
-					.get(start + 1, chunk + overlap * 2, key, id) as { text: string }
-			).text;
-			const found = literal.exec(text);
+			const start = Math.max(0, offset - overlap),
+				text = (this.#searchText.get(start + 1, chunkPoints + overlap * 2, key, id) as { text: string }).text,
+				found = literal.exec(text);
 			if (found) {
 				const point = start + Array.from(text.slice(0, found.index)).length;
-				const first = Math.max(0, point - 48);
-				const body = (
-					this.db
-						.prepare("SELECT substr(normalized,?,176) AS text FROM messages WHERE conversation_key=? AND id=?")
-						.get(first + 1, key, id) as { text: string }
-				).text;
-				const prefix = first > 0 ? "…" : "";
-				const matchStart =
-					prefix.length +
-					Array.from(body)
-						.slice(0, point - first)
-						.join("").length;
-				return {
-					snippet: prefix + body + (first + 176 < length ? "…" : ""),
-					matchStart,
-					matchEnd: Math.min(prefix.length + body.length, matchStart + found[0].length),
-				};
+				return this.snippet(key, id, length, point, found[0].length);
 			}
-			if (offset > 0) await yieldTurn();
+			if (offset + chunkPoints < length) await yieldTurn();
 		}
 		return undefined;
+	}
+	private snippet(key: string, id: string, length: number, point: number, matchLength: number) {
+		const first = Math.max(0, point - 48),
+			body = (this.#searchText.get(first + 1, 176, key, id) as { text: string }).text,
+			prefix = first > 0 ? "…" : "",
+			matchStart = prefix.length + Array.from(body).slice(0, point - first).join("").length;
+		return {
+			snippet: prefix + body + (first + 176 < length ? "…" : ""),
+			matchStart,
+			matchEnd: Math.min(prefix.length + body.length, matchStart + matchLength),
+		};
 	}
 }
 /** Big-endian UTF-16 preserves the existing JS lexical comparator, including astral/BMP ordering. */
