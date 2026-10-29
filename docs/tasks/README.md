@@ -239,4 +239,6 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 | Task | Status |
 | --- | --- |
-| [B14c: Bounded history reading and persistent search](b14c-history-scaling.md) | implemented in #64; approved routine selector included; [acceptance](../acceptance/history-scaling-2026-10-28.md), awaiting owner review/merge |
+| [B14c: Bounded history reading and persistent search](b14c-history-scaling.md) | done (#64; merge `4d1c5c3`); approved routine selector included; [acceptance](../acceptance/history-scaling-2026-10-28.md) |
+
+Next design packet: **B13e Bot templates**, followed by **B14f signed updates**. Both are planning briefs in the [roadmap](../development-roadmap.md#6-p2-broader-access-and-maintainability), not ready task specs.

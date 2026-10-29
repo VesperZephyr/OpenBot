@@ -1,7 +1,7 @@
 # OpenBot Technical Plan
 
 
-Active delivery scope (2026-10-28): I6 (#57), D9 (#58), D10 (#59), B11d (#60), B14d (#61), B4a (#62) and I7 (#63) are merged into main, now `4c64a43`. [B14c history scaling](tasks/b14c-history-scaling.md) is implemented in candidate #64, including the approved routine occurrence selector; automated acceptance is recorded in its [evidence](acceptance/history-scaling-2026-10-28.md), awaiting owner review/merge. Templates (B13e) and signed updates (B14f) follow. B9c OAuth, B12b optional model review and Phase 3 remain deferred.
+Active delivery scope (2026-10-29): I6 (#57), D9 (#58), D10 (#59), B11d (#60), B14d (#61), B4a (#62), I7 (#63) and B14c (#64) are merged into main, verified at `4d1c5c3`. [B14c history scaling](tasks/b14c-history-scaling.md) includes the approved routine occurrence selector; [final integrated evidence](acceptance/history-scaling-2026-10-28.md#main-integration-and-ci-readiness) records 596 unit tests, 191 background e2e tests and passing macOS CI. Templates (B13e) is the next design packet, followed by signed updates (B14f); neither has a ready implementation spec. B9c OAuth, B12b optional model review and Phase 3 remain deferred.
 
 Last updated: 2026-10-28.
 
@@ -31,7 +31,7 @@ Desktop delivery (2026-10-22): [D6](tasks/d6-desktop-design.md) delivers the own
 | --- | --- | --- |
 | Web pagination (B4a) | Merged (#62): bounded output, exact ranges and content identity | 569 unit/Host tests, 185 desktop tests and installed eleven-source scheduled chain; [acceptance](acceptance/web-pagination-2026-10-27.md) |
 | Official source pagination (I7) | Merged (#63): configured ZCode/TRAE official GET continuations using existing web_fetch | [Spec](tasks/i7-official-changelog-pagination.md); 575 unit/Host/audit tests, 185 desktop tests; [real catalogue acceptance](acceptance/official-pagination-2026-10-27.md) |
-| History scaling (B14c) | Disposable SQLite worker; checkpointed display/search projection; bounded desktop windows and detail parts; virtualized history; independent live controls and tool settlement; private delivery/routine windows; restore invalidation | [Spec](tasks/b14c-history-scaling.md); candidate #64; [acceptance](acceptance/history-scaling-2026-10-28.md) |
+| History scaling (B14c) | Disposable SQLite worker; checkpointed display/search projection; bounded desktop windows and detail parts; virtualized history; independent live controls and tool settlement; private delivery/routine windows; restore invalidation | [Spec](tasks/b14c-history-scaling.md); merged #64 (`4d1c5c3`); [acceptance](acceptance/history-scaling-2026-10-28.md) |
 | Local backup/restore (B14d) | Merged (#61): native Settings selection, offline versioned snapshots, staged validation, crash rollback and paused recovery; same Mac/account | 564 unit/Host tests; 182-case full desktop pass plus seven final backup cases; bundled delete/restore, real command interruption, crash recovery and isolated UI inspection; [spec](tasks/b14d-backup-restore.md) |
 | Unattended reliability (B11d) | Merged (#60), installed October 27: lock permits background work; confirmed suspend admits new work on wake; separate edit/semantic versions; isolated scheduler faults and health | 542 unit/Host tests, 177 desktop tests and five-request real-provider chain passed; [initial evidence](acceptance/unattended-reliability-2026-10-26.md), [installed eleven-source audit](acceptance/radar-installed-2026-10-27.md) |
 | Integrated radar acceptance (I6) | Merged in PR #57: main integration, Atom/RSS support, bounded full-page extraction and exact source timestamps; installed owner app and restored daily workflow | 524 unit/Host + 165 hidden desktop tests; all eleven live sources, three real scheduled chains, complete 2/2 summary inputs and restart deduplication; [spec](tasks/i6-radar-integration.md) |
@@ -136,7 +136,7 @@ These are deliberate shortcuts or missing pieces in implemented code. Each one i
 
 ## 3. Milestone Plans
 
-These are milestone contracts spanning implemented and planned capabilities, not a current execution queue. Section 1 and the task index own delivery status; B14c is implemented in candidate #64, awaiting owner review/merge.
+These are milestone contracts spanning implemented and planned capabilities, not a current execution queue. Section 1 and the task index own delivery status; B14c is merged in #64; B13e and B14f remain planning briefs.
 
 The milestones below follow the architecture's capability areas. Delivery is phased; [the backlog](backlog.md) owns the batch order:
 

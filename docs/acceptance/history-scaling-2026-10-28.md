@@ -1,6 +1,6 @@
 # B14c history scaling acceptance — October 28, 2026
 
-Initial implementation revision: `07a2cae`. Candidate: [PR #64](https://github.com/VesperZephyr/OpenBot/pull/64), branch `task/b14c-history-scaling`. Implements the [B14c spec](../tasks/b14c-history-scaling.md), including the approved routine occurrence selector. This is local automated acceptance, not a signed/native release gate.
+Initial implementation revision: `07a2cae`. Merged: [PR #64](https://github.com/VesperZephyr/OpenBot/pull/64), October 29 as `4d1c5c3`; final implementation head `1155092`. Implements the [B14c spec](../tasks/b14c-history-scaling.md), including the approved routine occurrence selector. This records local automated acceptance and macOS CI, not a signed/native release gate.
 
 ## Environment and reproduction
 
@@ -57,7 +57,9 @@ Screenshots inspected include long-history exact search in dark mode, unavailabl
 
 ## Main integration and CI readiness
 
-The candidate incorporates main `4c64a43`, including merged B4a/#62 and I7/#63. The initial measurements and command totals above belong to `07a2cae`; the PR records the latest integrated check results.
+Final implementation head `1155092` incorporates main `4c64a43`, including merged B4a/#62 and I7/#63. The owner merged B14c/#64 on October 29 as `4d1c5c3`. The initial measurements and command totals above belong to `07a2cae`.
+
+At `1155092`, local `pnpm run check` passed 596 tests across 87 files; full background `pnpm run e2e` passed 191 tests across 51 files in 338.10 seconds. [GitHub macOS CI](https://github.com/VesperZephyr/OpenBot/actions/runs/40827175821) passed both steps on that head. The final local fixture measured switching p95 52.80 ms, search p95 140.74 ms, control reads p95 1.44 ms and cold launch/rebuild 9.26 seconds, all within the unchanged gates. The integrated web-result screenshot and isolated background part-reader flow were inspected; the inspection harness was closed.
 
 The missed-commit correctness test explicitly delays its first worker start by 1.5 seconds, reproducing a CI failure caused by the default one-second polling deadline. Worker lifecycle assertions now wait up to 10 seconds for their expected state, including restart and explicit Retry. The seven projection tests pass with this delay, and the integrated `pnpm run check` passes 596 tests across 87 files. Cold rebuild, switching, search and control-response performance thresholds remain unchanged in `history-scaling.e2e.ts`.
 
@@ -67,4 +69,4 @@ The integrated web pagination test reads oversized tool results through the boun
 
 Literal search still scans the corpus; heavily tied timestamps and oversized messages can add SQLite work. Canonical Pi active context, the existing group/execution documents and lightweight source/settlement identity metadata remain sources of total Host memory growth; these are not moved into disposable storage. Large legacy entries must still be materialized by the public Pi read API before bounded projection. Search acceleration or canonical group-storage migration needs a separate spec.
 
-No real-model spot check, new native permission test, signing/notarization or installed release acceptance is claimed. B4a/#62 and I7/#63 are merged into the integration base. The owner merges the candidate.
+No real-model spot check, new native permission test, signing/notarization or installed release acceptance is claimed. B4a/#62 and I7/#63 are merged into the integration base. B14c/#64 is merged; native release gates remain separate.
