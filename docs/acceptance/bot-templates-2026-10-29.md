@@ -1,12 +1,8 @@
 # B13e Bot template acceptance — October 29, 2026
 
-Status: merged in [#67](https://github.com/VesperZephyr/OpenBot/pull/67); merge revision `718fb35f06379c33389b749ed1323cb53cd5bc79`.
+Status: implementation candidate; owner review and merge pending.
 
 Design: [B13e](../tasks/b13e-bot-templates.md), merged in [#66](https://github.com/VesperZephyr/OpenBot/pull/66). Base: `e3647b6fc5868a314c8e065ad878b7e4a9366b5b`. Implementation revision: `a9fe3a0d5cf18c6614fd9eeb3126b6d8d3203a9b`.
-
-## Main integration
-
-PR #67 merged on October 29, 2026 at 10:38:51 UTC. The [macOS CI run](https://github.com/VesperZephyr/OpenBot/actions/runs/40854982647) passed its Check and e2e job at 10:20:20 UTC on PR head `730861ed12ac0bb7a7adfc57b37257a582890da6`. Main now includes the implementation and the acceptance documentation. The checks below describe the implementation verification; the merge closeout changes documentation only.
 
 ## Result
 
@@ -43,4 +39,4 @@ An earlier check run overlapped full desktop tests and staging and failed two ex
 
 ## Limits
 
-No live model/provider call was needed: template transfer is deterministic, and ScriptedModel verifies the eventual prompt. Instructions are exported as entered; the visible review does not redact arbitrary prose. Skill documents and provider credentials are not bundled. Import receipt retention is bounded with no automatic eviction. Native signing, notarization, distribution, cross-machine Keychain migration and B14f update/rollback compatibility remain separate release work. No release was published as part of B13e.
+No live model/provider call was needed: template transfer is deterministic, and ScriptedModel verifies the eventual prompt. Instructions are exported as entered; the visible review does not redact arbitrary prose. Skill documents and provider credentials are not bundled. Import receipt retention is bounded with no automatic eviction. Native signing, notarization, distribution, cross-machine Keychain migration and B14f update/rollback compatibility remain separate release work. This branch does not merge itself or publish a release.

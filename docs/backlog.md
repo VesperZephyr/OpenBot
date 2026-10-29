@@ -1,7 +1,5 @@
 # Development Backlog
 
-**B13e, done (#67; merge `718fb35`):** [Bot template import and export](tasks/b13e-bot-templates.md) delivers reviewed portable profiles, avatar artwork, explicit model/skill choices and atomic import receipts. [Acceptance](acceptance/bot-templates-2026-10-29.md) records 616 unit tests, 198 hidden desktop tests, bundled backup/replay verification and passing macOS CI.
-
 **B14c, done (#64; merge `4d1c5c3`):** [Bounded history reading and persistent search](tasks/b14c-history-scaling.md) provides virtualized timelines, a rebuildable worker-owned search index, private routine occurrence windows and bounded large-result reading. [Final integrated acceptance](acceptance/history-scaling-2026-10-28.md#main-integration-and-ci-readiness) records 596 unit tests, 191 background e2e tests and passing macOS CI.
 
 **B14d, done (#61):** [Consistent local backup and restore](tasks/b14d-backup-restore.md): native Settings workflow, offline snapshots, validation, rollback and paused recovery.
@@ -14,7 +12,7 @@
 
 **I6, done (#57):** [Integrated daily radar acceptance](tasks/i6-radar-integration.md) delivers B11c scheduled summaries, D8 unified chat and source-evidence corrections to main. The installed owner application passed three real calendar-triggered reporting chains; the final chain read all eleven sources and survived restart without duplicate delivery.
 
-Active delivery scope (2026-10-29): B11d (#60), B14d (#61), B4a (#62), I7 (#63), B14c (#64) and B13e (#67) are merged. Verified main is `718fb35`, including B13e design #66 and implementation #67. [B13e Bot templates](tasks/b13e-bot-templates.md) is merged; [acceptance](acceptance/bot-templates-2026-10-29.md) covers the file boundary, dependency resolution, atomic import and recovery. B14f signed updates follows and still needs a ready spec. OAuth, optional model review and Phase 3 remain deferred.
+Active delivery scope (2026-10-29): B11d (#60), B14d (#61), B4a (#62), I7 (#63) and B14c (#64) are merged. Verified main is `e3647b6`, including the B14c status closeout #65 and B13e design #66. [B13e Bot templates](tasks/b13e-bot-templates.md) is implemented on its task branch and awaiting owner merge; [acceptance](acceptance/bot-templates-2026-10-29.md) covers the file boundary, dependency resolution, atomic import and recovery. B14f signed updates follows and still needs a ready spec. OAuth, optional model review and Phase 3 remain deferred.
 
 **D8, done through I6 / PR #57:** [Unified chats and continuous activity](tasks/d8-chat-experience.md) provides mixed private/group navigation, member avatars, compact Settings and real streamed Markdown/loading feedback.
 
@@ -60,7 +58,7 @@ References: study MiniMax Code without copying; distinguish official facts and o
 
 [B27b: Per-role skill defaults](tasks/b27b-role-skills.md) is merged in PR #47, following the owner-approved local role direction. Profile pins are exact shared-library versions; direct-user admission composes them with message attachments and freezes accepted method snapshots. Groups and routines keep their existing explicit selections. Memory provenance/correction/sharing is the separate [B27a PR #46](https://github.com/VesperZephyr/OpenBot/pull/46); neither batch introduces cloud services or new grants.
 
-B11c, B14d, B14c and B13e are done; B14f is next and needs a ready spec. Per-message skill overrides, capability readiness and broader group defaults need separate specs.
+B11c, B14d and B14c are done; the remaining order is B13e/B14f. Per-message skill overrides, capability readiness and broader group defaults need separate specs.
 
 ## Phases
 
@@ -113,7 +111,7 @@ Accepted product direction: [D1](tasks/d1-bot-product-design.md). B16/B17 establ
 - **B9a/B9b. MCP connectors, merged (#37/#39)** (architecture M7). Executor-supervised stdio servers and HTTP sessions, credentials from the Keychain injected only into their own server, tools named `mcp__<server>__<tool>` through Tool Router with receipts, a Connect apps page.
 - **B10. Skills, merged (#35).** Library at `<data>/skills/<name>/SKILL.md`, a `skills` prompt section listing names and descriptions, `skill_load`, `skill_save` with user confirmation, `/` in the composer to attach one.
 - **B11a. Local routines:** merged in PR #41; see the [spec](tasks/b11a-local-routines.md). Confirmed panel management, isolated occurrences, exact reports, catch-up and absence protection. B11e adds reviewed chat proposals, pending review.
-- **B13. Bots together** (architecture M4). Core-coordinated group chats, explicit mentions, bounded delegation and ownership transfer (B13a–c); B13d usage is merged through I1. [B13e templates](tasks/b13e-bot-templates.md) is merged in #67 (export and import without memory, history, credentials, or grants).
+- **B13. Bots together** (architecture M4). Core-coordinated group chats, explicit mentions, bounded delegation and ownership transfer (B13a–c); B13d usage is merged through I1. Remaining work: [B13e templates](tasks/b13e-bot-templates.md), implemented, awaiting owner merge (export and import without memory, history, credentials, or grants).
 - **B14. Desktop completion** (architecture M2 rest). [B14a](tasks/b14a-reliable-observation.md) implements bounded observation and reconnect recovery (merged through I1). B23 provides `Cmd+K` history search. B14b adds sidebar Pause all and lifecycle gates. B14c adds transcript virtualization and bounded history/search, merged in #64. Remaining: richer menu-bar status, Normal and Verbose tool detail, login item, auto-update with electron-updater.
 - **B15. Agent extras.** B15a file/image inputs and result artifacts and B15b background completion are merged. Parallel model subagents within one Bot remain separate work.
 
@@ -131,7 +129,7 @@ Architecture M3 (managed browser, takeover, secret requests), M6 (desktop comput
 - [B13a: Channel contexts](tasks/b13a-channel-contexts.md): merged in PR #13; shared Bot identity with isolated channel context, scoped lifecycle and durable Run mapping. B13b supplies group UX.
 - [B13b: Group lifecycle](tasks/b13b-group-lifecycle.md): merged with the product foundation; local group records, exact Core approvals, participant-only group contexts, durable delivery/recovery and bilingual desktop controls.
 - [B13c: Bounded collaboration](tasks/b13c-collaboration.md): merged with the product foundation; Core-default group entry, explicit @, delegate/transfer/result receipts, two-hop/twelve-delivery limits, tree cancellation, local state and bilingual UI. 223 unit tests and 49 background e2e; isolated real-model collaboration and recovery.
-- B13e Bot templates is merged in #67. B13d usage evidence is merged through I1 (#34). Cross-group/direct-chat peer dispatch, selective memory transfer and full data purge require separate specs; agent execution continues to reuse Pi.
+- Remaining B13 work: merge the verified Bot templates candidate. B13d usage evidence is merged through I1 (#34). Cross-group/direct-chat peer dispatch, selective memory transfer and full data purge require separate specs; agent execution continues to reuse Pi.
 - [D2: Grok UI research](tasks/d2-grok-ui-research.md): complete, including installed 0.71.2 client inspection.
 - [B21: Conversation experience](tasks/b21-conversation-experience.md): merged in PR #17; shared private/group shell, contextual details, local filtering/New, durable local drafts and send recovery, keyboard mentions, scroll preservation and compact task activity. English/Chinese; 229 unit tests and 54 background e2e; isolated real-model private chat, Core delegation/result return and explicit @.
 - [B22: Conversation list previews and unread state](tasks/b22-conversation-list.md): merged with the product foundation; 234 unit tests and 59 background e2e; isolated real-model private/group replies and full restart verification; local Host index, snapshot-bound durable read cursors, bilingual previews/time/counts, draft/activity precedence and recency within protected Core/pinned sections.
@@ -170,7 +168,7 @@ Attention-state mutation, UI navigation, cross-Bot memory operations, new dispat
 - **B14e:** [Desktop-owned credentials](tasks/b14e-main-credentials.md) is merged in PR #38. It replaces Host command-line Keychain access with a native main-process owner, private broker, explicit migration and bilingual status. Automated/native acceptance and release limitations are recorded in the spec.
 - **B9b:** [HTTPS MCP sessions](tasks/b9b-https-connectors.md) is merged in [PR #39](https://github.com/VesperZephyr/OpenBot/pull/39). 461 unit/Host and 120 hidden e2e tests, nine final connector scenarios and isolated real-model one-write/restart acceptance passed. Explicit TLS endpoints and private bearer credentials, bounded JSON/SSE, durable retry cooldown, honest unknown writes and bilingual connection/recovery controls.
 - **I2:** [MVP acceptance and bilingual introduction](tasks/i2-mvp-acceptance.md) is merged in PR #40. The candidate including B9b passed 461 unit/Host and 122 hidden e2e tests, useful real-model report/memory/recovery checks, and an ad-hoc DMG build with signature and checksum verification. It includes a public product screenshot and English/Chinese README. It is an acceptance increment, not an expansion of the MVP feature scope.
-- **Done (#42):** [I3 workflow acceptance](tasks/i3-workflow-acceptance.md) verifies the P1 workflow integration gate; [evidence](acceptance/workflow-2026-10-20.md) distinguishes captured research from unavailable live retrieval. Backup/restore and history scaling are merged in B14d/#61 and B14c/#64; templates are merged in B13e/#67, and signed updates still require a ready spec. Developer ID identity, update continuity, native lifecycle and TCC remain separate release gates.
+- **Done (#42):** [I3 workflow acceptance](tasks/i3-workflow-acceptance.md) verifies the P1 workflow integration gate; [evidence](acceptance/workflow-2026-10-20.md) distinguishes captured research from unavailable live retrieval. Backup/restore and history scaling are merged in B14d/#61 and B14c/#64; remaining work is templates and signed updates, each requiring its own ready spec. Developer ID identity, update continuity, native lifecycle and TCC remain separate release gates.
 
 ## Prompt reliability and memory research
 
