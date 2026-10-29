@@ -48,6 +48,7 @@ export class HostProcess {
 	#state: HostState = { status: "starting" };
 	#stopping = false;
 	#nextId = 0;
+	#generation = 0;
 	#stopObservation: (() => void) | undefined;
 
 	constructor(options: HostProcessOptions) {
@@ -58,7 +59,13 @@ export class HostProcess {
 		return this.#state;
 	}
 
+	/** Invalidates selections across process lifetimes, including the stopped interval. */
+	get generation(): number {
+		return this.#generation;
+	}
+
 	start(): void {
+		this.#generation++;
 		this.#stopping = false;
 		this.#setState({ status: "starting" });
 		const child = spawn(this.#options.node, ["--disable-warning=ExperimentalWarning", this.#options.entry], {
@@ -92,7 +99,7 @@ export class HostProcess {
 	}
 
 	async call<M extends HostMethod>(method: M, params: HostParams<M>): Promise<HostResult<M>> {
-		await this.#whenReady();
+		await this.whenReady();
 		const child = this.#child;
 		if (child === undefined || !child.connected) throw new ProtocolError("host_unavailable", "Host Runtime is not running");
 		const messageId = `d${++this.#nextId}`;
@@ -162,6 +169,7 @@ export class HostProcess {
 		if (this.#child !== child) return;
 		this.#stopObservation?.();
 		this.#child = undefined;
+		this.#generation++;
 		for (const [id, pending] of this.#pending) {
 			clearTimeout(pending.timer);
 			pending.reject(new ProtocolError("host_unavailable", detail));
@@ -180,7 +188,7 @@ export class HostProcess {
 		}, 1_000 * this.#restarts.length);
 	}
 
-	async #whenReady(): Promise<void> {
+	async whenReady(): Promise<void> {
 		if (this.#state.status === "ready") return;
 		const timer = Promise.withResolvers<void>();
 		const handle = setTimeout(

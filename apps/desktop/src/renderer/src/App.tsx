@@ -1,3 +1,4 @@
+import { BotTemplateDialog, ExportTemplateItem, beginTemplateImport, useTemplateState } from "./BotTemplates";
 import { HistoryTimeline } from "./HistoryTimeline";
 import { BackupSettings, RestoreNotice } from "./BackupSettings";
 import { WorkspaceLayout } from "./WorkspaceLayout";
@@ -147,6 +148,7 @@ export function App() {
 				)}
 			</main>
             </WorkspaceLayout>
+			<BotTemplateDialog />
 			{newMenu && (
 				<div className="dialog-backdrop">
 					<div className="dialog new-conversation" role="dialog" aria-label={t("New conversation")}>
@@ -176,6 +178,7 @@ export function App() {
 							{t("Create group")}
 							<small>{t("Bring your Bots together for a task")}</small>
 						</button>
+						<button onClick={() => { setNewMenu(false); beginTemplateImport(); }}>{t("Import template")}</button>
 					</div>
 				</div>
 			)}
@@ -390,6 +393,13 @@ function Conversation({ botId }: { readonly botId: string }) {
 	const bot = useStore((state) => state.bots.find((candidate) => candidate.botId === botId));
 	const snapshot = useStore((state) => state.conversations[botId]);
 	const [editing, setEditing] = useState(false);
+	const importedProfile = useTemplateState(s => s.profileBotId === botId);
+	useEffect(() => {
+		if (importedProfile) {
+			setEditing(true);
+			useTemplateState.setState({ profileBotId: null });
+		}
+	}, [importedProfile]);
  const count=useStore(state=>state.summaries[`bot:${botId}`]?.latest!==undefined);
 
 	if (bot === undefined) return null;
@@ -846,6 +856,7 @@ function BotMenu({ bot, onEdit }: { readonly bot: BotSummary; readonly onEdit: (
 					<button type="button" role="menuitem" onClick={() => void newTopic()}>
 						{t("New topic")}
 					</button>
+					<ExportTemplateItem botId={bot.botId} onDone={() => setOpen(false)} />
 					<DuplicateBotItem bot={bot} onDone={() => setOpen(false)} />
 					{bot.kind !== "core" && <DeleteBotItem onChoose={() => (setOpen(false), setDeleting(true))} />}
 				</div>

@@ -1,3 +1,5 @@
+import { TemplateImportsDoc, validateTemplateReceipts, type TemplateImportReceipt } from "./template-imports.ts";
+import { TEMPLATE_LIMITS, normalizeTemplate, type BotTemplateV1, type ImportResult } from "@openbot/protocol";
 import { ConversationActivity, type CommittedToolOutcome } from "./conversation-activity.ts";
 import { HistoryProjection } from "./history-projection.ts";
 import { dirname, join } from "node:path";
@@ -345,27 +347,55 @@ export class BotRuntime {
 			},
 			context,
 		);
-		await harness.commit(async (tx) => {
-			await tx.doc(AppExecutionsDoc);
-			const profiles = await tx.doc(BotsDoc);
-			for (const record of Object.values(profiles.bots)) {
-				await configure(tx, record.conversationId as PiConversationId, {
-					instructions: revisionedInstructions(record.instructions, record.revision ?? 1),
-					extensions: [bot, connectors, ...(record.kind === "core" ? [core, app] : [])],
+		try {
+			await harness.commit(async (tx) => {
+				await tx.doc(AppExecutionsDoc);
+				const profiles = await tx.doc(BotsDoc);
+				validateTemplateReceipts((await tx.doc(TemplateImportsDoc)).receipts, profiles.bots);
+				for (const record of Object.values(profiles.bots)) {
+					await configure(tx, record.conversationId as PiConversationId, {
+						instructions: revisionedInstructions(record.instructions, record.revision ?? 1),
+						extensions: [bot, connectors, ...(record.kind === "core" ? [core, app] : [])],
+					});
+				}
+			}, context);
+			await harness.commit(async (tx) => {
+				const channels = await tx.doc(ChannelsDoc);
+				const bots = (await tx.doc(BotsDoc)).bots;
+				for (const channel of Object.values(channels.channels))
+					await configure(tx, channel.conversationId as PiConversationId, {
+						extensions: [
+							bot,
+							connectors,
+							...(channel.channelId.startsWith("routine_")
+								? []
+								: [group, ...(bots[channel.botId]?.kind === "core" ? [app] : [])]),
+						],
+					});
+			}, context);
+			const runtime = new BotRuntime(
+				harness,
+				models,
+				context,
+				{ bot, core, group, app, connectors },
+				registry,
+				options.tools?.invoke,
+			);
+			if (options.history !== false)
+				runtime.#historyProjection = new HistoryProjection(harness, context, {
+					path: options.history?.path ?? join(dirname(options.databasePath), "cache", "history-v1.sqlite"),
+					databasePath: options.databasePath,
+					...(options.history?.workerUrl ? { workerUrl: options.history.workerUrl } : {}),
+					channels: () => runtime.channels(),
+					changed: () => {
+						for (const listener of runtime.#historyListeners) listener();
+					},
 				});
-			}
-		}, context);
-		await harness.commit(async (tx) => {
-			const channels = await tx.doc(ChannelsDoc);
-			const bots = (await tx.doc(BotsDoc)).bots;
-			for (const channel of Object.values(channels.channels))
-				await configure(tx, channel.conversationId as PiConversationId, {
-					extensions: [bot, connectors, ...(channel.channelId.startsWith("routine_") ? [] : [group, ...(bots[channel.botId]?.kind === "core" ? [app] : [])])],
-				});
-		}, context);
-		const runtime=new BotRuntime(harness, models, context, { bot, core, group, app, connectors }, registry, options.tools?.invoke);
-  if(options.history!==false)runtime.#historyProjection=new HistoryProjection(harness,context,{path:options.history?.path??join(dirname(options.databasePath),"cache","history-v1.sqlite"),databasePath:options.databasePath,...(options.history?.workerUrl?{workerUrl:options.history.workerUrl}:{}),channels:()=>runtime.channels(),changed:()=>{for(const listener of runtime.#historyListeners)listener();}});
-  return runtime;
+			return runtime;
+		} catch (error) {
+			await harness.close(context);
+			throw error;
+		}
 	}
 
 	/** Start the scheduler so work interrupted by the last shutdown continues. Call after recovery checks pass. */
@@ -532,8 +562,64 @@ export class BotRuntime {
 		}, this.#context);
 	}
 
+	/** Recover the current result without resolving dependencies or changing a profile. */
+	async templateStatus(requestId: string, requestDigest?: string): Promise<ImportResult | null> {
+		const receipt = (await this.#harness.snapshot(TemplateImportsDoc, this.#context))?.receipts[requestId];
+		if (!receipt) return null;
+		if (requestDigest !== undefined && receipt.requestDigest !== requestDigest)
+			throw new ProtocolError("request_conflict", "This import request was already used for different choices");
+		const bot = await this.getBot(receipt.botId);
+		if (!bot) throw new ProtocolError("internal", "Imported Bot is unavailable");
+		return { botId: bot.botId, state: bot.status };
+	}
+	async exportTemplate(botId: string, expectedRevision: number): Promise<BotTemplateV1> {
+		return this.#harness.commit(async (tx) => {
+			const bot = (await tx.doc(BotsDoc)).bots[botId];
+			if (!bot || bot.status === "deleted") throw new ProtocolError("not_found", "Bot is unavailable");
+			if ((bot.revision ?? 1) !== expectedRevision)
+				throw new ProtocolError("request_conflict", "Profile changed; refresh the export preview");
+			const avatar = bot.avatar ?? defaultAvatar(botId);
+			const portable =
+				avatar.kind === "image"
+					? { kind: "png" as const, base64: (await tx.doc(AvatarDoc, avatar.sha256, null)).base64 }
+					: avatar;
+			return normalizeTemplate(
+				JSON.parse(
+					JSON.stringify({
+						format: "openbot-bot-template",
+						version: 1,
+						profile: {
+							name: bot.name,
+							role: bot.role,
+							instructions: bot.instructions,
+							avatar: portable,
+							model: bot.model ?? null,
+							thinkingLevel: bot.thinkingLevel ?? "off",
+							defaultSkills: bot.defaultSkills ?? [],
+						},
+					}),
+				),
+			);
+		}, this.#context);
+	}
+	async importTemplate(
+		input: CreateBotInput,
+		receipt: TemplateImportReceipt,
+		image?: AvatarImage,
+	): Promise<ImportResult> {
+		const profile = await this.#createBot(input, undefined, image, receipt);
+		return { botId: profile.botId, state: profile.status };
+	}
 	/** Idempotent for the same `botId`: returns the existing Bot instead of creating a second conversation. */
 	async createBot(input: CreateBotInput, proposal?: BotManagementProposal): Promise<BotProfile> {
+		return this.#createBot(input, proposal);
+	}
+	async #createBot(
+		input: CreateBotInput,
+		proposal?: BotManagementProposal,
+		image?: AvatarImage,
+		imported?: TemplateImportReceipt,
+	): Promise<BotProfile> {
 		if (input.memory !== undefined) checkMemorySize(input.memory);
 		checkRoleSkills(input.defaultSkills, proposal);
 		const model = input.model ?? (await this.defaultModel());
@@ -541,6 +627,22 @@ export class BotRuntime {
 			const receipt = await committedManagement(tx, proposal);
 			if (receipt) return receipt;
 			const doc = await tx.doc(BotsDoc);
+			const imports = imported ? await tx.doc(TemplateImportsDoc) : undefined;
+			if (imported && imports) {
+				const prior = imports.receipts[imported.requestId];
+				if (prior) {
+					if (prior.requestDigest !== imported.requestDigest)
+						throw new ProtocolError("request_conflict", "This import request was already used for different choices");
+					return toProfile(doc.bots[prior.botId]!);
+				}
+				if (Object.keys(imports.receipts).length >= TEMPLATE_LIMITS.receipts)
+					throw new ProtocolError(
+						"invalid_request",
+						"Template import history is full. You can still create a Bot normally.",
+					);
+				if (input.botId !== `bot_template_${imported.requestId}` || doc.bots[input.botId])
+					throw new ProtocolError("request_conflict", "Bot identity already exists");
+			}
 			if (doc.bots[input.botId] && proposal) throw new ProtocolError("request_conflict", "Bot identity already exists");
 			if (doc.bots[input.botId]) return toProfile(JSON.parse(JSON.stringify(doc.bots[input.botId])) as BotRecord);
 			const conversation = await tx.createConversation({ ownership: { kind: "ownerless" } });
@@ -557,7 +659,7 @@ export class BotRuntime {
 				name: input.name,
 				role: input.role ?? "",
 				instructions: input.instructions ?? "",
-				...(input.defaultSkills ? { defaultSkills: input.defaultSkills.map(ref => ({ ...ref })) } : {}),
+				...(input.defaultSkills ? { defaultSkills: input.defaultSkills.map((ref) => ({ ...ref })) } : {}),
 				...(input.model === undefined ? {} : { model: input.model }),
 				...(input.thinkingLevel === undefined ? {} : { thinkingLevel: input.thinkingLevel }),
 				pinned: false,
@@ -565,7 +667,8 @@ export class BotRuntime {
 				createdAt: input.createdAt,
 				conversationId: conversation.id,
 			};
-			await saveAvatar(tx, doc.bots, record.avatar!);
+			await saveAvatar(tx, doc.bots, record.avatar!, image);
+			if (imported && imports) imports.receipts[imported.requestId] = imported;
 			doc.bots[input.botId] = record;
 			if (input.memory) (await tx.doc(MemoryDoc, input.botId, null)).content = input.memory;
 			await projectConversation(tx, `bot:${input.botId}`, { messageCount: 0, incomingCount: 0 });

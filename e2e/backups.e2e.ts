@@ -1,4 +1,6 @@
 import { BotRuntime } from "../packages/agent-runtime/src/index.ts";
+import { randomUUID } from "node:crypto";
+import type { TemplateImportInput, ImportResult } from "../packages/protocol/src/index.ts";
 import { DatabaseSync } from "node:sqlite";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { mkdir, readdir, readFile, writeFile, rm, cp, rename } from "node:fs/promises";
@@ -14,6 +16,7 @@ let h: AppHarness,
 	archive: string,
 	localMemory: unknown,
 	sharedMemory: unknown;
+let templateInput: TemplateImportInput, templateResult: ImportResult, templateAvatar: unknown;
 const api = (name: string, params: unknown = {}): Promise<any> =>
 	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const button = (name: string) => h.page().getByRole("button", { name, exact: true });
@@ -64,6 +67,18 @@ beforeAll(async () => {
 		expectedRevision: bot.revision,
 		defaultSkills: [{ name: skill.name, revision: skill.revision, sha256: skill.sha256 }],
 	});
+	const png = await h.page().evaluate(() => { const canvas = document.createElement("canvas"); canvas.width = canvas.height = 256; return canvas.toDataURL("image/png").split(",")[1]; });
+	const current = (await api("bots.list")).find((b: any) => b.botId === bot.botId);
+	await api("bots.update", { botId: bot.botId, expectedRevision: current.revision, avatar: { kind: "upload", base64: png } });
+	const review = await api("bots.templates.export", { botId: bot.botId, expectedRevision: current.revision + 1 });
+	const source = join(h.run, "backup-template.openbot.json");
+	await writeFile(source, JSON.stringify(review.template));
+	await dialogs(source);
+	const selected = await h.page().evaluate(() => (window as any).openbot.pickBotTemplate());
+	templateInput = { requestId: randomUUID(), template: selected.template, templateDigest: review.templateDigest, choices: { name: "Restored template", model: { kind: "default" }, skills: [{ name: skill.name, choice: { kind: "template" } }] } };
+	templateResult = await api("bots.templates.import", templateInput);
+	templateAvatar = await api("bots.avatar.get", { botId: templateResult.botId });
+	await rm(source);
 	await api("groups.change", {
 		action: "create",
 		requestId: "backup-group",
@@ -162,6 +177,7 @@ it("restores deleted fixture originals, exact report bytes, skills, group and ro
 	expect((await api("bots.list")).some((b: any) => b.botId === bot.botId)).toBe(false);
 	await settings();
 	await dialogs(archive);
+	await h.page().evaluate(id => localStorage.setItem("openbot.pending-template-import.v1", id), randomUUID());
 	await button("Restore backup").click();
 	await h.page().getByText("Backup restored. Work remains paused; review before resuming.", { exact: true }).waitFor({ timeout: 30000 });
 	expect((await api("bots.list")).find((b: any) => b.botId === bot.botId).defaultSkills).toEqual([
@@ -175,6 +191,12 @@ it("restores deleted fixture originals, exact report bytes, skills, group and ro
 	expect(JSON.stringify(await api("skills.get", { name: skill.name, revision: skill.revision }))).toContain("Review dates and evidence");
 	expect(JSON.stringify(await api("conversations.snapshot", { botId: bot.botId }))).toContain("ARCHIVE_REPORT_READY");
 	expect((await api("lifecycle.get")).userPaused).toBe(true);
+	expect(await api("bots.templates.status", { requestId: templateInput.requestId })).toEqual(templateResult);
+	expect(await api("bots.templates.import", templateInput)).toEqual(templateResult);
+	expect(await api("bots.avatar.get", { botId: templateResult.botId })).toEqual(templateAvatar);
+	expect((await api("bots.list")).filter((b: any) => b.botId === templateResult.botId)).toHaveLength(1);
+	expect((await api("bots.list")).find((b: any) => b.botId === templateResult.botId).defaultSkills).toEqual(templateInput.template.profile.defaultSkills);
+	expect(await h.page().evaluate(() => localStorage.getItem("openbot.pending-template-import.v1"))).toBeNull();
 	expect(h.model.requests).toHaveLength(count);
 	expect(await readFile(join(h.dataDirectory, "credentials-backup-canary.json"), "utf8")).toBe("LOCAL_SECRET_CANARY");
 	expect(await readFile(join(h.run, "home/models.json"), "utf8")).toBe(config);

@@ -16,6 +16,8 @@ function subscribe<T>(channel: string, listener: (value: T) => void): () => void
 }
 
 const api: OpenBotApi = {
+	pickBotTemplate: () => ipcRenderer.invoke(CHANNELS.pickBotTemplate),
+	saveBotTemplate: input => ipcRenderer.invoke(CHANNELS.saveBotTemplate, input),
 	reloadAfterRestore: () => ipcRenderer.invoke(CHANNELS.reloadAfterRestore),
 	backup: (action) => ipcRenderer.invoke(CHANNELS.backup, action),
 	readerOpen: (url) => ipcRenderer.invoke(CHANNELS.readerOpen, url),

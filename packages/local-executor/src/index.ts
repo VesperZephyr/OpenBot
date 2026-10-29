@@ -1,3 +1,4 @@
+export { readBotTemplate } from "./templates.ts";
 export { avatarSource, validateAvatar } from "./avatars.ts";
 /**
  * The local executor: performs authorized tool invocations on the bound local target. It checks the target and the

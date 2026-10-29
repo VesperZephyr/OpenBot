@@ -1,3 +1,4 @@
+import { readBotTemplate } from "@openbot/local-executor";
 import { listReaderFiles, readWorkspaceFile, readSelectedFile } from "@openbot/local-executor";
 import { avatarSource, validateAvatar } from "@openbot/local-executor";
 /**
@@ -134,6 +135,8 @@ process.on("message", (message: ExecutorRequest) => {
 				const op = message.operation;
 				let result;
 				switch (op.action) {
+ case "template-read": result=readBotTemplate(op.path);break;
+ case "template-write": result=artifactStore.templateWrite(message.requestId,op.path,op.utf8,op.sha256);break;
                     case "files-list": result=listReaderFiles(workspace,op.path);break;
                     case "files-read": result=readWorkspaceFile(workspace,op.path);break;
                     case "file-open": result=readSelectedFile(op.path);break;

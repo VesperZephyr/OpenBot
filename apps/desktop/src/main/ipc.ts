@@ -1,3 +1,4 @@
+import { templateFilename } from "@openbot/protocol";
 import type { DesktopBackups } from "./backups";
 const readerSelectionKey = randomUUID();
 import { openReader, closeReader, readerAction, readerBounds } from "./reader-browser";
@@ -76,6 +77,90 @@ export function registerIpc({ host, backups, isTrustedFrame, language, onSetting
 			if (error instanceof ProtocolError) throw new Error(`[${error.code}] ${error.message}`);
 			throw error;
 		}
+	});
+
+	const templateBusy = new WeakSet<Electron.WebContents>();
+	async function templateDialog<T>(
+		event: IpcMainInvokeEvent,
+		run: (window: BrowserWindow, check: () => void) => Promise<T>,
+	): Promise<T> {
+		checkFrame(event);
+		const window = BrowserWindow.fromWebContents(event.sender),
+			frame = event.senderFrame;
+		let generation: number | undefined;
+		if (!window || backups?.busy || templateBusy.has(event.sender))
+			throw Error("Another template action or maintenance is running");
+		let expired = false;
+		const expire = () => {
+			expired = true;
+		};
+		const check = () => {
+			if (
+				expired ||
+				event.sender.isDestroyed() ||
+				frame?.isDestroyed() ||
+				event.sender.mainFrame !== frame ||
+				BrowserWindow.fromWebContents(event.sender) !== window ||
+				(generation !== undefined && host.generation !== generation) ||
+				backups?.busy
+			)
+				throw Error("The file selection expired");
+			checkFrame(event);
+		};
+		templateBusy.add(event.sender);
+		event.sender.on("did-start-navigation", expire);
+		try {
+			await host.whenReady();
+			check();
+			generation = host.generation;
+			return await run(window, check);
+		} finally {
+			templateBusy.delete(event.sender);
+			event.sender.removeListener("did-start-navigation", expire);
+		}
+	}
+	ipcMain.handle(CHANNELS.pickBotTemplate, async (event, ...extra: unknown[]) => {
+		if (extra.length) throw Error("Invalid template selection");
+		return templateDialog(event, async (window, check) => {
+			const picked = await dialog.showOpenDialog(window, {
+				title: translate(language?.() ?? "en", "Import template"),
+				properties: ["openFile"],
+				filters: [{ name: "Bot template", extensions: ["json"] }],
+			});
+			check();
+			if (picked.canceled || !picked.filePaths[0]) return null;
+			const result = await host.call("templates.file.read", { path: picked.filePaths[0] });
+			check();
+			return result;
+		});
+	});
+	ipcMain.handle(CHANNELS.saveBotTemplate, async (event, input: unknown, ...extra: unknown[]) => {
+		checkFrame(event);
+		if (
+			extra.length ||
+			paramsError("templates.file.write", { ...(input && typeof input === "object" ? input : {}), path: "/selection" })
+		)
+			throw Error("Invalid Bot template or import choices");
+		const params = input as {
+			requestId: string;
+			template: import("@openbot/protocol").BotTemplateV1;
+			templateDigest: string;
+		};
+		// Reject a supplied path even though validation above uses a main-owned placeholder.
+		if (Object.keys(params).some((key) => !["requestId", "template", "templateDigest"].includes(key)))
+			throw Error("Invalid Bot template or import choices");
+		return templateDialog(event, async (window, check) => {
+			const picked = await dialog.showSaveDialog(window, {
+				title: translate(language?.() ?? "en", "Save template"),
+				defaultPath: templateFilename(params.template.profile.name),
+				filters: [{ name: "Bot template", extensions: ["json"] }],
+			});
+			check();
+			if (picked.canceled || !picked.filePath) return { outcome: "cancelled" as const };
+			await host.call("templates.file.write", { ...params, path: picked.filePath });
+			check();
+			return { outcome: "saved" as const };
+		});
 	});
 
 	ipcMain.handle(CHANNELS.reloadAfterRestore, (event) => {

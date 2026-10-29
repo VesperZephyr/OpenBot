@@ -16,6 +16,7 @@ export function BackupSettings() {
 				setResult(value);
 				if (action === "restore") {
 					sessionStorage.setItem("openbot.restore-result", JSON.stringify(value));
+					localStorage.removeItem("openbot.pending-template-import.v1");
 					await window.openbot.reloadAfterRestore();
 				}
 			}

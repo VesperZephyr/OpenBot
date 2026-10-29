@@ -1,3 +1,4 @@
+import { TEMPLATE_SCHEMA, TEMPLATE_CHOICES_SCHEMA, TEMPLATE_UUID, TEMPLATE_SHA, normalizeTemplate, normalizeTemplateChoices, templateIpcSize } from "./templates.ts";
 import { ROUTINE_SCHEMAS } from "./routine-schemas.ts";
 /**
  * Runtime schemas for the params of every Host method. Desktop main checks a renderer call before forwarding it, and
@@ -112,6 +113,12 @@ export const HOST_PARAM_SCHEMAS = {
  "lifecycle.native":strict({sourceId:Id,seq:Type.Integer({minimum:0,maximum:Number.MAX_SAFE_INTEGER}),locked:Type.Boolean(),suspended:Type.Boolean(),quitting:Type.Boolean()}),
  "runs.continue":strict({runId:Id,requestId:Id}),
 	"bots.list": NoParams,
+ "bots.templates.export": strict({botId:Id,expectedRevision:Type.Integer({minimum:1,maximum:Number.MAX_SAFE_INTEGER})}),
+ "bots.templates.inspect": strict({template:TEMPLATE_SCHEMA}),
+ "bots.templates.import": strict({requestId:TEMPLATE_UUID,template:TEMPLATE_SCHEMA,templateDigest:TEMPLATE_SHA,choices:TEMPLATE_CHOICES_SCHEMA}),
+ "bots.templates.status": strict({requestId:TEMPLATE_UUID}),
+ "templates.file.read": strict({path:ArtifactPath}),
+ "templates.file.write": strict({requestId:TEMPLATE_UUID,path:ArtifactPath,template:TEMPLATE_SCHEMA,templateDigest:TEMPLATE_SHA}),
 	"avatars.source": strict({ path: ArtifactPath }),
 	"bots.avatar.get": BotOnly,
 	"bots.management.history": NoParams,
@@ -246,7 +253,16 @@ export function paramsError(method: HostMethod, params: unknown): string | undef
 		validator = Compile(HOST_PARAM_SCHEMAS[method] as TSchema);
 		compiled.set(method, validator);
 	}
-	if (validator.Check(params)) return undefined;
+	if (validator.Check(params)) {
+  if (method.startsWith("bots.templates.") || method.startsWith("templates.file.")) {
+   try {
+    const input=params as {template?:unknown;choices?:unknown};
+    if(input.template) { const doc=normalizeTemplate(input.template); if(input.choices) normalizeTemplateChoices(input.choices,doc); }
+    if(!templateIpcSize(params)) return "Bot template exceeds the IPC limit";
+   } catch { return "Invalid Bot template or import choices"; }
+  }
+  return undefined;
+ }
 	const problems = validator.Errors(params).flatMap(describe);
 	return `Invalid parameters for ${method}: ${problems.length > 0 ? problems.join("; ") : "wrong shape"}`;
 }
@@ -282,7 +298,9 @@ const artifactRequest = Compile(
 		operation: Type.Union([
             strict({action:Type.Enum(["files-list","files-read","file-open"]),path:ReaderPath}),
             strict({action:Type.Literal("list"),offset:Type.Integer({minimum:0,maximum:4096}),query:Type.String({maxLength:200})}),
-			strict({ action: Type.Literal("avatar-source"), path: ArtifactPath }),
+			strict({action:Type.Literal("template-read"),path:ArtifactPath}),
+ strict({action:Type.Literal("template-write"),path:ArtifactPath,utf8:Type.String({maxLength:1048576}),sha256:TEMPLATE_SHA}),
+ strict({ action: Type.Literal("avatar-source"), path: ArtifactPath }),
 			strict({ action: Type.Literal("avatar-validate"), base64: AvatarBase64 }),
 			strict({ action: Type.Literal("import"), path: ArtifactPath }),
 			strict({ action: Type.Enum(["get", "preview", "read", "content", "remove"]), artifactId: ArtifactId }),

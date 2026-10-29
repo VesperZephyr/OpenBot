@@ -1,0 +1,41 @@
+.dialog-backdrop.bot-template-backdrop {
+	padding: 24px;
+	align-items: center;
+}
+.dialog.bot-template-dialog {
+	width: min(640px, calc(100vw - 40px));
+	max-height: calc(100vh - 48px);
+	overflow: auto;
+	overflow-wrap: anywhere;
+}
+.bot-template-dialog .field,
+.bot-template-dialog select,
+.bot-template-dialog input {
+	min-width: 0;
+	max-width: 100%;
+}
+.bot-template-dialog pre {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	max-height: 200px;
+	overflow: auto;
+	padding: 12px;
+	background: var(--surface-raised);
+	border-radius: 8px;
+}
+.bot-template-dialog code {
+	display: block;
+	font-size: 11px;
+	overflow-wrap: anywhere;
+}
+.template-skill {
+	padding-block: 8px;
+	border-bottom: 1px solid var(--border);
+}
+.bot-template-dialog .dialog-actions {
+	position: sticky;
+	bottom: -1px;
+	background: var(--surface);
+	padding-block: 12px;
+	flex-wrap: wrap;
+}

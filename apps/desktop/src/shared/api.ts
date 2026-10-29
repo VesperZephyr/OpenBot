@@ -5,6 +5,7 @@
 import type { GrantAccess, HostMethod, HostParams, HostResult } from "@openbot/protocol";
 
 export const RENDERER_METHODS = [
+	"bots.templates.export", "bots.templates.inspect", "bots.templates.import", "bots.templates.status",
 	"files.list",
 	"files.read",
 	"artifacts.list",
@@ -115,6 +116,12 @@ export type ReaderBrowserState = {
 	closed?: boolean;
 };
 export type OpenBotApi = {
+	pickBotTemplate(): Promise<import("@openbot/protocol").TemplateFile | null>;
+	saveBotTemplate(input: {
+		requestId: string;
+		template: import("@openbot/protocol").BotTemplateV1;
+		templateDigest: string;
+	}): Promise<{ outcome: "saved" | "cancelled" }>;
 	reloadAfterRestore(): Promise<void>;
 	readonly backup: (action: "export" | "restore") => Promise<import("@openbot/protocol").BackupResult | null>;
 	readonly readerOpen: (url: string) => Promise<ReaderBrowserState>;
@@ -151,6 +158,8 @@ export type OpenBotApi = {
 
 /** IPC channel names between preload and main. */
 export const CHANNELS = {
+	pickBotTemplate: "openbot:template-pick",
+	saveBotTemplate: "openbot:template-save",
 	backup: "openbot:backup",
 	reloadAfterRestore: "openbot:reload-after-restore",
 	readerOpen: "openbot:reader-open",
