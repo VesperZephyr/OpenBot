@@ -1,3 +1,6 @@
+import { BotTemplates } from "./templates.ts";
+import { paramsError } from "@openbot/protocol/schemas";
+import { TEMPLATE_LIMITS, templateIpcSize } from "@openbot/protocol";
 import type { ReaderFile, FileListing, ArtifactListing } from "@openbot/protocol";
 import type { AvatarImage, AvatarSource } from "@openbot/protocol";
 import { Routines } from "./routines.ts";
@@ -117,6 +120,7 @@ export type HostServiceOptions = {
 type Handlers = { [M in HostMethod]: (params: HostParams<M>) => Promise<HostResult<M>> };
 
 export class HostService {
+ #templateOperations=0;
  readonly routines:Routines;
  readonly connectors:Connectors;
  readonly skills:Skills;
@@ -237,7 +241,27 @@ export class HostService {
   this.skills=new Skills({runtime:this.#runtime,...(options.skills?{port:options.skills}:{}),targetId:this.#status.targetId,assertAllowed:()=>this.lifecycle.assertAllowed(),changed:()=>this.#observation.changed(8)});
  const skillChange=(requestId:string,change:import("@openbot/protocol").SkillChange)=>this.authority.change(async()=>this.skills.change(`desktop:${requestId}`,change,(await this.#runtime.policy().snapshot()).settings.revision));
  this.routines=new Routines({runtime:this.#runtime,runs:this.#runs,approvals:this.#approvals,targetId:this.#status.targetId,canRun:()=>!this.lifecycle.state.blocked,now:this.#now,changed:()=>this.#observation.changed(11),resolveSkills:refs=>this.skills.attachments(refs),changeAuthority:fn=>this.authority.change(fn),settled:this.#toolSettled});
+		const templates = new BotTemplates({
+			runtime: this.#runtime,
+			skills: this.skills,
+			reloadModels: async () =>
+				new Set((await this.#settings()).providers.filter((p) => p.configured).map((p) => p.providerId)),
+			artifact: (id, op) => this.#artifact(id, op),
+			now: this.#now,
+			changed: async (botId) => {
+				this.#emit({ type: "bots.changed", payload: {} });
+				await this.#observe(botId);
+			},
+		});
+
+
  this.#handlers = {
+  "bots.templates.export":({botId,expectedRevision})=>templates.export(botId,expectedRevision),
+  "bots.templates.inspect":({template})=>templates.inspect(template),
+  "bots.templates.import":input=>templates.import(input),
+  "bots.templates.status":({requestId})=>this.#runtime.templateStatus(requestId),
+  "templates.file.read":({path})=>templates.read(path),
+  "templates.file.write":input=>templates.write(input),
    "routines.list":()=>this.routines.list(),
    "routines.get":({routineId,occurrenceId})=>this.routines.detail(routineId,occurrenceId),
    "routines.change":params=>this.routines.change(params),
@@ -531,11 +555,18 @@ export class HostService {
 	async handle<M extends HostMethod>(method: M, params: HostParams<M>): Promise<HostResult<M>> {
 		const handler: Handlers[M] | undefined = this.#handlers[method];
 		if (handler === undefined) throw new ProtocolError("unknown_method", `Unknown method: ${method}`);
+  const templateOperation=method.startsWith("bots.templates.")||method.startsWith("templates.file.");
+  if(templateOperation) {
+   if(paramsError(method,params)) throw new ProtocolError("invalid_request","Invalid Bot template or import choices");
+   if(this.#templateOperations>=TEMPLATE_LIMITS.operations) throw new ProtocolError("invalid_request","Too many template operations; try again");
+   this.#templateOperations++;
+  }
 		const at = this.#now();
 		let outcome: "succeeded" | "failed" = "failed";
 		try {
 			const result = await ([
-				"bots.create",
+				"bots.templates.import",
+    "bots.create",
 				"bots.update",
 				"bots.duplicate",
 				"bots.delete",
@@ -545,9 +576,11 @@ export class HostService {
 			].includes(method)
 				? this.#serializeBots(() => handler(params))
 				: handler(params));
+   if(templateOperation&&!templateIpcSize(result)) throw new ProtocolError("invalid_request","Bot template exceeds the IPC limit");
 			outcome = method === "models.test" && (result as { ok?: boolean }).ok === false ? "failed" : "succeeded";
 			return result;
 		} finally {
+   if(templateOperation)this.#templateOperations--;
 			if (
 				!method.endsWith(".get") &&
 				!method.endsWith(".list") &&

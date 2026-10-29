@@ -1,3 +1,4 @@
+export * from "./templates.ts";
 export { historyPartition } from "./history.ts";
 export type { TimelinePosition, TimelineRow, TimelineWindow, WindowInput, WindowResult, DetailInput, DetailResult, IndexStatus } from "./history.ts";
 import type { ReaderFile, FileListing } from "./reader.ts";
@@ -532,6 +533,13 @@ export type ObservationCursor = { readonly streamId: string; readonly seq: numbe
 export type ObservationUpdate = ObservationCursor & { readonly changes: number };
 
 export type HostMethods = {
+ "bots.templates.export": { params: {botId:string;expectedRevision:number}; result: import("./templates.ts").TemplateReview };
+ "bots.templates.inspect": { params: {template:import("./templates.ts").BotTemplateV1}; result: import("./templates.ts").TemplateReview };
+ "bots.templates.import": { params: import("./templates.ts").TemplateImportInput; result: import("./templates.ts").ImportResult };
+ "bots.templates.status": { params: {requestId:string}; result: import("./templates.ts").ImportResult | null };
+ "templates.file.read": { params: {path:string}; result: import("./templates.ts").TemplateFile };
+ "templates.file.write": { params: {requestId:string;path:string;template:import("./templates.ts").BotTemplateV1;templateDigest:string}; result: null };
+
  "routines.list": {params:Record<string,never>;result:import("./routines.ts").RoutineList};
  "routines.get": {params:{routineId:string;occurrenceId?:string};result:import("./routines.ts").RoutineDetail};
  "routines.change": {params:import("./routines.ts").RoutineChange;result:import("./routines.ts").Routine};
@@ -734,7 +742,8 @@ export const HOST_METHODS = [
 	"groups.change",
 	"groups.send",
 	"host.status",
-	"bots.list",
+	"bots.templates.export", "bots.templates.inspect", "bots.templates.import", "bots.templates.status", "templates.file.read", "templates.file.write",
+ "bots.list",
 	"avatars.source",
 	"bots.avatar.get",
 	"bots.management.history",

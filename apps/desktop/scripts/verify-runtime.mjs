@@ -4,6 +4,7 @@ import { fork, spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, realpath, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 export async function verifyRuntime(stage) {
 	const root = await mkdtemp(join(await realpath(tmpdir()), "openbot-bundle-check-"));
 	await mkdir(join(root, "home"));
@@ -104,6 +105,12 @@ export async function verifyRuntime(stage) {
 		await start();
 		const bot = await call("bots.create", { requestId: "bundle-backup-bot", name: "Bundle backup" });
 		await call("bots.memory.update", { botId: bot.botId, expectedRevision: 0, content: "Bundled recovery canary" });
+		const template=await call("bots.templates.export",{botId:bot.botId,expectedRevision:bot.revision});
+		const templatePath=join(root,"portable.openbot.json");
+		await call("templates.file.write",{requestId:randomUUID(),path:templatePath,template:template.template,templateDigest:template.templateDigest});
+		const selected=await call("templates.file.read",{path:templatePath});
+		const input={requestId:randomUUID(),template:selected.template,templateDigest:template.templateDigest,choices:{name:"Bundled template",model:{kind:"default"},skills:[]}};
+		const imported=await call("bots.templates.import",input);await rm(templatePath);
   for(let i=0;i<200&&(await call("conversations.indexStatus")).state!=="ready";i++)await new Promise(resolve=>setTimeout(resolve,20));
   const initial=await call("conversations.window",{conversationKey:`bot:${bot.botId}`,position:{kind:"latest"}});
   assert.equal(initial.status,"ready");assert.deepEqual(initial.window.rows,[]);
@@ -119,9 +126,12 @@ export async function verifyRuntime(stage) {
 		await start();
 		assert.equal((await call("bots.memory.get", { botId: bot.botId })).content, "Bundled recovery canary");
 		assert.equal((await call("lifecycle.get")).userPaused, true);
+		assert.deepEqual(await call("bots.templates.status",{requestId:input.requestId}),imported);
+		assert.deepEqual(await call("bots.templates.import",input),imported);
+		assert.equal((await call("bots.memory.get",{botId:imported.botId})).content,"");
   for(let i=0;i<200&&(await call("conversations.indexStatus")).state!=="ready";i++)await new Promise(resolve=>setTimeout(resolve,20));
   const restored=await call("conversations.window",{conversationKey:`bot:${bot.botId}`,position:{kind:"latest"}});assert.equal(restored.status,"ready");assert.notEqual(restored.window.generation,initial.window.generation);
-		console.log("Bundled Host, executor and offline backup helpers verified: export, delete originals, restore, paused restart, disposable history worker generation");
+		console.log("Bundled Host, executor and offline backup helpers verified: export, delete originals, restore, paused restart, disposable history worker generation, portable template and import receipt replay");
 	} finally {
 		await stop();
 		await rm(root, { recursive: true, force: true });

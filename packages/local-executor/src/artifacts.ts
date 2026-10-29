@@ -1,3 +1,5 @@
+import { TEMPLATE_LIMITS, parseTemplateJson, canonicalTemplateJson } from "@openbot/protocol";
+import { validateAvatar } from "./avatars.ts";
 /** Bounded immutable files; this executor-owned store is separate from Pi and disposable output spills. */
 import { createHash, randomUUID } from "node:crypto";
 import {
@@ -266,6 +268,36 @@ export class ArtifactStore {
 		this.#finish(op, null);
 		return null;
 	}
+	templateWrite(requestId: string, path: string, utf8: string, sha256: string): null {
+		if (Buffer.byteLength(utf8) > TEMPLATE_LIMITS.fileBytes || digest(utf8) !== sha256)
+			fail("Invalid Bot template file");
+		const template = parseTemplateJson(utf8);
+		if (canonicalTemplateJson(template) + "\n" !== utf8) fail("Invalid Bot template file");
+		if (template.profile.avatar.kind === "png") validateAvatar(template.profile.avatar.base64);
+		const id = `template-export:${requestId}`,
+			args = digest(JSON.stringify([path, sha256]));
+		const prior = this.#operation(id, args);
+		if (prior?.result) return null;
+		if (prior) {
+			this.#reconcile(prior);
+			if (this.#operation(id, args)?.result) return null;
+		}
+		if (!isAbsolute(path) || path.split(sep).includes("..") || path.includes("\0"))
+			fail("Choose a new export filename");
+		const target = join(selectedPath(dirname(path)), basename(path));
+		// lstat also detects dangling symlinks, which existsSync deliberately does not.
+		try {
+			lstatSync(target);
+			fail("Export destination already exists. Choose a new filename.");
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		}
+		this.#intent(id, args, { action: "export", path: target, sha256 });
+		this.#publish(target, Buffer.from(utf8));
+		this.#finish(id, null);
+		return null;
+	}
+
 	#publish(target: string, bytes: Buffer) {
 		const temporary = join(dirname(target), `.openbot-${randomUUID()}.tmp`);
 		try {

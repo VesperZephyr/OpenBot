@@ -31,6 +31,8 @@ export const ARTIFACT_LIMITS = {
 } as const;
 export type ArtifactListing = { readonly items: readonly ArtifactRef[]; readonly nextOffset?: number };
 export type ArtifactOperation =
+ | { action:"template-read";path:string }
+ | { action:"template-write";path:string;utf8:string;sha256:string }
  | { readonly action: "files-list" | "files-read" | "file-open"; readonly path: string }
  | { readonly action: "list"; readonly offset: number; readonly query: string }
 	| { readonly action: "avatar-source"; readonly path: string }
@@ -38,4 +40,4 @@ export type ArtifactOperation =
 	| { readonly action: "import"; readonly path: string }
 	| { readonly action: "get" | "preview" | "read" | "content" | "remove"; readonly artifactId: string }
 	| { readonly action: "export"; readonly artifactId: string; readonly path: string };
-export type ArtifactOperationResult = ArtifactRef | ArtifactContent | AvatarSource | AvatarImage | ReaderFile | FileListing | ArtifactListing | null;
+export type ArtifactOperationResult = import("./templates.ts").TemplateFile | ArtifactRef | ArtifactContent | AvatarSource | AvatarImage | ReaderFile | FileListing | ArtifactListing | null;
