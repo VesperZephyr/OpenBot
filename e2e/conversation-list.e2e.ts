@@ -13,6 +13,11 @@ const botRow = (name: string) =>
 		.filter({ has: h.page().locator(".roster-name", { hasText: name }) });
 const groupRow = () => h.page().locator(".group-nav").filter({ hasText: "Research studio" });
 const box = () => h.page().locator(".compose-area textarea");
+/**
+ * Proves a read receipt was withheld: `useReadReceipt` acknowledges after 400 ms of readable dwell. Later assertions in
+ * the same flow also catch a receipt sent during an earlier window, so only the last window of a chain waits.
+ */
+const outlastReadDwell = () => h.page().waitForTimeout(650);
 const privateReply = async (requestId: string, text: string) => {
 	h.model.script({ text });
 	await api("messages.submit", { botId: "bot_alpha", requestId, text: requestId });
@@ -66,7 +71,7 @@ it("shows durable private previews/unread with drafts and does not read a hidden
 	expect(await botRow("Alpha").locator("time").count()).toBe(1);
 	await botRow("Alpha").click();
 	await box().fill("Keep this draft");
-	await h.page().waitForTimeout(650);
+	await outlastReadDwell();
 	expect((await summary("bot:bot_alpha")).unreadCount).toBe(1);
 	expect(await botRow("Alpha").locator(".bot-row-role").textContent()).toBe("Draft: Keep this draft");
 	await h.relaunch();
@@ -122,10 +127,10 @@ it("acknowledges only a foreground timeline at its end, leaving history and hidd
 		el.dispatchEvent(new Event("scroll", { bubbles: true }));
 	});
 	await foreground(true);
-	await h.page().waitForTimeout(650);
 	expect((await summary("bot:bot_alpha")).unreadCount).toBe(2);
+	// A receipt for the scrolled-up history would leave one unread here instead of three.
 	await privateReply("while-reading", "A new result while reading history.");
-	await h.page().waitForTimeout(650);
+	await outlastReadDwell();
 	expect((await summary("bot:bot_alpha")).unreadCount).toBe(3);
 	await h
 		.page()
@@ -134,12 +139,12 @@ it("acknowledges only a foreground timeline at its end, leaving history and hidd
 	await poll(async () => (await summary("bot:bot_alpha")).unreadCount).toBe(0);
 	await foreground(false);
 	await privateReply("hidden-reply", "This reply is still unread in the background.");
-	await h.page().waitForTimeout(650);
 	expect((await summary("bot:bot_alpha")).unreadCount).toBe(1);
 	await h.page().getByRole("button", { name: "New", exact: true }).click();
 	await h.page().getByRole("dialog", { name: "New conversation", exact: true }).waitFor();
 	await foreground(true);
-	await h.page().waitForTimeout(650);
+	// Covers the hidden reply above as well as the open dialog.
+	await outlastReadDwell();
 	expect((await summary("bot:bot_alpha")).unreadCount).toBe(1);
 	await h.page().keyboard.press("Escape");
 	await poll(async () => (await summary("bot:bot_alpha")).unreadCount).toBe(0);

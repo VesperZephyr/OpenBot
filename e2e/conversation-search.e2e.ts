@@ -6,6 +6,10 @@ const poll = (fn: () => Promise<any>) => expect.poll(fn, {timeout:15000});
 const search = () => h.page().getByRole("searchbox");
 const results = () => h.page().locator(".search-result");
 const box = () => h.page().locator(".compose-area textarea");
+/** Proves a read receipt was withheld: `useReadReceipt` acknowledges after 400 ms of readable dwell. */
+const outlastReadDwell = () => h.page().waitForTimeout(650);
+/** Counts of delayed "Archive batch" searches the intercepted main handler has started and answered. */
+const delayed = (): Promise<{ started: number; answered: number }> => h.app().evaluate(() => (globalThis as any).delayedSearches);
 const row = (name: string) => h.page().locator(".bot-row").filter({has:h.page().getByText(name,{exact:true})});
 const unread = async (key: string) => (await api("conversations.list")).find((r:any)=>r.conversationKey===key).unreadCount;
 const send = async (requestId: string, text: string) => {
@@ -49,7 +53,7 @@ it("finds earlier private text, jumps exactly and preserves drafts/unread while 
 	await h.page().getByText("Viewing a search result",{exact:true}).waitFor();
 	await poll(()=>h.page().locator(".search-target").textContent()).toContain("CEDAR_NEEDLE");
 	expect(await box().inputValue()).toBe("Keep my private draft");
-	await foreground(true);await box().focus();await h.page().waitForTimeout(650);
+	await foreground(true);await box().focus();await outlastReadDwell();
 	expect(await unread("bot:bot_analyst")).toBe(2);
 	await results().first().click();
 	expect(await h.page().locator(".search-target").count()).toBe(1);
@@ -115,25 +119,32 @@ it("ignores delayed pages and recovers a search error without leaking query cont
 		const state=globalThis as any;
 		state.searchOriginal=(ipcMain as any)._invokeHandlers.get("openbot:call");
 		state.searchFault=false;
+		state.delayedSearches={started:0,answered:0};
 		ipcMain.removeHandler("openbot:call");
 		ipcMain.handle("openbot:call",async(event,method,params)=>{
 			if(method==="conversations.search" && state.searchFault){state.searchFault=false;throw Error("Synthetic search failure");}
+			const slow=method==="conversations.search" && params.query==="Archive batch";
+			if(slow)state.delayedSearches.started++;
 			const result=await state.searchOriginal(event,method,params);
-			if(method==="conversations.search" && params.query==="Archive batch")await new Promise(resolve=>setTimeout(resolve,900));
+			if(slow){await new Promise(resolve=>setTimeout(resolve,900));state.delayedSearches.answered++;}
 			return result;
 		});
 	});
 	try {
 		await search().fill("Archive batch");
 		await h.page().getByText("正在搜索消息…",{exact:true}).waitFor();
-		await h.page().waitForTimeout(300);
+		await poll(async()=>(await delayed()).started).toBe(1);
 		await search().fill("群内星图");await poll(()=>results().count()).toBe(1);
-		await h.page().waitForTimeout(1000);
+		// The stale first page arrives after the newer query rendered; let React apply it before checking.
+		await poll(async()=>(await delayed()).answered).toBe(1);await h.nextFrame();
 		expect(await results().textContent()).toContain("群内星图");
 		await search().fill("Archive batch");await poll(()=>results().count()).toBe(30);
+		const pages=(await delayed()).started;
 		await h.page().getByRole("button",{name:"加载更多消息",exact:true}).click();
+		await poll(async()=>(await delayed()).started).toBe(pages+1);
 		await search().fill("群内星图");await poll(()=>results().count()).toBe(1);
-		await h.page().waitForTimeout(1000);expect(await results().count()).toBe(1);
+		await poll(async()=>(await delayed()).answered).toBe(pages+1);await h.nextFrame();
+		expect(await results().count()).toBe(1);
 		await search().fill("");
 		await h.app().evaluate(()=>{(globalThis as any).searchFault=true;});
 		await search().fill("群内星图");await h.page().getByText("无法搜索消息",{exact:false}).waitFor();

@@ -31,6 +31,8 @@ export type AppHarness = {
 	 * relaunches and never moves backwards, so routines fire on their real schedule without waiting for the wall clock.
 	 */
 	advanceHostClockTo(at: number): Promise<void>;
+	/** Resolve after the renderer has painted two more frames, so state already delivered to it is on screen. */
+	nextFrame(): Promise<void>;
 	shot(name: string): Promise<void>;
 	/** Type into the composer of the open Bot and press Enter. */
 	send(text: string): Promise<void>;
@@ -126,6 +128,7 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 					(window as unknown as { openbot: { methods: Record<string, (params: object) => Promise<any>> } }).openbot.methods[method]!(params),
 				{ method, params },
 			),
+		nextFrame: () => requirePage().evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))),
 		advanceHostClockTo: async (at) => {
 			await writeFile(hostClockFile, String(Math.max(0, Math.ceil(at - Date.now()))));
 		},
