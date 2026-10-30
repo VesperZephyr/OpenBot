@@ -34,7 +34,7 @@ Execution rules:
 - `pnpm run dev`: the app with the owner's real data (`~/Library/Application Support/OpenBot`, `~/OpenBot`, `~/.openbot/models.json`).
 - `pnpm run dev:debug`: the same, with Chrome DevTools Protocol on port 9339 for agent-browser. Quit any running OpenBot first: the single-instance lock hands a second launch to the first one.
 - agent-browser (installed globally; read `agent-browser skills get electron` once): `agent-browser connect 9339`, then `snapshot -i`, `click @eN`, `fill @eN "text"`, `screenshot path.png`. Use it to see and debug; turn every behavior worth keeping into an e2e test.
-- `pnpm run e2e`: builds the desktop app and drives it with Playwright against a scripted model, with its own state under `e2e/.run/` (data, workspace, `models.json`, screenshots) and a Keychain service per checkout (`ai.openbot.e2e.<hash>`). It never touches the owner's data.
+- `pnpm run e2e`: builds the desktop app and drives it with Playwright against a scripted model, with its own state under `e2e/.run/` (data, workspace, `models.json`, screenshots) and a Keychain service per checkout (`ai.openbot.e2e.<hash>`). It never touches the owner's data. A test app quits by itself when the process that launched it exits, so an interrupted run leaves no hidden app or Host behind.
 - E2e runs in background by default: hidden, non-focusable windows, no notifications, Dock badge updates, tray, or power assertions. Screenshots still render. Use `pnpm run e2e:headed` only when visible windows are explicitly requested. Keep agent-browser exploration in an isolated background test app unless the owner asks to see it; do not launch the owner's real-data app as a side effect of verification.
 
 ## Architecture Boundaries
