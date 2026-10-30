@@ -18,12 +18,25 @@ import { registerIpc } from "./ipc";
 import { resolveLoginPath } from "./login-path";
 import { translate, type Language } from "../shared/i18n";
 import { desktopTestMode } from "./test-mode";
+import { ignoreDetachedConsole, watchForOrphaning } from "./process-guards";
+
+ignoreDetachedConsole([process.stdout, process.stderr]);
 
 /** electron-vite's renderer dev server; every other run (built, packaged, e2e) serves the renderer over `app://`. */
 const devServerUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL;
 const HOST_LOG_LIMIT_BYTES = 5 * 1024 * 1024;
+/** An orphaned test app gets this long to stop its Host through the normal quit path before it is forced to exit. */
+const ORPHAN_QUIT_TIMEOUT_MS = 10_000;
 const testMode = desktopTestMode(app.isPackaged, process.env);
 const backgroundTest = testMode === "background";
+if (testMode !== undefined)
+	watchForOrphaning({
+		parentPid: () => process.ppid,
+		onOrphaned: () => {
+			setTimeout(() => app.exit(1), ORPHAN_QUIT_TIMEOUT_MS);
+			app.quit();
+		},
+	});
 if (backgroundTest && process.platform === "darwin") {
 	app.setActivationPolicy("prohibited");
 	app.dock?.hide();
