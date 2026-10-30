@@ -1,8 +1,8 @@
 # OpenBot Architecture
 
-Status: first-release design baseline. Last updated: 2026-10-29.
+Status: design contracts, including explicitly planned capabilities. Task specs own delivery status.
 
-This document defines the target product shape, repository layout, module boundaries, interfaces, source dependencies, and development sequence. M0 is complete; the Host Runtime and a chat-only desktop shell exist ahead of their milestones. [The technical plan](technical-plan.md) tracks which parts are implemented and how each milestone is broken down; everything else below requires implementation and validation.
+This document owns lasting design decisions, trust boundaries, compatibility contracts, and planned capability constraints. Read source schemas and tests for exact implementation details; use [task specs](tasks/README.md) for delivery status and acceptance, the [backlog](backlog.md) for execution order, and [technical constraints](technical-plan.md) for gaps and pitfalls. Do not append feature progress or test totals here. Change this document when an authorized design or contract changes, not on every merge.
 
 OpenBot is local-first. There is no cloud control plane and no cloud computer. The desktop UI, Host Runtime, Pi agent loop, storage, managed browser, and local executor all run on the user's Mac. Model inference and optional web search may call configurable API endpoints; that choice is separate from where OpenBot itself runs.
 
@@ -495,7 +495,7 @@ The desktop offers an explicit recipient picker and @ search, visible assignment
 
 The Run scheduler composes defaults only for new direct user messages. Identical message/default references deduplicate; conflicting versions or a union above two methods fail before acceptance. The accepted Run stores explicit request references, role references and immutable procedure documents. Queueing, steering, restart, continuation and replay use those snapshots, not current profile/library state. Legacy messages retain their original replay contract. Groups, peer/background work and routines do not acquire new defaults; existing routine pins remain authoritative. Skills stay guidance under ordinary tool authorization. Older methods may remain in conversation history until a new topic starts.
 
-**Templates (B13e, implementation candidate; owner merge pending).** The [B13e spec](tasks/b13e-bot-templates.md) fixes a bounded version-1 JSON format with profile instructions, generated or normalized PNG avatar, model preference and exact skill references. Export excludes memory, conversation history, credentials and grants. Desktop review explicitly resolves missing models/skills; importing always creates a new Specialist, including when the source was Core. Host/runtime commit the profile, conversation, avatar and argument-bound import receipt atomically. Native-selected files pass through main-only Host methods and the local executor; template operations are absent from model tools and Code Mode.
+**Templates.** The [B13e spec](tasks/b13e-bot-templates.md) fixes a bounded version-1 JSON format with profile instructions, generated or normalized PNG avatar, model preference and exact skill references. Export excludes memory, conversation history, credentials and grants. Desktop review explicitly resolves missing models/skills; importing always creates a new Specialist, including when the source was Core. Host/runtime commit the profile, conversation, avatar and argument-bound import receipt atomically. Native-selected files pass through main-only Host methods and the local executor; template operations are absent from model tools and Code Mode.
 
 ### 5.8 Skills and Routines
 
@@ -866,7 +866,7 @@ The first release is delivered in phases ([backlog](backlog.md)). **Phase 1 (MVP
 
 ## 10. Development Sequence and Milestone Acceptance
 
-Each milestone requires a verifiable result before the next builds on it. These are planned implementation steps; [the technical plan](technical-plan.md) breaks each one into ordered work and records progress.
+These are capability-level design and acceptance goals, not a live execution queue or a claim that every capability is implemented. Individual [task specs](tasks/README.md) define executable increments; the [backlog](backlog.md) owns their order.
 
 | Milestone | Development work | Completion criteria |
 | --- | --- | --- |
@@ -899,7 +899,7 @@ Permissions, policy, and execution records are part of M1 from the start. Use Pi
 12. **The packaged application uses the intended runtime:** The bundled Node, Pi sources and assets, native helper identity, OS permissions, browser launch, store ownership, and clean relaunch are verified on macOS.
 13. **State restores from backup:** Conversation state, Bot profiles and memory, routines, artifact references, skills, and execution records recover consistently, with application, Pi, and data-format versions recorded.
 
-The Pi source baseline and interfaces above were checked against upstream revision `b45e0ebcc` in a local checkout on 2026-10-14. Tool permissions, browser and macOS integration, crash recovery, real-model behavior, and packaged distribution remain implementation and acceptance work.
+The original Pi review used upstream revision `b45e0ebcc` on 2026-10-14; recorded import provenance governs the actual vendor baseline. These scenarios are design goals, including future capabilities. Acceptance claims require the candidate-specific evidence linked from the relevant task spec.
 
 ### Local usage evidence (B13d)
 

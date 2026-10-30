@@ -1,6 +1,6 @@
 # Task Specs
 
-A task spec turns one backlog batch into work that an agent or contributor can finish without the design conversation. Design writes the spec; execution follows it. The spec is the contract for the pull request.
+A task spec is the execution contract and the sole maintained record of its task status. This index is navigation, not a second status board. Read the spec header before starting work; use the [backlog](../backlog.md) for priority and [AGENTS.md](../../AGENTS.md) for contribution and verification rules.
 
 ## Lifecycle
 
@@ -10,9 +10,11 @@ A task spec turns one backlog batch into work that an agent or contributor can f
 | `ready`       | Contracts and acceptance are fixed; anyone may pick it up | Design                              |
 | `in progress` | Claimed: the spec names the branch                        | Executor                            |
 | `in review`   | Pull request open, acceptance checked                     | Executor                            |
-| `done`        | Merged to `main`; backlog and technical plan updated      | Owner merges, executor updates docs |
+| `done`        | Merged to `main`; merge reference recorded in spec          | Owner merges, executor updates docs |
 
-To claim a task, set **Status** to `in progress`, fill in **Branch**, push the branch, and open a draft pull request that links the spec. One task per branch.
+To claim a ready task, set its **Status** to `in progress`, fill in **Branch**, push the branch, and open a draft PR linked to it. Use `in review` when acceptance is checked and owner review remains; only a merge makes it `done`. On merge, record the merge reference in the spec and remove its active backlog entry. Add new specs to this index without copying status, implementation summaries, or test counts.
+
+Acceptance evidence lives in the spec or one linked dated record under `docs/acceptance/`. Completed specs retain the contract and evidence for that delivery; do not keep updating their implementation descriptions as product APIs evolve. Update maintained architecture or known-gap records only when the relevant facts change.
 
 ## When the spec does not fit reality
 
@@ -37,216 +39,109 @@ One paragraph: the user-visible or safety outcome, and why it matters now.
 In: bullet list. Out: bullet list, each with where it lives instead.
 
 ## Design
-The decided approach, with the alternatives considered and why they lost. Diagrams where they help.
+The choice, rationale, constraints, and conditions for revisiting it. Include alternatives only when they explain the trade-off.
 
 ## Contracts
-Exact types, protocol messages, document shapes, file formats, and their invariants. Code blocks with TypeScript.
+Define new or changed interfaces, compatibility promises, migrations, and invariants precisely enough to execute. Link existing source contracts instead of copying unchanged types.
 
 ## Steps
-Ordered, each small enough for one commit, each naming the files it touches and how to check it.
+Ordered implementation cuts and how to verify each; omit line-by-line coding instructions.
 
 ## Acceptance
 Numbered, observable checks. Each says which test proves it (unit test name, e2e test name, or a scripted smoke).
 
 ## Risks
-What may break, how to notice, what to do.
+What may break, how to detect/recover, and which external or native evidence remains necessary.
 
 ## Open questions
-Dated entries added during execution. Empty when ready.
+Dated blockers found during execution. Empty when ready.
+
+## Evidence
+Candidate revision, acceptance checks and outcomes, and remaining limits; or link one dated acceptance record. Record non-obvious pitfalls with trigger, cause, workaround, regression evidence, and removal condition.
 ```
 
-## Index
+## Design and research
 
-Desktop design: [D6: Personal Assistant Design](d6-desktop-design.md), **done; merged in PR #49**. Owner-approved chat redesign, ordinary Bot list with protected personal-assistant star, focused editable profiles and durable local generated/uploaded avatars. Includes the original standalone design study.
+- [D1: Core Bot, Specialist Bots, and Model Sources](d1-bot-product-design.md)
+- [D2: Grok Bot Interaction Research](d2-grok-ui-research.md)
+- [D3: Application Capabilities and Local Code Mode](d3-app-capabilities.md)
+- [D4: Post-B26 Delivery Plan](d4-delivery-plan.md)
+- [D5: Local Memory Research](d5-memory-research.md)
+- [D6: Persistent Roles, Memory and Skills Research](d6-bot-role-design.md)
+- [D6: A Personal Assistant with Character](d6-desktop-design.md)
 
-Product design (not an implementation task): [D1: Core Bot, Specialist Bots, and Model Sources](d1-bot-product-design.md), **accepted direction**. Research and task contracts for the product foundation. Agent mechanisms continue to reuse Pi.
+## MVP and execution foundation
 
-Interaction research: [D2: Grok Bot UI](d2-grok-ui-research.md), **research complete**. Official documentation, the supplied screenshot and installed-client inspection inform [B21](b21-conversation-experience.md), the conversation-experience spec merged in PR #17, and [B22](b22-conversation-list.md), the conversation-list increment. D2 remains the research record.
+- [B1: Durable Approvals and Executor Receipts](b1-durable-approvals.md)
+- [B2: Runs, Queue, Cancellation, and Steering](b2-runs.md)
+- [B3: Coding-Agent Tools](b3-coding-tools.md)
+- [B4: Web Research](b4-web-research.md)
+- [B4a: Reliable web pagination and research coverage](b4a-web-pagination.md)
+- [B5: Always Allow and Folder Grants](b5-always-allow.md)
+- [B6: Bot Quality and Memory](b6-bot-quality.md)
+- [B6a: Evidence-Based Bot Delivery](b6a-prompt-reliability.md)
+- [B7: Desktop MVP](b7-desktop-mvp.md)
+- [B7a: Background Desktop Tests](b7a-background-e2e.md)
+- [B8: Installable Build](b8-installable-build.md)
+- [B8a: Login Shell Command Path](b8a-login-path.md)
 
-Delivery planning: [D4: Post-B26 Delivery Plan](d4-delivery-plan.md), **done, documentation only**. The [development roadmap](../development-roadmap.md) orders remaining work against merged `main` through B26, with execution packets, dependencies and acceptance gates. Unimplemented packets are planning briefs, not ready specs.
+## Bot and conversation experience
 
-Memory research: [D5: Local Memory](d5-memory-research.md), **done, merged (#44)**. [Source-backed report](../research/memory-design.md), bilingual SQLite matching probe, and proposed implementation decisions; no product contract or schema changes.
+- [B16: Built-in and Custom Model Setup](b16-model-sources.md)
+- [B17: Permanent Default Core Bot](b17-core-bot.md)
+- [B18: Core Bot Management Tools](b18-core-management.md)
+- [B19: Bot Instructions and Memory Controls](b19-memory-controls.md)
+- [B20: Desktop Experience and English / Chinese](b20-desktop-experience.md)
+- [B21: Conversation Experience](b21-conversation-experience.md)
+- [B22: Conversation List Previews and Unread State](b22-conversation-list.md)
+- [B23: Local Conversation Search and Unread Filtering](b23-conversation-search.md)
+- [D7: White chat canvas and focused interactions](d7-chat-interaction.md)
+- [D8: Unified chat and continuous activity feedback](d8-chat-experience.md)
+- [D9: Files and read-only document previews](d9-file-reading.md)
+- [D10: Reader polish and real report acceptance](d10-reader-polish.md)
 
-Role research: [D6: Persistent Roles, Memory and Skills](d6-bot-role-design.md), **research complete, merged (#45)**. [Product model and evidence](../research/bot-role-design.md) connect role configuration, memory, shared procedures, capability readiness and continuing work; follow-up packets need separate implementation specs.
+## Collaboration and application capabilities
 
-Architecture design: [D3: Application Capabilities and Local Code Mode](d3-app-capabilities.md), **accepted direction**. Defines a shared authorized Host capability surface and reuse of vendored Pi Code Mode. B24 and B25 are merged into `main`; B26 is merged in PR #27 with exact-approved management composition and its recovery acceptance matrix.
+- [B13a: Conversation Contexts per Channel](b13a-channel-contexts.md)
+- [B13b: Group Lifecycle](b13b-group-lifecycle.md)
+- [B13c: Core Entry and Bounded Bot Collaboration](b13c-collaboration.md)
+- [B13d: Local Usage and Execution Evidence](b13d-usage-evidence.md)
+- [B13e: Bot template import and export](b13e-bot-templates.md)
+- [B24: Authorized Application Capability API](b24-app-capability-api.md)
+- [B25: Local Read-Only Application Code Mode](b25-local-app-code-mode.md)
+- [B26: Core Management Through Application Code Mode](b26-code-mode-management.md)
 
-Phase 1 (MVP) implementation is merged into `main`. Historical verification is recorded in the specs; native packaged release evidence remains separate in G0 of the roadmap.
+## Skills, memory, routines, and connectors
 
-| ID                            | Title                                   | Status        |
-| ----------------------------- | --------------------------------------- | ------------- |
-| [B1](b1-durable-approvals.md) | Durable approvals and executor receipts | done     |
-| [B2](b2-runs.md)              | Runs, queue, cancellation, and steering | done     |
-| [B3](b3-coding-tools.md)      | Coding-agent tools                      | done     |
-| [B4a](b4a-web-pagination.md) | Reliable web pagination and research coverage | done (#62) |
-| [B4](b4-web-research.md)      | Web research                            | done     |
-| [B5](b5-always-allow.md)      | Always allow and folder grants          | done     |
-| [B6](b6-bot-quality.md)       | Bot quality and memory                  | done     |
-| [B7](b7-desktop-mvp.md)       | Desktop MVP                             | done     |
-| [B8](b8-installable-build.md) | Installable build                       | done     |
-| [B7a](b7a-background-e2e.md) | Background desktop tests                | done     |
-| [B8a](b8a-login-path.md) | Login shell command path | done |
+- [B9a: Supervised Local Stdio Connectors](b9a-stdio-connectors.md)
+- [B9b: HTTPS MCP Sessions](b9b-https-connectors.md)
+- [B10: Reviewed Reusable Skills](b10-reviewed-skills.md)
+- [B11a: Local Scheduled Routines](b11a-local-routines.md)
+- [B11b: Scheduled reports in group conversations](b11b-group-routine-reports.md)
+- [B11c: Scheduled summaries of routine reports](b11c-scheduled-report-summaries.md)
+- [B11d: Unattended workflow reliability](b11d-unattended-reliability.md)
+- [B11e: Bot routines and generated-file Library](b11e-bot-routines-library.md)
+- [B12a: Deterministic Policy, Revocation, and Unattended Approval Expiry](b12a-deterministic-policy.md)
+- [B27a: Attributable Memory and Explicit Sharing](b27a-memory-provenance.md)
+- [B27b: Per-Role Skill Defaults](b27b-role-skills.md)
 
-## Product foundation
+## Reliability and local data
 
-The listed foundation increments are merged into `main` through B26. Remaining work follows D4; agent mechanisms continue to reuse Pi. Only ready implementation specs may start.
+- [B14a: Reliable, Bounded Desktop Observation](b14a-reliable-observation.md)
+- [B14b: Lifecycle Gates and Explicit Continuation](b14b-lifecycle-gates.md)
+- [B14c: Bounded history reading and persistent search](b14c-history-scaling.md)
+- [B14d: Consistent local backup and restore](b14d-backup-restore.md)
+- [B14e: Desktop-Owned Keychain Credentials](b14e-main-credentials.md)
+- [B15a: Bounded File Inputs and Result Artifacts](b15a-bounded-artifacts.md)
+- [B15b: Durable Background Command Completion](b15b-background-completion.md)
 
-| Task | Status |
-| --- | --- |
-| [B16](b16-model-sources.md) | done |
-| [B17](b17-core-bot.md) | done |
-| [B20](b20-desktop-experience.md) | done |
-| [B18](b18-core-management.md) | done (PR #11) |
-| [B19](b19-memory-controls.md) | done |
-| [B13A](b13a-channel-contexts.md) | done (PR #13) |
-| [B13B](b13b-group-lifecycle.md) | done |
-| [B13C](b13c-collaboration.md) | done |
-| [B21](b21-conversation-experience.md) | done (PR #17) |
-| [B22](b22-conversation-list.md) | done |
-| [B23](b23-conversation-search.md) | done |
+## Integration and acceptance
 
-## Application capabilities
-
-| Task | Status |
-| --- | --- |
-| [B24: Authorized application API](b24-app-capability-api.md) | done (PR #23, merged into main) |
-| [B25: Local app Code Mode](b25-local-app-code-mode.md) | done (PR #24, merged into main) |
-| [B26: Code Mode management](b26-code-mode-management.md) | done ([PR #27](https://github.com/VesperZephyr/OpenBot/pull/27), merged into main) |
-
-## Usage and execution evidence
-
-| Task | Status |
-| --- | --- |
-| [B13d: Local usage and execution evidence](b13d-usage-evidence.md) | done through I1 (#34); original evidence in the spec |
-
-## Desktop reliability
-
-| Task | Status |
-| --- | --- |
-| [B14a: Reliable, bounded observation](b14a-reliable-observation.md) | done through I1 (#34) |
-
-## Post-B26 delivery
-
-| Task | Status |
-| --- | --- |
-| [B15a: Bounded file inputs and result artifacts](b15a-bounded-artifacts.md) | done through I1 (#34); original evidence in the spec |
-
-## Lifecycle foundation
-
-| Task | Status |
-| --- | --- |
-| [B14b: Lifecycle gates and explicit continuation](b14b-lifecycle-gates.md) | done through I1 (#34) |
-
-## Deterministic permissions
-
-| Task | Status |
-| --- | --- |
-| [B12a: Deterministic policy, revocation and approval expiry](b12a-deterministic-policy.md) | done through I1 (#34) |
-
-## Integration gates
-
-| Task | Status |
-| --- | --- |
-| [I1: Integrated product foundation](i1-product-foundation.md) | done (#34); integrates the reviewed PR #29–#33 implementations |
-| [I2: MVP acceptance and bilingual introduction](i2-mvp-acceptance.md) | done (#40); 461 unit/Host and 122 hidden e2e tests; real-model and packaging evidence recorded |
-
-| [I3: Repeatable workflow acceptance](i3-workflow-acceptance.md) | done (#42); 477 unit/Host and 131 hidden e2e tests; real-model workflow evidence |
-
-| [I6: Integrated daily radar acceptance](i6-radar-integration.md) | done (#57); 524 unit/Host tests, 165 desktop tests, installed owner app and real calendar/restart acceptance |
-
-## Reusable procedures
-
-| Task | Status |
-| --- | --- |
-| [B10: Reviewed reusable skills](b10-reviewed-skills.md) | done (#35) |
-
-## Background completion
-
-| Spec | Status |
-| --- | --- |
-| [B15b: Durable background command completion](b15b-background-completion.md) | done (#36) |
-
-## Connectors
-
-| Spec | Status |
-| --- | --- |
-| [B9a: Supervised local stdio connectors](b9a-stdio-connectors.md) | done (#37) |
-| [B9b: HTTPS MCP sessions](b9b-https-connectors.md) | done (#39); 461 unit/Host and 120 hidden e2e tests |
-
-## Local data and credential ownership
-
-| Spec | Status |
-| --- | --- |
-| [B14d: Consistent local backup and restore](b14d-backup-restore.md) | done (#61); 564 checks, seven backup desktop cases and bundled export/delete/restore verification |
-| [B14e: Desktop-owned Keychain credentials](b14e-main-credentials.md) | done (#38); 433 unit/Host and 115 hidden e2e tests; native/real-model evidence in the spec; Developer ID gate open |
-
-## Local scheduling
-
-[B11e: Bot routines and generated-file Library](b11e-bot-routines-library.md): in progress ([#69](https://github.com/VesperZephyr/OpenBot/pull/69)); chat proposals, Bot switches and result-file browsing.
-
-| Spec | Status |
-| --- | --- |
-| [B11a: Local scheduled routines](b11a-local-routines.md) | done (#41); 477 unit/Host and 127 hidden desktop tests |
-| [B11b: Scheduled group reports](b11b-group-routine-reports.md) | done (#53); 512 unit/Host and 157 hidden desktop tests; bounded live-source acceptance |
-| [B11c: Scheduled report summaries](b11c-scheduled-report-summaries.md) | done through I6 / PR #57; 519 unit/Host and 161 hidden desktop tests; five-request real-model composition/restart check |
-| [B11d: Unattended workflow reliability](b11d-unattended-reliability.md) | done (#60); installed eleven-source audit October 27; 542 unit/Host tests, 177 desktop tests and bounded real-provider acceptance |
-
-## Per-role methods
-
-| Spec | Status |
-| --- | --- |
-| [B27b: Per-role skill defaults](b27b-role-skills.md) | done (#47); 484 unit/Host tests; desktop/CI evidence in PR |
-
-## Prompt reliability
-
-| Spec | Status |
-| --- | --- |
-| [B6a: Evidence-based Bot delivery](b6a-prompt-reliability.md) | done (#43); 479 unit/Host and 132 hidden e2e tests; real-model report and unknown-write trial |
-
-## Local role foundations
-
-| Spec | Status |
-| --- | --- |
-| [B27a: Attributable memory and explicit sharing](b27a-memory-provenance.md) | done (#46); 490 unit/Host and 135 hidden desktop tests |
-
-## Role acceptance
-
-| Spec | Status |
-| --- | --- |
-| [I4: Real-model role and memory acceptance](i4-role-memory-acceptance.md) | done (#48); bounded real-model smoke and deterministic role/group integration; explicit spending limits |
-
-## Chat interaction refinement
-
-| Spec | Status |
-| --- | --- |
-| [D7: White canvas and focused interactions](d7-chat-interaction.md) | done (#51); 506 unit and 153 desktop tests pass |
-| [D8: Unified chat and continuous activity feedback](d8-chat-experience.md) | done through I6 / PR #57; 520 unit/Host and 167 hidden desktop tests |
-| [D9: Files and read-only previews](d9-file-reading.md) | done ([#58](https://github.com/VesperZephyr/OpenBot/pull/58)); three-column resizable file/page tabs and isolated embedded HTML |
-
-| [D10: Reader polish and real report acceptance](d10-reader-polish.md) | done (#59); consistent controls, adaptive file tabs and installed real Markdown/HTML delivery |
-
-## Regression efficiency
-
-| Task | Status |
-| --- | --- |
-| [I5: E2E coverage and execution efficiency](i5-e2e-efficiency.md) | done (#54); two full parallel regressions pass |
-
-## Official source pagination
-
-| Task | Status |
-| --- | --- |
-| [I7: Official changelog pagination](i7-official-changelog-pagination.md) | done (#63); configured workflow and acceptance, no new runtime capability |
-
-## History scaling
-
-| Task | Status |
-| --- | --- |
-| [B14c: Bounded history reading and persistent search](b14c-history-scaling.md) | done (#64; merge `4d1c5c3`); approved routine selector included; [acceptance](../acceptance/history-scaling-2026-10-28.md) |
-
-## Bot template portability
-
-| Task | Status |
-| --- | --- |
-| [B13e: Bot template import and export](b13e-bot-templates.md) | implemented; owner merge pending; [automated acceptance](../acceptance/bot-templates-2026-10-29.md) |
-
-B14f signed updates follows as a planning brief in the [roadmap](../development-roadmap.md#6-p2-broader-access-and-maintainability); it still needs a ready spec.
+- [I1: Integrated Product Foundation](i1-product-foundation.md)
+- [I2: MVP Acceptance Candidate and Bilingual Introduction](i2-mvp-acceptance.md)
+- [I3: Repeatable Workflow Acceptance](i3-workflow-acceptance.md)
+- [I4: Real-Model Role and Memory Acceptance](i4-role-memory-acceptance.md)
+- [Desktop regression coverage audit](i5-e2e-audit.md)
+- [I5: E2E coverage and execution efficiency](i5-e2e-efficiency.md)
+- [I6: Integrated daily radar acceptance](i6-radar-integration.md)
+- [I7: Official changelog pagination](i7-official-changelog-pagination.md)

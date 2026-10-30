@@ -214,9 +214,9 @@ The Host owns conversations, scheduling and policy. The executor performs author
 
 ## Project documentation
 
-- [Technical plan](docs/technical-plan.md) — implemented components, evidence and known gaps
-- [Backlog](docs/backlog.md) and [delivery roadmap](docs/development-roadmap.md) — upcoming work and release gates
-- [Task specs](docs/tasks/README.md) — contracts and acceptance for each increment
+- [Technical constraints](docs/technical-plan.md) — known gaps, pitfalls, compatibility and open decisions
+- [Backlog](docs/backlog.md) and [delivery roadmap](docs/development-roadmap.md) — active queue, planning rationale and release gates
+- [Task specs](docs/tasks/README.md) — task status, contracts and acceptance evidence
 - [Agent guide](AGENTS.md) — contribution workflow, boundaries and verification rules
 - [Pi provenance and local changes](third_party/pi/OPENBOT_CHANGES.md) — vendored runtime maintenance
 

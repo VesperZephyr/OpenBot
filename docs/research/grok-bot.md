@@ -2,7 +2,7 @@
 
 Research date: **2026-10-18**. Scope: the persistent-agent product, not ordinary Grok chat or the `@grok` account on X.
 
-This is a source-backed research snapshot, not an implementation specification. The [development roadmap](../development-roadmap.md) turns the findings into priorities. [D2](../tasks/d2-grok-ui-research.md) contains the detailed desktop interaction evidence. OpenBot's [architecture](../architecture.md) remains authoritative for its boundaries; the [technical plan](../technical-plan.md) records implemented behavior.
+This is a source-backed research snapshot, not an implementation specification. The [development roadmap](../development-roadmap.md) turns the findings into priorities. [D2](../tasks/d2-grok-ui-research.md) contains the detailed desktop interaction evidence. OpenBot's [architecture](../architecture.md) remains authoritative for its boundaries; the [task index](../tasks/README.md) links delivery contracts and evidence, and [technical constraints](../technical-plan.md) record known gaps.
 
 ## Evidence and conclusion
 

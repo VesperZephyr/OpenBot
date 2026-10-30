@@ -17,7 +17,7 @@ Out: product code, Pi/vendor updates, new dependencies, actual execution specs m
 
 ## Design
 
-The [roadmap](../development-roadmap.md) owns the queue and proposed acceptance. The [architecture](../architecture.md) owns runtime contracts, the [technical plan](../technical-plan.md) owns implementation evidence, and individual ready specs remain the execution contracts. The research remains a dated evidence record and does not turn inferred competitor internals into OpenBot requirements.
+Documentation ownership: the [roadmap](../development-roadmap.md) retains planning rationale and future prerequisites; the [backlog](../backlog.md) owns the active queue. The [architecture](../architecture.md) owns lasting runtime contracts, the [technical plan](../technical-plan.md) owns gaps and pitfalls, and individual specs own task status, execution contracts and delivery evidence. The research remains a dated evidence record and does not turn inferred competitor internals into OpenBot requirements.
 
 Keep existing batch IDs. B14a is the next implementation spec to prepare; B15a delivers the next visible improvement. Lifecycle and deterministic policy precede unattended work. Skills, completion delivery, connector tools and routines compose a measurable workflow. Browser/native desktop capabilities retain separate feasibility and permission gates. Public release evidence stays distinct from automated development readiness.
 
