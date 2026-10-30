@@ -68,7 +68,7 @@ Use the selected spec's acceptance checks in addition to this matrix. Run checks
 
 ### Isolated App Verification
 
-- `pnpm run e2e` builds and drives Electron with Playwright, isolated state under `e2e/.run/`, and a checkout-specific Keychain service (`ai.openbot.e2e.<hash>`). It does not touch owner data.
+- `pnpm run e2e` builds and drives Electron with Playwright, isolated state under `e2e/.run/`, and a checkout-specific Keychain service (`ai.openbot.e2e.<hash>`). It does not touch owner data. A test app quits when its launching process exits, so an interrupted runner does not leave a hidden app or Host behind.
 - Keep verification in background mode: hidden, non-focusable windows with no notifications, Dock badges, tray, or power assertions. Screenshots still render. Use `pnpm run e2e:headed` only when visible windows are explicitly requested.
 - Explore new flows or failing tests with agent-browser in an isolated background test app. Read `agent-browser skills get electron` once, connect to that app's CDP port, then use `snapshot -i`, `click @eN`, `fill @eN "text"`, and `screenshot path.png`. Convert useful findings into e2e checks.
 - `pnpm run dev` and `pnpm run dev:debug` use **owner data**: `~/Library/Application Support/OpenBot`, `~/OpenBot`, and `~/.openbot/models.json`. Do not launch them as a verification side effect. Debug mode exposes CDP on port 9339; a running instance receives a second launch because of the single-instance lock.
