@@ -4,8 +4,7 @@ import type { BotSummary, SkillRef, SkillDocument } from "../packages/protocol/s
 
 let h: AppHarness, botId: string, original: SkillRef, latest: SkillRef;
 const document: SkillDocument = { name: "invoice-check", description: "Reconcile invoice totals", inputs: "Invoice rows", requirements: "Local files", steps: "ROLE_METHOD_V1: reconcile totals before reporting.", validation: "Check totals against each row", output: "An actionable report", approvalBoundaries: "Use existing approval rules; never infer permission from this procedure." };
-const api = (name: string, params: unknown = {}): Promise<any> => h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
-const profile = (): Promise<BotSummary> => api("bots.list").then(bots => bots.find((bot: BotSummary) => bot.botId === botId));
+const profile = (): Promise<BotSummary> => h.api("bots.list").then(bots => bots.find((bot: BotSummary) => bot.botId === botId));
 const ref = ({ name, revision, sha256 }: SkillRef): SkillRef => ({ name, revision, sha256 });
 async function edit(chinese = false): Promise<void> {
 	await h.page().getByRole("button", { name: "•••" }).click();
@@ -16,8 +15,8 @@ beforeAll(async () => {
 	h = await launchApp("role-skills");
 	h.page().setDefaultTimeout(10000);
 	await createBot(h, "Invoice Analyst");
-	botId = (await api("bots.list")).find((bot: BotSummary) => bot.name === "Invoice Analyst").botId;
-	original = ref(await api("skills.save", { requestId: "method-1", name: document.name, expectedRevision: 0, document }));
+	botId = (await h.api("bots.list")).find((bot: BotSummary) => bot.name === "Invoice Analyst").botId;
+	original = ref(await h.api("skills.save", { requestId: "method-1", name: document.name, expectedRevision: 0, document }));
 }, 90_000);
 afterEach(async ({ task }) => { if (task.result?.state === "fail") await h.shot("failure"); });
 afterAll(async () => { await h?.close(); });
@@ -40,7 +39,7 @@ it("previews and pins a role method, supplies the exact text and keeps stale pro
 	expect(JSON.stringify(h.model.requests.at(-1)?.messages)).toContain("ROLE_METHOD_V1");
 	await edit();
 	await page.getByRole("button", { name: "Remove role skill invoice-check" }).click();
-	await api("bots.update", { botId, expectedRevision: (await profile()).revision, role: "Finance" });
+	await h.api("bots.update", { botId, expectedRevision: (await profile()).revision, role: "Finance" });
 	await page.getByRole("button", { name: "Save profile" }).click();
 	await page.getByRole("alert").filter({ hasText: "Profile changed" }).waitFor();
 	await page.getByText("No role defaults. Attach a skill to individual messages when needed.", { exact: true }).waitFor();
@@ -54,10 +53,10 @@ it("previews and pins a role method, supplies the exact text and keeps stale pro
 it("keeps defaults through restart and duplication while another role remains independent", async () => {
 	await h.relaunch();
 	expect((await profile()).defaultSkills).toEqual([original]);
-	const copy = await api("bots.duplicate", { botId, requestId: "role-copy" });
+	const copy = await h.api("bots.duplicate", { botId, requestId: "role-copy" });
 	expect(copy.defaultSkills).toEqual([original]);
-	expect((await api("bots.memory.get", { botId: copy.botId })).content).toBe("");
-	expect((await api("conversations.snapshot", { botId: copy.botId })).items).toEqual([]);
+	expect((await h.api("bots.memory.get", { botId: copy.botId })).content).toBe("");
+	expect((await h.api("conversations.snapshot", { botId: copy.botId })).items).toEqual([]);
 	await createBot(h, "Researcher");
 	h.model.script({ text: "Independent research role." });
 	await h.send("What instructions apply?");
@@ -69,17 +68,17 @@ it("keeps defaults through restart and duplication while another role remains in
 
 it("requires deliberate version adoption and rejects ambiguous or unavailable methods without accepting work", async () => {
 	const page = h.page();
-	latest = ref(await api("skills.save", { requestId: "method-2", name: document.name, expectedRevision: 1, document: { ...document, steps: "ROLE_METHOD_V2: check missing invoice columns, then reconcile totals." } }));
-	await api("conversations.reset", { botId });
+	latest = ref(await h.api("skills.save", { requestId: "method-2", name: document.name, expectedRevision: 1, document: { ...document, steps: "ROLE_METHOD_V2: check missing invoice columns, then reconcile totals." } }));
+	await h.api("conversations.reset", { botId });
 	h.model.script({ text: "Still using the pinned revision." });
 	await h.send("Use your method.");
 	await page.getByText("Still using the pinned revision.", { exact: true }).waitFor();
 	expect(JSON.stringify(h.model.requests.at(-1)?.messages)).toContain("ROLE_METHOD_V1");
 	expect(JSON.stringify(h.model.requests.at(-1)?.messages)).not.toContain("ROLE_METHOD_V2");
-	const before = (await api("conversations.snapshot", { botId })).items.length;
-	await expect(api("messages.submit", { botId, requestId: "version-conflict", text: "Conflict", skills: [latest] })).rejects.toThrow("different versions");
-	expect((await api("conversations.snapshot", { botId })).items.length).toBe(before);
-	await expect(api("bots.update", { botId, expectedRevision: (await profile()).revision, defaultSkills: [{ ...latest, sha256: "0".repeat(64) }] })).rejects.toThrow("unavailable");
+	const before = (await h.api("conversations.snapshot", { botId })).items.length;
+	await expect(h.api("messages.submit", { botId, requestId: "version-conflict", text: "Conflict", skills: [latest] })).rejects.toThrow("different versions");
+	expect((await h.api("conversations.snapshot", { botId })).items.length).toBe(before);
+	await expect(h.api("bots.update", { botId, expectedRevision: (await profile()).revision, defaultSkills: [{ ...latest, sha256: "0".repeat(64) }] })).rejects.toThrow("unavailable");
 	expect((await profile()).defaultSkills).toEqual([original]);
 	await edit();
 	await page.getByRole("button", { name: "Inspect pinned invoice-check" }).click();
@@ -89,13 +88,13 @@ it("requires deliberate version adoption and rejects ambiguous or unavailable me
 	await page.getByRole("button", { name: "Use this revision" }).click();
 	await page.getByRole("button", { name: "Save profile" }).click();
 	await page.locator(".role-skill-defaults").filter({ hasText: "v2" }).waitFor();
-	await api("conversations.reset", { botId });
+	await h.api("conversations.reset", { botId });
 	h.model.script({ text: "Adopted the selected revision." });
 	await h.send("Use the method again.");
 	await page.getByText("Adopted the selected revision.", { exact: true }).waitFor();
 	expect(JSON.stringify(h.model.requests.at(-1)?.messages)).toContain("ROLE_METHOD_V2");
 	expect(JSON.stringify(h.model.requests.at(-1)?.messages)).not.toContain("ROLE_METHOD_V1");
-	await api("skills.delete", { requestId: "method-delete", name: document.name, expectedRevision: 2 });
+	await h.api("skills.delete", { requestId: "method-delete", name: document.name, expectedRevision: 2 });
 	await h.send("This draft must survive an unavailable method.");
 	await expect.poll(() => page.getByRole("textbox", { name: /^Message/ }).inputValue()).toBe("This draft must survive an unavailable method.");
 	await page.locator(".toast").filter({ hasText: "unavailable" }).waitFor();

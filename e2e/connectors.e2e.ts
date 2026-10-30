@@ -5,19 +5,17 @@ import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { launchApp, type AppHarness } from "./harness.ts";
 let h: AppHarness, core: string;
 const sentinel = "B9A_SYNTHETIC_SENTINEL_839221";
-const api = (name: string, params = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const poll = (read: () => Promise<any>) => expect.poll(read, { timeout: 15000 });
-const list = () => api("connectors.list");
-const snapshot = () => api("conversations.snapshot", { botId: core });
+const list = () => h.api("connectors.list");
+const snapshot = () => h.api("conversations.snapshot", { botId: core });
 const coreChat = async () => {
 	await h.page().locator(".bot-row").first().click();
 };
 beforeAll(async () => {
 	h = await launchApp("connectors");
 	h.page().setDefaultTimeout(10000);
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
-	core = (await api("bots.list")).find((b: any) => b.kind === "core").botId;
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	core = (await h.api("bots.list")).find((b: any) => b.kind === "core").botId;
 });
 afterEach(async ({ task }) => {
 	if (task.result?.state === "fail") await h.shot("failure");
@@ -25,7 +23,7 @@ afterEach(async ({ task }) => {
 afterAll(async () => {
 	if (h) {
 		for (const item of await list().catch(() => []))
-			await api("connectors.remove", {
+			await h.api("connectors.remove", {
 				connectorId: item.connectorId,
 				expectedRevision: item.revision,
 				requestId: crypto.randomUUID(),
@@ -111,7 +109,7 @@ it("loads deferred schemas through Pi search then denies and approves exact call
 it("keeps configuration after restart but requires an explicit connection and supports Chinese", async () => {
 	await h.relaunch();
 	expect((await list())[0]).toMatchObject({ state: "disconnected", credentialConfigured: true });
-	await api("settings.update", { language: "zh-CN" });
+	await h.api("settings.update", { language: "zh-CN" });
 	await h.page().getByRole("button", { name: /^设置/ }).click();
 	await h.page().getByRole("button", { name: "连接应用", exact: true }).click();
 	await h
@@ -126,7 +124,7 @@ it("keeps configuration after restart but requires an explicit connection and su
 	await poll(async () => (await list())[0]?.state).toBe("disconnected");
 	await h.page().getByRole("button", { name: "连接", exact: true }).click();
 	await poll(async () => (await list())[0]?.state).toBe("connected");
-	await api("settings.update", { language: "en" });
+	await h.api("settings.update", { language: "en" });
 });
 it("cancels a pending approval on removal and never permits the queued write", async () => {
 	await coreChat();

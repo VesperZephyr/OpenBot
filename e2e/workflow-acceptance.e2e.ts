@@ -10,13 +10,12 @@ let h: AppHarness, crm: Awaited<ReturnType<typeof crmFixture>>, core: string, ro
 let interventions = 0, approvedConnectorCalls = 0, beforeApproved = 0, started = 0, beforeCalls = 0, beforeEffects = 0, beforeInterventions = 0;
 let workflowOutcome = "incomplete";
 const evidence: object[] = [];
-const api = (name: string, params = {}): Promise<any> => h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 20000 });
 const button = (name: string) => h.page().getByRole("button", { name, exact: true });
-const snapshot = () => api("conversations.snapshot", { botId: core });
-const detail = () => api("routines.get", { routineId: routine.routineId });
-const profile = async () => (await api("connectors.list"))[0];
-const connector = async (action = "connect") => { const p = await profile(); interventions++; return api(`connectors.${action}`, { connectorId: p.connectorId, expectedRevision: p.revision, requestId: crypto.randomUUID() }); };
+const snapshot = () => h.api("conversations.snapshot", { botId: core });
+const detail = () => h.api("routines.get", { routineId: routine.routineId });
+const profile = async () => (await h.api("connectors.list"))[0];
+const connector = async (action = "connect") => { const p = await profile(); interventions++; return h.api(`connectors.${action}`, { connectorId: p.connectorId, expectedRevision: p.revision, requestId: crypto.randomUUID() }); };
 const script = (...turns: ScriptedTurn[]) => h.model.script(...turns.map(t => ({ ...t, usage: { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 } })));
 const finishChat = async (text: string) => { await h.page().getByText(text, { exact: true }).waitFor(); await poll(async () => (await snapshot()).run).toBeUndefined(); };
 const approve = async (tool: string, unattended = false, decision = "Allow once") => {
@@ -63,18 +62,18 @@ beforeAll(async () => {
 		return { NODE_EXTRA_CA_CERTS: crm.certPath, OPENBOT_TAVILY_BASE_URL: crm.searchUrl };
 	} });
 	h.page().setDefaultTimeout(12000);
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
-	core = (await api("bots.list")).find((b: any) => b.kind === "core").botId;
-	await api("connectors.install", { connectorId: "crm", name: "Synthetic CRM", transport: "https", endpoint: crm.endpoint, auth: "bearer", requestId: "i3-crm" });
-	await api("connectors.credential.set", { connectorId: "crm", expectedRevision: (await profile()).revision, value: crm.state.token });
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	core = (await h.api("bots.list")).find((b: any) => b.kind === "core").botId;
+	await h.api("connectors.install", { connectorId: "crm", name: "Synthetic CRM", transport: "https", endpoint: crm.endpoint, auth: "bearer", requestId: "i3-crm" });
+	await h.api("connectors.credential.set", { connectorId: "crm", expectedRevision: (await profile()).revision, value: crm.state.token });
 	await connector();
-	await api("credentials.set", { providerId: "search:tavily", apiKey: "SYNTHETIC_I3_SEARCH" });
+	await h.api("credentials.set", { providerId: "search:tavily", apiKey: "SYNTHETIC_I3_SEARCH" });
 });
 beforeEach(() => { workflowOutcome = "incomplete"; beforeApproved = approvedConnectorCalls; started = Date.now(); beforeCalls = crm.state.requests.filter(r => r.rpc === "tools/call").length; beforeEffects = crm.effects.length; beforeInterventions = interventions; });
 afterEach(async ({ task }) => {
 	if (!h) return;
 	if (task.result?.state === "fail") await h.shot("failure");
-	const usage = await api("usage.get", { botId: core });
+	const usage = await h.api("usage.get", { botId: core });
 	evidence.push({ scenario: task.name, check: task.result?.state, workflowOutcome, connectorRetryRequests: Math.max(0, crm.state.requests.filter(r => r.rpc === "tools/call").length - beforeCalls - (approvedConnectorCalls - beforeApproved)), elapsedMs: Date.now() - started, interventions: interventions - beforeInterventions, toolRequests: crm.state.requests.filter(r => r.rpc === "tools/call").length - beforeCalls, effects: crm.effects.length - beforeEffects, cumulativeTokens: usage.total.totalTokens ?? null, cumulativeEstimatedUsd: usage.total.estimatedUsd ?? null });
 	await writeFile(join(h.run, "evidence.json"), JSON.stringify({ candidate: execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim(), mode: "scripted", scenarios: evidence }, null, 2));
 });
@@ -96,7 +95,7 @@ it("joins CRM and captured research, denies a wrong update, confirms the correct
 	expect(JSON.stringify(h.model.requests[0]?.messages.filter(m => m.role === "system" || m.role === "developer"))).toContain("Search with tool_search");
 	expect(JSON.parse(await readFile(join(h.workspace, "receivables.json"), "utf8"))).toEqual({ total: 2000, overdue: 1200, proposed: [{ accountId: "atlas", expectedVersion: 1, risk: "high" }] });
 	firstArtifact = (await snapshot()).items.find((i: any) => i.tool === "artifact_publish").artifact.artifactId;
-	expect((await api("artifacts.preview", { artifactId: firstArtifact })).text).toContain("$1200");
+	expect((await h.api("artifacts.preview", { artifactId: firstArtifact })).text).toContain("$1200");
 	script({ tool: "mcp__crm__update_account", args: { accountId: "atlas", expectedVersion: 1, risk: "high" } }, { text: "Atlas is now high risk; one CRM update is confirmed." });
 	interventions++;
 	await h.send("Correction: only Atlas exceeds 30 days. Update Atlas at version 1, not Boreal.");
@@ -112,11 +111,11 @@ it("joins CRM and captured research, denies a wrong update, confirms the correct
 	} } }, { text: "The corrected receivables procedure is saved for reviewable reuse." });
 	await h.send("Save the corrected method as a reusable skill.");
 	await h.page().locator(".approval .skill-review").waitFor();
-	expect((await api("skills.list"))).toHaveLength(0);
+	expect((await h.api("skills.list"))).toHaveLength(0);
 	await h.shot("02-skill-review-en");
 	await approve("skill_save");
 	await finishChat("The corrected receivables procedure is saved for reviewable reuse.");
-	skill = (await api("skills.list"))[0];
+	skill = (await h.api("skills.list"))[0];
 	expect(skill.revision).toBe(1);
 	workflowOutcome = "completed";
 }, 90000);
@@ -128,8 +127,8 @@ it("pins the corrected skill, reads changed inputs and survives Host loss with o
 	await h.page().getByLabel("Frequency", { exact: true }).selectOption("weekly");
 	await h.page().getByLabel(/receivables-review/).check();
 	await button("Review routine").click(); await button("Confirm routine change").click(); interventions++;
-	await poll(async () => (await api("routines.list")).routines.length).toBe(1);
-	routine = (await api("routines.list")).routines[0];
+	await poll(async () => (await h.api("routines.list")).routines.length).toBe(1);
+	routine = (await h.api("routines.list")).routines[0];
 	expect(routine.skills).toEqual([{ name: skill.name, revision: skill.revision, sha256: skill.sha256 }]);
 	await selectRoutine();
 	const requestStart = h.model.requests.length;
@@ -151,12 +150,12 @@ it("pins the corrected skill, reads changed inputs and survives Host loss with o
 	expect(crm.effects).toHaveLength(2);
 	expect(crm.effects[1]).toEqual({ accountId: "boreal", expectedVersion: 1, risk: "high" });
 	await h.page().locator(".routine-result").scrollIntoViewIfNeeded(); await h.shot("03-routine-result-en");
-	const usage = (await api("usage.get", { botId: core })).total;
+	const usage = (await h.api("usage.get", { botId: core })).total;
 	await h.relaunch();
 	expect((await snapshot()).items.filter((i: any) => i.routine?.occurrenceId === occurrence.occurrenceId)).toHaveLength(1);
-	expect((await api("usage.get", { botId: core })).total).toEqual(usage);
-	expect((await api("artifacts.preview", { artifactId: firstArtifact })).text).toContain("$1200");
-	expect((await api("artifacts.preview", { artifactId: occurrence.artifacts[0].artifactId })).text).toContain("$2500");
+	expect((await h.api("usage.get", { botId: core })).total).toEqual(usage);
+	expect((await h.api("artifacts.preview", { artifactId: firstArtifact })).text).toContain("$1200");
+	expect((await h.api("artifacts.preview", { artifactId: occurrence.artifacts[0].artifactId })).text).toContain("$2500");
 	expect(crm.effects).toHaveLength(2);
 	await connector(); await selectRoutine();
 	workflowOutcome = "completed";
@@ -174,11 +173,11 @@ it("retains partial reports on rate limiting and revoked auth without automatic 
 		expect(occurrence.report).toContain("Partial:"); expect(occurrence.artifacts).toHaveLength(1);
 		expect(crm.effects).toHaveLength(2);
 		expect(crm.state.requests.filter(r => r.rpc === "tools/call")).toHaveLength(calls + 1);
-		await api("settings.update", { language: "zh-CN" });
+		await h.api("settings.update", { language: "zh-CN" });
 		await button("编辑定时任务").waitFor();
 		await h.page().locator(".routine-result > .markdown").getByText(text, { exact: true }).waitFor();
 		await h.page().locator(".routine-result").scrollIntoViewIfNeeded(); await h.shot(`04-${mode}-partial-zh`);
-		await api("settings.update", { language: "en" });
+		await h.api("settings.update", { language: "en" });
 		await button("Edit routine").waitFor();
 		crm.state.mode = "normal";
 		if (mode === "rate") await poll(async () => Date.now() >= (await profile()).retryAt).toBe(true);
@@ -195,7 +194,7 @@ it("preserves an unknown remote effect and one attention report after response l
 	expect(occurrence.state).toBe("needs_attention");
 	expect(occurrence.artifacts).toHaveLength(1);
 	await poll(async () => {
-		const result = await api("conversations.window", { conversationKey: `bot:${core}`, occurrenceId: occurrence.occurrenceId, position: { kind: "latest" } });
+		const result = await h.api("conversations.window", { conversationKey: `bot:${core}`, occurrenceId: occurrence.occurrenceId, position: { kind: "latest" } });
 		return result.status === "ready" ? result.window.rows.find((row: any) => row.content.kind === "direct" && row.content.item.tool === "mcp__crm__update_account")?.content.item.status : undefined;
 	}).toBe("interrupted");
 	expect(crm.effects).toHaveLength(3);

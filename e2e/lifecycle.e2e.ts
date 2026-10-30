@@ -4,15 +4,6 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type AppHarness, createBot, launchApp } from "./harness.ts";
 let h: AppHarness;
-function api(method: string, params: unknown = {}) {
-	return h
-		.page()
-		.evaluate(
-			({ method, params }) =>
-				(window as unknown as { openbot: { methods: Record<string, (params: unknown) => Promise<any>> } }).openbot.methods[method]!(params),
-			{ method, params },
-		);
-}
 async function native(event: string) {
 	await h.app().evaluate(({ powerMonitor }, name) => powerMonitor.emit(name as never), event);
 }
@@ -35,14 +26,14 @@ describe("Lifecycle gates", () => {
 		await h.page().getByRole("button", { name: "Settings", exact: true }).click();
         await h.page().getByRole("button", { name: "Pause all", exact: true }).click();
         await h.page().getByRole("button", { name: "Back to chat", exact: true }).click();
-		await expect.poll(async () => (await api("lifecycle.get")).transitioning).toBe(false);
+		await expect.poll(async () => (await h.api("lifecycle.get")).transitioning).toBe(false);
 		h.model.script({ text: "Queued work completed." });
 		await h.send("Handle this after resume");
 		expect(h.model.requests).toHaveLength(0);
 		await h.shot("01-paused-queue");
 		await h.relaunch();
 		await select("Lifecycle");
-		expect((await api("lifecycle.get")).blocked).toBe(true);
+		expect((await h.api("lifecycle.get")).blocked).toBe(true);
 		expect(h.model.requests).toHaveLength(0);
 		await h.page().getByRole("button", { name: "Resume work", exact: true }).click();
 		await h.page().getByText("Queued work completed.", { exact: true }).waitFor();
@@ -52,11 +43,11 @@ describe("Lifecycle gates", () => {
   h.model.script({text:"Background work completed while locked.",delayMs:700});
   await h.send("Continue in the background");
   await native("lock-screen");
-  await expect.poll(async()=>(await api("lifecycle.get")).locked).toBe(true);
-  expect((await api("lifecycle.get")).blocked).toBe(false);
+  await expect.poll(async()=>(await h.api("lifecycle.get")).locked).toBe(true);
+  expect((await h.api("lifecycle.get")).blocked).toBe(false);
   await h.page().getByText("Background work completed while locked.",{exact:true}).waitFor();
   await native("unlock-screen");
-  await expect.poll(async()=>(await api("lifecycle.get")).needsResume).toBe(false);
+  await expect.poll(async()=>(await h.api("lifecycle.get")).needsResume).toBe(false);
  });
 
 	it("stops approved execution on suspend and never replays it after automatic wake", async () => {
@@ -72,10 +63,10 @@ describe("Lifecycle gates", () => {
 		await expect.poll(async () => readFile(join(h.workspace, "lifecycle-count.txt"), "utf8").catch(() => "")).toBe("once\n");
 		const before = h.model.requests.length;
 		await native("suspend");
-		await expect.poll(async () => (await api("lifecycle.get")).transitioning).toBe(false);
+		await expect.poll(async () => (await h.api("lifecycle.get")).transitioning).toBe(false);
 		await h.page().getByText("Task interrupted", { exact: true }).waitFor();
 		await native("resume");
-		await expect.poll(async () => (await api("lifecycle.get")).blocked).toBe(false);
+		await expect.poll(async () => (await h.api("lifecycle.get")).blocked).toBe(false);
 		expect(h.model.requests).toHaveLength(before);
 		await h.shot("03-interrupted");
 		expect(await readFile(join(h.workspace, "lifecycle-count.txt"), "utf8")).toBe("once\n");
@@ -90,15 +81,15 @@ describe("Lifecycle gates", () => {
 		await h.send("Ask before running");
 		await h.page().getByRole("group", { name: "Approval request" }).waitFor();
 		await native("suspend");
-		await expect.poll(async () => (await api("lifecycle.get")).transitioning).toBe(false);
+		await expect.poll(async () => (await h.api("lifecycle.get")).transitioning).toBe(false);
 		await h.page().getByRole("group", { name: "Approval request" }).waitFor({ state: "hidden" });
 		await native("resume");
-		await expect.poll(async () => (await api("lifecycle.get")).blocked).toBe(false);
-		await api("lifecycle.pause");
+		await expect.poll(async () => (await h.api("lifecycle.get")).blocked).toBe(false);
+		await h.api("lifecycle.pause");
 		h.model.script({ text: "New queued request answered." });
 		await h.send("New request after interruption");
 		const before = h.model.requests.length;
-		await api("settings.update", { language: "zh-CN" });
+		await h.api("settings.update", { language: "zh-CN" });
 		await h.relaunch();
 		await select("Lifecycle");
 		await h.page().getByRole("button", { name: "恢复工作", exact: true }).waitFor();
@@ -106,17 +97,17 @@ describe("Lifecycle gates", () => {
 		expect(h.model.requests).toHaveLength(before);
 		await h.page().getByRole("button", { name: "恢复工作", exact: true }).click();
 		await h.page().getByText("New queued request answered.", { exact: true }).waitFor();
-		await api("settings.update", { language: "en" });
+		await h.api("settings.update", { language: "en" });
 	});
 	it("keeps idle restart ready, hides native authority from the renderer, and stays invisible", async () => {
 		await expect
 			.poll(async () => {
-				const bot = (await api("bots.list")).find((b: any) => b.name === "Lifecycle");
-				return (await api("conversations.snapshot", { botId: bot.botId })).run;
+				const bot = (await h.api("bots.list")).find((b: any) => b.name === "Lifecycle");
+				return (await h.api("conversations.snapshot", { botId: bot.botId })).run;
 			})
 			.toBeUndefined();
 		await h.relaunch();
-		await expect.poll(async () => (await api("lifecycle.get")).blocked).toBe(false);
+		await expect.poll(async () => (await h.api("lifecycle.get")).blocked).toBe(false);
 		expect(await h.page().evaluate(() => typeof (window as any).openbot.methods["lifecycle.native"])).toBe("undefined");
 		expect(
 			await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().every((w) => !w.isVisible() && !w.isFocused())),
@@ -124,8 +115,8 @@ describe("Lifecycle gates", () => {
 		await h.shot("05-idle-restart");
 	});
 	it("stops a group chain without waking peers after Resume", async () => {
-		const bot = (await api("bots.list")).find((b: any) => b.name === "Lifecycle");
-		await api("groups.change", {
+		const bot = (await h.api("bots.list")).find((b: any) => b.name === "Lifecycle");
+		await h.api("groups.change", {
 			requestId: "lifecycle-group",
 			action: "create",
 			groupId: "group_lifecycle",
@@ -133,21 +124,21 @@ describe("Lifecycle gates", () => {
 			fields: {
 				name: "Lifecycle group",
 				objective: "Test interruption",
-				memberIds: [bot.botId, (await api("bots.list")).find((b: any) => b.kind === "core").botId],
+				memberIds: [bot.botId, (await h.api("bots.list")).find((b: any) => b.kind === "core").botId],
 				leadBotId: bot.botId,
 			},
 		});
 		h.model.script({ tool: "local_exec", args: { command: "echo group", description: "Group pause probe" } });
-		await api("groups.send", { groupId: "group_lifecycle", requestId: "group-request", text: "Run the probe" });
+		await h.api("groups.send", { groupId: "group_lifecycle", requestId: "group-request", text: "Run the probe" });
 		await expect
 			.poll(async () =>
-				(await api("groups.snapshot", { groupId: "group_lifecycle" })).tasks.some((d: any) => d.conversation?.approvals?.length),
+				(await h.api("groups.snapshot", { groupId: "group_lifecycle" })).tasks.some((d: any) => d.conversation?.approvals?.length),
 			)
 			.toBe(true);
 		const before = h.model.requests.length;
-		await api("lifecycle.pause");
-		await api("lifecycle.resume");
-		const group = await api("groups.snapshot", { groupId: "group_lifecycle" });
+		await h.api("lifecycle.pause");
+		await h.api("lifecycle.resume");
+		const group = await h.api("groups.snapshot", { groupId: "group_lifecycle" });
 		expect(group.roots[0].state).toBe("cancelled");
 		expect(group.roots[0].reason).toBe("Work interrupted by application lifecycle");
 		expect(group.tasks.every((d: any) => !["pending", "running"].includes(d.state))).toBe(true);
@@ -155,24 +146,24 @@ describe("Lifecycle gates", () => {
 	});
 	it("cancels a Core Code Mode approval without letting its remaining script mutate", async () => {
 		await select("OpenBot");
-		const core = (await api("bots.list")).find((b: any) => b.kind === "core").botId;
+		const core = (await h.api("bots.list")).find((b: any) => b.kind === "core").botId;
 		h.model.script({
 			tool: "codemode",
 			args: { code: 'await tools.app_bots_create({name:"Must stay absent"});await tools.app_bots_create({name:"Also absent"});' },
 		});
 		await h.send("Run this synthetic Code Mode check");
 		await h.page().locator(".approval").waitFor();
-		const approval = (await api("conversations.snapshot", { botId: core })).approvals[0].approvalId,
+		const approval = (await h.api("conversations.snapshot", { botId: core })).approvals[0].approvalId,
 			before = h.model.requests.length;
-		await api("lifecycle.pause");
-		const snapshot = await api("conversations.snapshot", { botId: core });
+		await h.api("lifecycle.pause");
+		const snapshot = await h.api("conversations.snapshot", { botId: core });
 		expect(snapshot.run.state).toBe("needs_attention");
 		expect(snapshot.approvals).toHaveLength(0);
 		const parent = snapshot.items.findLast((item: any) => item.execution);
 		expect(parent.execution.state).toBe("cancelled");
-		await expect(api("approvals.decide", { approvalId: approval, decision: "allow_once" })).rejects.toThrow();
-		await api("lifecycle.resume");
-		expect((await api("bots.list")).some((b: any) => b.name.includes("absent"))).toBe(false);
+		await expect(h.api("approvals.decide", { approvalId: approval, decision: "allow_once" })).rejects.toThrow();
+		await h.api("lifecycle.resume");
+		expect((await h.api("bots.list")).some((b: any) => b.name.includes("absent"))).toBe(false);
 		expect(h.model.requests).toHaveLength(before);
 	});
 

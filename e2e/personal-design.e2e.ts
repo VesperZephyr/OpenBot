@@ -4,11 +4,9 @@ import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { launchApp, type AppHarness } from "./harness.ts";
 import type { BotSummary } from "../packages/protocol/src/index.ts";
 let h: AppHarness, core: string, specialist: string;
-const api = (name: string, params: unknown = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 15000 });
 const profile = (botId = core): Promise<BotSummary> =>
-	api("bots.list").then((bots) => bots.find((b: BotSummary) => b.botId === botId));
+	h.api("bots.list").then((bots) => bots.find((b: BotSummary) => b.botId === botId));
 const edit = async () => {
 	await h.page().getByRole("button", { name: "Conversation details", exact: true }).click();
 	await h.page().getByRole("dialog", { name: "Conversation details" }).waitFor();
@@ -23,10 +21,10 @@ async function pick(path: string) {
 beforeAll(async () => {
 	h = await launchApp("personal-design");
 	h.page().setDefaultTimeout(10000);
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
-	core = (await api("bots.list"))[0].botId;
-	specialist = (await api("bots.create", { requestId: "atlas", name: "Atlas", role: "Research & reports" })).botId;
-	await api("bots.create", { requestId: "scribe", name: "Scribe", role: "Writing & editing" });
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	core = (await h.api("bots.list"))[0].botId;
+	specialist = (await h.api("bots.create", { requestId: "atlas", name: "Atlas", role: "Research & reports" })).botId;
+	await h.api("bots.create", { requestId: "scribe", name: "Scribe", role: "Writing & editing" });
 	await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1440, 920));
 	await h.page().emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
 });
@@ -78,8 +76,8 @@ it("customizes Core with a stable avatar, keeps tab drafts, cancels changes and 
 	await page.getByLabel("Label", { exact: true }).fill("Research");
 	await page.getByRole("button", { name: "Save profile", exact: true }).click();
 	expect((await profile()).avatar).toEqual(saved);
-	await expect(api("bots.delete", { botId: core })).rejects.toThrow("cannot be deleted");
-	await expect(api("bots.update", { botId: core, status: "hidden" })).rejects.toThrow("cannot be");
+	await expect(h.api("bots.delete", { botId: core })).rejects.toThrow("cannot be deleted");
+	await expect(h.api("bots.update", { botId: core, status: "hidden" })).rejects.toThrow("cannot be");
 	await h.relaunch();
 	expect((await profile()).avatar).toEqual(saved);
 	await h.page().locator(".sidebar .bot-row").filter({ hasText: "Nova" }).first().click();
@@ -116,14 +114,14 @@ it("imports local PNG JPEG and WebP, saves only explicitly, survives source remo
 	await page.locator(".avatar-stage img").waitFor();
 	await page.getByRole("button", { name: "Save profile", exact: true }).click();
 	await page.locator(".conversation-header .avatar img").waitFor();
-	const saved = await api("bots.avatar.get", { botId: core });
+	const saved = await h.api("bots.avatar.get", { botId: core });
 	expect(saved.sha256).toMatch(/^[a-f0-9]{64}$/);
-	expect(JSON.stringify(await api("bots.list"))).not.toContain(saved.base64);
+	expect(JSON.stringify(await h.api("bots.list"))).not.toContain(saved.base64);
 	await rm(join(h.run, "avatar.png"));
 	await h.relaunch();
 	await h.page().locator(".sidebar .bot-row").filter({ hasText: "Nova" }).first().click();
 	await h.page().locator(".conversation-header .avatar img").waitFor();
-	expect(await api("bots.avatar.get", { botId: core })).toEqual(saved);
+	expect(await h.api("bots.avatar.get", { botId: core })).toEqual(saved);
 	h.model.script({
 		text: "## A little room to think\n\nProtect one clear morning for the proposal. Leave the afternoon open.\n\n- Draft the opening\n- Check the two key numbers\n- Decide what can wait",
 	});
@@ -131,11 +129,11 @@ it("imports local PNG JPEG and WebP, saves only explicitly, survives source remo
 	await h.page().getByRole("heading", { name: "A little room to think" }).waitFor();
 	expect(JSON.stringify(h.model.requests.at(-1)?.messages)).not.toContain(saved.base64);
 	await h.shot("02-personal-chat-light");
-	const copy = await api("bots.duplicate", { botId: core, requestId: "nova-copy" });
+	const copy = await h.api("bots.duplicate", { botId: core, requestId: "nova-copy" });
 	expect(copy.kind).toBe("specialist");
 	expect(copy.avatar).toEqual((await profile()).avatar);
-	expect(await api("bots.avatar.get", { botId: copy.botId })).toEqual(saved);
-	expect((await api("conversations.snapshot", { botId: copy.botId })).items).toEqual([]);
+	expect(await h.api("bots.avatar.get", { botId: copy.botId })).toEqual(saved);
+	expect((await h.api("conversations.snapshot", { botId: copy.botId })).items).toEqual([]);
 });
 
 it("rejects malformed uploads, keeps conflicting drafts and treats duplicate names as distinct Bots", async () => {
@@ -146,7 +144,7 @@ it("rejects malformed uploads, keeps conflicting drafts and treats duplicate nam
 	await page.locator(".avatar-editor [role=alert]").waitFor();
 	const previous = (await profile()).avatar;
 	await expect(
-		api("bots.update", {
+		h.api("bots.update", {
 			botId: core,
 			expectedRevision: (await profile()).revision,
 			avatar: { kind: "upload", base64: "bm90LWFuLWltYWdl" },
@@ -155,7 +153,7 @@ it("rejects malformed uploads, keeps conflicting drafts and treats duplicate nam
 	expect((await profile()).avatar).toEqual(previous);
 	await page.getByRole("button", { name: "Generate options", exact: true }).click();
 	await page.locator(".avatar-choice").first().click();
-	await api("bots.update", { botId: core, role: "Changed elsewhere" });
+	await h.api("bots.update", { botId: core, role: "Changed elsewhere" });
 	await page.getByLabel("Name", { exact: true }).fill("Keep this draft");
 	await page.getByRole("button", { name: "Save profile", exact: true }).click();
 	await page.getByRole("alert").filter({ hasText: "Profile changed" }).waitFor();
@@ -172,7 +170,7 @@ it("rejects malformed uploads, keeps conflicting drafts and treats duplicate nam
 	await page.getByRole("button", { name: "•••", exact: true }).click();
 	await page.getByRole("menuitem", { name: "Delete…", exact: true }).waitFor();
 	await page.keyboard.press("Escape");
-	await api("bots.update", { botId: specialist, name: "Atlas" });
+	await h.api("bots.update", { botId: specialist, name: "Atlas" });
 });
 
 it("renders bilingual compact profiles, dark conversations and approval decisions without overflow", async () => {
@@ -182,7 +180,7 @@ it("renders bilingual compact profiles, dark conversations and approval decision
 	await h.page().getByRole("button", {name: "Back to chat", exact:true}).click();
 	await h.page().emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
 	await h.shot("03-personal-chat-dark");
-	await api("settings.update", { language: "zh-CN" });
+	await h.api("settings.update", { language: "zh-CN" });
 	await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(880, 700));
 	await h.page().getByRole("button", { name: "会话详情", exact: true }).click();
 	await h.page().getByRole("button", { name: "生成头像", exact: true }).click();
@@ -242,7 +240,7 @@ it("renders bilingual compact profiles, dark conversations and approval decision
 	await writeFile(join(h.run, "04b-profile-zoom-200.png"), Buffer.from(zoomCapture, "base64"));
 	await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.setZoomFactor(1));
 	await h.page().keyboard.press("Escape");
-	await api("settings.update", { language: "en" });
+	await h.api("settings.update", { language: "en" });
 	h.model.script(
 		{
 			tool: "local_exec",
@@ -261,13 +259,13 @@ it("renders bilingual compact profiles, dark conversations and approval decision
 it("shows the approved welcome and conversation composition using real local profiles", async () => {
 	await h.close();
 	h = await launchApp("design-reference");
-	await api("settings.update", { language: "en", defaultModel: { provider: "scripted", modelId: "scripted" } });
-	core = (await api("bots.list"))[0].botId;
-	await api("bots.create", { requestId: "atlas", name: "Atlas", role: "Research & reports" });
-	await api("bots.create", { requestId: "scribe", name: "Scribe", role: "Writing & editing" });
-	await api("settings.update", { language: "en" });
+	await h.api("settings.update", { language: "en", defaultModel: { provider: "scripted", modelId: "scripted" } });
+	core = (await h.api("bots.list"))[0].botId;
+	await h.api("bots.create", { requestId: "atlas", name: "Atlas", role: "Research & reports" });
+	await h.api("bots.create", { requestId: "scribe", name: "Scribe", role: "Writing & editing" });
+	await h.api("settings.update", { language: "en" });
 	const current = await profile();
-	await api("bots.update", {
+	await h.api("bots.update", {
 		botId: core,
 		expectedRevision: current.revision,
 		name: "OpenBot",
@@ -295,7 +293,7 @@ it("shows the approved welcome and conversation composition using real local pro
 		"This week is starting to feel a bit much. Can you turn my notes into a simple plan? Keep some breathing room.",
 	);
 	await h.page().getByRole("heading", { name: "Let’s make a little space." }).waitFor();
-	await poll(async () => (await api("conversations.snapshot", { botId: core })).run).toBeUndefined();
+	await poll(async () => (await h.api("conversations.snapshot", { botId: core })).run).toBeUndefined();
 	await h.page().locator(".sidebar").getByText("Working", { exact: true }).waitFor({ state: "hidden" });
 	await h.shot("07-reference-conversation");
 	await edit();

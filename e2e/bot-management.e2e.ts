@@ -3,21 +3,19 @@ import { join } from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { type AppHarness, launchApp } from "./harness.ts";
 let h: AppHarness;
-const methods = async (name: string, params = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
-const roster = () => methods("bots.list");
+const roster = () => h.api("bots.list");
 const approve = () =>
 	h.page().getByRole("group", { name: "Approval request" }).getByRole("button", { name: "Allow once", exact: true }).click();
 const idle = async () => {
 	await expect
-		.poll(async () => (await methods("conversations.snapshot", { botId: (await roster()).find((b: any) => b.kind === "core").botId })).run)
+		.poll(async () => (await h.api("conversations.snapshot", { botId: (await roster()).find((b: any) => b.kind === "core").botId })).run)
 		.toBeUndefined();
 	// History and live controls arrive independently; the next proposal must not match the previous approval card.
 	await expect.poll(() => h.page().getByRole("group", { name: "Approval request" }).count()).toBe(0);
 };
 beforeAll(async () => {
 	h = await launchApp("bot-management");
-	await methods("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
 	await h.page().getByRole("textbox", { name: "Message OpenBot" }).waitFor();
 }, 90_000);
 afterAll(async () => {
@@ -32,9 +30,9 @@ it("Core creates only after confirmation; approval survives restart and creates 
 	await h.send("Create a research Bot named Researcher.");
 	await h.page().getByText("Creates a Specialist with its own instructions and empty memory.").waitFor();
 	expect(await roster()).toHaveLength(1);
-	await methods("policy.update", { commandSetting: "allow" });
-	expect((await methods("conversations.snapshot", { botId: (await roster())[0].botId })).approvals).toHaveLength(1);
-	await methods("policy.update", { commandSetting: "ask" });
+	await h.api("policy.update", { commandSetting: "allow" });
+	expect((await h.api("conversations.snapshot", { botId: (await roster())[0].botId })).approvals).toHaveLength(1);
+	await h.api("policy.update", { commandSetting: "ask" });
 	expect(
 		await h
 			.page()
@@ -52,7 +50,7 @@ it("Core creates only after confirmation; approval survives restart and creates 
 	expect(bots).toHaveLength(2);
 	const specialist = bots.find((b: any) => b.kind === "specialist");
 	expect(specialist.instructions).toBe("Answer with sources.");
-	expect((await methods("bots.memory.get", { botId: specialist.botId })).content).toBe("");
+	expect((await h.api("bots.memory.get", { botId: specialist.botId })).content).toBe("");
 	await h.relaunch();
 	expect(await roster()).toHaveLength(2);
 	await h.shot("02-created-once");
@@ -89,7 +87,7 @@ it("inspects and updates, rejects stale proposals, denial and cancellation prese
 	);
 	await h.send("Change Analyst's role.");
 	await h.page().getByRole("group", { name: "Approval request" }).waitFor();
-	await methods("bots.update", { botId: bot.botId, role: "User edit" });
+	await h.api("bots.update", { botId: bot.botId, role: "User edit" });
 	await approve();
 	await h.page().getByText("The profile changed; no edit applied.", { exact: true }).waitFor();
 	await idle();
@@ -159,7 +157,7 @@ it("deletes a working Specialist, retains local history, and shows bilingual con
 	await h.page().getByText("Analyst deleted.", { exact: true }).waitFor();
 	await idle();
 	expect(await roster()).toHaveLength(1);
-	const old = await methods("conversations.snapshot", { botId: bot.botId });
+	const old = await h.api("conversations.snapshot", { botId: bot.botId });
 	expect(old.run).toBeUndefined();
 	expect(old.items.length).toBeGreaterThan(0);
 	await expect
@@ -172,7 +170,7 @@ it("deletes a working Specialist, retains local history, and shows bilingual con
 			}
 		})
 		.toBe(false);
-	const history = await methods("bots.management.history");
+	const history = await h.api("bots.management.history");
 	expect(history.map((r: any) => r.outcome)).toEqual(expect.arrayContaining(["succeeded", "denied", "cancelled", "failed"]));
 	expect(JSON.stringify(history)).not.toMatch(/Be concise|Answer with sources|instructions/);
 	expect(await readFile(join(h.dataDirectory, "logs/host.log"), "utf8")).not.toMatch(/Be concise|Answer with sources|should-not-run/);

@@ -3,7 +3,6 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { launchApp, type AppHarness } from "./harness.ts";
 let h: AppHarness, core: string, other: string, routine: any;
-const api = (name: string, params = {}): Promise<any> => h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const button = (name: string) => h.page().getByRole("button", { name, exact: true });
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 20000 });
 const details = async (tab: "Routines" | "Library") => {
@@ -14,9 +13,9 @@ const close = async () => { await h.page().keyboard.press("Escape"); };
 beforeAll(async () => {
 	h = await launchApp("bot-resources", process.env.OPENBOT_RESOURCES_DEBUG ? { debugPort: 9341 } : {});
 	h.page().setDefaultTimeout(12000);
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
-	core = (await api("bots.list")).find((b: any) => b.kind === "core").botId;
-	other = (await api("bots.create", { name: "Other researcher", requestId: "create-other" })).botId;
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	core = (await h.api("bots.list")).find((b: any) => b.kind === "core").botId;
+	other = (await h.api("bots.create", { name: "Other researcher", requestId: "create-other" })).botId;
 });
 afterEach(async ({ task }) => { if (task.result?.state === "fail") await h.shot("failure"); });
 afterAll(async () => { await h?.close(); });
@@ -28,20 +27,20 @@ it("reviews an AI-created schedule once, restores it and manages the Bot's switc
 	h.model.script({ tool: "routine_propose", args: { name: "Competitor morning report", instructions: "Read current sources and publish morning-report.md; report missing data.".padEnd(16300, " Check source freshness."), schedule: { kind: "daily", time: "07:47", timezone: "Asia/Singapore" }, catchUpHours: 24, skills: [] } }, { text: "Review the proposed morning report to enable it." });
 	await h.send("Create a daily competitor report at 07:47 Asia/Singapore.");
 	await h.page().getByRole("region", { name: "Proposed routine" }).waitFor();
-	expect((await api("routines.list")).routines).toHaveLength(0);
+	expect((await h.api("routines.list")).routines).toHaveLength(0);
 	await h.shot("01-proposal");
 	await h.relaunch();
 	await button("Review routine").click();
 	await h.page().getByRole("region", { name: "Review routine" }).waitFor();
-	expect((await api("routines.list")).routines).toHaveLength(0);
+	expect((await h.api("routines.list")).routines).toHaveLength(0);
 	await button("Confirm routine change").click();
-	await poll(async () => (await api("routines.list")).routines.length).toBe(1);
-	routine = (await api("routines.list")).routines[0];
+	await poll(async () => (await h.api("routines.list")).routines.length).toBe(1);
+	routine = (await h.api("routines.list")).routines[0];
 	expect(routine.botId).toBe(core);
 	await button("Back to chat").click();
 	await button("Review routine").click();
 	await button("Confirm routine change").click();
-	expect((await api("routines.list")).routines).toHaveLength(1);
+	expect((await h.api("routines.list")).routines).toHaveLength(1);
 	await button("Back to chat").click();
 	await details("Routines");
 	const toggle = h.page().getByRole("switch", { name: "Enable Competitor morning report" });
@@ -55,7 +54,7 @@ it("reviews an AI-created schedule once, restores it and manages the Bot's switc
 	await h.page().getByRole("region", { name: "Run history" }).waitFor();
 	h.model.script({ tool: "local_write", args: { path: "morning-report.md", content: "# Morning report\nRoutine result evidence." } }, { tool: "artifact_publish", args: { path: "morning-report.md" } }, { text: "Scheduled report ready." });
 	await button("Test run").click(); await button("Run now").click();
-	await poll(async () => (await api("routines.get", { routineId: routine.routineId })).history[0]?.published).toBe(true);
+	await poll(async () => (await h.api("routines.get", { routineId: routine.routineId })).history[0]?.published).toBe(true);
 	await button("Back to chat").click();
 });
 it("shows only this Bot's generated files, searches, previews and exports immutable results", async () => {
@@ -67,8 +66,8 @@ it("shows only this Bot's generated files, searches, previews and exports immuta
 	await h.send("Create a research brief using this attachment.");
 	await h.page().getByText("The brief is ready.", { exact: true }).waitFor();
 	h.model.script({ tool: "local_write", args: { path: "other.md", content: "Other Bot output" } }, { tool: "artifact_publish", args: { path: "other.md" } }, { text: "Other report ready." });
-	await api("messages.submit", { botId: other, requestId: "other-file", text: "Create other.md" });
-	await poll(async () => (await api("artifacts.list", { offset: 0, query: "", botId: other, source: "result" })).items.length).toBe(1);
+	await h.api("messages.submit", { botId: other, requestId: "other-file", text: "Create other.md" });
+	await poll(async () => (await h.api("artifacts.list", { offset: 0, query: "", botId: other, source: "result" })).items.length).toBe(1);
 	await writeFile(join(h.workspace, "brief.md"), "source modified");
 	await details("Library");
 	const library = h.page().getByRole("region", { name: "Bot library" });
@@ -103,7 +102,7 @@ it("keeps Chinese minimum-size tabs usable and other Bots empty", async () => {
 	await h.page().getByText("No routines yet", { exact: true }).waitFor();
 	await h.page().getByRole("tab", { name: "Library", exact: true }).click();
 	await poll(() => h.page().getByRole("region", { name: "Bot library" }).locator(".artifact-card").count()).toBe(1);
-	await api("settings.update", { language: "zh-CN" });
+	await h.api("settings.update", { language: "zh-CN" });
 	await h.app().evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows()[0]!.setSize(900, 640); });
 	await h.page().getByRole("tab", { name: "文件库", exact: true }).waitFor();
 	await h.shot("04-library-zh");

@@ -14,10 +14,8 @@ const doc = {
 	output: "Publish report.txt",
 	approvalBoundaries: "Never bypass a denied tool",
 };
-const api = (name: string, params = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 15000 });
-const snapshot = (botId = core) => api("conversations.snapshot", { botId });
+const snapshot = (botId = core) => h.api("conversations.snapshot", { botId });
 const box = () => h.page().locator(".compose-area textarea");
 const send = async (text: string) => {
 	await box().fill(text);
@@ -26,8 +24,8 @@ const send = async (text: string) => {
 beforeAll(async () => {
 	h = await launchApp("skills");
 	h.page().setDefaultTimeout(10000);
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
-	core = (await api("bots.list")).find((b: any) => b.kind === "core").botId;
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	core = (await h.api("bots.list")).find((b: any) => b.kind === "core").botId;
 });
 afterEach(async ({ task }) => {
 	if (task.result?.state === "fail") await h.shot("failure");
@@ -49,7 +47,7 @@ it("reviews a proposed method, denies without saving and approves a distinct pro
 	await h.shot("01-review-en");
 	await h.page().locator(".approval").getByRole("button", { name: "Deny", exact: true }).click();
 	await h.page().getByText("The procedure was not saved.", { exact: true }).waitFor();
-	expect(await api("skills.list")).toEqual([]);
+	expect(await h.api("skills.list")).toEqual([]);
 	h.model.script(
 		{ tool: "skill_save", args: { action: "save", name: doc.name, expectedRevision: 0, document: doc } },
 		{ text: "The reviewed procedure is saved." },
@@ -58,9 +56,9 @@ it("reviews a proposed method, denies without saving and approves a distinct pro
 	await poll(async () => (await snapshot()).approvals[0]?.tool).toBe("skill_save");
 	await h.page().locator(".approval").getByRole("button", { name: "Allow once", exact: true }).click();
 	await h.page().getByText("The reviewed procedure is saved.", { exact: true }).waitFor();
-	ref = (await api("skills.list"))[0];
+	ref = (await h.api("skills.list"))[0];
 	expect(ref.revision).toBe(1);
-	expect((await api("skills.get", { name: doc.name })).history).toHaveLength(1);
+	expect((await h.api("skills.get", { name: doc.name })).history).toHaveLength(1);
 	expect(await readFile(join(h.dataDirectory, "skills", doc.name, "SKILL.md"), "utf8")).toContain("B10_METHOD_CANARY");
 	await h.page().getByRole("button", { name: /^Settings/ }).click();
 	await h.page().getByRole("button", { name: "Skills", exact: true }).click();
@@ -72,13 +70,13 @@ it("reviews a proposed method, denies without saving and approves a distinct pro
 	await h.shot("02-library-en");
 });
 it("loads from another Bot after restart without changing command policy and produces a result", async () => {
-	second = (await api("bots.create", { requestId: "b10-second", name: "Analyst" })).botId;
+	second = (await h.api("bots.create", { requestId: "b10-second", name: "Analyst" })).botId;
 	await h.relaunch();
 	await h
 		.page()
 		.getByRole("button", { name: /Analyst/ })
 		.click();
-	await api("policy.update", { commandSetting: "never" });
+	await h.api("policy.update", { commandSetting: "never" });
 	h.model.script(
 		{ tool: "skill_load", args: { name: ref.name, revision: ref.revision, sha256: ref.sha256 } },
 		{ tool: "local_exec", args: { command: "touch forbidden.txt", description: "Forbidden command" } },
@@ -93,11 +91,11 @@ it("loads from another Bot after restart without changing command policy and pro
 	expect(items.find((i: any) => i.tool === "local_exec").status).toBe("failed");
 	expect(await readFile(join(h.workspace, "forbidden.txt"), "utf8").catch(() => null)).toBeNull();
 	const result = items.find((i: any) => i.tool === "artifact_publish").artifact;
-	expect((await api("artifacts.preview", { artifactId: result.artifactId })).text).toBe("Total: 13");
+	expect((await h.api("artifacts.preview", { artifactId: result.artifactId })).text).toBe("Total: 13");
 });
 it("pins slash-selected versions across draft reload, queue, deletion and restart", async () => {
-	await api("lifecycle.pause");
-	await poll(async () => (await api("lifecycle.get")).transitioning).toBe(false);
+	await h.api("lifecycle.pause");
+	await poll(async () => (await h.api("lifecycle.get")).transitioning).toBe(false);
 	await box().fill("/sales");
 	await h
 		.page()
@@ -122,7 +120,7 @@ it("pins slash-selected versions across draft reload, queue, deletion and restar
 		.getByRole("button", { name: /Analyst/ })
 		.click();
 	h.model.script({ text: "Pinned method retained." });
-	await api("lifecycle.resume");
+	await h.api("lifecycle.resume");
 	await h.page().getByText("Pinned method retained.", { exact: true }).waitFor();
 	const user = (await snapshot(second)).items.filter((i: any) => i.kind === "user").at(-1);
 	expect(user.skills).toEqual([{ name: ref.name, revision: 1, sha256: ref.sha256 }]);
@@ -141,22 +139,22 @@ it("pins slash-selected versions across draft reload, queue, deletion and restar
 	expect(contrast).toBeGreaterThanOrEqual(4.5);
 	await h.shot("05-attached-skill-en");
 	expect(JSON.stringify(h.model.requests.at(-1)?.messages)).toContain("B10_METHOD_CANARY");
-	const updated = await api("skills.save", {
+	const updated = await h.api("skills.save", {
 		requestId: "b10-edit",
 		name: doc.name,
 		expectedRevision: 1,
 		document: { ...doc, steps: "New procedure" },
 	});
 	expect(updated.revision).toBe(2);
-	await expect(api("skills.save", { requestId: "stale", name: doc.name, expectedRevision: 1, document: doc })).rejects.toThrow(/changed/);
-	await api("skills.delete", { requestId: "b10-delete", name: doc.name, expectedRevision: 2 });
+	await expect(h.api("skills.save", { requestId: "stale", name: doc.name, expectedRevision: 1, document: doc })).rejects.toThrow(/changed/);
+	await h.api("skills.delete", { requestId: "b10-delete", name: doc.name, expectedRevision: 2 });
 	await h.relaunch();
 	await h
 		.page()
 		.getByRole("button", { name: /Analyst/ })
 		.click();
 	expect((await snapshot(second)).items.filter((i: any) => i.kind === "user").at(-1).skills[0].revision).toBe(1);
-	await api("settings.update", { language: "zh-CN" });
+	await h.api("settings.update", { language: "zh-CN" });
 	await h.page().getByRole("button", { name: /^设置/ }).click();
 	await h.page().getByRole("button", { name: "技能", exact: true }).click();
 	await h
@@ -172,16 +170,16 @@ it("pins slash-selected versions across draft reload, queue, deletion and restar
 	expect(log).not.toContain("B10_METHOD_CANARY");
 });
 it("edits through review, rejects a stale editor and confirms deletion in the library", async () => {
-	await api("settings.update", { language: "en" });
+	await h.api("settings.update", { language: "en" });
 	await h.page().getByRole("button", { name: "Restore as new version", exact: true }).click();
 	await h.page().getByLabel("Steps", { exact: true }).fill("Restored procedure");
 	await h.page().getByRole("button", { name: "Review changes", exact: true }).click();
-	expect((await api("skills.get", { name: doc.name })).current.revision).toBe(3);
+	expect((await h.api("skills.get", { name: doc.name })).current.revision).toBe(3);
 	await h.page().getByRole("button", { name: "Save reviewed skill", exact: true }).click();
-	await poll(async () => (await api("skills.get", { name: doc.name })).current.revision).toBe(4);
+	await poll(async () => (await h.api("skills.get", { name: doc.name })).current.revision).toBe(4);
 	await h.page().getByRole("button", { name: "Edit skill", exact: true }).click();
 	await h.page().getByLabel("Steps", { exact: true }).fill("Stale editor");
-	await api("skills.save", {
+	await h.api("skills.save", {
 		requestId: "concurrent",
 		name: doc.name,
 		expectedRevision: 4,
@@ -192,15 +190,15 @@ it("edits through review, rejects a stale editor and confirms deletion in the li
 	await h.page().getByRole("alert").filter({ hasText: "Skill changed" }).waitFor();
 	await h.page().getByRole("button", {name:"Refresh",exact:true}).click();
  await h.page().getByRole("alert").filter({hasText:"Skill changed"}).waitFor();
- expect((await api("skills.get", { name: doc.name })).current.document.steps).toBe("Concurrent method");
+ expect((await h.api("skills.get", { name: doc.name })).current.document.steps).toBe("Concurrent method");
 	await h
 		.page()
 		.getByRole("button", { name: /sales-report/ })
 		.click();
 	await h.page().getByRole("button", { name: "Delete skill", exact: true }).click();
-	expect((await api("skills.get", { name: doc.name })).current.deleted).toBe(false);
+	expect((await h.api("skills.get", { name: doc.name })).current.deleted).toBe(false);
 	await h.page().getByRole("button", { name: "Confirm deletion", exact: true }).click();
-	await poll(async () => (await api("skills.get", { name: doc.name })).current.deleted).toBe(true);
+	await poll(async () => (await h.api("skills.get", { name: doc.name })).current.deleted).toBe(true);
 	await h.page().getByRole("button", { name: "New skill", exact: true }).click();
 	expect(await h.page().getByRole("button", { name: "Review changes", exact: true }).isEnabled()).toBe(false);
 	for (const [label, value] of Object.entries({
@@ -216,6 +214,6 @@ it("edits through review, rejects a stale editor and confirms deletion in the li
 		await h.page().getByLabel(label, { exact: true }).fill(value);
 	await h.page().getByRole("button", { name: "Review changes", exact: true }).click();
 	await h.page().getByRole("button", { name: "Save reviewed skill", exact: true }).click();
-	await poll(async () => (await api("skills.list")).filter((s: any) => !s.deleted).length).toBe(1);
+	await poll(async () => (await h.api("skills.list")).filter((s: any) => !s.deleted).length).toBe(1);
 	await h.shot("04-edited-library-en");
 });

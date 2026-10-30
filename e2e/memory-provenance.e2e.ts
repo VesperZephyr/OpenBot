@@ -4,20 +4,17 @@ import type { BotSummary, MemoryState } from "../packages/protocol/src/index.ts"
 
 let h: AppHarness;
 let bot: BotSummary;
-async function method(name: string, params: unknown = {}): Promise<any> {
-	return h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
-}
 async function edit(chinese = false): Promise<void> {
 	await h.page().getByRole("button", { name: "•••" }).click();
 	await h.page().getByRole("menuitem", { name: chinese ? "编辑资料" : "Edit profile" }).click();
 	await h.page().getByRole("tab", { name: chinese ? "记忆" : "Memory", exact: true }).click();
 }
-const memory = (): Promise<MemoryState> => method("bots.memory.get", { botId: bot.botId });
+const memory = (): Promise<MemoryState> => h.api("bots.memory.get", { botId: bot.botId });
 const card = () => h.page().locator(".memory-note").filter({ has: h.page().getByText("Current city", { exact: true }) });
 beforeAll(async () => {
 	h = await launchApp("memory-provenance");
 	await createBot(h, "Cedar");
-	bot = (await method("bots.list")).find((b: BotSummary) => b.name === "Cedar");
+	bot = (await h.api("bots.list")).find((b: BotSummary) => b.name === "Cedar");
 }, 90_000);
 afterAll(async () => { await h?.close(); });
 
@@ -36,13 +33,13 @@ it("attributes learning, protects owner corrections and preserves stale note dra
 	await page.getByRole("button", { name: "Save note", exact: true }).click();
 	await card().getByText("Owner protected", { exact: true }).waitFor();
 	h.model.script({ tool: "memory_update", args: { action: "replace", section: "Current city", content: "London", expectedRevision: 2 } }, { text: "The owner correction remains protected." });
-	await method("messages.submit", { botId: bot.botId, requestId: "stale-city", text: "Try saving the old city again" });
-	await expect.poll(async () => JSON.stringify(await method("conversations.snapshot", { botId: bot.botId }))).toContain("The owner correction remains protected.");
+	await h.api("messages.submit", { botId: bot.botId, requestId: "stale-city", text: "Try saving the old city again" });
+	await expect.poll(async () => JSON.stringify(await h.api("conversations.snapshot", { botId: bot.botId }))).toContain("The owner correction remains protected.");
 	expect((await memory()).content).toBe("## Current city\nSingapore");
 	expect((await memory()).revision).toBe(2);
 	await card().getByRole("button", { name: "Edit note" }).click();
 	await page.getByLabel("Note content", { exact: true }).fill("My unsaved correction");
-	await method("bots.memory.update", { botId: bot.botId, content: "## Current city\nSingapore\n\n## Work\nCEDAR_ONLY", expectedRevision: 2 });
+	await h.api("bots.memory.update", { botId: bot.botId, content: "## Current city\nSingapore\n\n## Work\nCEDAR_ONLY", expectedRevision: 2 });
 	await page.getByRole("button", { name: "Save note", exact: true }).click();
 	await page.getByRole("alert").filter({ hasText: "Memory changed" }).waitFor();
 	expect(await page.getByLabel("Note content", { exact: true }).inputValue()).toBe("My unsaved correction");
@@ -60,10 +57,10 @@ it("reviews scope changes and supplies shared facts to a second Bot without unre
 	await page.getByRole("region", { name: "Review memory scope" }).scrollIntoViewIfNeeded();
 	await h.shot("03-share-review");
 	await page.getByRole("button", { name: "Cancel scope change" }).click();
-	expect((await method("memory.shared.get")).revision).toBe(0);
+	expect((await h.api("memory.shared.get")).revision).toBe(0);
 	await card().getByRole("button", { name: "Share across Bots", exact: true }).click();
 	await page.getByRole("button", { name: "Confirm scope change" }).click();
-	await expect.poll(async () => (await method("memory.shared.get")).content).toContain("Singapore");
+	await expect.poll(async () => (await h.api("memory.shared.get")).content).toContain("Singapore");
 	await page.getByRole("button", { name: "Shared across Bots", exact: true }).click();
 	await card().getByRole("button", { name: "View source" }).click();
 	await card().locator("pre").filter({ hasText: "Remember that my current city is London." }).waitFor();
@@ -84,12 +81,12 @@ it("reviews scope changes and supplies shared facts to a second Bot without unre
 	await card().getByText("Source Bot: Cedar", { exact: true }).first().waitFor();
 	await card().getByRole("button", { name: "Move to this Bot" }).click();
 	await page.getByRole("button", { name: "Confirm scope change" }).click();
-	await expect.poll(async () => (await method("memory.shared.get")).content).toBe("");
+	await expect.poll(async () => (await h.api("memory.shared.get")).content).toBe("");
 	await page.getByRole("button", { name: "This Bot", exact: true }).click();
 	await card().getByText("Singapore", { exact: true }).waitFor();
 	await card().getByRole("button", { name: "Share across Bots", exact: true }).click();
 	await page.getByRole("button", { name: "Confirm scope change" }).click();
-	await expect.poll(async () => (await method("memory.shared.get")).content).toContain("Singapore");
+	await expect.poll(async () => (await h.api("memory.shared.get")).content).toContain("Singapore");
 	await page.getByRole("button", { name: "Cancel", exact: true }).click();
 });
 
@@ -104,11 +101,11 @@ it("forgets shared facts across restart and offers usable Chinese controls in a 
 	await card().getByRole("button", { name: "查看来源" }).scrollIntoViewIfNeeded();
 	await h.shot("05-chinese-small");
 	await card().getByRole("button", { name: "遗忘条目" }).click();
-	await expect.poll(async () => (await method("memory.shared.get")).content).toBe("");
+	await expect.poll(async () => (await h.api("memory.shared.get")).content).toBe("");
 	await page.getByRole("button", { name: "取消", exact: true }).click();
 	await h.relaunch();
 	page = h.page();
-	expect((await method("memory.shared.get")).notes[0]).toMatchObject({ status: "forgotten", protected: true });
+	expect((await h.api("memory.shared.get")).notes[0]).toMatchObject({ status: "forgotten", protected: true });
 	await page.getByRole("button", { name: /^设置/ }).click();
 	await page.getByLabel("语言", { exact: true }).selectOption("en");
 	await page.getByRole("button", { name: /Maple/ }).first().click();

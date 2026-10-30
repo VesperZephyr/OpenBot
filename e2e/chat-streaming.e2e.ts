@@ -1,7 +1,6 @@
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { launchApp, type AppHarness } from "./harness.ts";
 let h: AppHarness;
-const api = (name: string, params = {}): Promise<any> => h.page().evaluate(({name, params}) => (window as any).openbot.methods[name](params), {name, params});
 const button = (name: string) => h.page().getByRole("button", {name, exact:true});
 const poll = (fn: () => Promise<any>) => expect.poll(fn, {timeout:15000});
 const row = (name: string) => h.page().locator(".chat-list .bot-row").filter({has: h.page().locator(".roster-name", {hasText:name})});
@@ -9,9 +8,9 @@ const activity = () => h.page().locator(".live-reply .reply-activity");
 beforeAll(async () => {
     h = await launchApp("chat-streaming");
     h.page().setDefaultTimeout(10000);
-    await api("settings.update", {defaultModel:{provider:"scripted",modelId:"scripted"}});
-    for (const name of ["Hunter", "Reviewer"]) await api("bots.create", {requestId:name.toLowerCase(),name,role:"Research official releases"});
-    await api("groups.change", {requestId:"radar",action:"create",groupId:"group_radar",expectedRevision:0,fields:{name:"Competitor radar",objective:"Daily evidence from two researchers",memberIds:["bot_hunter","bot_reviewer"],leadBotId:"bot_hunter"}});
+    await h.api("settings.update", {defaultModel:{provider:"scripted",modelId:"scripted"}});
+    for (const name of ["Hunter", "Reviewer"]) await h.api("bots.create", {requestId:name.toLowerCase(),name,role:"Research official releases"});
+    await h.api("groups.change", {requestId:"radar",action:"create",groupId:"group_radar",expectedRevision:0,fields:{name:"Competitor radar",objective:"Daily evidence from two researchers",memberIds:["bot_hunter","bot_reviewer"],leadBotId:"bot_hunter"}});
 }, 60000);
 afterEach(async ({task}) => { if(task.result?.state === "fail") await h.shot("failure"); });
 afterAll(async () => { await h?.close(); });
@@ -37,8 +36,8 @@ it("combines groups and Bots by recency, with compact navigation and durable dra
     expect(await search.isVisible()).toBe(false);
     expect(await button("Search conversations").evaluate(el => el === document.activeElement)).toBe(true);
     h.model.script({text:"Radar is ready."});
-    await api("groups.send", {groupId:"group_radar",requestId:"hello",text:"Check sources",recipientIds:["bot_reviewer"]});
-    await poll(async () => (await api("groups.snapshot",{groupId:"group_radar"})).posts.some((post:any) => post.text === "Radar is ready.")).toBe(true);
+    await h.api("groups.send", {groupId:"group_radar",requestId:"hello",text:"Check sources",recipientIds:["bot_reviewer"]});
+    await poll(async () => (await h.api("groups.snapshot",{groupId:"group_radar"})).posts.some((post:any) => post.text === "Radar is ready.")).toBe(true);
     await poll(() => h.page().locator(".chat-list .roster-name").nth(1).textContent()).toBe("Competitor radar");
     await h.page().keyboard.press("Meta+2");
     await h.page().getByRole("heading", {name:"Competitor radar",exact:true}).waitFor();
@@ -143,7 +142,7 @@ it("renders group authors and Markdown while streaming; respects reduced motion 
     await button("Settings").click();
     await h.page().getByRole("radio",{name:"Dark",exact:true}).check();
     await button("Back to chat").click();
-    await api("settings.update",{language:"zh-CN"});
+    await h.api("settings.update",{language:"zh-CN"});
     await h.page().emulateMedia({reducedMotion:"reduce"});
     await h.app().evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0]!.setSize(880,700));
     h.model.script({chunks:["已核实。"],delayMs:2000,chunkDelayMs:400});

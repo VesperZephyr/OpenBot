@@ -24,6 +24,15 @@ export type AppHarness = {
 	readonly workspace: string;
 	readonly app: () => ElectronApplication;
 	readonly page: () => Page;
+	/** Call an allowlisted Host method through the renderer bridge, exactly as the UI does. */
+	api<T = any>(method: string, params?: object): Promise<T>;
+	/**
+	 * Move the Host clock forward so it reads `at` (Unix ms) within its next scheduler sweep. The offset persists across
+	 * relaunches and never moves backwards, so routines fire on their real schedule without waiting for the wall clock.
+	 */
+	advanceHostClockTo(at: number): Promise<void>;
+	/** Resolve after the renderer has painted two more frames, so state already delivered to it is on screen. */
+	nextFrame(): Promise<void>;
 	shot(name: string): Promise<void>;
 	/** Type into the composer of the open Bot and press Enter. */
 	send(text: string): Promise<void>;
@@ -52,6 +61,7 @@ export type HarnessOptions = {
 export async function launchApp(name: string, options: HarnessOptions = {}): Promise<AppHarness> {
 	const run = join(repo, "e2e", ".run", name);
 	const dataDirectory = join(run, "data");
+	const hostClockFile = join(run, "host-clock-offset");
 	const workspace = join(run, "workspace");
 	await rm(run, { recursive: true, force: true });
 	await mkdir(join(run, "home"), { recursive: true });
@@ -80,6 +90,7 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 				OPENBOT_HOME: join(run, "home"),
 				OPENBOT_WORKSPACE: workspace,
 				OPENBOT_KEYCHAIN_SERVICE: `${keychainService}.${name}`,
+				OPENBOT_TEST_CLOCK_FILE: hostClockFile,
 				...options.env,
 				...preparedEnvironment,
 				OPENBOT_E2E_MODE: process.env.OPENBOT_E2E_HEADED === "1" ? "headed" : "background",
@@ -111,6 +122,16 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 			return app;
 		},
 		page: requirePage,
+		api: (method, params = {}) =>
+			requirePage().evaluate(
+				({ method, params }) =>
+					(window as unknown as { openbot: { methods: Record<string, (params: object) => Promise<any>> } }).openbot.methods[method]!(params),
+				{ method, params },
+			),
+		nextFrame: () => requirePage().evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))),
+		advanceHostClockTo: async (at) => {
+			await writeFile(hostClockFile, String(Math.max(0, Math.ceil(at - Date.now()))));
+		},
 		shot: async (shotName) => {
 			await requirePage().screenshot({ path: join(run, `${shotName}.png`) });
 		},

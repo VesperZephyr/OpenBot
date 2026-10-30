@@ -24,7 +24,7 @@ Execution rules:
 
 - **One task spec per branch and pull request.** Branch name `task/<id>-<slug>`, for example `task/b1-durable-approvals`. The pull request links the spec and lists each acceptance item with how it was checked.
 - **Close the loop yourself.** Run `pnpm run check`; run `pnpm run e2e` for anything a user can see or any Host/executor flow; look at the screenshots in `e2e/.run/`. Explore the running app with agent-browser (below) when a flow is new or a test fails. Never hand the owner manual test steps instead of an automated check.
-- **Extend the e2e suite with every user-visible behavior.** Script the model with `ScriptedModel` (`e2e/scripted-model.ts`). Real providers are for occasional spot checks only.
+- **Extend the e2e suite with every user-visible behavior.** Script the model with `ScriptedModel` (`e2e/scripted-model.ts`). Real providers are for occasional spot checks only. Call Host methods with `h.api()`, wait for rendering with `h.nextFrame()`, and reach a routine's scheduled time with `h.advanceHostClockTo()` instead of waiting for the wall clock; prefer an observed signal over a fixed `waitForTimeout`.
 - **Commit and push freely** on the task branch with clear English messages, and keep the pull request description current. Do not merge to `main`, force-push shared history, or publish releases; the owner merges.
 - **Hand off cleanly:** when the task lands, move it to **Done** in the backlog, add its components to the technical plan's current-state table, and record new gaps or follow-ups.
 - Do not add placeholder packages; create a package when its task starts and add its rule to `scripts/check-boundaries.mjs`.
@@ -79,7 +79,7 @@ Execution rules:
 
 ## Verification
 
-- Commands: `pnpm install`; `pnpm run build:pi` (vendored Pi, once per Pi change); `pnpm run check` (boundaries, type check, unit tests); `pnpm run e2e`; `pnpm run dev` and `pnpm run dev:debug`; `pnpm run package` (arm64 DMG, ad-hoc signed without a Developer ID). With `CI=true` set, `pnpm install` uses a frozen lockfile: after adding a dependency run `pnpm install --no-frozen-lockfile` and commit `pnpm-lock.yaml`. Vendored Pi tests run from each package directory with `pnpm exec vitest --run`. CI runs `check` and `e2e` on macOS for every pull request.
+- Commands: `pnpm install`; `pnpm run build:pi` (vendored Pi, once per Pi change); `pnpm run check` (boundaries, type check, unit tests); `pnpm run e2e`; `pnpm run dev` and `pnpm run dev:debug`; `pnpm run package` (arm64 DMG, ad-hoc signed without a Developer ID). With `CI=true` set, `pnpm install` uses a frozen lockfile: after adding a dependency run `pnpm install --no-frozen-lockfile` and commit `pnpm-lock.yaml`. Vendored Pi tests run from each package directory with `pnpm exec vitest --run`. CI runs `check` and `e2e` on macOS for every pull request. Desktop e2e shards are balanced by `e2e/durations.json`; after adding a suite or changing its length noticeably, refresh it from a full run with `node scripts/e2e-shard.ts --record e2e/.run/results.json`.
 - Unit tests protect invariants: authorization, deduplication, recovery, cancellation, ordering, precedence. The e2e suite protects user-visible flows. Do not add tests that only restate wiring.
 - Native permissions, signing, and helper identity need a packaged build on a real Mac; say so instead of claiming them verified.
 - Report what changed, what ran, and what remains, distinguishing automated checks from real-model spot checks.

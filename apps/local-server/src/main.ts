@@ -23,6 +23,7 @@ import { ApprovalBook, DEFAULT_MAX_ACTIVE_RUNS, HostService } from "@openbot/ser
 import { ExecutorProcess } from "./executor.ts";
 import { CredentialBroker, KeychainCredentials } from "./keychain.ts";
 import { modelConfigFile, openBotHome } from "./model-config-file.ts";
+import { hostClock } from "./test-clock.ts";
 import { createToolRouter, TOOL_DEFINITIONS } from "./tools.ts";
 
 const HOST_VERSION = "0.0.0";
@@ -146,6 +147,7 @@ const service = new HostService({
 	approvals,
 	workspace,
 	maxActiveRuns: maxActiveRuns(process.env.OPENBOT_MAX_ACTIVE_RUNS),
+	now: hostClock(process.env.OPENBOT_TEST_CLOCK_FILE),
 	emit: () => {},
 	// Pi committed the call's result: the executor may prune its receipt, and the call's approval is used up.
 	toolSettled: (botId, callId, conversationId) => {

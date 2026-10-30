@@ -4,10 +4,8 @@ import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { launchApp, type AppHarness } from "./harness.ts";
 let h: AppHarness, core: string, textId: string, imageId: string;
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a/2cAAAAASUVORK5CYII=";
-const api = (name: string, params = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 15000 });
-const snapshot = () => api("conversations.snapshot", { botId: core });
+const snapshot = () => h.api("conversations.snapshot", { botId: core });
 const box = () => h.page().locator(".compose-area textarea");
 const card = (id: string) => h.page().locator(`.messages .artifact-card[data-artifact-id="${id}"]`).first();
 const idle = () => poll(async () => (await snapshot()).run).toBeUndefined();
@@ -24,10 +22,10 @@ beforeAll(async () => {
 		},
 	});
 	h.page().setDefaultTimeout(10000);
-	await api("settings.update", {
+	await h.api("settings.update", {
 		defaultModel: { provider: "scripted", modelId: "scripted" },
 	});
-	core = (await api("bots.list"))[0].botId;
+	core = (await h.api("bots.list"))[0].botId;
 });
 afterEach(async ({ task }) => {
 	if (task.result?.state === "fail") await h.shot("failure");
@@ -68,8 +66,8 @@ it("imports selected text/images, retains them after source deletion and sends a
 	const user = (await snapshot()).items.find((i: any) => i.kind === "user");
 	expect(user.attachments.map((a: any) => a.artifactId)).toEqual([textId, imageId]);
 	expect(JSON.stringify(user)).not.toContain("ATTACHMENT_BODY_CANARY");
-	expect((await api("conversations.search", { query: "notes.md" })).items.length).toBeGreaterThan(0);
-	expect((await api("conversations.search", { query: "ATTACHMENT_BODY_CANARY" })).items).toHaveLength(0);
+	expect((await h.api("conversations.search", { query: "notes.md" })).items.length).toBeGreaterThan(0);
+	expect((await h.api("conversations.search", { query: "ATTACHMENT_BODY_CANARY" })).items).toHaveLength(0);
 	expect(await h.page().evaluate(() => typeof (window as any).openbot.methods["artifacts.import"])).toBe("undefined");
 	await card(imageId).getByRole("button", { name: "Preview", exact: true }).click();
 	await h.page().locator(".reader-image img").waitFor();
@@ -183,7 +181,7 @@ it("retries a lost acknowledgement with immutable attachments and preserves a ne
 	const requestId = "attachment-lost-ack",
 		text = "Check the same saved attachment.";
 	h.model.script({ text: "Attachment retry receipt." });
-	await api("messages.submit", {
+	await h.api("messages.submit", {
 		botId: core,
 		requestId,
 		text,
@@ -191,7 +189,7 @@ it("retries a lost acknowledgement with immutable attachments and preserves a ne
 	});
 	await h.page().getByText("Attachment retry receipt.", { exact: true }).waitFor();
 	await idle();
-	const ref = await api("artifacts.get", { artifactId: textId }),
+	const ref = await h.api("artifacts.get", { artifactId: textId }),
 		calls = h.model.requests.length;
 	await h.page().evaluate(
 		({ core, requestId, text, ref }) => {
@@ -233,7 +231,7 @@ it("retries a lost acknowledgement with immutable attachments and preserves a ne
 	expect(h.model.requests.length).toBe(calls);
 	expect((await snapshot()).items.filter((i: any) => i.kind === "user" && i.parts.some((p: any) => p.text === text))).toHaveLength(1);
 	await expect(
-		api("messages.submit", {
+		h.api("messages.submit", {
 			botId: core,
 			requestId,
 			text,
@@ -279,13 +277,13 @@ it("opens AI Markdown and PDF result filenames directly in a focused reader", as
 });
 it("publishes group task results without attaching an earlier delivery's files", async () => {
 	const member = (
-			await api("bots.create", {
+			await h.api("bots.create", {
 				requestId: "file-member",
 				name: "File helper",
 			})
 		).botId,
 		groupId = "group_files";
-	await api("groups.change", {
+	await h.api("groups.change", {
 		requestId: "file-group",
 		action: "create",
 		groupId,
@@ -306,7 +304,7 @@ it("publishes group task results without attaching an earlier delivery's files",
 		{ tool: "artifact_publish", args: { path: "group-result.txt" } },
 		{ text: "Published the group result." },
 	);
-	await api("groups.send", {
+	await h.api("groups.send", {
 		groupId,
 		requestId: "group-file",
 		text: "Publish the result",
@@ -314,26 +312,26 @@ it("publishes group task results without attaching an earlier delivery's files",
 	});
 	await poll(
 		async () =>
-			(await api("groups.snapshot", { groupId })).posts.find((p: any) => p.text === "Published the group result.")?.attachments?.length,
+			(await h.api("groups.snapshot", { groupId })).posts.find((p: any) => p.text === "Published the group result.")?.attachments?.length,
 	).toBe(1);
-	const posts = (await api("groups.snapshot", { groupId })).posts,
+	const posts = (await h.api("groups.snapshot", { groupId })).posts,
 		id = posts.find((p: any) => p.text === "Published the group result.").attachments[0].artifactId;
 	const result = h.page().locator(`.group-post .artifact-card[data-artifact-id="${id}"]`);
 	await result.getByRole("button", { name: "Preview", exact: true }).click();
 	expect(await h.page().locator(".reader-source").textContent()).toBe("GROUP_RESULT");
 	await h.page().getByRole("button", { name: "Close preview", exact: true }).click();
 	h.model.script({ text: "A later delivery without a file." });
-	await api("groups.send", {
+	await h.api("groups.send", {
 		groupId,
 		requestId: "group-followup",
 		text: "Acknowledge only",
 		recipientIds: [member],
 	});
 	await poll(async () =>
-		(await api("groups.snapshot", { groupId })).posts.some((p: any) => p.text === "A later delivery without a file."),
+		(await h.api("groups.snapshot", { groupId })).posts.some((p: any) => p.text === "A later delivery without a file."),
 	).toBe(true);
 	expect(
-		(await api("groups.snapshot", { groupId })).posts.find((p: any) => p.text === "A later delivery without a file.").attachments,
+		(await h.api("groups.snapshot", { groupId })).posts.find((p: any) => p.text === "A later delivery without a file.").attachments,
 	).toBeUndefined();
 	await h.shot("04-group-result");
 	await h
@@ -441,19 +439,19 @@ it("opens a generated group Markdown and HTML pair with aligned controls and ret
 		.click();
 });
 it("rejects incompatible image models and presents Chinese cards in a small dark window", async () => {
-	await api("models.addProvider", {
+	await h.api("models.addProvider", {
 		id: "text-only",
 		name: "Text only",
 		baseUrl: h.modelBaseUrl,
 		api: "openai-completions",
 		modelIds: ["text-only"],
 	});
-	await api("settings.update", {
+	await h.api("settings.update", {
 		language: "zh-CN",
 		defaultModel: { provider: "text-only", modelId: "text-only" },
 	});
 	await expect(
-		api("messages.submit", {
+		h.api("messages.submit", {
 			botId: core,
 			requestId: "unsupported-image",
 			text: "",

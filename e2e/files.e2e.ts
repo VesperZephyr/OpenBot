@@ -22,8 +22,6 @@ const nativePage = async () => {
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a/2cAAAAASUVORK5CYII=";
 const markdown = `# Competitor radar\n\nA focused daily briefing. **Verified updates**, ready to read.\n\n## Product updates\n\n| Product | Release | Evidence |\n| --- | --- | --- |\n| OpenBot | 1.2 | Official changelog |\n| Agent Studio | 3.1 | Release notes |\n\n- [x] Domestic hunter checked\n- [ ] International follow-up\n\n## Analysis\n\nThe score is $x^2 + y^2$.\n\n\`\`\`typescript\nconst report = { verified: true };\n\`\`\`\n\n> Sources remain local and readable.\n\n[Jump to sources](#sources) · [Related note](related.md)\n\n## Sources\n\nAn official update[^1].\n\n[^1]: A recorded primary source.\n\n![Evidence pixel](pixel.png)\n\n<script>window.__markdownEscalation=true</script>\n`;
 const html = `<!doctype html><html><head><style>body{font:16px system-ui;background:#f6f8f7;color:#183c32;padding:42px}h1{font-size:34px}article{background:white;padding:28px;border-radius:14px;max-width:720px}button{background:#1d6a51;color:white;border:0;border-radius:8px;padding:14px}p{line-height:1.8}</style></head><body><article><p>OPENBOT · LOCAL REPORT</p><h1>Interactive research brief</h1><p>Inline interactions work in this offline reading space.</p><button id="counter" onclick="this.textContent='Reviewed '+(++window.count)">Review findings</button><p id="network">Pending network check</p></article><script>window.count=0;fetch('https://example.invalid/reader-canary').then(()=>document.getElementById('network').textContent='Network escaped').catch(()=>document.getElementById('network').textContent='Network blocked');try{parent.document.body.dataset.escaped='yes'}catch{window.parentBlocked=true}</script></body></html>`;
-const api = (name: string, params = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 15000 });
 const dialog = () => h.page().getByRole("complementary", { name: "Files", exact: true });
 const open = async (name: string) => {
@@ -77,7 +75,7 @@ beforeAll(async () => {
 		},
 	});
 	h.page().setDefaultTimeout(15000);
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
 	h.page().on("console", (msg) => {
 		if (msg.type() === "error" || msg.type() === "warning") console.log("Reader console:", msg.text());
 	});
@@ -442,7 +440,7 @@ it("keeps chat usable beside the reader and remembers both resizable columns", a
 	await dialog().getByRole("button", { name: "Close preview" }).click();
 });
 it("supports Chinese dark mode and the minimum window size", async () => {
-	await api("settings.update", { language: "zh-CN" });
+	await h.api("settings.update", { language: "zh-CN" });
 	await h.page().evaluate(() => {
 		localStorage.setItem("openbot.appearance", "dark");
 	});

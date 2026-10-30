@@ -5,9 +5,7 @@ import { type AppHarness, launchApp } from "./harness.ts";
 let h: AppHarness;
 let core: string;
 const groupId = "group_team";
-const api = (name: string, params = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
-const snapshot = () => api("groups.snapshot", { groupId });
+const snapshot = () => h.api("groups.snapshot", { groupId });
 const until = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 15000 });
 const send = async (text: string) => {
 	const box = h.page().getByRole("textbox", { name: /^(Message group|群消息)$/ });
@@ -21,10 +19,10 @@ const open = async () => {
 beforeAll(async () => {
 	h = await launchApp("collaboration", { env: { OPENBOT_MAX_ACTIVE_RUNS: "1" } });
 	h.page().setDefaultTimeout(8000);
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
-	core = (await api("bots.list")).find((b: any) => b.kind === "core").botId;
-	for (const name of ["Alpha", "Beta"]) await api("bots.create", { requestId: name.toLowerCase(), name });
-	await api("groups.change", {
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	core = (await h.api("bots.list")).find((b: any) => b.kind === "core").botId;
+	for (const name of ["Alpha", "Beta"]) await h.api("bots.create", { requestId: name.toLowerCase(), name });
+	await h.api("groups.change", {
 		requestId: "create",
 		action: "create",
 		groupId,
@@ -88,7 +86,7 @@ it("structured @ chooses a member, while cycles pause durably in Chinese", async
 	);
 	await send("Start a bounded task.");
 	await until(async () => (await snapshot()).roots.at(-1)?.state).toBe("paused");
-	await api("settings.update", { language: "zh-CN" });
+	await h.api("settings.update", { language: "zh-CN" });
 	await h.relaunch();
 	await open();
 	await h.page().getByText("需要你的指示", { exact: true }).waitFor();
@@ -103,9 +101,9 @@ it("structured @ chooses a member, while cycles pause durably in Chinese", async
 	expect((await snapshot()).tasks.filter((d: any) => d.state === "pending")).toHaveLength(0);
 });
 it("stops the full tree and approval after restart while preserving an unrelated task", async () => {
-	await api("settings.update", { language: "en" });
+	await h.api("settings.update", { language: "en" });
 	await h.relaunch();
-	if ((await api("lifecycle.get")).blocked) await api("lifecycle.resume");
+	if ((await h.api("lifecycle.get")).blocked) await h.api("lifecycle.resume");
 	await open();
 	h.model.script(
 		{ tool: "bot_delegate", args: { botId: "bot_alpha", task: "Run a command", expectedResult: "Command result" } },
@@ -119,7 +117,7 @@ it("stops the full tree and approval after restart while preserving an unrelated
 	await open();
 	await h.page().getByRole("group", { name: "Approval request" }).waitFor();
 	// A separate user request waits for the active Bot; stopping this tree must preserve it.
-	await api("groups.send", { groupId, requestId: "r".repeat(256), text: "Unrelated work", recipientIds: ["bot_alpha"] });
+	await h.api("groups.send", { groupId, requestId: "r".repeat(256), text: "Unrelated work", recipientIds: ["bot_alpha"] });
 	h.model.script({ text: "Unrelated work survived." });
 	await h
 		.page()
@@ -132,12 +130,12 @@ it("stops the full tree and approval after restart while preserving an unrelated
 	expect((await snapshot()).tasks.filter((d: any) => d.rootId === taskRoot).every((d: any) => !d.conversation?.approvals?.length)).toBe(
 		true,
 	);
-	await api("collaboration.stop", { rootId: (await snapshot()).roots.at(-1).rootId });
+	await h.api("collaboration.stop", { rootId: (await snapshot()).roots.at(-1).rootId });
 	await h.shot("03-scoped-stop");
 });
 
 it("tree stop preserves another root's background command in the same Bot and group", async () => {
-	await api("policy.update", { commandSetting: "ask" });
+	await h.api("policy.update", { commandSetting: "ask" });
 	let firstTask = "";
 	let secondTask = "";
 	const capture = (which: "first" | "second") => (request: any) => {
@@ -152,7 +150,7 @@ it("tree stop preserves another root's background command in the same Bot and gr
 		{ tool: "task_output", args: capture("first") },
 		{ text: "Independent background task started." },
 	);
-	await api("groups.send", {
+	await h.api("groups.send", {
 		groupId,
 		requestId: "background-first",
 		text: "Start unrelated background work",
@@ -169,7 +167,7 @@ it("tree stop preserves another root's background command in the same Bot and gr
 		{ text: "Tree background work assigned." },
 		{ tool: "local_exec", args: { command: "echo tree-pending", description: "Tree pending approval" } },
 	);
-	await api("groups.send", {
+	await h.api("groups.send", {
 		groupId,
 		requestId: "background-second",
 		text: "Start a task tree with background work",
@@ -195,7 +193,7 @@ it("tree stop preserves another root's background command in the same Bot and gr
 		{ text: "Background status checked." },
 	);
 	const before = h.model.requests.length;
-	await api("groups.send", {
+	await h.api("groups.send", {
 		groupId,
 		requestId: "background-inspect",
 		text: "Inspect both command statuses",
@@ -205,7 +203,7 @@ it("tree stop preserves another root's background command in the same Bot and gr
 	expect(JSON.stringify(h.model.requests[before + 1]?.messages.at(-1))).toContain(": running,");
 	expect(JSON.stringify(h.model.requests[before + 2]?.messages.at(-1))).toContain("stopped");
 	h.model.script({ tool: "task_stop", args: { taskId: firstTask } }, { text: "Background cleanup done." });
-	await api("groups.send", {
+	await h.api("groups.send", {
 		groupId,
 		requestId: "background-cleanup",
 		text: "Stop the remaining test command",

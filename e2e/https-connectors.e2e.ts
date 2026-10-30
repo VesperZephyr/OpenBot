@@ -5,14 +5,12 @@ import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { launchApp, type AppHarness } from "./harness.ts";
 import { httpsFixture } from "../packages/local-executor/test/fixtures/mcp-https.ts";
 let h: AppHarness, fixture: Awaited<ReturnType<typeof httpsFixture>>, core: string;
-const api = (name: string, params = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const poll = (read: () => Promise<any>) => expect.poll(read, { timeout: 15000 });
-const profile = async () => (await api("connectors.list"))[0];
-const snapshot = () => api("conversations.snapshot", { botId: core });
+const profile = async () => (await h.api("connectors.list"))[0];
+const snapshot = () => h.api("conversations.snapshot", { botId: core });
 const change = async (action: string) => {
 	const p = await profile();
-	return api(`connectors.${action}`, { connectorId: p.connectorId, expectedRevision: p.revision, requestId: crypto.randomUUID() });
+	return h.api(`connectors.${action}`, { connectorId: p.connectorId, expectedRevision: p.revision, requestId: crypto.randomUUID() });
 };
 const panel = async () => {
 	await h.page().getByRole("button", { name: /^Settings/ }).click();
@@ -30,16 +28,16 @@ beforeAll(async () => {
 		},
 	});
 	h.page().setDefaultTimeout(10000);
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
-	core = (await api("bots.list")).find((b: any) => b.kind === "core").botId;
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	core = (await h.api("bots.list")).find((b: any) => b.kind === "core").botId;
 });
 afterEach(async ({ task }) => {
 	if (task.result?.state === "fail") await h.shot("failure");
 });
 afterAll(async () => {
 	if (h) {
-		for (const p of await api("connectors.list").catch(() => []))
-			await api("connectors.remove", { connectorId: p.connectorId, expectedRevision: p.revision, requestId: crypto.randomUUID() }).catch(
+		for (const p of await h.api("connectors.list").catch(() => []))
+			await h.api("connectors.remove", { connectorId: p.connectorId, expectedRevision: p.revision, requestId: crypto.randomUUID() }).catch(
 				() => {},
 			);
 		await h.close();
@@ -116,7 +114,7 @@ it("shows expired sessions and rate limits in Chinese, then reconnects explicitl
 		.page()
 		.getByText("HTTPS connector session expired or endpoint was not found. Connect again to start a new session.", { exact: true })
 		.waitFor();
-	await api("settings.update", { language: "zh-CN" });
+	await h.api("settings.update", { language: "zh-CN" });
 	await h.page().getByText("HTTPS 会话已过期或端点不存在，请重新连接以建立新会话。", { exact: true }).waitFor();
 	await h.shot("04-expired-session-zh");
 	fixture.state.mode = "rate";
@@ -138,7 +136,7 @@ it("shows expired sessions and rate limits in Chinese, then reconnects explicitl
 	expect(fixture.state.sessions).toBe(count);
 	await h.page().getByRole("button", { name: "连接", exact: true }).click();
 	await poll(async () => (await profile()).state).toBe("connected");
-	await api("settings.update", { language: "en" });
+	await h.api("settings.update", { language: "en" });
 });
 it("preserves one unknown write on response loss across restart without retry", async () => {
 	await h.page().locator(".bot-row").first().click();
@@ -171,7 +169,7 @@ it("disconnects and removes the endpoint and its credential without remote rollb
 	await expect.poll(() => fixture.state.deleted, { timeout: 15000 }).toBeGreaterThan(count);
 	await h.page().getByRole("button", { name: "Remove connector", exact: true }).click();
 	await h.page().getByRole("button", { name: "Confirm removal", exact: true }).click();
-	await poll(() => api("connectors.list")).toEqual([]);
+	await poll(() => h.api("connectors.list")).toEqual([]);
 	const log = await readFile(join(h.dataDirectory, "logs", "host.log"), "utf8");
 	expect(log).not.toContain(fixture.state.token);
 	expect(log).not.toContain("fixture-private-session");

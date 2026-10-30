@@ -5,11 +5,9 @@ import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { launchApp, type AppHarness } from "./harness.ts";
 let h: AppHarness, core: string, original: string, inputId: string, resultId: string;
 const reported = { prompt_tokens: 100, completion_tokens: 30, total_tokens: 130 };
-const api = (name: string, params = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 15000 });
-const snapshot = () => api("conversations.snapshot", { botId: core });
-const usage = () => api("usage.get", { botId: core });
+const snapshot = () => h.api("conversations.snapshot", { botId: core });
+const usage = () => h.api("usage.get", { botId: core });
 const box = () => h.page().locator(".compose-area textarea");
 beforeAll(async () => {
 	h = await launchApp("product-foundation", {
@@ -19,8 +17,8 @@ beforeAll(async () => {
 		},
 	});
 	h.page().setDefaultTimeout(10000);
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
-	core = (await api("bots.list")).find((b: any) => b.kind === "core").botId;
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	core = (await h.api("bots.list")).find((b: any) => b.kind === "core").botId;
 });
 afterEach(async ({ task }) => {
 	if (task.result?.state === "fail") await h.shot("failure");
@@ -32,7 +30,7 @@ it("retains queued inputs across pause/restart, asks before publication and sett
 	await h.page().getByRole("button", { name: "Settings", exact: true }).click();
         await h.page().getByRole("button", { name: "Pause all", exact: true }).click();
         await h.page().getByRole("button", { name: "Back to chat", exact: true }).click();
-	await poll(async () => (await api("lifecycle.get")).transitioning).toBe(false);
+	await poll(async () => (await h.api("lifecycle.get")).transitioning).toBe(false);
 	await h.app().evaluate(
 		({ dialog }, path) => {
 			dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [path] })) as any;
@@ -52,8 +50,8 @@ it("retains queued inputs across pause/restart, asks before publication and sett
 	original = (await snapshot()).run.runId;
 	expect(h.model.requests).toHaveLength(0);
 	await h.relaunch();
-	const policy = await api("policy.get");
-	await api("policy.ask.create", {
+	const policy = await h.api("policy.get");
+	await h.api("policy.ask.create", {
 		requestId: "i1-publication",
 		expectedRevision: policy.revision,
 		predicate: { tool: "artifact_publish", path: h.workspace },
@@ -74,18 +72,18 @@ it("retains queued inputs across pause/restart, asks before publication and sett
 	await poll(async () => (await snapshot()).approvals?.[0]?.tool).toBe("artifact_publish");
 	let approval = (await snapshot()).approvals[0];
 	expect(approval.reason).toContain("Ask first");
-	await api("approvals.decide", { approvalId: approval.approvalId, decision: "allow_once" });
+	await h.api("approvals.decide", { approvalId: approval.approvalId, decision: "allow_once" });
 	await poll(async () => (await snapshot()).approvals?.[0]?.tool).toBe("local_exec");
 	const published = (await snapshot()).items.find((i: any) => i.tool === "artifact_publish");
 	resultId = published.artifact.artifactId;
-	expect((await api("artifacts.preview", { artifactId: resultId })).text).toBe("I1_RESULT_CANARY");
+	expect((await h.api("artifacts.preview", { artifactId: resultId })).text).toBe("I1_RESULT_CANARY");
 	approval = (await snapshot()).approvals[0];
-	await api("approvals.decide", { approvalId: approval.approvalId, decision: "allow_once" });
+	await h.api("approvals.decide", { approvalId: approval.approvalId, decision: "allow_once" });
 	await poll(() => readFile(join(h.workspace, "count.txt"), "utf8").catch(() => "")).toBe("once\n");
 	await h.page().getByRole("button", { name: "Settings", exact: true }).click();
         await h.page().getByRole("button", { name: "Pause all", exact: true }).click();
         await h.page().getByRole("button", { name: "Back to chat", exact: true }).click();
-	await poll(async () => (await api("lifecycle.get")).transitioning).toBe(false);
+	await poll(async () => (await h.api("lifecycle.get")).transitioning).toBe(false);
 	await h.page().getByText("Task interrupted", { exact: true }).waitFor();
 	const data = await usage();
 	expect(data.runs.find((r: any) => r.runId === original)).toMatchObject({ state: "needs_attention", usage: { totalTokens: 390 } });
@@ -110,7 +108,7 @@ it("continues once with the same attachments, preserves receipts after reconnect
 	expect(h.model.requests).toHaveLength(before);
 	expect((await usage()).total.totalTokens).toBe(390);
 	expect(await readFile(join(h.workspace, "count.txt"), "utf8")).toBe("once\n");
-	await api("settings.update", { language: "zh-CN" });
+	await h.api("settings.update", { language: "zh-CN" });
 	await h.page().getByRole("button", { name: "恢复工作", exact: true }).waitFor();
 	await h.page().getByRole("button", { name: "恢复工作", exact: true }).click();
 	h.model.script({ text: "已检查已有报告，不重复执行写入。", usage: reported });
@@ -122,12 +120,12 @@ it("continues once with the same attachments, preserves receipts after reconnect
 	expect(next.runs[0].runId).not.toBe(original);
 	expect(next.runs[0].usage.totalTokens).toBe(130);
 	expect(next.runs.find((r: any) => r.runId === original).usage.totalTokens).toBe(390);
-	const repeated = await api("runs.continue", { runId: original, requestId: `continue:${original}` });
+	const repeated = await h.api("runs.continue", { runId: original, requestId: `continue:${original}` });
 	expect(repeated.runId).toBe(next.runs[0].runId);
 	expect(h.model.requests.length).toBe(before + 1);
 	expect((await snapshot()).items.filter((i: any) => i.kind === "user").at(-1).attachments[0].artifactId).toBe(inputId);
 	await rm(join(h.workspace, "report.txt"));
-	expect((await api("artifacts.preview", { artifactId: resultId })).text).toBe("I1_RESULT_CANARY");
+	expect((await h.api("artifacts.preview", { artifactId: resultId })).text).toBe("I1_RESULT_CANARY");
 	await box().fill("保留草稿 · keep this draft");
 	await h.page().reload();
 	await poll(() => box().inputValue()).toBe("保留草稿 · keep this draft");

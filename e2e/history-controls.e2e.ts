@@ -3,8 +3,6 @@ import { join } from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { launchApp, createBot, type AppHarness } from "./harness.ts";
 let h: AppHarness;
-const api = (name: string, params = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 beforeAll(async () => {
 	h = await launchApp("history-controls");
 	await createBot(h, "History controls");
@@ -37,7 +35,7 @@ it("keeps approvals, drafts and Stop usable when history reads fail, then recove
 		await h.shot("01-unavailable-approval");
 		await h.page().getByRole("button", { name: "Allow once", exact: true }).click();
 		await expect
-			.poll(async () => (await api("bots.list")).find((b: any) => b.name === "History controls")?.lastRun?.state, { timeout: 20000 })
+			.poll(async () => (await h.api("bots.list")).find((b: any) => b.name === "History controls")?.lastRun?.state, { timeout: 20000 })
 			.toBe("completed");
 		expect(await h.page().locator(".compose-area textarea").inputValue()).toBe("Preserved draft 星图");
 		h.model.script({ chunks: ["Must be stopped"], delayMs: 15000, chunkDelayMs: 100 });
@@ -45,7 +43,7 @@ it("keeps approvals, drafts and Stop usable when history reads fail, then recove
 		await expect.poll(() => h.page().locator(".live-reply .reply-activity").textContent(), { timeout: 15000 }).toBe("Thinking…");
 		await h.page().getByRole("button", { name: "Stop", exact: true }).click();
 		await expect
-			.poll(async () => (await api("bots.list")).find((b: any) => b.name === "History controls")?.lastRun?.state, { timeout: 20000 })
+			.poll(async () => (await h.api("bots.list")).find((b: any) => b.name === "History controls")?.lastRun?.state, { timeout: 20000 })
 			.toBe("cancelled");
 		await h.page().locator(".history-status").getByRole("button", { name: "Retry", exact: true }).click();
 	} finally {
@@ -60,10 +58,10 @@ it("keeps approvals, drafts and Stop usable when history reads fail, then recove
 });
 
 it("opens a completed group execution through its bounded private delivery window", async () => {
-	const bots = await api("bots.list"),
+	const bots = await h.api("bots.list"),
 		bot = bots.find((b: any) => b.name === "History controls");
-	const other = await api("bots.create", { requestId: "history-reviewer", name: "Reviewer", role: "Review evidence" });
-	await api("groups.change", {
+	const other = await h.api("bots.create", { requestId: "history-reviewer", name: "Reviewer", role: "Review evidence" });
+	await h.api("groups.change", {
 		requestId: "history-group",
 		action: "create",
 		groupId: "group_history_controls",
@@ -71,7 +69,7 @@ it("opens a completed group execution through its bounded private delivery windo
 		fields: { name: "History details", objective: "Inspect delivery", memberIds: [bot.botId, other.botId], leadBotId: bot.botId },
 	});
 	h.model.script({ text: "Private execution final evidence." });
-	await api("groups.send", {
+	await h.api("groups.send", {
 		groupId: "group_history_controls",
 		requestId: "history-delivery",
 		text: "Inspect this delivery",
@@ -85,7 +83,7 @@ it("opens a completed group execution through its bounded private delivery windo
 	await h.page().getByText("Private execution final evidence.", { exact: true }).waitFor();
 	await h.page().getByRole("button", { name: "Execution details", exact: true }).click();
 	await h.page().locator(".execution-timeline").getByText("Private execution final evidence.", { exact: true }).waitFor();
-	const group = await api("groups.snapshot", { groupId: "group_history_controls", history: "omit" });
+	const group = await h.api("groups.snapshot", { groupId: "group_history_controls", history: "omit" });
 	expect(group.posts).toEqual([]);
 	expect(group.tasks).toEqual([]);
 	expect(await h.page().locator(".execution-timeline [data-history-row]").count()).toBeLessThanOrEqual(80);

@@ -4,10 +4,8 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { launchApp, repo, type AppHarness } from "./harness.ts";
 let h: AppHarness, core: string, artifactId: string, expectedCsv: string;
-const api = (name: string, params = {}): Promise<any> =>
-  h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 15000 });
-const snapshot = () => api("conversations.snapshot", { botId: core });
+const snapshot = () => h.api("conversations.snapshot", { botId: core });
 beforeAll(async () => {
   h = await launchApp("mvp-acceptance", { prepare: async run => {
     await mkdir(join(run, "workspace/reports"));
@@ -17,8 +15,8 @@ beforeAll(async () => {
     return {};
   }});
   h.page().setDefaultTimeout(15000);
-  await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
-  core = (await api("bots.list")).find((b: any) => b.kind === "core").botId;
+  await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+  core = (await h.api("bots.list")).find((b: any) => b.kind === "core").botId;
 });
 afterEach(async ({ task }) => { if (task.result?.state === "fail") await h.shot("failure"); });
 afterAll(async () => { await h?.close(); });
@@ -79,7 +77,7 @@ it("denies a separate write and retains the exported result after restart withou
   const calls = h.model.requests.length;
   await rm(join(h.workspace, "reports/weekly-summary.csv"));
   await h.relaunch();
-  expect((await api("artifacts.preview", { artifactId })).text).toBe(expectedCsv);
+  expect((await h.api("artifacts.preview", { artifactId })).text).toBe(expectedCsv);
   expect(await readFile(join(h.run, "exported-summary.csv"), "utf8")).toBe(expectedCsv);
   expect(await readFile(join(h.workspace, "calculation-runs.txt"), "utf8")).toBe("calculated\n");
   expect(await access(join(h.workspace, "denied-action.txt")).then(() => true, () => false)).toBe(false);
