@@ -371,6 +371,7 @@ export function decide(call: PolicyCall, definition: ToolDefinition, policy: Pol
 				alwaysAllowOptions: folderOptions(canonical, call.tool === "local_list", access),
 			};
 		}
+		case "routines": return {kind:"deny",reason:"Routines require Host authorization"};
 		case "skills": return {kind:"deny",reason:"Skills require Host authorization"};
 		case "app.orchestrate":
 		case "app.read":

@@ -1,4 +1,5 @@
 import { Type } from "typebox";
+import { Compile } from "typebox/compile";
 const strict = <T extends Parameters<typeof Type.Object>[0]>(properties: T) => Type.Object(properties, { additionalProperties: false });
 const id = Type.String({ minLength: 1, maxLength: 128 });
 const occurrenceId = Type.String({ minLength: 1, maxLength: 256 });
@@ -29,6 +30,9 @@ const fields = strict({
 		{ maxItems: 2 },
 	),
 });
+export const ROUTINE_PROPOSAL_FIELDS = strict(Type.Omit(fields, ["reportInputs", "reportTo"]).properties);
+const proposalValidator = Compile(ROUTINE_PROPOSAL_FIELDS);
+export const validRoutineProposalFields = (value: unknown): value is import("./routines.ts").RoutineProposal["fields"] => proposalValidator.Check(value);
 export const ROUTINE_SCHEMAS = {
 	"routines.list": strict({}),
 	"routines.get": strict({ routineId: id, occurrenceId: Type.Optional(occurrenceId) }),

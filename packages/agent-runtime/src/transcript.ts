@@ -44,6 +44,7 @@ export type MutableToolItem = {
 	output?: string;
 	taskId?: string;
 	artifact?: import("@openbot/protocol").ArtifactRef;
+	routineProposal?: import("@openbot/protocol").RoutineProposal;
 };
 
 /** What the model receives for an `unknown` outcome, instead of the executor's text (Section 5.1). */
@@ -155,6 +156,11 @@ export function toTranscript(entries: readonly EntryRecord[], seeds: readonly Tr
 					.map((part) => part.text)
 					.join("\n");
 				const details: unknown = message.details;
+				if (item.tool === "routine_propose" && item.status === "succeeded" && details && typeof details === "object" && "routineProposal" in details) {
+					item.routineProposal = details.routineProposal as import("@openbot/protocol").RoutineProposal;
+					// The review card owns the complete bounded configuration; do not duplicate it in history rows.
+					item.args = { name: item.routineProposal.fields.name };
+				}
 				if (
 					typeof details === "object" &&
 					details !== null &&

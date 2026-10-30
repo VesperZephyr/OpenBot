@@ -182,6 +182,8 @@ The listed foundation increments are merged into `main` through B26. Remaining w
 
 ## Local scheduling
 
+[B11e: Bot routines and generated-file Library](b11e-bot-routines-library.md): in progress ([#69](https://github.com/VesperZephyr/OpenBot/pull/69)); chat proposals, Bot switches and result-file browsing.
+
 | Spec | Status |
 | --- | --- |
 | [B11a: Local scheduled routines](b11a-local-routines.md) | done (#41); 477 unit/Host and 127 hidden desktop tests |

@@ -1,0 +1,21 @@
+.bot-resources { padding: 8px 0 20px; }
+.bot-resources h2 { margin: 6px 0 12px; font-size: 18px; }
+.bot-resources > .muted { font-size: 13px; line-height: 1.6; }
+.bot-routine-row { display: flex; align-items: center; gap: 16px; margin: 12px 0; padding: 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
+.bot-routine-open { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 6px; text-align: left; border: 0; background: transparent; padding: 0; }
+.bot-routine-open strong { font-size: 15px; overflow-wrap: anywhere; }
+.bot-routine-open span, .bot-routine-open small { color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
+.routine-switch { flex: 0 0 40px; width: 40px; height: 24px; border: 1px solid var(--border); border-radius: 20px; padding: 2px; background: var(--border); }
+.routine-switch > span { display: block; width: 18px; height: 18px; border-radius: 50%; background: white; transition: transform 120ms; }
+.routine-switch[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+.routine-switch[aria-checked="true"] > span { transform: translateX(16px); }
+.routine-toggle-review, .routine-proposal { margin: 12px 0; padding: 16px; border: 1px solid var(--border); border-radius: 12px; }
+.routine-toggle-review button + button { margin-left: 8px; }
+.routine-proposal h3 { margin: 6px 0; }
+.bot-library-filter { display: flex; gap: 8px; margin: 18px 0; }
+.bot-library-filter input { min-width: 0; flex: 1; }
+.bot-resource-empty { padding: 28px 0; color: var(--muted); line-height: 1.6; }
+.profile-tabs { flex-wrap: wrap; }
+@media (prefers-reduced-motion: reduce) { .routine-switch > span { transition: none; } }
+
+.bot-profile-heading { display: flex; align-items: center; gap: 12px; overflow-wrap: anywhere; }

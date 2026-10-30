@@ -9,6 +9,7 @@ import { Avatar, PersonalStar } from "./Avatar";
 import { AvatarEditor } from "./AvatarEditor";
 import type { AvatarChange } from "@openbot/protocol";
 import { RoleSkills } from "./RoleSkills";
+import { BotRoutines, BotLibrary, RoutineProposalCard } from "./BotResources";
 import {RoutinesPanel} from "./Routines";
 import { CredentialStorage } from "./CredentialStorage";
 import {ConnectorsPanel} from "./Connectors";
@@ -138,7 +139,7 @@ export function App() {
 									{view.kind === "settings" && <Settings />}
 									{view.kind === "skills" && <SkillLibrary />}
 									{view.kind === "connectors" && <ConnectorsPanel />}
-									{view.kind === "routines" && <RoutinesPanel renderTranscript={(snapshot,occurrenceId) => <HistoryTranscript snapshot={snapshot} occurrenceId={occurrenceId} />} />}
+									{view.kind === "routines" && <RoutinesPanel key={view.proposal?.requestId ?? view.routineId ?? view.botId ?? view.groupId ?? "all"} renderTranscript={(snapshot,occurrenceId) => <HistoryTranscript snapshot={snapshot} occurrenceId={occurrenceId} />} />}
 								</div>
 							</div>
 						)}
@@ -411,9 +412,8 @@ function Conversation({ botId }: { readonly botId: string }) {
 			label={t("Conversation with {name}", { name: bot.name })}
 			details={
 				editing && (
-					<DetailsPanel modal title={t("Conversation details")} onClose={() => setEditing(false)}>
+					<DetailsPanel modal heading={<span className="bot-profile-heading"><Avatar bot={bot} size={32} />{bot.name}</span>} title={t("Conversation details")} onClose={() => setEditing(false)}>
 						<EditProfile bot={bot} onClose={() => setEditing(false)} />
-						<UsagePanel botId={botId} onNavigate={() => setEditing(false)} />
 					</DetailsPanel>
 				)
 			}
@@ -603,6 +603,7 @@ function MessageText({ parts, markdown = false }: { readonly parts: readonly { r
 }
 
 const TOOL_VERBS: Record<string, readonly [running: string, done: string, action?: string]> = {
+ routine_propose: ["Preparing routine", "Routine proposed"],
  tool_search:["Finding connector tools","Found connector tools"],
 	skill_load: ["Load skill", "Loaded skill"],
  skill_save: ["Review skill", "Reviewed skill"],
@@ -719,6 +720,7 @@ function ToolCard({
 				{output !== undefined && output !== "" && <pre className="tool-output">{output}</pre>}
 			</details>
 			{background&&<BackgroundTask record={background}/>}
+			{item.routineProposal && item.status === "succeeded" && <RoutineProposalCard proposal={item.routineProposal} />}
 			{item.artifact && item.status === "succeeded" && <ArtifactCard artifact={item.artifact} />}
 			{showApprovals&&approval !== undefined && <ApprovalCard approval={approval} />}
 			{showApprovals&&childApprovals.map((child) => (
@@ -867,7 +869,7 @@ function BotMenu({ bot, onEdit }: { readonly bot: BotSummary; readonly onEdit: (
 }
 
 function EditProfile({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
-	const [tab, setTab] = useState<"profile" | "memory">("profile");
+	const [tab, setTab] = useState<"profile" | "memory" | "routines" | "library">("profile");
 	return (
 		<div className="profile">
 			<div className="profile-tabs" role="tablist">
@@ -877,9 +879,14 @@ function EditProfile({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 				<button type="button" role="tab" aria-selected={tab === "memory"} onClick={() => setTab("memory")}>
 					{t("Memory")}
 				</button>
+				<button type="button" role="tab" aria-selected={tab === "routines"} onClick={() => setTab("routines")}>{t("Routines")}</button>
+				<button type="button" role="tab" aria-selected={tab === "library"} onClick={() => setTab("library")}>{t("Library")}</button>
 			</div>
+			{tab === "routines" && <BotRoutines botId={bot.botId} onClose={onClose} />}
+			{tab === "library" && <BotLibrary botId={bot.botId} onClose={onClose} />}
 			<div hidden={tab !== "profile"}>
 				<ProfileForm bot={bot} onClose={onClose} />
+				<UsagePanel botId={bot.botId} onNavigate={onClose} />
 			</div>
 			<div hidden={tab !== "memory"}>
 				<ProfileMemory botId={bot.botId} onClose={onClose} />

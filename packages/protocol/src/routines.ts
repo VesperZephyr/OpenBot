@@ -35,6 +35,7 @@ export type RoutineFields = {
 	readonly catchUpHours: number;
 	readonly skills: readonly SkillRef[];
 };
+export type RoutineProposal = { readonly requestId: string; readonly botId: string; readonly fields: Omit<RoutineFields, "reportTo" | "reportInputs"> };
 export type Routine = RoutineFields & {
 	readonly destinationBlocked?: boolean;
 	readonly inputsBlocked?: boolean;

@@ -49,7 +49,7 @@ const GroupFields = strict({
 });
 const ArtifactId = Type.String({ pattern: "^artifact_[a-f0-9]{32}$" });
 const ReaderPath = Type.String({ maxLength: 4096 });
-const ArtifactList = strict({offset:Type.Integer({minimum:0,maximum:4096}),query:Type.String({maxLength:200})});
+const ArtifactList = strict({offset:Type.Integer({minimum:0,maximum:4096}),query:Type.String({maxLength:200}),source:Type.Optional(Type.Enum(["input","result"])),botId:Type.Optional(Type.String({minLength:1,maxLength:128}))});
 const ArtifactPath = Type.String({ minLength: 1, maxLength: 4096 });
 const SkillName=Type.String({pattern:"^[a-z0-9]+(?:-[a-z0-9]+)*$",maxLength:64});
 const SkillDocument=strict({name:SkillName,description:Type.String({minLength:1,maxLength:300}),inputs:Type.String({minLength:1,maxLength:32768}),requirements:Type.String({minLength:1,maxLength:32768}),steps:Type.String({minLength:1,maxLength:32768}),validation:Type.String({minLength:1,maxLength:32768}),output:Type.String({minLength:1,maxLength:32768}),approvalBoundaries:Type.String({minLength:1,maxLength:32768})});
@@ -297,7 +297,7 @@ const artifactRequest = Compile(
 		targetId: Id,
 		operation: Type.Union([
             strict({action:Type.Enum(["files-list","files-read","file-open"]),path:ReaderPath}),
-            strict({action:Type.Literal("list"),offset:Type.Integer({minimum:0,maximum:4096}),query:Type.String({maxLength:200})}),
+            strict({action:Type.Literal("list"),offset:Type.Integer({minimum:0,maximum:4096}),query:Type.String({maxLength:200}),source:Type.Optional(Type.Enum(["input","result"])),botId:Type.Optional(Type.String({minLength:1,maxLength:128}))}),
 			strict({action:Type.Literal("template-read"),path:ArtifactPath}),
  strict({action:Type.Literal("template-write"),path:ArtifactPath,utf8:Type.String({maxLength:1048576}),sha256:TEMPLATE_SHA}),
  strict({ action: Type.Literal("avatar-source"), path: ArtifactPath }),

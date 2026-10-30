@@ -101,6 +101,7 @@ function toolGuidance(tools: ReadonlySet<string>): string | undefined {
 			"- Read-only commands (`rg`, `grep`, `find`, `ls`, `cat`, and similar) inside folders you may use run without asking; git commands ask unless the user allowed them; other commands wait for the user's approval unless the user allowed them, so batch related work into one command where it stays readable. A denied call means the user declined it: adjust instead of retrying it unchanged.",
 		);
 	}
+	if (tools.has("routine_propose")) lines.push("- When asked for recurring work, use routine_propose with an explicit schedule and timezone. The user must review and confirm the proposal before it is scheduled. Never use shell schedulers or claim a proposal is enabled.");
 	if (tools.has("artifact_publish"))
 		lines.push("- When a user asks for a file or report, publish the completed supported local result with artifact_publish and report the resulting artifact; publishing does not grant new file access.");
 	if (tools.has("tool_search"))

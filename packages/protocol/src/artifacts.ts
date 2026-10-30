@@ -3,6 +3,7 @@ import type { AvatarSource, AvatarImage } from "./avatars.ts";
 /** Immutable local file references. No source path or model-specific types cross the UI contract. */
 export type ArtifactRef = {
 	readonly artifactId: string;
+	readonly botId?: string;
 	readonly name: string;
 	readonly mediaType: string;
 	readonly bytes: number;
@@ -34,7 +35,7 @@ export type ArtifactOperation =
  | { action:"template-read";path:string }
  | { action:"template-write";path:string;utf8:string;sha256:string }
  | { readonly action: "files-list" | "files-read" | "file-open"; readonly path: string }
- | { readonly action: "list"; readonly offset: number; readonly query: string }
+ | { readonly action: "list"; readonly offset: number; readonly query: string; readonly source?: "input" | "result"; readonly botId?: string }
 	| { readonly action: "avatar-source"; readonly path: string }
 	| { readonly action: "avatar-validate"; readonly base64: string }
 	| { readonly action: "import"; readonly path: string }

@@ -154,6 +154,7 @@ export type ToolInvoker = (call: {
 	readonly value?: import("@openbot/protocol").JsonValue;
 	readonly taskId?: string;
 	readonly artifact?: import("@openbot/protocol").ArtifactRef;
+	readonly routineProposal?: import("@openbot/protocol").RoutineProposal;
 }>;
 
 export type BotRuntimeOptions = {
@@ -1570,6 +1571,7 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker, codeOnly = 
 					status: outcome.status,
 					...(outcome.failureReason ? { failureReason: outcome.failureReason } : {}),
 					...(outcome.artifact ? { artifact: outcome.artifact } : {}),
+					...(outcome.routineProposal ? { routineProposal: { ...outcome.routineProposal, fields: { ...outcome.routineProposal.fields, skills: outcome.routineProposal.fields.skills.map(skill => ({ ...skill })) } } } : {}),
 					...(outcome.taskId === undefined ? {} : { taskId: outcome.taskId }),
 				},
 			};

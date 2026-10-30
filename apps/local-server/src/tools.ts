@@ -60,6 +60,7 @@ export function createToolRouter(options: {
 		executor: options.executor,
 		hostTools: {
  tool_search:async()=>({status:"succeeded",output:"Tool discovery authorized"}),
+ routine_propose:(_args,_signal,call)=>options.service().routines.propose(call),
  skill_load:(_args,_signal,call)=>options.service().skills.invoke(call),
  skill_save:(_args,_signal,call)=>options.service().skills.invoke(call),
 			...Object.fromEntries(
@@ -100,7 +101,7 @@ export function createToolRouter(options: {
 			// Policy is read fresh for every call, so a rule or grant change applies to the next call (Section 5.3).
 			decide: async (call, definition) =>
 				(await options.service().groups.executionGate(call)) ??
-				(definition.capability.startsWith("connectors")?options.service().connectors.prepare(call):definition.capability === "skills" ? options.service().skills.prepare(call) : definition.capability === "app.read" || definition.capability === "app.orchestrate"
+				(definition.capability === "routines" ? options.service().routines.prepareProposal(call) : definition.capability.startsWith("connectors")?options.service().connectors.prepare(call):definition.capability === "skills" ? options.service().skills.prepare(call) : definition.capability === "app.read" || definition.capability === "app.orchestrate"
 					? options.service().capabilities.authorize(call)
 					: definition.capability === "collaboration"
 						? options.service().groups.prepareCollaboration(call)

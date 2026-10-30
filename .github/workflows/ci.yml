@@ -13,10 +13,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    name: Check and e2e (macOS)
+  unit:
+    name: Check and history performance (macOS)
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,15 +32,75 @@ jobs:
       - name: Download Electron
         working-directory: apps/desktop
         run: node node_modules/electron/install.js
-      - run: pnpm run e2e
-      - name: Upload e2e screenshots
+      - run: pnpm --filter @openbot/desktop run build
+      - name: Run isolated history performance acceptance
+        run: pnpm exec vitest run --config e2e/vitest.config.ts e2e/history-scaling.e2e.ts --maxWorkers=1
+      - name: Summarize history timings
+        if: always()
+        run: node scripts/ci-test-summary.mjs e2e/.run/results.json "Isolated history performance"
+      - name: Upload history screenshots and report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-screenshots
+          name: e2e-screenshots-history
           path: |
             e2e/.run/**/*.png
             e2e/.run/results.json
             e2e/.run/history-scaling/performance.json
           include-hidden-files: true
           if-no-files-found: ignore
+          retention-days: 14
+
+  e2e:
+    name: Desktop e2e (macOS, ${{ matrix.shard }}/3)
+    runs-on: macos-15
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build:pi
+      - name: Download Electron
+        working-directory: apps/desktop
+        run: node node_modules/electron/install.js
+      - run: pnpm --filter @openbot/desktop run build
+      - name: Run desktop shard
+        run: pnpm exec vitest run --config e2e/vitest.config.ts --exclude=e2e/history-scaling.e2e.ts --shard=${{ matrix.shard }}/3
+      - name: Summarize desktop timings
+        if: always()
+        run: node scripts/ci-test-summary.mjs e2e/.run/results.json "Desktop shard ${{ matrix.shard }}/3"
+      - name: Upload e2e screenshots and report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots-${{ matrix.shard }}
+          path: |
+            e2e/.run/**/*.png
+            e2e/.run/results.json
+            e2e/.run/history-scaling/performance.json
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 14
+
+  check:
+    # Retain the existing required check name; skipped or failed shards cannot pass it.
+    name: Check and e2e (macOS)
+    if: always()
+    needs: [unit, e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every test job
+        env:
+          UNIT_RESULT: ${{ needs.unit.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+        run: test "$UNIT_RESULT" = success && test "$E2E_RESULT" = success

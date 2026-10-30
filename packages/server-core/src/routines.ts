@@ -13,6 +13,9 @@ import {
 	type RoutineOccurrence,
 	type SkillRef,
 } from "@openbot/protocol";
+import { validRoutineProposalFields, type ToolOutcome } from "@openbot/protocol";
+import type { ManagementCall } from "./bot-management.ts";
+import type { Decision } from "./approvals.ts";
 import type { RunScheduler } from "./runs.ts";
 import type { ApprovalBook } from "./approvals.ts";
 import { scheduleAt } from "./routine-schedule.ts";
@@ -176,6 +179,34 @@ export class Routines {
 		);
 		this.options.changed();
 		return null;
+	}
+	async prepareProposal(call: ManagementCall): Promise<Decision> {
+		try {
+			call.signal.throwIfAborted();
+			if (!this.options.canRun() || call.tool !== "routine_propose" || call.target?.kind !== "local" || call.target.targetId !== this.options.targetId)
+				fail("Routine proposals require the active local target");
+			const run = call.runId ? await this.options.runtime.runsStore().get(call.runId) : undefined;
+			if (!run || run.botId !== call.botId || run.origin !== "user" || (run.channelId ?? "direct") !== "direct" || run.state !== "running" || run.interruption ||
+				(await this.options.runtime.getBot(call.botId))?.status !== "active" || (await this.options.runtime.conversationKey(call.botId)) !== call.conversationId)
+				fail("Routine proposals require an active direct user request");
+			if (!validRoutineProposalFields(call.args)) fail("Invalid routine proposal");
+			if (Buffer.byteLength(JSON.stringify(call.args)) > 24 * 1024) fail("Routine proposal exceeds the size limit");
+			await this.#validate(call.args);
+			return { kind: "allow" };
+		} catch (error) {
+			return { kind: "deny", reason: error instanceof Error ? error.message : "Routine proposal is unavailable" };
+		}
+	}
+	async propose(call: ManagementCall): Promise<ToolOutcome> {
+		const decision = await this.prepareProposal(call);
+		if (decision.kind === "deny" || !validRoutineProposalFields(call.args)) return { status: "failed", output: decision.kind === "deny" ? decision.reason : "Invalid routine proposal" };
+		call.signal.throwIfAborted();
+		const routineProposal = {
+			requestId: `proposal:${createHash("sha256").update(JSON.stringify([call.botId, call.conversationId, call.callId])).digest("hex")}`,
+			botId: call.botId,
+			fields: structuredClone(call.args),
+		};
+		return { status: "succeeded", output: "Routine proposal ready. The user must review and confirm it before it is scheduled.", routineProposal };
 	}
 	async list(): Promise<RoutineList> {
 		const s = await this.#store.read();

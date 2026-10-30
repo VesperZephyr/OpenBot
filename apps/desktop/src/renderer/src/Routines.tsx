@@ -23,6 +23,8 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 	const language = useStore((s) => s.settings?.language ?? "en");
 	const view = useStore((s) => s.view);
 	const groups = useStore((s) => s.groups);
+	const scopedBotId = view.kind === "routines" ? view.botId : undefined;
+	const proposal = view.kind === "routines" ? view.proposal : undefined;
 	const initialGroup = view.kind === "routines" ? groups.find((g) => g.groupId === view.groupId && g.status === "active") : undefined;
 	const list = useStore((s) => s.routines),
 		bots = useStore((s) => s.bots),
@@ -31,10 +33,10 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 	const [selected, setSelected] = useState<string | undefined>(view.kind === "routines" ? view.routineId : undefined),
 		[occurrence, setOccurrence] = useState<string | undefined>(view.kind === "routines" ? view.occurrenceId : undefined),
 		[detail, setDetail] = useState<RoutineDetail>();
-	const [draft, setDraft] = useState<RoutineFields | undefined>(() => initialGroup ? { ...empty(), reportTo: { groupId: initialGroup.groupId, groupRevision: initialGroup.deliveryRevision ?? initialGroup.revision } } : undefined),
-		[botId, setBotId] = useState(() => initialGroup ? bots.find((b) => b.status === "active" && initialGroup.memberIds.includes(b.botId))?.botId ?? "" : ""),
+	const [draft, setDraft] = useState<RoutineFields | undefined>(() => proposal ? proposal.fields : initialGroup ? { ...empty(), reportTo: { groupId: initialGroup.groupId, groupRevision: initialGroup.deliveryRevision ?? initialGroup.revision } } : undefined),
+		[botId, setBotId] = useState(() => scopedBotId ?? (initialGroup ? bots.find((b) => b.status === "active" && initialGroup.memberIds.includes(b.botId))?.botId ?? "" : "")),
 		[revision, setRevision] = useState(0);
-	const [review, setReview] = useState<RoutineChange>(),
+	const [review, setReview] = useState<RoutineChange | undefined>(() => proposal ? { action: "create", ...proposal } : undefined),
 		[confirmTest, setConfirmTest] = useState(false),
 		[busy, setBusy] = useState(false),
 		[error, setError] = useState<string>();
@@ -105,7 +107,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 				...(r.reportInputs ? { reportInputs: { ...r.reportInputs, sources: r.reportInputs.sources.map((ref) => ({ ...ref, revision: (() => { const source = list?.routines.find((s) => s.routineId === ref.routineId); return source ? source.executionRevision ?? source.revision : ref.revision; })() })) } } : {}),
 				...(r.reportTo ? { reportTo: { ...r.reportTo, groupRevision: (() => { const group = groups.find((g) => g.groupId === r.reportTo?.groupId); return group ? group.deliveryRevision ?? group.revision : r.reportTo.groupRevision; })() } } : {}) } : empty(),
 		);
-		setBotId(r?.botId ?? bots.find((b) => b.status === "active")?.botId ?? "");
+		setBotId(r?.botId ?? scopedBotId ?? bots.find((b) => b.status === "active")?.botId ?? "");
 		setRevision(r?.revision ?? 0);
 		setReview(undefined);
 	};
@@ -129,6 +131,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 	useEffect(() => {
 		if (selectedOccurrence) resultElement.current?.scrollIntoView({ block: "nearest" });
 	}, [selectedOccurrence?.occurrenceId]);
+	const visibleRoutines = (list?.routines ?? []).filter((r) => !scopedBotId || r.botId === scopedBotId);
 	const sourceRoutines = (list?.routines ?? []).filter((r) => r.routineId !== selected && r.enabled && !r.deleted && !r.destinationBlocked && !r.inputsBlocked && !r.reportInputs && r.reportTo?.groupId === draft?.reportTo?.groupId && r.reportTo?.groupRevision === draft?.reportTo?.groupRevision);
 	const inputsValid = !draft?.reportInputs || (!!draft.reportTo && draft.reportInputs.sources.length > 0 && draft.reportInputs.sources.every((ref) => sourceRoutines.some((r) => r.routineId === ref.routineId && (r.executionRevision ?? r.revision) === ref.revision)));
 
@@ -140,7 +143,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 					<h1>{t("Routines")}</h1>
 					<p>{t("Set a rhythm. Your Bot brings back the result.")}</p>
 				</div>
-				<button
+				{!scopedBotId && <button
 					disabled={busy}
 					onClick={() => {
 						choose();
@@ -148,7 +151,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 					}}
 				>
 					{t("New routine")}
-				</button>
+				</button>}
 			</header>
 			<p className="muted">{t("Runs while OpenBot is open and your Mac is awake. Every tool keeps its existing permissions.")}</p>
 			<details className="routine-presence">
@@ -189,8 +192,8 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 			)}
 			<div className="routine-layout">
 				<nav aria-label={t("Saved routines")}>
-					{!list?.routines.length && <p className="muted">{t("No routines yet. Start with a report you already trust.")}</p>}
-					{list?.routines.map((r) => (
+					{!visibleRoutines.length && <p className="muted">{t("No routines yet. Start with a report you already trust.")}</p>}
+					{visibleRoutines.map((r) => (
 						<button
 							key={r.routineId}
 							disabled={busy}
@@ -256,7 +259,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 								setReview(
 									revision && selected
 										? { action: "update", requestId: crypto.randomUUID(), routineId: selected, expectedRevision: revision, fields: draft }
-										: { action: "create", requestId: crypto.randomUUID(), botId, fields: draft },
+										: { action: "create", requestId: proposal && JSON.stringify(draft) === JSON.stringify(proposal.fields) ? proposal.requestId : crypto.randomUUID(), botId, fields: draft },
 								);
 							}}
 						>
@@ -283,7 +286,7 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 							{!destinationValid && <p role="alert">{t("Report destination changed. Edit the routine to confirm its group again.")}</p>}
 							<label>
 								{t("Bot")}
-								<select aria-label={t("Bot")} value={botId} disabled={!!revision} onChange={(e) => setBotId(e.target.value)}>
+								<select aria-label={t("Bot")} value={botId} disabled={!!revision || !!scopedBotId} onChange={(e) => setBotId(e.target.value)}>
 									{bots
 										.filter((b) => b.status === "active")
 										.map((b) => (

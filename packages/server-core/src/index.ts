@@ -285,7 +285,7 @@ export class HostService {
 			"files.list": ({path}) => this.#artifact(randomUUID(), {action:"files-list",path}) as Promise<FileListing>,
 			"files.read": ({path}) => this.#artifact(randomUUID(), {action:"files-read",path}) as Promise<ReaderFile>,
 			"files.open": ({path}) => this.#artifact(randomUUID(), {action:"file-open",path}) as Promise<ReaderFile>,
-			"artifacts.list": ({offset,query}) => this.#artifact(randomUUID(), {action:"list",offset,query}) as Promise<ArtifactListing>,
+			"artifacts.list": (params) => this.#artifact(randomUUID(), {action:"list",...params}) as Promise<ArtifactListing>,
 			"artifacts.read": ({artifactId}) => this.#artifact(randomUUID(), {action:"read",artifactId}) as Promise<ArtifactContent>,
 			"artifacts.import": ({ requestId, path }) => this.#artifact(requestId, { action: "import", path }) as Promise<ArtifactRef>,
 			"artifacts.export": ({ requestId, artifactId, path }) =>

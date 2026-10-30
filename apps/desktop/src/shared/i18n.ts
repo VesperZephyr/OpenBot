@@ -1,6 +1,19 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
+ "Preparing routine": "正在准备定时任务", "Routine proposed": "已生成定时任务提案",
+ "Library": "文件库",
+ "Bot routines": "Bot 定时任务",
+ "No routines yet": "还没有定时任务",
+ "Bot library": "Bot 文件库",
+ "Proposed routine": "待确认的定时任务",
+ "Review and confirm to start this schedule.": "查看并确认后启用此定时任务。",
+ "Ask this Bot in chat to create a routine. Manage its schedules here.": "在聊天中让 Bot 创建定时任务，在这里查看和管理。",
+ "Enable {name}": "启用 {name}",
+ "Files this Bot has created and shared with you, including routine results.": "此 Bot 为你生成并发布的文件，包括定时任务的结果。",
+ "Search generated files": "搜索生成的文件",
+ "No generated files yet. Ask this Bot to create a file or report.": "还没有生成的文件。可以让此 Bot 创建文件或报告。",
+
  "Available": "可用", "Working…": "正在处理…",
  "Role": "职责",
  "This export request was already used for different content or destination": "此导出请求已用于其他内容或目标位置",
