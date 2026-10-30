@@ -214,9 +214,9 @@ Host 管理对话、调度和策略；执行器执行已授权的操作，并记
 
 ## 项目资料
 
-- [技术计划](docs/technical-plan.md)：已实现的组件、验证依据和已知缺口
-- [待办清单](docs/backlog.md)与[交付路线图](docs/development-roadmap.md)：后续工作与发布关卡
-- [任务规格](docs/tasks/README.md)：每个增量的契约与验收标准
+- [技术约束](docs/technical-plan.md)：已知缺口、踩坑、兼容要求与待决事项
+- [待办清单](docs/backlog.md)与[交付路线图](docs/development-roadmap.md)：当前队列、规划理由与发布关卡
+- [任务规格](docs/tasks/README.md)：任务状态、契约与验收证据
 - [Agent 指南](AGENTS.md)：贡献流程、边界和验证要求
 - [Pi 来源与本地修改](third_party/pi/OPENBOT_CHANGES.md)：内置运行时的维护记录
 

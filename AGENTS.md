@@ -1,85 +1,105 @@
 # Agent Guide
 
-## Project and Current Phase
+## Start Here
 
-OpenBot is a local-first personal Bot application with its source in this repository. The user keeps a roster of named Bots, modeled on Grok Bot's personal features, that work on the user's own Mac with files, terminal commands and configured connectors. Managed browser and desktop control are planned. The client, Host Runtime, Pi runtime and local executor all run on that Mac. There is no cloud control plane and no cloud computer. Tools operate a bound execution target; the first release supports only the local target. Model inference uses a configurable endpoint.
+OpenBot is a local-first personal Bot application for one user on macOS. Desktop, Host Runtime, Pi runtime, storage, and the executor run on that Mac; model inference uses a configurable endpoint. There is no cloud control plane or cloud computer. All Bots share the Mac, workspace, connectors, and grants; Bots are not a security boundary.
 
-Read [the architecture design](docs/architecture.md) before changing module boundaries, protocols, the Pi integration, or the development sequence. [The technical plan](docs/technical-plan.md) records what is implemented, known gaps, and open decisions; [the backlog](docs/backlog.md) lists the next work in phases and batches, and [`docs/tasks/`](docs/tasks/README.md) holds the specs ready for execution. Update the plan and backlog when a batch lands. The **Phase 1 MVP** (files, terminal, web research, approvals with Always allow, memory, installable build) is merged into `main`. Merged enhancements include groups, reviewed skills, artifacts, background completion, stdio/HTTPS connectors, local routines, scheduled group summaries and same-Mac backup/restore. B14c bounded history/search is merged in #64, including private routine occurrence windows and automated acceptance. [B13e Bot templates](docs/tasks/b13e-bot-templates.md) is implemented on its task branch with automated acceptance; owner merge is pending. [I2](docs/tasks/i2-mvp-acceptance.md) records the integrated MVP acceptance candidate and its separate native release gates. Do not expand an acceptance task into new Phase 2 or 3 capabilities; new routine capabilities, browser and computer control need their own ready specs. Implemented packages and apps: `protocol`, `agent-runtime`, `server-core`, `tool-router`, `local-executor`, `apps/local-server` (the Host Runtime), `apps/local-executor`, and `apps/desktop`. `browser` and `computer-use` are Phase 3. Package boundaries do not imply separate network services or remote pairing.
+1. Check the current branch and working tree. Preserve unrelated changes and keep each implementation task on its own branch.
+2. Identify the requested work: design, implementation of a ready spec, or a scoped documentation edit. Design changes docs unless a spike is needed; implementation follows the task spec.
+3. Read the relevant sources below and any instructions in the directories you will edit. Read the affected code and tests before changing behavior.
+4. Implement within scope, verify using the matrix below, and report the result and remaining gaps.
 
-## Repository Language
+| Source | Read it for |
+| --- | --- |
+| [Task index](docs/tasks/README.md) → selected spec | The index is navigation; the spec owns task status, contracts, and acceptance |
+| [Technical plan](docs/technical-plan.md) | Known gaps, pitfalls, external constraints, and unresolved technical decisions |
+| [Backlog](docs/backlog.md) | Active work and next-batch order; planning entries are not ready specs |
+| [Architecture](docs/architecture.md) | Module boundaries, protocols, Pi integration, and development sequence; read before changing these |
 
-- Write repository documentation, code comments, identifiers, user-facing text, and commit or pull request text in English. The owner-requested `README.zh-CN.md` is the Chinese translation of the default English `README.md`; keep both aligned.
-- Keep architecture diagrams, examples, and agent instructions in English as well.
-- Respond in the user's language in the conversation unless asked otherwise.
-- Describe the current design and behavior directly. Keep abandoned proposals and conversational history out of project documentation.
+Read code and tests for implementation details. Keep task status in its spec and evidence there or in a linked dated acceptance record, not in this guide. Managed browser and desktop control are Phase 3 work requiring their own ready specs. Do not expand acceptance work into new capabilities, remote transport, pairing, or multi-machine UX. Package boundaries do not imply separate network services.
 
-## How Work Happens
+## Task Workflow
 
-OpenBot is built by AI agents. One human owner sets direction. Work splits into two roles:
+- **One implementation spec per branch and pull request.** Use `task/<id>-<slug>`. Claim a ready task by setting its status to `in progress`, recording the branch, pushing it, and opening a draft PR linked to the spec. Scoped documentation edits do not require inventing an implementation spec.
+- **The spec is the contract.** Follow its scope, steps, contracts, and acceptance. If it is wrong or incomplete, add a dated finding under **Open questions** and stop the affected work; continue independent work. Resolve local implementation choices yourself. Changes to contracts, protocol messages, persistence formats, or user-visible behavior beyond the spec return to design.
+- **Close the loop.** Automate acceptance, inspect UI screenshots, and investigate failures. Do not substitute instructions for the owner for checks you can run yourself.
+- **Keep delivery state accurate.** Link acceptance evidence from the PR. Passing checks does not mean merged: use `in review` until the owner merges, then mark the spec `done` with the merge reference and remove it from the active backlog. Update other docs only when their decisions, constraints, or gaps change; do not copy test counts or feature summaries across them.
+- **Commit and push freely on the task branch.** Keep PR descriptions current. Do not merge to `main`, force-push shared history, or publish releases; the owner merges.
 
-- **Design** (owner with a design agent): research, trade-offs, architecture, and a written task spec per batch in [`docs/tasks/`](docs/tasks/README.md). Design work changes docs, not product code, unless a spike is needed to settle a question.
-- **Execution** (any agent or contributor): implements one task spec end to end. The spec is the contract; follow its steps, contracts, and acceptance. If the spec is wrong or incomplete, stop and note the problem in the spec's **Open questions** instead of improvising a different design.
+## Architecture and Safety Invariants
 
-Execution rules:
+Use Bot / Host / Executor / Target vocabulary and prefer **Host Runtime** in docs and UI.
 
-- **One task spec per branch and pull request.** Branch name `task/<id>-<slug>`, for example `task/b1-durable-approvals`. The pull request links the spec and lists each acceptance item with how it was checked.
-- **Close the loop yourself.** Run `pnpm run check`; run `pnpm run e2e` for anything a user can see or any Host/executor flow; look at the screenshots in `e2e/.run/`. Explore the running app with agent-browser (below) when a flow is new or a test fails. Never hand the owner manual test steps instead of an automated check.
-- **Extend the e2e suite with every user-visible behavior.** Script the model with `ScriptedModel` (`e2e/scripted-model.ts`). Real providers are for occasional spot checks only. Call Host methods with `h.api()`, wait for rendering with `h.nextFrame()`, and reach a routine's scheduled time with `h.advanceHostClockTo()` instead of waiting for the wall clock; prefer an observed signal over a fixed `waitForTimeout`.
-- **Commit and push freely** on the task branch with clear English messages, and keep the pull request description current. Do not merge to `main`, force-push shared history, or publish releases; the owner merges.
-- **Hand off cleanly:** when the task lands, move it to **Done** in the backlog, add its components to the technical plan's current-state table, and record new gaps or follow-ups.
-- Do not add placeholder packages; create a package when its task starts and add its rule to `scripts/check-boundaries.mjs`.
+| Location | Responsibility and boundary |
+| --- | --- |
+| `packages/protocol` | Public contracts independent of Pi internal types and documents |
+| `packages/server-core` | Application methods, scheduling, policy, approvals, grants, and routines |
+| `packages/agent-runtime` | Sole product adapter to Pi; expose tool invocation through its port |
+| `packages/tool-router` | Route every model-selected tool, including Host tools; depends only on `protocol` and accesses application state through ports |
+| `packages/local-executor` | Authorized file, command, connector, and future browser/desktop adapters; enforce executor grants again and own the receipt ledger |
+| `apps/local-server`, `apps/local-executor` | Host/executor process composition and infrastructure wiring |
+| `apps/desktop` | Interaction and application lifecycle; product dependency only on `protocol` |
+| Future `packages/browser`, `packages/computer-use` | Managed browser and macOS capture/input; consumed only by `local-executor` |
 
-## Driving the App
-
-- `pnpm run dev`: the app with the owner's real data (`~/Library/Application Support/OpenBot`, `~/OpenBot`, `~/.openbot/models.json`).
-- `pnpm run dev:debug`: the same, with Chrome DevTools Protocol on port 9339 for agent-browser. Quit any running OpenBot first: the single-instance lock hands a second launch to the first one.
-- agent-browser (installed globally; read `agent-browser skills get electron` once): `agent-browser connect 9339`, then `snapshot -i`, `click @eN`, `fill @eN "text"`, `screenshot path.png`. Use it to see and debug; turn every behavior worth keeping into an e2e test.
-- `pnpm run e2e`: builds the desktop app and drives it with Playwright against a scripted model, with its own state under `e2e/.run/` (data, workspace, `models.json`, screenshots) and a Keychain service per checkout (`ai.openbot.e2e.<hash>`). It never touches the owner's data. A test app quits by itself when the process that launched it exits, so an interrupted run leaves no hidden app or Host behind.
-- E2e runs in background by default: hidden, non-focusable windows, no notifications, Dock badge updates, tray, or power assertions. Screenshots still render. Use `pnpm run e2e:headed` only when visible windows are explicitly requested. Keep agent-browser exploration in an isolated background test app unless the owner asks to see it; do not launch the owner's real-data app as a side effect of verification.
-
-## Architecture Boundaries
-
-- Use Bot / Host / Executor / Target vocabulary in product language. Host Runtime owns the agent loop, conversation storage, scheduling, policy, and routines. Desktop provides interaction and application lifecycle. A supervised executor performs authorized operations on a bound `targetId`.
-- All Bots share the Mac, the managed-browser profile, the workspace, connectors, and grants. Bots are not a security boundary; do not design features that rely on one Bot hiding data from another.
-- Keep application methods in `packages/server-core` and Host process composition in `apps/local-server`. Prefer "Host Runtime" in docs and UI copy; `apps/local-server` is the process entry point name.
-- Use Pi Durable only through `packages/agent-runtime`. Keep public OpenBot protocols independent of Pi's internal types and documents.
-- Follow the package dependency rules in the architecture document: `tool-router` depends only on `protocol` and reaches application state through ports; `browser` and `computer-use` are used only by `local-executor`; `desktop` depends only on `protocol`.
-- Route every model-selected tool through `packages/tool-router`, including host tools. Bind it to an explicit target, evaluate policy before dispatch, and enforce grants again in `packages/local-executor` for executor tools.
-- First release: only `{ kind: "local", targetId }` on the Host Mac. Reject non-local targets. Do not implement pairing, LAN or remote transport, or multi-machine UX as a side effect of other work.
-- Grants and approvals are always scoped to a `targetId`. Model output cannot forge a target or grant.
-- Keep file, command, browser, desktop, and connector adapters behind the executor. Do not install Pi's `CodingTools` or configure an unrestricted Pi environment; neither may bypass OpenBot authorization.
-- Use `packages/browser` for the managed browser and `packages/computer-use` for macOS capture and input on the local target. Honor OS permissions, validate coordinates, and require fresh observation after control, takeover, or session changes.
-- Policy precedence: hard rules, then Ask first, then Allow automatically, then capability defaults; an optional model reviewer can only make a decision stricter.
-- Store credentials in the macOS Keychain, load them in the Host, and redact settings returned to renderers. Exclude credentials from command environments by default; inject connector credentials only into their own connector. Secret values never enter transcripts or model input.
-- Persist task acceptance, approvals, dispatch intent, and execution receipts. Preserve stable request and invocation identities; reconcile uncertain side effects before retrying.
-- The Host is the sole Pi store owner. The executor owns its separate receipt ledger and never writes the Pi database.
-- Follow the first-release limits: one user on macOS, a capped number of parallel Runs with one active Run per conversation, sequential tools within a Run, one desktop control lease at a time, and one selected display for control.
-- Closing a window leaves the menu-bar application running. Quitting, locking, sleeping, and restarting require explicit lifecycle handling; they do not imply that an interrupted action completed.
-- Keep browser and desktop control visible and pausable. A control lease coordinates OpenBot's own actions on that target and cannot prevent physical user input or constrain arbitrary shell commands to a directory.
-- Future remote executors may share the same invoke/cancel/reconcile envelope; do not expand architecture docs into a pairing specification until the local path is accepted.
-
-## Pi Source Vendor
-
-- Keep Pi under `third_party/pi/`, retaining upstream package boundaries and names. Product code belongs in OpenBot modules.
-- Resolve the selected Pi packages through the local workspace. Installation, type checking, and runtime builds must agree on package resolution.
-- At import time, record provenance in `.openbot-vendor.json`, imported file hashes in `BASELINE.json`, and local patches in `OPENBOT_CHANGES.md`. Preserve upstream licenses and required assets.
-- Treat the architecture document's Pi SHA as the proposed initial baseline until an actual import records its source revision.
-- Update Pi deliberately using three-way comparison of the old upstream baseline, current OpenBot copy, and new upstream target. Review additions, deletions, conflicts, dependencies, and assets before applying candidates.
-- Advance the complete baseline only after the selected import scope has been reviewed and validated. Record selective upstream fixes as local patches without advancing the complete baseline.
-- Keep generic runtime patches traceable. Put Bots, grants, policy, execution supervision, browser and desktop control, routines, connectors, UI, and product policy in OpenBot modules.
-- Do not synchronize Pi as a side effect of an unrelated task.
-
-## Code and Documentation
-
-- Prefer clear names and explicit module interfaces. Add comments only for non-obvious behavior, constraints, or tradeoffs.
-- Keep source facts, design decisions, and unimplemented work distinguishable.
-- Update affected architecture or interface documentation when an authorized implementation changes those contracts.
-- Preserve provenance, dependency closure, and runtime assets when working with vendored packages.
-- Keep credentials, personal data, execution logs, and temporary review artifacts out of the repository.
+- **Local target only:** support only `{ kind: "local", targetId }` on the Host Mac and reject non-local targets. Bind every tool, grant, and approval to an explicit target. Model output cannot forge targets or grants.
+- **Authorize before dispatch:** hard rules → Ask first → Allow automatically → capability defaults. An optional model reviewer may only make the decision stricter. Do not install Pi's `CodingTools` or configure an unrestricted Pi environment that bypasses OpenBot authorization.
+- **Protect credentials:** store them in macOS Keychain, load them in the Host, redact renderer settings, and exclude them from command environments by default. Inject connector credentials only into their connector. Secret values must not enter transcripts or model input.
+- **Preserve recovery:** persist task acceptance, approvals, dispatch intent, and execution receipts. Keep stable request/invocation IDs and reconcile uncertain side effects before retrying. The Host alone owns the Pi store; the executor never writes it.
+- **Respect concurrency and lifecycle:** cap parallel Runs, allow one active Run per conversation, and execute tools sequentially within a Run. Closing a window leaves the menu-bar app running. Quit, lock, sleep, and restart need explicit handling; interruption is not proof of completion.
+- **Future control constraints:** Bots share one managed-browser profile; allow one desktop control lease and one selected display at a time. Honor OS permissions, validate coordinates, keep control visible and pausable, and require fresh observation after control, takeover, or session changes. A lease cannot prevent physical input; a command's working directory cannot confine its filesystem access.
+- Create packages only when their task starts; add or verify their dependency rule in `scripts/check-boundaries.mjs`. No placeholder packages.
 
 ## Verification
 
-- Commands: `pnpm install`; `pnpm run build:pi` (vendored Pi, once per Pi change); `pnpm run check` (boundaries, type check, unit tests); `pnpm run e2e`; `pnpm run dev` and `pnpm run dev:debug`; `pnpm run package` (arm64 DMG, ad-hoc signed without a Developer ID). With `CI=true` set, `pnpm install` uses a frozen lockfile: after adding a dependency run `pnpm install --no-frozen-lockfile` and commit `pnpm-lock.yaml`. Vendored Pi tests run from each package directory with `pnpm exec vitest --run`. CI runs `check` and `e2e` on macOS for every pull request. Desktop e2e shards are balanced by `e2e/durations.json`; after adding a suite or changing its length noticeably, refresh it from a full run with `node scripts/e2e-shard.ts --record e2e/.run/results.json`.
-- Unit tests protect invariants: authorization, deduplication, recovery, cancellation, ordering, precedence. The e2e suite protects user-visible flows. Do not add tests that only restate wiring.
-- Native permissions, signing, and helper identity need a packaged build on a real Mac; say so instead of claiming them verified.
-- Report what changed, what ran, and what remains, distinguishing automated checks from real-model spot checks.
+Use the selected spec's acceptance checks in addition to this matrix. Run checks after the final relevant edit; report failures and skipped checks explicitly.
+
+| Change | Required verification |
+| --- | --- |
+| Documentation only, with no runtime/build impact | Check facts, referenced paths, and links; run `git diff --check`. Product suites are unnecessary unless the spec requires them |
+| Product code, dependencies, or build configuration | `pnpm run check` (boundaries, type checking, unit tests) |
+| User-visible behavior or any Host/executor flow | Also run `pnpm run e2e` and inspect relevant screenshots in `e2e/.run/` |
+| Vendored Pi | Also run `pnpm run build:pi` and affected upstream tests with `pnpm exec vitest --run` from their package directories |
+| Native permissions, signing, or helper identity | A packaged build on a real Mac; automated background checks alone do not establish these claims |
+
+- Extend e2e coverage for every added or changed user-visible behavior. Use `ScriptedModel` in `e2e/scripted-model.ts`; real providers are occasional spot checks, not deterministic acceptance.
+- Call Host methods through `h.api()`, wait for rendering with `h.nextFrame()`, and advance scheduled routines with `h.advanceHostClockTo()`. Prefer observed signals over fixed `waitForTimeout` delays.
+- Unit tests protect authorization, deduplication, recovery, cancellation, ordering, and precedence. Avoid tests that only restate wiring.
+- After adding an e2e suite or noticeably changing its duration, refresh shard timings from a full run: `node scripts/e2e-shard.ts --record e2e/.run/results.json`. CI runs `check` and `e2e` on macOS for each PR.
+
+### Isolated App Verification
+
+- `pnpm run e2e` builds and drives Electron with Playwright, isolated state under `e2e/.run/`, and a checkout-specific Keychain service (`ai.openbot.e2e.<hash>`). It does not touch owner data. A test app quits when its launching process exits, so an interrupted runner does not leave a hidden app or Host behind.
+- Keep verification in background mode: hidden, non-focusable windows with no notifications, Dock badges, tray, or power assertions. Screenshots still render. Use `pnpm run e2e:headed` only when visible windows are explicitly requested.
+- Explore new flows or failing tests with agent-browser in an isolated background test app. Read `agent-browser skills get electron` once, connect to that app's CDP port, then use `snapshot -i`, `click @eN`, `fill @eN "text"`, and `screenshot path.png`. Convert useful findings into e2e checks.
+- `pnpm run dev` and `pnpm run dev:debug` use **owner data**: `~/Library/Application Support/OpenBot`, `~/OpenBot`, and `~/.openbot/models.json`. Do not launch them as a verification side effect. Debug mode exposes CDP on port 9339; a running instance receives a second launch because of the single-instance lock.
+
+### Setup and Packaging
+
+- Install dependencies with `pnpm install`. Under `CI=true`, installation uses a frozen lockfile; after adding a dependency, use `pnpm install --no-frozen-lockfile` and include `pnpm-lock.yaml`.
+- Build vendored Pi with `pnpm run build:pi` on initial setup and after Pi changes. Installation, type checking, and runtime builds must resolve the same local workspace packages.
+- `pnpm run package` creates an arm64 DMG, ad-hoc signed when no Developer ID is configured. Distinguish automated checks, real-model spot checks, and native packaged evidence in the handoff.
+
+## Pi Maintenance
+
+- Keep upstream boundaries, names, licenses, dependency closure, and runtime assets under `third_party/pi/`. Product behavior belongs in OpenBot modules; generic runtime patches remain traceable in Pi.
+- Read `third_party/pi/.openbot-vendor.json` for actual import provenance, `BASELINE.json` for imported file hashes, and `OPENBOT_CHANGES.md` for local patches. Update the patch ledger when changing vendor files. The architecture's proposed SHA does not override the recorded import.
+- Synchronization is deliberate work: follow architecture Sections 2.3–2.4 and compare old upstream baseline, current OpenBot copy, and exact new upstream revision. Review additions, deletions, conflicts, dependencies, and assets before applying candidates.
+- Advance the complete baseline only after the selected import scope is fully reviewed and validated. Record selective upstream fixes as local patches without advancing it. Never synchronize Pi as a side effect of another task.
+
+## Documentation, Comments, and Enforced Rules
+
+Record information that cannot be recovered cheaply from code: decision rationale and reconsideration triggers, external constraints, compatibility promises, operational recovery, known gaps, and non-obvious pitfalls or hacks. Do not maintain prose copies of function behavior, type definitions, call graphs, or completed implementation steps. Before implementation, specs may define new contracts; afterward, treat their design and evidence as dated records, not a second API reference.
+
+- **One maintained home per fact.** Architecture owns lasting design decisions and trust boundaries; specs own task status and acceptance; backlog owns the active queue; technical plan owns cross-cutting gaps and pitfalls. The task index only links specs. The roadmap preserves planning rationale; dated research and acceptance records preserve evidence. Link to the owner instead of repeating its contents.
+- **Keep decisions useful.** Record the choice, reason, constraints, and conditions for revisiting it. Retain rejected alternatives only when they explain a trade-off or prevent repeating a costly investigation; omit discussion transcripts.
+- **Record pitfalls and hacks where they matter.** Capture trigger/symptom, root cause, workaround, regression test or evidence, and removal condition. Put a local exception beside the code; use the technical plan for cross-cutting issues and vendor ledgers for Pi patches. Add a regression test when reproducible. Do not create a second incident write-up when the test and a short explanation preserve everything useful.
+- **Default to no comments.** Use clear names and interfaces. Comments are for non-obvious reasons, external limitations, compatibility constraints, and temporary workarounds that code cannot express. Keep a hack's reason and removal condition adjacent to it, linking longer evidence if needed. Avoid narration, redundant docstrings, and unexplained TODOs; preserve required license/provenance notices.
+- **Enforce mechanically checkable rules in tooling.** Use lint/static checks for imports, forbidden APIs, and mechanical conventions; types/schema checks for contracts; unit/integration tests for authorization, ordering, deduplication, and recovery; e2e for user flows. A prose rule is not enforcement. Add or extend the appropriate check with an authorized implementation, wire it into CI, and make failures identify the violation and remedy. Do not build lint rules for subjective comment quality or weaken checks to silence a failure.
+- **Describe existing enforcement accurately.** [Package scripts](package.json), the [boundary checker](scripts/check-boundaries.mjs), and [CI workflow](.github/workflows/ci.yml) define current checks. There is no standalone lint command today; a proposed rule is not enforced until its check exists. Keep commands in scripts, with docs explaining prerequisites and recovery rather than duplicating script internals.
+
+## Writing and Repository Hygiene
+
+- Write repository docs, comments, identifiers, diagrams, examples, agent instructions, and commit/PR text in English. Use English for new UI copy and maintain the existing localization conventions. Keep `README.md` and its owner-requested Chinese translation `README.zh-CN.md` aligned when changing shared content. Respond in the user's language.
+- Describe current behavior directly; distinguish implemented facts, design decisions, and planned work. Keep conversational history out of maintained project docs. Update affected architecture/interface docs when authorized changes alter contracts.
+- Keep credentials, personal data, execution logs, and temporary review artifacts out of the repository.
+- End with what changed, what verification ran and its outcome, and what remains unverified or blocked.

@@ -2,7 +2,7 @@
 
 Research date: **2026-10-22**. Baseline: OpenBot `main` at `b04aa77`, including merged B6a (#43) and D5 (#44). [D6](../tasks/d6-bot-role-design.md) owns this documentation task. This report proposes product direction; it does not introduce a runtime contract or authorize implementation. [Architecture](../architecture.md) and the individual implemented specs remain authoritative.
 
-Integration note (2026-10-23): the implementation comparison below remains tied to the research baseline. Subsequent B27a (#46), B27b (#47), I4 (#48) and desktop D6 (#49) implemented and checked portions of the proposed direction; see the [current technical plan](../technical-plan.md) for delivered behavior and remaining gaps.
+Integration note (2026-10-23): the implementation comparison below remains tied to the research baseline. Subsequent B27a (#46), B27b (#47), I4 (#48) and desktop D6 (#49) implemented and checked portions of the proposed direction; see the [task specs](../tasks/README.md) for delivery evidence and [technical constraints](../technical-plan.md) for remaining gaps.
 
 ## Recommendation
 
