@@ -2,9 +2,8 @@ import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { launchApp, type AppHarness } from "./harness.ts";
 import type { ModelRequest } from "./scripted-model.ts";
 let h: AppHarness, core: string, privateHit: any;
-const api=(name:string,params={}):Promise<any>=>h.page().evaluate(({name,params})=>(window as any).openbot.methods[name](params),{name,params});
 const poll=(fn:()=>Promise<any>)=>expect.poll(fn,{timeout:15000});
-const done=async(botId:string)=>{ for(let i=0;i<150;i++){if((await api("bots.list")).find((b:any)=>b.botId===botId).lastRun?.state==="completed")return;await new Promise(r=>setTimeout(r,100));}throw Error("Run did not complete"); };
+const done=async(botId:string)=>{ for(let i=0;i<150;i++){if((await h.api("bots.list")).find((b:any)=>b.botId===botId).lastRun?.state==="completed")return;await new Promise(r=>setTimeout(r,100));}throw Error("Run did not complete"); };
 const toolResults=(request:ModelRequest)=>request.messages.filter(m=>m.role==="tool").map(m=>{
 	try{return JSON.parse(typeof m.content==="string"?m.content.split("Output:\n\n").at(-1)!:JSON.stringify(m.content));}catch{return {raw:m.content};}
 });
@@ -13,21 +12,21 @@ const send=async(text:string)=>{const box=h.page().locator(".compose-area textar
 const selectBot=async(name:string)=>h.page().locator(".bot-row").filter({has:h.page().getByText(name,{exact:true})}).click();
 beforeAll(async()=>{
 	h=await launchApp("app-capabilities");h.page().setDefaultTimeout(10000);
-	await api("settings.update",{defaultModel:{provider:"scripted",modelId:"scripted"}});core=(await api("bots.list"))[0].botId;
-	for(const name of ["Analyst","Reviewer","Outside"])await api("bots.create",{requestId:name.toLowerCase(),name,instructions:"PRIVATE_PROMPT_DO_NOT_RETRIEVE"});
-	await api("bots.memory.update",{botId:"bot_analyst",expectedRevision:0,content:"PRIVATE_MEMORY_DO_NOT_RETRIEVE"});
+	await h.api("settings.update",{defaultModel:{provider:"scripted",modelId:"scripted"}});core=(await h.api("bots.list"))[0].botId;
+	for(const name of ["Analyst","Reviewer","Outside"])await h.api("bots.create",{requestId:name.toLowerCase(),name,instructions:"PRIVATE_PROMPT_DO_NOT_RETRIEVE"});
+	await h.api("bots.memory.update",{botId:"bot_analyst",expectedRevision:0,content:"PRIVATE_MEMORY_DO_NOT_RETRIEVE"});
 	h.model.script({text:"ORBIT_B24 launch date: November 7. 星图已归档。"});
-	await api("messages.submit",{botId:"bot_analyst",requestId:"source",text:"Keep this launch note."});await done("bot_analyst");
-	privateHit=(await api("conversations.search",{query:"ORBIT_B24"})).items[0];
-	await api("conversations.reset",{botId:"bot_analyst"});
-	h.model.script({text:"Current topic has no launch date."});await api("messages.submit",{botId:"bot_analyst",requestId:"new",text:"Start another topic."});await done("bot_analyst");
+	await h.api("messages.submit",{botId:"bot_analyst",requestId:"source",text:"Keep this launch note."});await done("bot_analyst");
+	privateHit=(await h.api("conversations.search",{query:"ORBIT_B24"})).items[0];
+	await h.api("conversations.reset",{botId:"bot_analyst"});
+	h.model.script({text:"Current topic has no launch date."});await h.api("messages.submit",{botId:"bot_analyst",requestId:"new",text:"Start another topic."});await done("bot_analyst");
 });
 afterEach(async({task})=>{if(task.result?.state==="fail")await h.shot("failure");});
 afterAll(async()=>{await h?.close();});
 
 it("Core searches retained private history and reads exact context with no read or memory side effects",async()=>{
-	const before=(await api("conversations.list")).find((r:any)=>r.conversationKey==="bot:bot_analyst");
-	const memory=await api("bots.memory.get",{botId:"bot_analyst"});
+	const before=(await h.api("conversations.list")).find((r:any)=>r.conversationKey==="bot:bot_analyst");
+	const memory=await h.api("bots.memory.get",{botId:"bot_analyst"});
 	const requestStart=h.model.requests.length;
 	h.model.script(composed("ORBIT_B24"),{text:"The launch date is November 7, from Analyst's archived ORBIT_B24 message."});
 	await send("Search my earlier chats for ORBIT_B24 and read the matching context.");await done(core);
@@ -37,17 +36,17 @@ it("Core searches retained private history and reads exact context with no read 
 	const outputs=toolResults(h.model.requests.at(-1)!);expect(outputs).toHaveLength(1);expect(h.model.requests.length-requestStart).toBe(2);expect(outputs.at(-1)?.ok).toBe(true);
 	expect(outputs.at(-1)?.value.anchorMessageId).toBe(privateHit.messageId);
 	expect(JSON.stringify(outputs)).toContain("November 7");expect(JSON.stringify(outputs)).not.toMatch(/PRIVATE_PROMPT|PRIVATE_MEMORY/);
-	expect((await api("conversations.list")).find((r:any)=>r.conversationKey==="bot:bot_analyst")).toEqual(before);
-	expect(await api("bots.memory.get",{botId:"bot_analyst"})).toEqual(memory);
-	expect((await api("conversations.snapshot",{botId:core})).approvals).toEqual([]);
+	expect((await h.api("conversations.list")).find((r:any)=>r.conversationKey==="bot:bot_analyst")).toEqual(before);
+	expect(await h.api("bots.memory.get",{botId:"bot_analyst"})).toEqual(memory);
+	expect((await h.api("conversations.snapshot",{botId:core})).approvals).toEqual([]);
 	await h.shot("01-core-history-read-en");
 });
 it("group Core searches only current public history and denies a forged private read",async()=>{
-	await api("groups.change",{requestId:"create",action:"create",groupId:"group_app",expectedRevision:0,fields:{name:"Research studio",objective:"Research",memberIds:["bot_analyst","bot_reviewer"],leadBotId:"bot_analyst"}});
+	await h.api("groups.change",{requestId:"create",action:"create",groupId:"group_app",expectedRevision:0,fields:{name:"Research studio",objective:"Research",memberIds:["bot_analyst","bot_reviewer"],leadBotId:"bot_analyst"}});
 	h.model.script({text:"ORBIT_B24 群内计划在十一月八日完成。"});
-	await api("groups.send",{groupId:"group_app",requestId:"history",text:"请记录群里的计划。"});
-	await poll(async()=>(await api("groups.snapshot",{groupId:"group_app"})).roots[0]?.state).toBe("completed");
-	await api("settings.update",{language:"zh-CN"});await h.page().reload();
+	await h.api("groups.send",{groupId:"group_app",requestId:"history",text:"请记录群里的计划。"});
+	await poll(async()=>(await h.api("groups.snapshot",{groupId:"group_app"})).roots[0]?.state).toBe("completed");
+	await h.api("settings.update",{language:"zh-CN"});await h.page().reload();
 	await h.page().locator(".group-nav").filter({hasText:"Research studio"}).click();
 	h.model.script(
 		{tool:"codemode",args:{code:`const search=await tools.app_conversations_search({query:"ORBIT_B24"});const hit=search.value.items.find(i=>i.senderId!=="user");const read=await tools.app_conversations_read({conversationKey:hit.conversationKey,anchorMessageId:hit.messageId,before:1,after:1});const denied=await tools.app_conversations_read({conversationKey:"bot:bot_analyst",anchorMessageId:${JSON.stringify(privateHit.messageId)}});const bots=await tools.app_bots_list({});text([search,read,denied,bots]);`}},
@@ -87,17 +86,17 @@ it("keeps tools scoped after restart and reports Chinese read activity; Speciali
 });
 
 it("keeps the desktop responsive during a script, stops it, and rejects caught floods",async()=>{
- await selectBot("OpenBot");await api("settings.update",{language:"en"});await h.page().reload();
+ await selectBot("OpenBot");await h.api("settings.update",{language:"en"});await h.page().reload();
  h.model.script({tool:"codemode",args:{code:"while(true) {}"}});
  await send("Run a cancellable computation.");
  await h.page().getByText("Reading application data",{exact:true}).last().waitFor();
  await h.page().getByRole("button",{name:"Stop",exact:true}).click();
- await poll(async()=>{const s=await api("conversations.snapshot",{botId:core});return s.items.filter((i:any)=>i.tool==="codemode").at(-1)?.execution?.state;}).toBe("cancelled");
+ await poll(async()=>{const s=await h.api("conversations.snapshot",{botId:core});return s.items.filter((i:any)=>i.tool==="codemode").at(-1)?.execution?.state;}).toBe("cancelled");
  h.model.script({tool:"codemode",args:{code:'for(let i=0;i<100000;i++){try{text("x".repeat(1000));}catch{}}'}},{text:"The output limit stopped the script."});
  await send("Try an output flood.");await done(core);
  await h.page().getByText("Code Mode execution failed",{exact:true}).waitFor();
  await h.shot("05-code-limit-and-stop");
  await h.relaunch();
- const executions=(await api("conversations.snapshot",{botId:core})).items.filter((i:any)=>i.execution).map((i:any)=>i.execution);
+ const executions=(await h.api("conversations.snapshot",{botId:core})).items.filter((i:any)=>i.execution).map((i:any)=>i.execution);
  expect(executions.some((e:any)=>e.state==="cancelled")).toBe(true);expect(executions.at(-1).state).toBe("failed");
 });

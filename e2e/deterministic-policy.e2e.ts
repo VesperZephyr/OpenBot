@@ -3,8 +3,6 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, it, expect } from "vitest";
 import { type AppHarness, createBot, launchApp } from "./harness.ts";
 let h: AppHarness;
-const api = (name: string, params: object = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const select = async (name: string) => {
 	await h
 		.page()
@@ -23,7 +21,7 @@ afterAll(async () => {
 });
 describe("Deterministic policy", () => {
 	it("Ask first overrides an allow and supports English and Chinese settings with preserved invalid drafts", async () => {
-		await api("policy.update", { commandSetting: "allow" });
+		await h.api("policy.update", { commandSetting: "allow" });
 		await h
 			.page()
 			.getByRole("button", { name: /^Settings/ })
@@ -33,7 +31,7 @@ describe("Deterministic policy", () => {
 		await expect.poll(() => h.page().getByLabel("Rule program", { exact: true }).inputValue()).toBe("printf $");
 		await h.page().getByLabel("Rule program", { exact: true }).fill("printf");
 		await h.page().getByRole("button", { name: "Add Ask first rule", exact: true }).click();
-		await expect.poll(async () => (await api("policy.get")).askFirst.length).toBe(1);
+		await expect.poll(async () => (await h.api("policy.get")).askFirst.length).toBe(1);
 		await h.page().getByRole("heading", { name: "Ask first", exact: true }).scrollIntoViewIfNeeded();
 		await h.shot("01-ask-first-settings");
 		await select("Warden");
@@ -48,20 +46,20 @@ describe("Deterministic policy", () => {
 		await card().getByRole("button", { name: "Allow once", exact: true }).click();
 		await h.page().getByText("Confirmed once.", { exact: true }).waitFor();
 		expect(await readFile(join(h.workspace, "ask-first.txt"), "utf8")).toBe("once");
-		await api("settings.update", { language: "zh-CN" });
+		await h.api("settings.update", { language: "zh-CN" });
 		await h.relaunch();
 		await h.page().getByRole("button", { name: /^设置/ }).click();
 		await h.page().getByRole("heading", { name: "始终询问", exact: true }).waitFor();
 		await h.page().getByRole("heading", { name: "始终询问", exact: true }).scrollIntoViewIfNeeded();
 		await h.shot("03-ask-first-zh");
 		await h.page().getByRole("button", { name: "删除 local_exec 的始终询问规则", exact: true }).click();
-		await expect.poll(async () => (await api("policy.get")).askFirst.length).toBe(0);
-		await api("settings.update", { language: "en" });
+		await expect.poll(async () => (await h.api("policy.get")).askFirst.length).toBe(0);
+		await h.api("settings.update", { language: "en" });
 		await h.relaunch();
 		await select("Warden");
 	});
 	it("a narrow revocation interrupts affected execution while an unrelated command continues", async () => {
-		const other = await api("bots.create", { requestId: "unrelated", name: "Unrelated" });
+		const other = await h.api("bots.create", { requestId: "unrelated", name: "Unrelated" });
 		h.model.script({
 			tool: "local_exec",
 			args: { command: "printf 'once\\n' >> revoked.txt; sleep 30; printf late >> revoked.txt", description: "Revocation probe" },
@@ -75,11 +73,11 @@ describe("Deterministic policy", () => {
 			},
 			{ text: "Independent work completed." },
 		);
-		await api("messages.submit", { botId: other.botId, requestId: "independent", text: "Run independent probe" });
+		await h.api("messages.submit", { botId: other.botId, requestId: "independent", text: "Run independent probe" });
 		await expect.poll(() => readFile(join(h.workspace, "unrelated.txt"), "utf8").catch(() => "")).toBe("start");
-		const policy = await api("policy.get"),
-			bot = (await api("bots.list")).find((b: any) => b.name === "Warden");
-		await api("policy.ask.create", {
+		const policy = await h.api("policy.get"),
+			bot = (await h.api("bots.list")).find((b: any) => b.name === "Warden");
+		await h.api("policy.ask.create", {
 			requestId: "stop-warden",
 			expectedRevision: policy.revision,
 			botId: bot.botId,
@@ -89,11 +87,11 @@ describe("Deterministic policy", () => {
 		await h.shot("04-scoped-interruption");
 		expect(await readFile(join(h.workspace, "revoked.txt"), "utf8")).toBe("once\n");
 		await expect.poll(() => readFile(join(h.workspace, "unrelated.txt"), "utf8"), { timeout: 10000 }).toBe("startdone");
-		expect((await api("lifecycle.get")).blocked).toBe(false);
+		expect((await h.api("lifecycle.get")).blocked).toBe(false);
 		await h.crashHost();
 		await select("Warden");
 		expect(await readFile(join(h.workspace, "revoked.txt"), "utf8")).toBe("once\n");
-		expect((await api("policy.get")).reconciliation.state).toBe("complete");
+		expect((await h.api("policy.get")).reconciliation.state).toBe("complete");
 	});
 	it("revoking a folder grant terminates a previously backgrounded command", async () => {
 		const folder = join(h.run, "granted");
@@ -102,8 +100,8 @@ describe("Deterministic policy", () => {
 			dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
 		}, folder);
 		const selected = await h.page().evaluate(() => (window as any).openbot.pickFolder());
-		const grants = await api("grants.add", { selection: selected!.selection, access: "readwrite" });
-		await api("policy.update", { commandSetting: "allow" });
+		const grants = await h.api("grants.add", { selection: selected!.selection, access: "readwrite" });
+		await h.api("policy.update", { commandSetting: "allow" });
 		await select("Unrelated");
 		let taskId = "";
 		h.model.script(
@@ -128,8 +126,8 @@ describe("Deterministic policy", () => {
 		await h.send("Start folder-dependent background work");
 		await h.page().getByText("Background folder work started.", { exact: true }).waitFor();
 		expect(await readFile(join(folder, "folder-effect.txt"), "utf8")).toBe("once");
-		await api("grants.revoke", { id: grants.find((g: any) => g.path === folder).id });
-		expect((await api("policy.get")).reconciliation.state).toBe("complete");
+		await h.api("grants.revoke", { id: grants.find((g: any) => g.path === folder).id });
+		expect((await h.api("policy.get")).reconciliation.state).toBe("complete");
 		const before = h.model.requests.length;
 		h.model.script({ tool: "task_output", args: { taskId, wait_seconds: 0 } }, { text: "Folder command stopped." });
 		await h.send("Inspect the stopped command");
@@ -140,9 +138,9 @@ describe("Deterministic policy", () => {
 	});
 
 	it("shows unattended deadlines without extending them on Host replay and disables expired UI", async () => {
-		await api("policy.update", { commandSetting: "ask", readOnlyDefault: false });
-		const core = (await api("bots.list")).find((b: any) => b.kind === "core");
-		await api("groups.change", {
+		await h.api("policy.update", { commandSetting: "ask", readOnlyDefault: false });
+		const core = (await h.api("bots.list")).find((b: any) => b.kind === "core");
+		await h.api("groups.change", {
 			requestId: "expiry-group",
 			action: "create",
 			groupId: "group_expiry",
@@ -154,9 +152,9 @@ describe("Deterministic policy", () => {
 			{ text: "Assigned." },
 			{ tool: "local_exec", args: { command: "printf forbidden >> expiry.txt", description: "Unattended probe" } },
 		);
-		await api("groups.send", { groupId: "group_expiry", requestId: "expiry", text: "Delegate the probe" });
+		await h.api("groups.send", { groupId: "group_expiry", requestId: "expiry", text: "Delegate the probe" });
 		const pending = async () => {
-			const s = await api("groups.snapshot", { groupId: "group_expiry" });
+			const s = await h.api("groups.snapshot", { groupId: "group_expiry" });
 			return s.tasks.flatMap((task: any) => task.conversation?.approvals ?? [])[0];
 		};
 		await expect.poll(pending, { timeout: 15000 }).toBeTruthy();

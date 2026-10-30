@@ -4,8 +4,6 @@ import { join } from "node:path";
 import { launchApp, createBot, type AppHarness } from "./harness.ts";
 import type { BotSummary, SkillDocument, BotTemplateV1 } from "../packages/protocol/src/index.ts";
 let h: AppHarness, sourceId: string, path: string, template: BotTemplateV1;
-const api = (name: string, params: unknown = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const poll = expect.poll;
 const instructions = "TEMPLATE_PROMPT_SENTINEL\n\n" + "Review original sources and preserve uncertainty. ".repeat(40);
 const dialog = () => h.page().getByRole("dialog", { name: "Import template", exact: true });
@@ -50,15 +48,15 @@ beforeAll(async () => {
 	h = await launchApp("bot-templates");
 	h.page().setDefaultTimeout(10000);
 	await createBot(h, "Template Source");
-	sourceId = (await api("bots.list")).find((b: BotSummary) => b.name === "Template Source").botId;
-	const saved = await api("skills.save", {
+	sourceId = (await h.api("bots.list")).find((b: BotSummary) => b.name === "Template Source").botId;
+	const saved = await h.api("skills.save", {
 		requestId: "template-method",
 		name: skill.name,
 		expectedRevision: 0,
 		document: skill,
 	});
-	const source = (await api("bots.list")).find((b: BotSummary) => b.botId === sourceId);
-	await api("bots.update", {
+	const source = (await h.api("bots.list")).find((b: BotSummary) => b.botId === sourceId);
+	await h.api("bots.update", {
 		botId: sourceId,
 		expectedRevision: source.revision,
 		instructions,
@@ -76,8 +74,8 @@ it("exports the reviewed snapshot and imports exact defaults with empty history 
 	const calls = h.model.requests.length;
 	await exportSource(path);
 	await h.shot("01-export-preview");
-	const source = (await api("bots.list")).find((b: BotSummary) => b.botId === sourceId);
-	await api("bots.update", {
+	const source = (await h.api("bots.list")).find((b: BotSummary) => b.botId === sourceId);
+	await h.api("bots.update", {
 		botId: sourceId,
 		expectedRevision: source.revision,
 		instructions: "Changed after review",
@@ -100,11 +98,11 @@ it("exports the reviewed snapshot and imports exact defaults with empty history 
 	await h.shot("02-import-resolved");
 	await dialog().getByRole("button", { name: "Import Bot", exact: true }).click();
 	await h.page().getByRole("button", { name: "Save profile", exact: true }).waitFor();
-	const imported = (await api("bots.list")).find((b: BotSummary) => b.name === "Imported Researcher");
+	const imported = (await h.api("bots.list")).find((b: BotSummary) => b.name === "Imported Researcher");
 	expect(imported.kind).toBe("specialist");
 	expect(imported.defaultSkills).toEqual(template.profile.defaultSkills);
-	expect((await api("bots.memory.get", { botId: imported.botId })).content).toBe("");
-	expect((await api("conversations.snapshot", { botId: imported.botId })).items).toEqual([]);
+	expect((await h.api("bots.memory.get", { botId: imported.botId })).content).toBe("");
+	expect((await h.api("conversations.snapshot", { botId: imported.botId })).items).toEqual([]);
 	expect(h.model.requests.length).toBe(calls);
 	await h.page().getByRole("button", { name: "Cancel", exact: true }).click();
 	h.model.script({ text: "Template method applied." });
@@ -131,7 +129,7 @@ it("requires missing dependencies to be resolved explicitly and previews the loc
 	await dialog().getByLabel("Template Bot name").fill("Resolved Copy");
 	await dialog().getByRole("button", { name: "Import Bot", exact: true }).click();
 	await h.page().getByRole("button", { name: "Save profile", exact: true }).waitFor();
-	expect((await api("bots.list")).find((b: BotSummary) => b.name === "Resolved Copy").defaultSkills).toEqual(
+	expect((await h.api("bots.list")).find((b: BotSummary) => b.name === "Resolved Copy").defaultSkills).toEqual(
 		template.profile.defaultSkills,
 	);
 	await h.page().getByRole("button", { name: "Cancel", exact: true }).click();
@@ -182,7 +180,7 @@ it("recovers a lost import response after renderer reload and restart without a 
 	await importFile();
 	await dialog().getByRole("button", { name: "Check again", exact: true }).click();
 	await h.page().getByRole("button", { name: "Save profile", exact: true }).waitFor();
-	expect((await api("bots.list")).filter((b: BotSummary) => b.name === "Recovered Copy")).toHaveLength(1);
+	expect((await h.api("bots.list")).filter((b: BotSummary) => b.name === "Recovered Copy")).toHaveLength(1);
 	expect(await h.page().evaluate(() => localStorage.getItem("openbot.pending-template-import.v1"))).toBeNull();
 	await h.page().getByRole("button", { name: "Cancel", exact: true }).click();
 });
@@ -192,8 +190,8 @@ it("round trips PNG artwork, preserves create-only saves and rejects renderer pa
 		canvas.width = canvas.height = 256;
 		return canvas.toDataURL("image/png").split(",")[1]!;
 	});
-	const source = (await api("bots.list")).find((b: BotSummary) => b.botId === sourceId);
-	await api("bots.update", {
+	const source = (await h.api("bots.list")).find((b: BotSummary) => b.botId === sourceId);
+	await h.api("bots.update", {
 		botId: sourceId,
 		expectedRevision: source.revision,
 		avatar: { kind: "upload", base64: image },
@@ -212,15 +210,15 @@ it("round trips PNG artwork, preserves create-only saves and rejects renderer pa
 	await h.shot("06-png-preview");
 	await dialog().getByRole("button", { name: "Import Bot", exact: true }).click();
 	await h.page().getByRole("button", { name: "Save profile", exact: true }).waitFor();
-	const imported = (await api("bots.list")).find((b: BotSummary) => b.name === "Image Copy");
-	expect(await api("bots.avatar.get", { botId: imported.botId })).toEqual(
-		await api("bots.avatar.get", { botId: sourceId }),
+	const imported = (await h.api("bots.list")).find((b: BotSummary) => b.name === "Image Copy");
+	expect(await h.api("bots.avatar.get", { botId: imported.botId })).toEqual(
+		await h.api("bots.avatar.get", { botId: sourceId }),
 	);
-	await expect(api("templates.file.read", { path: pngPath })).rejects.toThrow();
+	await expect(h.api("templates.file.read", { path: pngPath })).rejects.toThrow();
 	await h.page().getByRole("button", { name: "Cancel", exact: true }).click();
 });
 it("preserves the reviewed document when a dependency disappears and requires an explicit correction", async () => {
-	const saved = await api("skills.save", {
+	const saved = await h.api("skills.save", {
 		requestId: "volatile-method",
 		name: "volatile-method",
 		expectedRevision: 0,
@@ -232,17 +230,17 @@ it("preserves the reviewed document when a dependency disappears and requires an
 	await writeFile(file, JSON.stringify(changing));
 	await importFile(file);
 	await dialog().getByLabel("Template Bot name").fill("Corrected Copy");
-	await api("skills.delete", { requestId: "remove-volatile", name: saved.name, expectedRevision: saved.revision });
+	await h.api("skills.delete", { requestId: "remove-volatile", name: saved.name, expectedRevision: saved.revision });
 	await dialog().getByRole("button", { name: "Import Bot", exact: true }).click();
 	await dialog().getByRole("alert").waitFor();
 	expect(await dialog().getByLabel("Template Bot name").inputValue()).toBe("Corrected Copy");
 	expect(await dialog().getByRole("button", { name: "Import Bot", exact: true }).isDisabled()).toBe(true);
-	expect((await api("bots.list")).some((b: BotSummary) => b.name === "Corrected Copy")).toBe(false);
+	expect((await h.api("bots.list")).some((b: BotSummary) => b.name === "Corrected Copy")).toBe(false);
 	await h.shot("08-dependency-changed");
 	await dialog().getByLabel("Skill choice volatile-method").selectOption("omit");
 	await dialog().getByRole("button", { name: "Import Bot", exact: true }).click();
 	await h.page().getByRole("button", { name: "Save profile", exact: true }).waitFor();
-	expect((await api("bots.list")).find((b: BotSummary) => b.name === "Corrected Copy").defaultSkills).toEqual([]);
+	expect((await h.api("bots.list")).find((b: BotSummary) => b.name === "Corrected Copy").defaultSkills).toEqual([]);
 	await h.page().getByRole("button", { name: "Cancel", exact: true }).click();
 });
 it("rejects guest-frame and extra-key IPC and expires a native picker across Host replacement", async () => {
@@ -285,12 +283,12 @@ it("rejects guest-frame and extra-key IPC and expires a native picker across Hos
 	expect(await request).toContain("The file selection expired");
 });
 it("cancels without mutation, expires navigation selections, and renders narrow Chinese dark review", async () => {
-	const before = (await api("bots.list")).length;
+	const before = (await h.api("bots.list")).length;
 	await pick(path, true);
 	await h.page().getByRole("button", { name: "New", exact: true }).click();
 	await h.page().getByRole("button", { name: "Import template", exact: true }).click();
 	await poll(() => dialog().count()).toBe(0);
-	expect((await api("bots.list")).length).toBe(before);
+	expect((await h.api("bots.list")).length).toBe(before);
 	await h.app().evaluate(({ dialog }) => {
 		dialog.showOpenDialog = () =>
 			new Promise((resolve) => {
@@ -307,8 +305,8 @@ it("cancels without mutation, expires navigation selections, and renders narrow 
 		.app()
 		.evaluate((_e, path) => (globalThis as any).__templatePick({ canceled: false, filePaths: [path] }), path);
 	await request;
-	expect((await api("bots.list")).length).toBe(before);
-	await api("settings.update", { language: "zh-CN" });
+	expect((await h.api("bots.list")).length).toBe(before);
+	await h.api("settings.update", { language: "zh-CN" });
 	await h.page().evaluate(() => {
 		localStorage.setItem("openbot.theme", "dark");
 		document.documentElement.dataset.theme = "dark";
@@ -334,5 +332,5 @@ it("cancels without mutation, expires navigation selections, and renders narrow 
 			.getByRole("button", { name: "新建", exact: true })
 			.evaluate((el) => el === document.activeElement),
 	).toBe(true);
-	expect((await api("bots.list")).length).toBe(before);
+	expect((await h.api("bots.list")).length).toBe(before);
 });

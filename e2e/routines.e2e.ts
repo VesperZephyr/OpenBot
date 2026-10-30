@@ -6,11 +6,9 @@ import { join } from "node:path";
 import { beforeAll, afterAll, afterEach, expect, it } from "vitest";
 import { launchApp, type AppHarness } from "./harness.ts";
 let h: AppHarness, core: string, routine: any, first: string;
-const api = (name: string, params = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 20000 });
 const button = (name: string) => h.page().getByRole("button", { name, exact: true });
-const detail = () => api("routines.get", { routineId: routine.routineId });
+const detail = () => h.api("routines.get", { routineId: routine.routineId });
 const select = async () => {
 	await h.page().getByRole("button", { name: /^Settings/ }).click();
 	await button("Routines").click();
@@ -28,8 +26,8 @@ const confirmRun = async () => {
 beforeAll(async () => {
 	h = await launchApp("routines");
 	h.page().setDefaultTimeout(12000);
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
-	core = (await api("bots.list")).find((b: any) => b.kind === "core").botId;
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	core = (await h.api("bots.list")).find((b: any) => b.kind === "core").botId;
 	await writeFile(join(h.workspace, "sales.csv"), "region,revenue\nEast,350\nWest,480\n");
 });
 afterEach(async ({ task }) => {
@@ -39,7 +37,7 @@ afterAll(async () => {
 	await h?.close();
 });
 it("reviews before saving, pins a skill and runs an isolated report with a real artifact", async () => {
-	const skill = await api("skills.save", {
+	const skill = await h.api("skills.save", {
 		requestId: "routine-skill",
 		name: "sales-digest",
 		expectedRevision: 0,
@@ -73,11 +71,11 @@ it("reviews before saving, pins a skill and runs an isolated report with a real 
 		.getByLabel(/sales-digest/)
 		.check();
 	await button("Review routine").click();
-	expect((await api("routines.list")).routines).toHaveLength(0);
+	expect((await h.api("routines.list")).routines).toHaveLength(0);
 	await h.shot("01-review-en");
 	await button("Confirm routine change").click();
-	await poll(async () => (await api("routines.list")).routines.length).toBe(1);
-	routine = (await api("routines.list")).routines[0];
+	await poll(async () => (await h.api("routines.list")).routines.length).toBe(1);
+	routine = (await h.api("routines.list")).routines[0];
 	await select();
 	await button("Edit routine").waitFor();
 	expect(routine.skills).toEqual([{ name: skill.name, revision: skill.revision, sha256: skill.sha256 }]);
@@ -110,9 +108,9 @@ it("reviews before saving, pins a skill and runs an isolated report with a real 
 		.waitFor();
 	await h.page().locator(".routine-result").scrollIntoViewIfNeeded();
 	await h.shot("03-result-en");
-	const direct = await api("conversations.snapshot", { botId: core });
+	const direct = await h.api("conversations.snapshot", { botId: core });
 	expect(direct.items.filter((i: any) => i.routine?.occurrenceId === first)).toHaveLength(1);
-	expect((await api("conversations.list")).find((s: any) => s.conversationKey === `bot:${core}`).unreadCount).toBeGreaterThan(0);
+	expect((await h.api("conversations.list")).find((s: any) => s.conversationKey === `bot:${core}`).unreadCount).toBeGreaterThan(0);
 	expect(h.model.requests).toHaveLength(count + 4);
 });
 it("restores one report after restart, searches it and opens the exact routine history", async () => {
@@ -122,9 +120,9 @@ it("restores one report after restart, searches it and opens the exact routine h
 		.locator(".routine-report-label")
 		.getByText(/Morning sales/)
 		.waitFor();
-	const reports = (await api("conversations.snapshot", { botId: core })).items.filter((i: any) => i.routine?.occurrenceId === first);
+	const reports = (await h.api("conversations.snapshot", { botId: core })).items.filter((i: any) => i.routine?.occurrenceId === first);
 	expect(reports).toHaveLength(1);
-	const result = await api("conversations.search", { query: "revenue is 830" });
+	const result = await h.api("conversations.search", { query: "revenue is 830" });
 	expect(JSON.stringify(result)).toContain(reports[0].id);
 	await button("View routine").click();
 	await h.page().getByRole("region", { name: "Routine result" }).waitFor();
@@ -132,7 +130,7 @@ it("restores one report after restart, searches it and opens the exact routine h
 	expect((await detail()).routine.schedule).toEqual({ kind: "weekly", weekday: 1, time: "09:00", timezone: "Asia/Singapore" });
 });
 it("shows unattended expiry and denies a command without writing, then pauses pending work", async () => {
-	await api("policy.update", { commandSetting: "ask" });
+	await h.api("policy.update", { commandSetting: "ask" });
 	h.model.script(
 		{ tool: "local_exec", args: { command: "printf forbidden >> forbidden.txt", description: "Write a test marker" } },
 		{ text: "The command was denied; no marker was written." },
@@ -184,7 +182,7 @@ it("edits through review, keeps a failed model outcome, stops an occurrence and 
 	await button("Stop routine run").click();
 	await poll(async () => (await detail()).history[0]?.state).toBe("cancelled");
 	expect(await readFile(join(h.workspace, "stopped.txt"), "utf8").catch(() => null)).toBeNull();
-	await api("settings.update", { language: "zh-CN" });
+	await h.api("settings.update", { language: "zh-CN" });
 	await button("编辑定时任务").waitFor();
 	await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(880, 640));
 	await h.shot("06-history-zh-minimum");
@@ -198,14 +196,14 @@ it("edits through review, keeps a failed model outcome, stops an occurrence and 
 	await button("删除任务").click();
 	expect((await detail()).routine.deleted).toBe(false);
 	await button("确认更改定时任务").click();
-	await poll(async () => (await api("routines.list")).routines.length).toBe(0);
+	await poll(async () => (await h.api("routines.list")).routines.length).toBe(0);
 	await h.relaunch();
-	expect((await api("routines.list")).routines).toHaveLength(0);
+	expect((await h.api("routines.list")).routines).toHaveLength(0);
 });
 it("fires a scheduled occurrence without Test run and reports missing source data honestly", async () => {
-	await api("settings.update", { language: "en" });
+	await h.api("settings.update", { language: "en" });
 	const time = "09:00";
-	routine = await api("routines.change", {
+	routine = await h.api("routines.change", {
 		action: "create",
 		botId: core,
 		requestId: "scheduled-missing-source",

@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { type AppHarness, createBot, launchApp } from "./harness.ts";
 let h: AppHarness;
-const api = (method: string, params: object = {}) => h.page().evaluate(({method, params}) => (window as any).openbot.methods[method](params), {method, params});
 const button = (name: string) => h.page().getByRole("button", {name, exact:true});
 const settings = () => h.page().getByRole("button", {name:/^Settings/}).click();
 const select = () => h.page().locator('.bot-row').filter({hasText:'Canvas'}).click();
@@ -47,24 +46,24 @@ it('pauses actual execution and explicitly resumes an interrupted task without r
     await settings();
     await button('Pause all').click();
     await button('Back to chat').click();
-    await expect.poll(async () => (await api('lifecycle.get')).transitioning).toBe(false);
+    await expect.poll(async () => (await h.api('lifecycle.get')).transitioning).toBe(false);
     await button('Resume and continue').waitFor();
     await h.app().evaluate(({powerMonitor}) => powerMonitor.emit('lock-screen'));
     await h.page().getByText('Unlock your Mac to continue.', {exact:true}).waitFor();
     expect(await button('Resume and continue').isDisabled()).toBe(true);
     await h.app().evaluate(({powerMonitor}) => powerMonitor.emit('unlock-screen'));
     await expect.poll(() => button('Resume and continue').isEnabled()).toBe(true);
-    const bot = (await api('bots.list')).find((bot: any) => bot.name === 'Canvas');
-    const interrupted = (await api('conversations.snapshot', {botId:bot.botId})).run;
+    const bot = (await h.api('bots.list')).find((bot: any) => bot.name === 'Canvas');
+    const interrupted = (await h.api('conversations.snapshot', {botId:bot.botId})).run;
     await h.shot('03-paused-task');
     h.model.script({text:'Continued from the saved result without repeating the write.'});
     await button('Resume and continue').click();
     await h.page().getByText('Continued from the saved result without repeating the write.',{exact:true}).waitFor();
-    expect((await api('lifecycle.get')).blocked).toBe(false);
+    expect((await h.api('lifecycle.get')).blocked).toBe(false);
     expect(await readFile(join(h.workspace,'d7-count.txt'),'utf8')).toBe('once\n');
     expect(JSON.stringify(h.model.requests.at(-1)?.messages)).toContain('reconcile uncertain effects');
-    const first = await api('runs.continue', {runId:interrupted.runId,requestId:`continue:${interrupted.runId}`});
-    const second = await api('runs.continue', {runId:interrupted.runId,requestId:`continue:${interrupted.runId}`});
+    const first = await h.api('runs.continue', {runId:interrupted.runId,requestId:`continue:${interrupted.runId}`});
+    const second = await h.api('runs.continue', {runId:interrupted.runId,requestId:`continue:${interrupted.runId}`});
     expect(second.runId).toBe(first.runId);
     await h.shot('04-continued-task');
 });
@@ -91,7 +90,7 @@ it('shows a single stop action while working, preserves follow-up input, and sto
 
 
 it('keeps Chinese Settings usable in a compact window', async () => {
-    await api('settings.update', {language:'zh-CN'});
+    await h.api('settings.update', {language:'zh-CN'});
     await h.app().evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0]!.setSize(880,700));
     await h.page().getByRole('button', {name:/^设置/}).click();
     await h.page().getByRole('radio', {name:'深色',exact:true}).check();

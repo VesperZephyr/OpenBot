@@ -17,8 +17,6 @@ let h: AppHarness,
 	localMemory: unknown,
 	sharedMemory: unknown;
 let templateInput: TemplateImportInput, templateResult: ImportResult, templateAvatar: unknown;
-const api = (name: string, params: unknown = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const button = (name: string) => h.page().getByRole("button", { name, exact: true });
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 30000 });
 async function dialogs(path: string, cancel = false, confirm = true) {
@@ -41,13 +39,13 @@ beforeAll(async () => {
 	h = await launchApp("backups");
 	h.page().setDefaultTimeout(15000);
 	await createBot(h, "Archive Researcher");
-	bot = (await api("bots.list")).find((b: any) => b.name === "Archive Researcher");
-	core = (await api("bots.list")).find((b: any) => b.kind === "core").botId;
-	await api("bots.memory.update", { botId: bot.botId, expectedRevision: 0, content: "## Preference\nTea 茶" });
-	await api("memory.shared.update", { expectedRevision: 0, content: "## Format\nCite original sources" });
-	localMemory = await api("bots.memory.get", { botId: bot.botId });
-	sharedMemory = await api("memory.shared.get");
-	skill = await api("skills.save", {
+	bot = (await h.api("bots.list")).find((b: any) => b.name === "Archive Researcher");
+	core = (await h.api("bots.list")).find((b: any) => b.kind === "core").botId;
+	await h.api("bots.memory.update", { botId: bot.botId, expectedRevision: 0, content: "## Preference\nTea 茶" });
+	await h.api("memory.shared.update", { expectedRevision: 0, content: "## Format\nCite original sources" });
+	localMemory = await h.api("bots.memory.get", { botId: bot.botId });
+	sharedMemory = await h.api("memory.shared.get");
+	skill = await h.api("skills.save", {
 		requestId: "backup-skill",
 		name: "source-review",
 		expectedRevision: 0,
@@ -62,31 +60,31 @@ beforeAll(async () => {
 			approvalBoundaries: "Existing policy applies",
 		},
 	});
-	await api("bots.update", {
+	await h.api("bots.update", {
 		botId: bot.botId,
 		expectedRevision: bot.revision,
 		defaultSkills: [{ name: skill.name, revision: skill.revision, sha256: skill.sha256 }],
 	});
 	const png = await h.page().evaluate(() => { const canvas = document.createElement("canvas"); canvas.width = canvas.height = 256; return canvas.toDataURL("image/png").split(",")[1]; });
-	const current = (await api("bots.list")).find((b: any) => b.botId === bot.botId);
-	await api("bots.update", { botId: bot.botId, expectedRevision: current.revision, avatar: { kind: "upload", base64: png } });
-	const review = await api("bots.templates.export", { botId: bot.botId, expectedRevision: current.revision + 1 });
+	const current = (await h.api("bots.list")).find((b: any) => b.botId === bot.botId);
+	await h.api("bots.update", { botId: bot.botId, expectedRevision: current.revision, avatar: { kind: "upload", base64: png } });
+	const review = await h.api("bots.templates.export", { botId: bot.botId, expectedRevision: current.revision + 1 });
 	const source = join(h.run, "backup-template.openbot.json");
 	await writeFile(source, JSON.stringify(review.template));
 	await dialogs(source);
 	const selected = await h.page().evaluate(() => (window as any).openbot.pickBotTemplate());
 	templateInput = { requestId: randomUUID(), template: selected.template, templateDigest: review.templateDigest, choices: { name: "Restored template", model: { kind: "default" }, skills: [{ name: skill.name, choice: { kind: "template" } }] } };
-	templateResult = await api("bots.templates.import", templateInput);
-	templateAvatar = await api("bots.avatar.get", { botId: templateResult.botId });
+	templateResult = await h.api("bots.templates.import", templateInput);
+	templateAvatar = await h.api("bots.avatar.get", { botId: templateResult.botId });
 	await rm(source);
-	await api("groups.change", {
+	await h.api("groups.change", {
 		action: "create",
 		requestId: "backup-group",
 		groupId: "group_backup",
 		expectedRevision: 0,
 		fields: { name: "Archive room", objective: "Research together", memberIds: [core, bot.botId], leadBotId: core },
 	});
-	routine = await api("routines.change", {
+	routine = await h.api("routines.change", {
 		action: "create",
 		requestId: "backup-routine",
 		botId: bot.botId,
@@ -106,8 +104,8 @@ beforeAll(async () => {
 	);
 	await h.send("Create the report");
 	await h.page().getByText("ARCHIVE_REPORT_READY", { exact: true }).waitFor();
-	while ((await api("conversations.snapshot", { botId: bot.botId })).run) await new Promise((resolve) => setTimeout(resolve, 50));
-	artifact = (await api("conversations.snapshot", { botId: bot.botId })).items.find(
+	while ((await h.api("conversations.snapshot", { botId: bot.botId })).run) await new Promise((resolve) => setTimeout(resolve, 50));
+	artifact = (await h.api("conversations.snapshot", { botId: bot.botId })).items.find(
 		(i: any) => i.kind === "tool" && i.tool === "artifact_publish",
 	).artifact;
 	await mkdir(join(h.run, "backups"));
@@ -121,16 +119,16 @@ afterAll(async () => {
 });
 it("cancels without pausing or creating files and refuses a live Host owner", async () => {
 	await settings();
-	const before = await api("lifecycle.get");
+	const before = await h.api("lifecycle.get");
 	await dialogs(join(h.run, "backups"), true);
 	await button("Create backup").click();
 	await poll(() => button("Create backup").isEnabled()).toBe(true);
-	expect(await api("lifecycle.get")).toEqual(before);
+	expect(await h.api("lifecycle.get")).toEqual(before);
 	await dialogs(join(h.run, "backups"), false, false);
 	await button("Create backup").click();
 	await poll(() => button("Create backup").isEnabled()).toBe(true);
 	expect(await readdir(join(h.run, "backups"))).toEqual([]);
-	expect(await api("lifecycle.get")).toEqual(before);
+	expect(await h.api("lifecycle.get")).toEqual(before);
 	const child = spawnSync(process.execPath, [join(repo, "apps/local-server/src/maintenance.ts")], {
 		env: { ...process.env, OPENBOT_DATA_DIR: h.dataDirectory },
 		input: JSON.stringify({ action: "export", directory: join(h.run, "backups") }),
@@ -140,7 +138,7 @@ it("cancels without pausing or creating files and refuses a live Host owner", as
 	expect(child.stderr).toContain("Close the running Host");
 });
 it("exports through Settings, preserving paused state and excluding secrets, profiles and source files", async () => {
-	await api("lifecycle.pause");
+	await h.api("lifecycle.pause");
 	await h.relaunch(async () => {
 		const runtime = await BotRuntime.open({ databasePath: join(h.dataDirectory, "openbot.sqlite") });
 		try {
@@ -163,7 +161,7 @@ it("exports through Settings, preserving paused state and excluding secrets, pro
 	ledger.close();
 	expect(m.files.some((f: any) => f.path === "openbot.sqlite")).toBe(true);
 	expect(m.files.some((f: any) => /credentials|models.json|logs|electron|artifacts\//.test(f.path))).toBe(false);
-	expect((await api("lifecycle.get")).userPaused).toBe(true);
+	expect((await h.api("lifecycle.get")).userPaused).toBe(true);
 	await h.shot("01-backup-exported");
 });
 it("restores deleted fixture originals, exact report bytes, skills, group and routine identities without running a model", async () => {
@@ -174,35 +172,35 @@ it("restores deleted fixture originals, exact report bytes, skills, group and ro
 			await rm(join(h.dataDirectory, root), { recursive: true, force: true });
 		await rm(join(h.workspace, "archive-report.md"));
 	});
-	expect((await api("bots.list")).some((b: any) => b.botId === bot.botId)).toBe(false);
+	expect((await h.api("bots.list")).some((b: any) => b.botId === bot.botId)).toBe(false);
 	await settings();
 	await dialogs(archive);
 	await h.page().evaluate(id => localStorage.setItem("openbot.pending-template-import.v1", id), randomUUID());
 	await button("Restore backup").click();
 	await h.page().getByText("Backup restored. Work remains paused; review before resuming.", { exact: true }).waitFor({ timeout: 30000 });
-	expect((await api("bots.list")).find((b: any) => b.botId === bot.botId).defaultSkills).toEqual([
+	expect((await h.api("bots.list")).find((b: any) => b.botId === bot.botId).defaultSkills).toEqual([
 		{ name: skill.name, revision: skill.revision, sha256: skill.sha256 },
 	]);
-	expect(await api("bots.memory.get", { botId: bot.botId })).toEqual(localMemory);
-	expect(await api("memory.shared.get")).toEqual(sharedMemory);
-	expect(JSON.stringify(await api("groups.snapshot", { groupId: "group_backup" }))).toContain(bot.botId);
-	expect((await api("routines.get", { routineId: routine.routineId })).routine.reportTo.groupId).toBe("group_backup");
-	expect((await api("artifacts.read", { artifactId: artifact.artifactId })).text).toBe("# Backup evidence\n\nExact saved artifact 茶");
-	expect(JSON.stringify(await api("skills.get", { name: skill.name, revision: skill.revision }))).toContain("Review dates and evidence");
-	expect(JSON.stringify(await api("conversations.snapshot", { botId: bot.botId }))).toContain("ARCHIVE_REPORT_READY");
-	expect((await api("lifecycle.get")).userPaused).toBe(true);
-	expect(await api("bots.templates.status", { requestId: templateInput.requestId })).toEqual(templateResult);
-	expect(await api("bots.templates.import", templateInput)).toEqual(templateResult);
-	expect(await api("bots.avatar.get", { botId: templateResult.botId })).toEqual(templateAvatar);
-	expect((await api("bots.list")).filter((b: any) => b.botId === templateResult.botId)).toHaveLength(1);
-	expect((await api("bots.list")).find((b: any) => b.botId === templateResult.botId).defaultSkills).toEqual(templateInput.template.profile.defaultSkills);
+	expect(await h.api("bots.memory.get", { botId: bot.botId })).toEqual(localMemory);
+	expect(await h.api("memory.shared.get")).toEqual(sharedMemory);
+	expect(JSON.stringify(await h.api("groups.snapshot", { groupId: "group_backup" }))).toContain(bot.botId);
+	expect((await h.api("routines.get", { routineId: routine.routineId })).routine.reportTo.groupId).toBe("group_backup");
+	expect((await h.api("artifacts.read", { artifactId: artifact.artifactId })).text).toBe("# Backup evidence\n\nExact saved artifact 茶");
+	expect(JSON.stringify(await h.api("skills.get", { name: skill.name, revision: skill.revision }))).toContain("Review dates and evidence");
+	expect(JSON.stringify(await h.api("conversations.snapshot", { botId: bot.botId }))).toContain("ARCHIVE_REPORT_READY");
+	expect((await h.api("lifecycle.get")).userPaused).toBe(true);
+	expect(await h.api("bots.templates.status", { requestId: templateInput.requestId })).toEqual(templateResult);
+	expect(await h.api("bots.templates.import", templateInput)).toEqual(templateResult);
+	expect(await h.api("bots.avatar.get", { botId: templateResult.botId })).toEqual(templateAvatar);
+	expect((await h.api("bots.list")).filter((b: any) => b.botId === templateResult.botId)).toHaveLength(1);
+	expect((await h.api("bots.list")).find((b: any) => b.botId === templateResult.botId).defaultSkills).toEqual(templateInput.template.profile.defaultSkills);
 	expect(await h.page().evaluate(() => localStorage.getItem("openbot.pending-template-import.v1"))).toBeNull();
 	expect(h.model.requests).toHaveLength(count);
 	expect(await readFile(join(h.dataDirectory, "credentials-backup-canary.json"), "utf8")).toBe("LOCAL_SECRET_CANARY");
 	expect(await readFile(join(h.run, "home/models.json"), "utf8")).toBe(config);
 	await h.shot("02-restored-paused");
 	await h.relaunch();
-	expect((await api("lifecycle.get")).userPaused).toBe(true);
+	expect((await h.api("lifecycle.get")).userPaused).toBe(true);
 	expect(h.model.requests).toHaveLength(count);
 });
 it("rejects corrupted snapshots visibly and keeps restored data available", async () => {
@@ -213,8 +211,8 @@ it("rejects corrupted snapshots visibly and keeps restored data available", asyn
 	await dialogs(broken);
 	await button("Restore backup").click();
 	await h.page().getByRole("alert").filter({ hasText: "manifest" }).waitFor({ timeout: 30000 });
-	expect((await api("bots.list")).some((b: any) => b.botId === bot.botId)).toBe(true);
-	expect((await api("artifacts.read", { artifactId: artifact.artifactId })).text).toContain("Exact saved artifact");
+	expect((await h.api("bots.list")).some((b: any) => b.botId === bot.botId)).toBe(true);
+	expect((await h.api("artifacts.read", { artifactId: artifact.artifactId })).text).toContain("Exact saved artifact");
 	await h.shot("03-invalid-keeps-data");
 });
 it("expires native selection after navigation and presents Chinese controls at minimum window size", async () => {
@@ -229,7 +227,7 @@ it("expires native selection after navigation and presents Chinese controls at m
 	await h.page().reload();
 	await h.app().evaluate((_e, path) => (globalThis as any).__backupPicker({ canceled: false, filePaths: [path] }), join(h.run, "backups"));
 	await settings();
-	await api("settings.update", { language: "zh-CN" });
+	await h.api("settings.update", { language: "zh-CN" });
 	await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(880, 560));
 	await button("创建备份").scrollIntoViewIfNeeded();
 	expect(await button("恢复备份").isEnabled()).toBe(true);
@@ -250,8 +248,8 @@ it("recovers a process-interrupted replacement before Host startup and fails clo
 			JSON.stringify({ version: 1, id, committed: false, original: ["openbot.sqlite", "executor", "attachments", "skills"] }),
 		);
 	});
-	expect(await api("bots.memory.get", { botId: bot.botId })).toEqual(localMemory);
-	expect((await api("lifecycle.get")).userPaused).toBe(true);
+	expect(await h.api("bots.memory.get", { botId: bot.botId })).toEqual(localMemory);
+	expect((await h.api("lifecycle.get")).userPaused).toBe(true);
 	expect(h.model.requests).toHaveLength(count);
 	expect((await readdir(h.dataDirectory)).includes(".restore-journal.json")).toBe(false);
 	await h.relaunch(async () => {
@@ -265,18 +263,18 @@ it("recovers a process-interrupted replacement before Host startup and fails clo
 	await h.relaunch(async () => {
 		await rm(join(h.dataDirectory, ".restore-journal.json"));
 	});
-	expect(await api("bots.memory.get", { botId: bot.botId })).toEqual(localMemory);
+	expect(await h.api("bots.memory.get", { botId: bot.botId })).toEqual(localMemory);
 });
 it("interrupts a real approved command for backup and retains its settled receipt without replay", async () => {
-	await api("settings.update", { language: "en" });
-	const stored = (await api("routines.get", { routineId: routine.routineId })).routine;
-	await api("routines.change", {
+	await h.api("settings.update", { language: "en" });
+	const stored = (await h.api("routines.get", { routineId: routine.routineId })).routine;
+	await h.api("routines.change", {
 		action: "pause",
 		requestId: "pause-before-command",
 		routineId: routine.routineId,
 		expectedRevision: stored.revision,
 	});
-	await api("lifecycle.resume");
+	await h.api("lifecycle.resume");
 	h.model.script({
 		tool: "local_exec",
 		args: {
@@ -284,10 +282,10 @@ it("interrupts a real approved command for backup and retains its settled receip
 			description: "Backup interruption fixture",
 		},
 	});
-	await api("messages.submit", { botId: bot.botId, requestId: "backup-command", text: "Run the interruption fixture" });
-	await poll(async () => (await api("conversations.snapshot", { botId: bot.botId })).approvals.length).toBe(1);
-	const approval = (await api("conversations.snapshot", { botId: bot.botId })).approvals[0];
-	await api("approvals.decide", { approvalId: approval.approvalId, decision: "allow_once" });
+	await h.api("messages.submit", { botId: bot.botId, requestId: "backup-command", text: "Run the interruption fixture" });
+	await poll(async () => (await h.api("conversations.snapshot", { botId: bot.botId })).approvals.length).toBe(1);
+	const approval = (await h.api("conversations.snapshot", { botId: bot.botId })).approvals[0];
+	await h.api("approvals.decide", { approvalId: approval.approvalId, decision: "allow_once" });
 	await poll(() => readFile(join(h.workspace, "backup-command.txt"), "utf8").catch(() => "")).toBe("once\n");
 	const count = h.model.requests.length;
 	const folder = join(h.run, "active-backups");
@@ -303,7 +301,7 @@ it("interrupts a real approved command for backup and retains its settled receip
 	} finally {
 		db.close();
 	}
-	expect((await api("lifecycle.get")).userPaused).toBe(true);
+	expect((await h.api("lifecycle.get")).userPaused).toBe(true);
 	await h.relaunch();
 	expect(await readFile(join(h.workspace, "backup-command.txt"), "utf8")).toBe("once\n");
 	expect(h.model.requests).toHaveLength(count);

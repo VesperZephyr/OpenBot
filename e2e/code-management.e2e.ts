@@ -1,9 +1,7 @@
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { launchApp, type AppHarness } from "./harness.ts";
 let h: AppHarness, core: string;
-const api = (name: string, params = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
-const snapshot = () => api("conversations.snapshot", { botId: core });
+const snapshot = () => h.api("conversations.snapshot", { botId: core });
 const parent = async () => (await snapshot()).items.filter((i: any) => i.kind === "tool" && i.tool === "codemode").at(-1);
 const idle = async () => expect.poll(async () => (await snapshot()).run, { timeout: 15000 }).toBeUndefined();
 const send = async (code: string, reply: string) => {
@@ -21,8 +19,8 @@ const approve = async () => {
 beforeAll(async () => {
 	h = await launchApp("code-management");
 	h.page().setDefaultTimeout(10000);
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
-	core = (await api("bots.list"))[0].botId;
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	core = (await h.api("bots.list"))[0].botId;
 });
 afterEach(async ({ task }) => {
 	if (task.result?.state === "fail") await h.shot("failure");
@@ -36,7 +34,7 @@ it("shows exact nested approvals, resumes a waiting script and retains six appro
 		"Created the requested helper and group.",
 	);
 	await h.page().getByText("Creates a Specialist with its own instructions and empty memory.").waitFor();
-	expect(await api("bots.list")).toHaveLength(1);
+	expect(await h.api("bots.list")).toHaveLength(1);
 	expect(
 		await h
 			.page()
@@ -49,14 +47,14 @@ it("shows exact nested approvals, resumes a waiting script and retains six appro
 	await h.crashHost();
 	await approve();
 	await h.page().getByText("Create group", { exact: true }).waitFor();
-	expect(await api("bots.list")).toHaveLength(2);
+	expect(await h.api("bots.list")).toHaveLength(2);
 	await h.shot("02-group-exact-approval");
 	await approve();
 	await idle();
 	expect((await parent()).execution.children.map((c: any) => c.object?.kind)).toEqual(["bot", "group"]);
 	expect((await parent()).execution.deadline).toBe(waiting.execution.deadline);
-	const bot = (await api("bots.list")).find((b: any) => b.kind === "specialist"),
-		group = (await api("groups.list"))[0];
+	const bot = (await h.api("bots.list")).find((b: any) => b.kind === "specialist"),
+		group = (await h.api("groups.list"))[0];
 	await send(
 		`const b=await tools.app_bots_inspect({botId:${JSON.stringify(bot.botId)}});await tools.app_bots_update({botId:b.value[0].botId,expectedRevision:b.value[0].revision,role:"Reviewer"});const g=await tools.app_groups_inspect({groupId:${JSON.stringify(group.groupId)}});await tools.app_groups_update({groupId:g.value[0].groupId,expectedRevision:g.value[0].revision,name:"Updated studio",objective:"Review",memberIds:g.value[0].memberIds,leadBotId:${JSON.stringify(bot.botId)}});`,
 		"Updated both profiles.",
@@ -64,8 +62,8 @@ it("shows exact nested approvals, resumes a waiting script and retains six appro
 	await approve();
 	await approve();
 	await idle();
-	expect((await api("groups.list"))[0].name).toBe("Updated studio");
-	await api("settings.update", { language: "zh-CN" });
+	expect((await h.api("groups.list"))[0].name).toBe("Updated studio");
+	await h.api("settings.update", { language: "zh-CN" });
 	await h.page().reload();
 	await send(
 		`const g=await tools.app_groups_inspect({groupId:${JSON.stringify(group.groupId)}});await tools.app_groups_dissolve({groupId:g.value[0].groupId,expectedRevision:g.value[0].revision});const b=await tools.app_bots_inspect({botId:${JSON.stringify(bot.botId)}});await tools.app_bots_delete({botId:b.value[0].botId,expectedRevision:b.value[0].revision});`,
@@ -80,9 +78,9 @@ it("shows exact nested approvals, resumes a waiting script and retains six appro
 	await approve();
 	await idle();
 	await h.relaunch();
-	expect(await api("bots.list")).toHaveLength(1);
-	expect((await api("groups.list"))[0].status).toBe("dissolved");
-	expect((await api("bots.management.history")).filter((r: any) => r.outcome === "succeeded")).toHaveLength(3);
+	expect(await h.api("bots.list")).toHaveLength(1);
+	expect((await h.api("groups.list"))[0].status).toBe("dissolved");
+	expect((await h.api("bots.management.history")).filter((r: any) => r.outcome === "succeeded")).toHaveLength(3);
 });
 it("shows partial completion after denial and prevents a caught failure from proposing another change", async () => {
 	await send(
@@ -93,7 +91,7 @@ it("shows partial completion after denial and prevents a caught failure from pro
 	await h.page().locator(".approval").waitFor();
 	await h.page().locator(".approval-actions button").first().click();
 	await idle();
-	expect((await api("bots.list")).map((b: any) => b.name)).toEqual(["OpenBot", "Kept helper"]);
+	expect((await h.api("bots.list")).map((b: any) => b.name)).toEqual(["OpenBot", "Kept helper"]);
 	expect((await snapshot()).approvals).toHaveLength(0);
 	expect((await parent()).execution.managementClosed).toBe(true);
 	await h.page().getByText("管理操作已停止，已完成的更改会保留。", { exact: true }).waitFor();
@@ -101,12 +99,12 @@ it("shows partial completion after denial and prevents a caught failure from pro
 	expect(await h.page().locator('.code-activity li[data-state="failed"]').last().textContent()).not.toContain("已创建");
 	await h.shot("05-partial-completion-zh");
 	await h.relaunch();
-	expect((await parent()).execution.children[0].object.id).toBe((await api("bots.list"))[1].botId);
+	expect((await parent()).execution.children[0].object.id).toBe((await h.api("bots.list"))[1].botId);
 });
 it("group Core discovers reads only and cannot call a guessed management alias", async () => {
 	const requestStart = h.model.requests.length;
-	const helper = (await api("bots.list")).find((b: any) => b.kind === "specialist");
-	await api("groups.change", {
+	const helper = (await h.api("bots.list")).find((b: any) => b.kind === "specialist");
+	await h.api("groups.change", {
 		requestId: "scope-group",
 		action: "create",
 		groupId: "group_scope",
@@ -122,19 +120,19 @@ it("group Core discovers reads only and cannot call a guessed management alias",
 		},
 		{ text: "Group management is unavailable in this context." },
 	);
-	await api("groups.send", {
+	await h.api("groups.send", {
 		groupId: "group_scope",
 		requestId: "scope-check",
 		text: "Verify management is unavailable from the group context.",
 	});
 	await expect
-		.poll(async () => (await api("groups.snapshot", { groupId: "group_scope" })).roots[0]?.state, { timeout: 15000 })
+		.poll(async () => (await h.api("groups.snapshot", { groupId: "group_scope" })).roots[0]?.state, { timeout: 15000 })
 		.toBe("completed");
 	const output = JSON.stringify(h.model.requests.slice(requestStart).flatMap((r) => r.messages.filter((m) => m.role === "tool")));
 	expect(output).toContain("app_conversations_search");
 	expect(output).not.toContain("app_bots_create");
 	expect(output).toContain("Management unavailable");
-	expect(await api("bots.list")).toHaveLength(2);
+	expect(await h.api("bots.list")).toHaveLength(2);
 	expect((await snapshot()).approvals).toHaveLength(0);
 });
 
@@ -143,12 +141,12 @@ it("expires pending approval, rejects late approval and Stop leaves no unfinishe
 	await h.page().locator(".approval").waitFor();
 	const approval = (await snapshot()).approvals[0];
 	await idle();
-	expect(await api("bots.list")).toHaveLength(2);
+	expect(await h.api("bots.list")).toHaveLength(2);
 	expect((await snapshot()).approvals).toHaveLength(0);
 	await h.page().getByText("应用操作已过期", { exact: true }).waitFor();
 	await h.shot("06-expired-zh");
 	expect(
-		await api("approvals.decide", { approvalId: approval.approvalId, decision: "allow_once" }).then(
+		await h.api("approvals.decide", { approvalId: approval.approvalId, decision: "allow_once" }).then(
 			() => true,
 			() => false,
 		),
@@ -156,10 +154,10 @@ it("expires pending approval, rejects late approval and Stop leaves no unfinishe
 	await send('await tools.app_bots_create({name:"Stopped helper"});', "Stopped.");
 	await h.page().locator(".approval").waitFor();
 	const run = (await snapshot()).run;
-	await api("runs.cancel", { runId: run.runId });
+	await h.api("runs.cancel", { runId: run.runId });
 	await idle();
 	await h.relaunch();
-	expect(await api("bots.list")).toHaveLength(2);
+	expect(await h.api("bots.list")).toHaveLength(2);
 	expect((await snapshot()).approvals).toHaveLength(0);
 	await h.shot("07-stopped-after-restart");
 });

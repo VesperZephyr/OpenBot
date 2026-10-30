@@ -1,7 +1,6 @@
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { launchApp, type AppHarness } from "./harness.ts";
 let h: AppHarness;
-const api = (name: string, params = {}): Promise<any> => h.page().evaluate(({name,params}) => (window as any).openbot.methods[name](params), {name,params});
 const poll = (fn: () => Promise<any>) => expect.poll(fn, {timeout:15000});
 const search = () => h.page().getByRole("searchbox");
 const results = () => h.page().locator(".search-result");
@@ -11,12 +10,12 @@ const outlastReadDwell = () => h.page().waitForTimeout(650);
 /** Counts of delayed "Archive batch" searches the intercepted main handler has started and answered. */
 const delayed = (): Promise<{ started: number; answered: number }> => h.app().evaluate(() => (globalThis as any).delayedSearches);
 const row = (name: string) => h.page().locator(".bot-row").filter({has:h.page().getByText(name,{exact:true})});
-const unread = async (key: string) => (await api("conversations.list")).find((r:any)=>r.conversationKey===key).unreadCount;
+const unread = async (key: string) => (await h.api("conversations.list")).find((r:any)=>r.conversationKey===key).unreadCount;
 const send = async (requestId: string, text: string) => {
 	h.model.script({text});
-	await api("messages.submit",{botId:"bot_analyst",requestId,text:`Request ${requestId}`});
-	await poll(async () => (await api("conversations.list")).find((r:any)=>r.conversationKey==="bot:bot_analyst").latest?.text).toBe(text.replace(/\s+/g," ").slice(0,160));
-	await poll(async () => (await api("bots.list")).find((b:any)=>b.botId==="bot_analyst").lastRun?.state).toBe("completed");
+	await h.api("messages.submit",{botId:"bot_analyst",requestId,text:`Request ${requestId}`});
+	await poll(async () => (await h.api("conversations.list")).find((r:any)=>r.conversationKey==="bot:bot_analyst").latest?.text).toBe(text.replace(/\s+/g," ").slice(0,160));
+	await poll(async () => (await h.api("bots.list")).find((b:any)=>b.botId==="bot_analyst").lastRun?.state).toBe("completed");
 };
 const foreground = async (active: boolean) => {
 	await h.app().evaluate(({BrowserWindow}, value) => {
@@ -32,9 +31,9 @@ const foreground = async (active: boolean) => {
 };
 beforeAll(async()=>{
 	h=await launchApp("conversation-search");h.page().setDefaultTimeout(10000);
-	await api("settings.update",{defaultModel:{provider:"scripted",modelId:"scripted"}});
-	for(const name of ["Analyst","Reviewer"]) await api("bots.create",{requestId:name.toLowerCase(),name,role:"Research"});
-	await api("groups.change",{requestId:"create",action:"create",groupId:"group_search",expectedRevision:0,fields:{name:"Research studio",objective:"Search acceptance",memberIds:["bot_analyst","bot_reviewer"],leadBotId:"bot_analyst"}});
+	await h.api("settings.update",{defaultModel:{provider:"scripted",modelId:"scripted"}});
+	for(const name of ["Analyst","Reviewer"]) await h.api("bots.create",{requestId:name.toLowerCase(),name,role:"Research"});
+	await h.api("groups.change",{requestId:"create",action:"create",groupId:"group_search",expectedRevision:0,fields:{name:"Research studio",objective:"Search acceptance",memberIds:["bot_analyst","bot_reviewer"],leadBotId:"bot_analyst"}});
 });
 afterEach(async({task})=>{if(task.result?.state==="fail")await h.shot("failure");});
 afterAll(async()=>{await h?.close();});
@@ -67,7 +66,7 @@ it("finds earlier private text, jumps exactly and preserves drafts/unread while 
 
 it("combines unread filtering with group/private history and preserves selected drafts",async()=>{
 	h.model.script({text:"群内星图已经核对。"});
-	await api("groups.send",{groupId:"group_search",requestId:"group-answer",text:"请核对",recipientIds:["bot_reviewer"]});
+	await h.api("groups.send",{groupId:"group_search",requestId:"group-answer",text:"请核对",recipientIds:["bot_reviewer"]});
 	await poll(()=>unread("group:group_search")).toBe(1);
 	await h.page().getByRole("group",{name:"Conversation filter"}).getByRole("button",{name:"Unread",exact:true}).click();
 	// The Host projection can be ahead of the renderer's bounded observation refresh.
@@ -88,10 +87,10 @@ it("combines unread filtering with group/private history and preserves selected 
 });
 
 it("rebuilds historical search after restart and handles Chinese, IME and a small dark window",async()=>{
-	const before=await api("conversations.search",{query:"群内星图",includeHidden:true});
-	await api("settings.update",{language:"zh-CN"});await h.relaunch();
+	const before=await h.api("conversations.search",{query:"群内星图",includeHidden:true});
+	await h.api("settings.update",{language:"zh-CN"});await h.relaunch();
 	await h.page().keyboard.press("Meta+k");
-	expect(await api("conversations.search",{query:"群内星图",includeHidden:true})).toEqual(before);
+	expect(await h.api("conversations.search",{query:"群内星图",includeHidden:true})).toEqual(before);
 	await search().fill("群内星图");await poll(()=>results().count()).toBe(1);
 	await search().dispatchEvent("keydown",{key:"Escape",isComposing:true});expect(await search().inputValue()).toBe("群内星图");
 	await results().click();await h.page().getByText("正在查看搜索结果",{exact:true}).waitFor();
@@ -158,11 +157,11 @@ it("ignores delayed pages and recovers a search error without leaking query cont
 });
 
 it("keeps hidden history discoverable, excludes deleted Bots and retains dissolved group history",async()=>{
-	await api("bots.update",{botId:"bot_analyst",status:"hidden"});
+	await h.api("bots.update",{botId:"bot_analyst",status:"hidden"});
 	await poll(()=>results().textContent()).toContain("已隐藏的 Bot");
-	await api("bots.delete",{botId:"bot_analyst"});await poll(()=>results().count()).toBe(0);
-	const group=(await api("groups.list")).find((g:any)=>g.groupId==="group_search");
-	await api("groups.change",{requestId:"dissolve",action:"dissolve",groupId:group.groupId,expectedRevision:group.revision});
+	await h.api("bots.delete",{botId:"bot_analyst"});await poll(()=>results().count()).toBe(0);
+	const group=(await h.api("groups.list")).find((g:any)=>g.groupId==="group_search");
+	await h.api("groups.change",{requestId:"dissolve",action:"dissolve",groupId:group.groupId,expectedRevision:group.revision});
 	await search().fill("群内星图");await poll(()=>results().count()).toBe(1);await results().click();
 	await h.page().getByText("此群组已解散。历史记录只读，保存在此 Mac 上。",{exact:true}).waitFor();
 	expect(await h.page().locator(".search-target").textContent()).toContain("群内星图");

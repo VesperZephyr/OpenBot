@@ -2,8 +2,6 @@ import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { type AppHarness, launchApp } from "./harness.ts";
 let h: AppHarness, core: string;
 const groupId = "group_experience";
-const api = (name: string, params = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 15000 });
 const box = () => h.page().locator(".compose-area textarea");
 const openGroup = async () => {
@@ -14,19 +12,19 @@ const openBot = async (name: string) => {
 	await h.page().locator(".sidebar .bot-row").filter({ has: h.page().getByText(name, { exact: true }) }).click();
 	await h.page().locator(".conversation-name").filter({ hasText: name }).waitFor();
 };
-const group = () => api("groups.snapshot", { groupId });
+const group = () => h.api("groups.snapshot", { groupId });
 beforeAll(async () => {
 	h = await launchApp("conversation-experience");
 	h.page().setDefaultTimeout(8000);
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
-	core = (await api("bots.list")).find((b: any) => b.kind === "core").botId;
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	core = (await h.api("bots.list")).find((b: any) => b.kind === "core").botId;
 	for (const name of ["Analyst", "Reviewer"])
-		await api("bots.create", {
+		await h.api("bots.create", {
 			requestId: name.toLowerCase(),
 			name,
 			role: name === "Analyst" ? "Research specialist" : "Review specialist",
 		});
-	await api("groups.change", {
+	await h.api("groups.change", {
 		requestId: "create",
 		groupId,
 		action: "create",
@@ -81,7 +79,7 @@ it("keeps private and group drafts through filtering, details, locale and restar
 	).toBe(true);
 	await h.page().keyboard.press("Escape");
 	expect(await h.page().getByRole("dialog").count()).toBe(0);
-	await api("settings.update", { language: "zh-CN" });
+	await h.api("settings.update", { language: "zh-CN" });
 	await h.relaunch();
 	await openGroup();
 	expect(await box().inputValue()).toBe("Group 草稿");
@@ -89,7 +87,7 @@ it("keeps private and group drafts through filtering, details, locale and restar
 	await openBot("Analyst");
 	expect(await box().inputValue()).toBe("Private 草稿");
 	expect(h.model.requests).toHaveLength(0);
-	await api("settings.update", { language: "en" });
+	await h.api("settings.update", { language: "en" });
 	await h.relaunch();
 });
 
@@ -109,7 +107,7 @@ it("recovers an acknowledged send with a lost reply without another model call",
 		},
 		{ groupId, requestId },
 	);
-	await api("groups.send", { groupId, requestId, text: "Accept once" });
+	await h.api("groups.send", { groupId, requestId, text: "Accept once" });
 	await poll(async () => (await group()).roots.at(-1)?.state).toBe("completed");
 	const calls = h.model.requests.length;
 	await h.relaunch();
@@ -133,7 +131,7 @@ it("mentions are keyboard accessible, IME-safe and never silently redirect remov
 	expect(await box().inputValue()).toBe("检查一下");
 	const before = h.model.requests.length;
 	const previous = (await group()).group;
-	await api("groups.change", {
+	await h.api("groups.change", {
 		requestId: "remove",
 		groupId,
 		action: "update",
@@ -149,7 +147,7 @@ it("mentions are keyboard accessible, IME-safe and never silently redirect remov
 	await poll(async () => (await group()).posts.at(-1)?.text).toBe("Core received the explicit new choice.");
 	expect((await group()).posts.at(-1).senderId).toBe(core);
 	const changed = (await group()).group;
-	await api("groups.change", {
+	await h.api("groups.change", {
 		requestId: "restore",
 		groupId,
 		action: "update",
@@ -188,8 +186,8 @@ it("preserves reading position for private and group updates and renders bilingu
 		});
 		const top = await timeline.evaluate((el) => el.scrollTop);
 		h.model.script({ text: `${kind} new update` });
-		if (kind === "private") await api("messages.submit", { botId: "bot_analyst", requestId: "history-private", text: "More" });
-		else await api("groups.send", { groupId, requestId: "history-group", text: "More" });
+		if (kind === "private") await h.api("messages.submit", { botId: "bot_analyst", requestId: "history-private", text: "More" });
+		else await h.api("groups.send", { groupId, requestId: "history-group", text: "More" });
 		await h.page().getByText(`${kind} new update`, { exact: true }).waitFor();
 		expect(Math.abs((await timeline.evaluate((el) => el.scrollTop)) - top)).toBeLessThan(3);
 		await h
@@ -220,7 +218,7 @@ it("preserves reading position for private and group updates and renders bilingu
 			.evaluate((el) => el.contains(document.activeElement)),
 	).toBe(true);
 	await h.page().keyboard.press("Escape");
-	await api("settings.update", { language: "zh-CN" });
+	await h.api("settings.update", { language: "zh-CN" });
 	await h.relaunch();
 	await openGroup();
 	await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(880, 700));
@@ -229,7 +227,7 @@ it("preserves reading position for private and group updates and renders bilingu
 	expect(await h.page().evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 	await box().fill("解散前的草稿");
 	const current = (await group()).group;
-	await api("groups.change", { requestId: "dissolve", groupId, action: "dissolve", expectedRevision: current.revision });
+	await h.api("groups.change", { requestId: "dissolve", groupId, action: "dissolve", expectedRevision: current.revision });
 	await h.page().getByRole("button", { name: "复制草稿" }).waitFor();
 	expect(await box().inputValue()).toBe("解散前的草稿");
 	expect(await box().getAttribute("readonly")).not.toBeNull();
@@ -237,10 +235,10 @@ it("preserves reading position for private and group updates and renders bilingu
 });
 
 it("keeps long names and code readable at minimum width without page overflow", async () => {
-	await api("settings.update", { language: "en" });
+	await h.api("settings.update", { language: "en" });
 	await h.relaunch();
 	const name = "Research and verification specialist · 长名称与代码布局检查";
-	await api("bots.create", { requestId: "long-name", name });
+	await h.api("bots.create", { requestId: "long-name", name });
 	await openBot(name);
 	await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(880, 700));
 	h.model.script({

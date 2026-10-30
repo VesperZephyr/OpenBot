@@ -5,8 +5,6 @@ import { BotRuntime } from "../packages/agent-runtime/src/index.ts";
 import { scriptedModels } from "../packages/agent-runtime/src/testing.ts";
 import { launchApp, type AppHarness } from "./harness.ts";
 let h: AppHarness;
-const api = (name: string, params: any = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 beforeAll(async () => {
 	h = await launchApp("unattended-reliability", { env: { OPENBOT_MAX_ACTIVE_RUNS: "1" } });
 });
@@ -14,11 +12,11 @@ afterAll(async () => {
 	await h?.close();
 });
 it("publishes the renamed daily chain despite an invalid peer schedule, exposes health and recovers without duplicates", async () => {
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
-	const core = (await api("bots.list")).find((b: any) => b.kind === "core");
-	const peer = await api("bots.create", { requestId: "researcher", name: "Researcher" });
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	const core = (await h.api("bots.list")).find((b: any) => b.kind === "core");
+	const peer = await h.api("bots.create", { requestId: "researcher", name: "Researcher" });
 	const groupFields = { name: "Radar", objective: "Daily source reports", memberIds: [core.botId, peer.botId], leadBotId: core.botId };
-	const group = await api("groups.change", {
+	const group = await h.api("groups.change", {
 		action: "create",
 		requestId: "group",
 		groupId: "group_reliable",
@@ -33,14 +31,14 @@ it("publishes the renamed daily chain despite an invalid peer schedule, exposes 
 		skills: [],
 		reportTo: { groupId: group.groupId, groupRevision: 1 },
 	};
-	const source = await api("routines.change", { action: "create", requestId: "source", botId: core.botId, fields });
-	const foreign = await api("routines.change", {
+	const source = await h.api("routines.change", { action: "create", requestId: "source", botId: core.botId, fields });
+	const foreign = await h.api("routines.change", {
 		action: "create",
 		requestId: "foreign",
 		botId: peer.botId,
 		fields: { ...fields, name: "International" },
 	});
-	const summary = await api("routines.change", {
+	const summary = await h.api("routines.change", {
 		action: "create",
 		requestId: "summary",
 		botId: core.botId,
@@ -50,13 +48,13 @@ it("publishes the renamed daily chain despite an invalid peer schedule, exposes 
 			reportInputs: { sources: [source, foreign].map((r) => ({ routineId: r.routineId, revision: 1 })), windowHours: 24, waitMinutes: 1 },
 		},
 	});
-	const broken = await api("routines.change", {
+	const broken = await h.api("routines.change", {
 		action: "create",
 		requestId: "broken",
 		botId: peer.botId,
 		fields: { ...fields, name: "Unavailable schedule" },
 	});
-	await api("groups.change", {
+	await h.api("groups.change", {
 		action: "update",
 		requestId: "group-rename",
 		groupId: group.groupId,
@@ -73,9 +71,9 @@ it("publishes the renamed daily chain despite an invalid peer schedule, exposes 
 	await h.page().getByLabel("Routine name", { exact: true }).fill("Domestic renamed");
 	await h.page().getByRole("button", { name: "Review routine", exact: true }).click();
 	await h.page().getByRole("button", { name: "Confirm routine change", exact: true }).click();
-	await expect.poll(async () => (await api("routines.get", { routineId: source.routineId })).routine.revision).toBe(2);
-	expect((await api("routines.get", { routineId: source.routineId })).routine.executionRevision).toBe(1);
-	expect((await api("routines.get", { routineId: summary.routineId })).routine.enabled).toBe(true);
+	await expect.poll(async () => (await h.api("routines.get", { routineId: source.routineId })).routine.revision).toBe(2);
+	expect((await h.api("routines.get", { routineId: source.routineId })).routine.executionRevision).toBe(1);
+	expect((await h.api("routines.get", { routineId: summary.routineId })).routine.enabled).toBe(true);
 	h.model.script(
 		{ text: "Domestic source report." },
 		{ text: "International source report." },
@@ -98,12 +96,12 @@ it("publishes the renamed daily chain despite an invalid peer schedule, exposes 
 	});
 	await h.app().evaluate(({ powerMonitor }) => powerMonitor.emit("lock-screen"));
 	await expect
-		.poll(async () => (await api("groups.snapshot", { groupId: group.groupId })).posts.filter((p: any) => p.routine).length, {
+		.poll(async () => (await h.api("groups.snapshot", { groupId: group.groupId })).posts.filter((p: any) => p.routine).length, {
 			timeout: 30000,
 		})
 		.toBe(3);
-	expect((await api("lifecycle.get")).blocked).toBe(false);
-	const posts = (await api("groups.snapshot", { groupId: group.groupId })).posts;
+	expect((await h.api("lifecycle.get")).blocked).toBe(false);
+	const posts = (await h.api("groups.snapshot", { groupId: group.groupId })).posts;
 	expect(posts.every((p: any) => p.routine?.test === false)).toBe(true);
 	expect(posts.find((p: any) => p.routine.routineId === summary.routineId).routine.inputs).toEqual({ ready: 2, total: 2 });
 	expect(h.model.requests).toHaveLength(3);
@@ -114,23 +112,23 @@ it("publishes the renamed daily chain despite an invalid peer schedule, exposes 
 		.getByText("Scheduled work needs attention. Other tasks continue; failed tasks retry automatically.", { exact: true })
 		.waitFor();
 	await h.shot("01-independent-failure");
-	await api("settings.update", { language: "zh-CN" });
+	await h.api("settings.update", { language: "zh-CN" });
 	await h.page().getByText("部分定时任务需要关注。其他任务继续运行，失败任务将自动重试。", { exact: true }).waitFor();
 	await h.shot("02-independent-failure-zh");
 	await h.app().evaluate(({ powerMonitor }) => powerMonitor.emit("unlock-screen"));
 	// Repair via the ordinary version-checked API, then observe fault recovery.
-	const current = (await api("routines.get", { routineId: broken.routineId })).routine;
-	await api("routines.change", {
+	const current = (await h.api("routines.get", { routineId: broken.routineId })).routine;
+	await h.api("routines.change", {
 		action: "update",
 		requestId: "repair",
 		routineId: broken.routineId,
 		expectedRevision: current.revision,
 		fields: { ...fields, name: "Repaired schedule", schedule: { kind: "interval", minutes: 120 } },
 	});
-	await expect.poll(async () => (await api("routines.list")).scheduler.faults.length, { timeout: 10000 }).toBe(0);
+	await expect.poll(async () => (await h.api("routines.list")).scheduler.faults.length, { timeout: 10000 }).toBe(0);
 	await h.relaunch();
-	expect((await api("groups.snapshot", { groupId: group.groupId })).posts).toHaveLength(3);
+	expect((await h.api("groups.snapshot", { groupId: group.groupId })).posts).toHaveLength(3);
 	expect(h.model.requests).toHaveLength(3);
-	expect((await api("routines.list")).routines.every((r: any) => r.enabled)).toBe(true);
+	expect((await h.api("routines.list")).routines.every((r: any) => r.enabled)).toBe(true);
 	await h.shot("03-recovered");
 });

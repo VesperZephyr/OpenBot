@@ -4,20 +4,18 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { launchApp, type AppHarness } from "./harness.ts";
 let h: AppHarness, core: string;
-const api = (name: string, params = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 15000 });
 const box = () => h.page().locator(".compose-area textarea");
-const snapshot = () => api("conversations.snapshot", { botId: core });
-const unread = async (key: string) => (await api("conversations.list")).find((r: any) => r.conversationKey === key).unreadCount;
+const snapshot = () => h.api("conversations.snapshot", { botId: core });
+const unread = async (key: string) => (await h.api("conversations.list")).find((r: any) => r.conversationKey === key).unreadCount;
 async function restartHost() {
-	const cursor = await api("observation.wait", { waitMs: 0 });
+	const cursor = await h.api("observation.wait", { waitMs: 0 });
 	const pid = Number((await readFile(join(h.dataDirectory, "host.lock"), "utf8")).trim());
 	// SIGTERM is an intentional quit and now withdraws approvals; this fixture needs unexpected loss.
 	process.kill(pid, "SIGKILL");
 	await poll(async () => {
 		try {
-			return (await api("observation.wait", { waitMs: 0 })).streamId;
+			return (await h.api("observation.wait", { waitMs: 0 })).streamId;
 		} catch {
 			return cursor.streamId;
 		}
@@ -27,8 +25,8 @@ async function restartHost() {
 beforeAll(async () => {
 	h = await launchApp("observation");
 	h.page().setDefaultTimeout(10000);
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
-	core = (await api("bots.list"))[0].botId;
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	core = (await h.api("bots.list"))[0].botId;
 	await box().waitFor();
 });
 afterEach(async ({ task }) => {
@@ -52,7 +50,7 @@ it("reloads and reconnects an exact approval without losing a draft or repeating
 	expect(await box().inputValue()).toBe("Keep this English draft / 保留中文草稿");
 	await restartHost();
 	await poll(async () => (await snapshot()).approvals[0]?.approvalId).toBe(approval);
-	expect(await api("bots.list")).toHaveLength(1);
+	expect(await h.api("bots.list")).toHaveLength(1);
 	await h.page().locator(".approval-actions button.primary").click();
 	await h.page().getByText("OBSERVATION_RESULT created once.", { exact: true }).waitFor();
 	await poll(async () => (await snapshot()).run).toBeUndefined();
@@ -62,7 +60,7 @@ it("reloads and reconnects an exact approval without losing a draft or repeating
 	const count = await unread(`bot:${core}`);
 	await restartHost();
 	await h.page().getByText("OBSERVATION_RESULT created once.", { exact: true }).waitFor();
-	expect(await api("bots.list")).toHaveLength(2);
+	expect(await h.api("bots.list")).toHaveLength(2);
 	expect((await snapshot()).items.filter((i: any) => i.id === tool.id)).toHaveLength(1);
 	expect(await unread(`bot:${core}`)).toBe(count);
 	expect(await box().inputValue()).toBe("Keep this English draft / 保留中文草稿");
@@ -70,9 +68,9 @@ it("reloads and reconnects an exact approval without losing a draft or repeating
 	await h.shot("01-reconnected-result-en");
 });
 it("keeps a group search target, unread count and Chinese draft through Host recovery", async () => {
-	const helper = (await api("bots.list")).find((b: any) => b.kind === "specialist");
-	await api("settings.update", { language: "zh-CN" });
-	await api("groups.change", {
+	const helper = (await h.api("bots.list")).find((b: any) => b.kind === "specialist");
+	await h.api("settings.update", { language: "zh-CN" });
+	await h.api("groups.change", {
 		requestId: "observation-group",
 		action: "create",
 		groupId: "group_observation",
@@ -80,7 +78,7 @@ it("keeps a group search target, unread count and Chinese draft through Host rec
 		fields: { name: "恢复验证群", objective: "Local recovery", memberIds: [core, helper.botId], leadBotId: core },
 	});
 	h.model.script({ text: "群聊恢复标记：这份结果只发布一次。" });
-	await api("groups.send", {
+	await h.api("groups.send", {
 		groupId: "group_observation",
 		requestId: "group-answer",
 		text: "Give a recovery result.",
@@ -100,7 +98,7 @@ it("keeps a group search target, unread count and Chinese draft through Host rec
 	expect(await box().inputValue()).toBe("群聊中文草稿 / next task");
 	expect(await unread("group:group_observation")).toBe(1);
 	expect(
-		(await api("groups.snapshot", { groupId: "group_observation" })).posts.filter((p: any) => p.text.startsWith("群聊恢复标记")),
+		(await h.api("groups.snapshot", { groupId: "group_observation" })).posts.filter((p: any) => p.text.startsWith("群聊恢复标记")),
 	).toHaveLength(1);
 	await h.shot("02-reconnected-group-search-zh");
 });

@@ -6,16 +6,12 @@ import { launchApp, repo, type AppHarness } from "./harness.ts";
 import { seedHistory } from "../packages/agent-runtime/test/history-fixture.ts";
 let h: AppHarness;
 const metrics: Record<string, unknown> = { node: process.version, cpu: cpus()[0]?.model, memory: totalmem(), load: loadavg() };
-const api = (name: string, params = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 60000 });
 const row = (name: string) =>
 	h
 		.page()
 		.locator(".bot-row")
 		.filter({ has: h.page().getByText(name, { exact: true }) });
-const frame = () =>
-	h.page().evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 const p95 = (values: number[]) => values.sort((a, b) => a - b)[Math.ceil(values.length * 0.95) - 1]!;
 beforeAll(async () => {
 	const started = performance.now();
@@ -28,13 +24,13 @@ beforeAll(async () => {
 			return { OPENBOT_HOST_ENTRY: join(repo, "e2e/fixtures/history-host.mts"), OPENBOT_HISTORY_METRICS: join(run, "worker-metrics.json") };
 		},
 	});
-	for (let i = 0; i < 600 && (await api("conversations.indexStatus")).state !== "ready"; i++)
+	for (let i = 0; i < 600 && (await h.api("conversations.indexStatus")).state !== "ready"; i++)
 		await new Promise((resolve) => setTimeout(resolve, 100));
-	expect((await api("conversations.indexStatus")).state).toBe("ready");
+	expect((await h.api("conversations.indexStatus")).state).toBe("ready");
 	metrics.coldRebuildAndLaunchMs = performance.now() - started - Number(metrics.seedMs);
 	expect(metrics.coldRebuildAndLaunchMs).toBeLessThan(60000);
 	metrics.electron = await h.app().evaluate(() => process.versions.electron);
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
 }, 120000);
 afterEach(async ({ task }) => {
 	if (task.result?.state === "fail") {
@@ -50,15 +46,15 @@ afterAll(async () => {
 	}
 });
 it("bounds windows and mounted rows while measuring warm switching and corpus searches", async () => {
-	const direct = await api("conversations.window", { conversationKey: "bot:history_0", position: { kind: "latest" } });
+	const direct = await h.api("conversations.window", { conversationKey: "bot:history_0", position: { kind: "latest" } });
 	expect(direct.status).toBe("ready");
 	expect(direct.window.rows.length).toBeLessThanOrEqual(100);
 	expect(Buffer.byteLength(JSON.stringify(direct))).toBeLessThanOrEqual(512 * 1024);
-	expect((await api("conversations.snapshot", { botId: "history_0", history: "omit" })).items).toEqual([]);
+	expect((await h.api("conversations.snapshot", { botId: "history_0", history: "omit" })).items).toEqual([]);
 	const sizes = [];
 	for (const name of ["History 1", "History 0"]) {
 		await row(name).click();
-		await frame();
+		await h.nextFrame();
 		const cache = JSON.parse((await h.page().locator("[data-history-cache]").first().getAttribute("data-history-cache"))!);
 		const mounted = await h.page().locator("[data-history-row]").count();
 		expect(cache.rows).toBeLessThanOrEqual(300);
@@ -72,11 +68,11 @@ it("bounds windows and mounted rows while measuring warm switching and corpus se
 		const start = performance.now();
 		await row(i % 2 ? "History 0" : "History group").click();
 		await h.page().locator("[data-history-row]").first().waitFor();
-		await frame();
+		await h.nextFrame();
 		if (i >= 5) switchTimes.push(performance.now() - start);
 		expect(await h.page().locator("[data-history-row]").count()).toBeLessThanOrEqual(80);
 		const at = performance.now();
-		const result = await api("conversations.search", { query: i % 2 ? "NO_MATCH_LONG_HISTORY" : "星图" });
+		const result = await h.api("conversations.search", { query: i % 2 ? "NO_MATCH_LONG_HISTORY" : "星图" });
 		if (i >= 5) searchTimes.push(performance.now() - at);
 		if (i % 2) expect(result.items).toEqual([]);
 	}
@@ -118,7 +114,7 @@ it("loads older pages, preserves an anchor through resize/theme, and jumps exact
 	await poll(() => h.page().locator(".search-result").count()).toBe(30);
 	await h.page().locator(".search-result").filter({ hasText: "History 0" }).first().click();
 	await h.page().locator(".search-target").waitFor();
-	await frame();
+	await h.nextFrame();
 	const target = await h.page().locator(".search-target").getAttribute("data-history-row");
 	expect(target).toBeTruthy();
 	const offset = () =>
@@ -131,17 +127,17 @@ it("loads older pages, preserves an anchor through resize/theme, and jumps exact
 	await h.page().evaluate(() => {
 		document.documentElement.dataset.theme = "dark";
 	});
-	await frame();
+	await h.nextFrame();
 	expect(Math.abs((await offset()) - before)).toBeLessThanOrEqual(4);
 	await h.shot("02-historical-anchor-dark");
 	await h.page().getByRole("button", { name: "Load earlier messages", exact: true }).click();
-	await frame();
+	await h.nextFrame();
 	expect(await h.page().locator("[data-history-row]").count()).toBeLessThanOrEqual(80);
 	for (let i = 0; i < 3; i++) {
 		const earlier = h.page().getByRole("button", { name: "Load earlier messages", exact: true });
 		if (!(await earlier.count())) break;
 		await earlier.click();
-		await frame();
+		await h.nextFrame();
 		const cache = JSON.parse((await h.page().locator("[data-history-cache]").first().getAttribute("data-history-cache"))!);
 		expect(cache.windows).toBeLessThanOrEqual(3);
 		expect(cache.rows).toBeLessThanOrEqual(300);
@@ -151,7 +147,7 @@ it("loads older pages, preserves an anchor through resize/theme, and jumps exact
 		.page()
 		.getByRole("button", { name: /Jump to latest/ })
 		.click();
-	await frame();
+	await h.nextFrame();
 	expect(await h.page().locator(".compose-area textarea").inputValue()).toBe("Keep this draft 星图");
 	await h.page().getByRole("searchbox").fill("");
 	await h.page().evaluate(() => {
@@ -159,10 +155,10 @@ it("loads older pages, preserves an anchor through resize/theme, and jumps exact
 	});
 });
 it("streams bounded detail parts from a two MiB Unicode row and keeps controls live during rebuild", async () => {
-	const matches = await api("conversations.search", { query: "LARGE_END_NEEDLE" });
+	const matches = await h.api("conversations.search", { query: "LARGE_END_NEEDLE" });
 	const hit = matches.items.find((m: any) => m.conversationKey === "bot:history_0");
 	expect(hit).toBeTruthy();
-	const found = await api("conversations.window", {
+	const found = await h.api("conversations.window", {
 		conversationKey: hit.conversationKey,
 		position: { kind: "around", rowId: hit.messageId },
 	});
@@ -173,7 +169,7 @@ it("streams bounded detail parts from a two MiB Unicode row and keeps controls l
 		bytes = 0,
 		tail = "";
 	while (part !== undefined) {
-		const detail = await api("conversations.detail", { conversationKey: hit.conversationKey, detail: large.content.detail, part });
+		const detail = await h.api("conversations.detail", { conversationKey: hit.conversationKey, detail: large.content.detail, part });
 		expect(Buffer.byteLength(detail.text)).toBeLessThanOrEqual(32768);
 		expect(detail.text).not.toMatch(/[\uD800-\uDBFF]$/);
 		bytes += Buffer.byteLength(detail.text);
@@ -203,19 +199,19 @@ it("streams bounded detail parts from a two MiB Unicode row and keeps controls l
 		.click();
 	await h.page().getByRole("searchbox").fill("");
 
-	await api("conversations.indexRetry");
+	await h.api("conversations.indexRetry");
 	const controls: number[] = [];
 	for (let i = 0; i < 35; i++) {
 		const start = performance.now();
-		await api("conversations.snapshot", { botId: "history_0", history: "omit" });
+		await h.api("conversations.snapshot", { botId: "history_0", history: "omit" });
 		if (i >= 5) controls.push(performance.now() - start);
 	}
 	metrics.controlsP95 = p95(controls);
 	expect(metrics.controlsP95).toBeLessThanOrEqual(250);
 	h.model.script({ text: "Controls remained available during indexing." });
 	await h.send("Reply during the rebuild");
-	await poll(async () => (await api("bots.list")).find((b: any) => b.botId === "history_0").lastRun?.state).toBe("completed");
-	await poll(async () => (await api("conversations.indexStatus")).state).toBe("ready");
+	await poll(async () => (await h.api("bots.list")).find((b: any) => b.botId === "history_0").lastRun?.state).toBe("completed");
+	await poll(async () => (await h.api("conversations.indexStatus")).state).toBe("ready");
 	const jump = h.page().getByRole("button", { name: /Jump to latest/ });
 	if (await jump.count()) await jump.click();
 	await h.page().getByText("Controls remained available during indexing.", { exact: true }).waitFor();

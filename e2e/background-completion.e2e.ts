@@ -3,10 +3,8 @@ import { join } from "node:path";
 import { beforeAll, afterAll, afterEach, expect, it } from "vitest";
 import { launchApp, type AppHarness } from "./harness.ts";
 let h: AppHarness, core: string;
-const api = (name: string, params = {}): Promise<any> =>
-	h.page().evaluate(({ name, params }) => (window as any).openbot.methods[name](params), { name, params });
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 15000 });
-const snapshot = () => api("conversations.snapshot", { botId: core });
+const snapshot = () => h.api("conversations.snapshot", { botId: core });
 const approve = () =>
 	h.page().getByRole("group", { name: "Approval request" }).getByRole("button", { name: "Allow once", exact: true }).click();
 const selectCore = () =>
@@ -25,9 +23,9 @@ const command = (marker: string) => ({
 });
 beforeAll(async () => {
 	h = await launchApp("background-completion");
-	await api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
-	core = (await api("bots.list"))[0].botId;
-	await api("bots.create", { requestId: "analyst", name: "Analyst" });
+	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" } });
+	core = (await h.api("bots.list"))[0].botId;
+	await h.api("bots.create", { requestId: "analyst", name: "Analyst" });
 });
 afterEach(async ({ task }) => {
 	if (task.result?.state === "fail") await h.shot("failure");
@@ -43,9 +41,9 @@ it("delivers a final result automatically while another Bot responds, with one i
 	await poll(async () => (await snapshot()).backgroundTasks?.[0]?.state).toBe("running");
 	await h.page().getByText("Command running", { exact: true }).waitFor();
 	h.model.script({ text: "Another conversation is responsive." });
-	await api("messages.submit", { botId: "bot_analyst", requestId: "parallel", text: "Answer while the command is running." });
+	await h.api("messages.submit", { botId: "bot_analyst", requestId: "parallel", text: "Answer while the command is running." });
 	await poll(async () =>
-		(await api("conversations.snapshot", { botId: "bot_analyst" })).items.some(
+		(await h.api("conversations.snapshot", { botId: "bot_analyst" })).items.some(
 			(i: any) => i.kind === "assistant" && i.parts.some((p: any) => p.text === "Another conversation is responsive."),
 		),
 	).toBe(true);
@@ -83,7 +81,7 @@ it("keeps completion tools unattended and cannot grant Core management or recurs
 	expect(pending.expiresAt ?? pending.deadline).toBeDefined();
 	await h.page().getByRole("group", { name: "Approval request" }).getByRole("button", { name: "Deny", exact: true }).click();
 	await h.page().getByText("Follow-up denied; no extra Bot was created.", { exact: true }).waitFor();
-	expect((await api("bots.list")).some((b: any) => b.name === "Forbidden automatic Bot")).toBe(false);
+	expect((await h.api("bots.list")).some((b: any) => b.name === "Forbidden automatic Bot")).toBe(false);
 	await poll(async () => (await snapshot()).backgroundTasks.at(-1).state).toBe("delivered");
 	expect((await snapshot()).backgroundTasks).toHaveLength(2);
 });
@@ -96,7 +94,7 @@ it("stops a background task from its inline card and preserves the tombstone in 
 	await poll(async () => (await snapshot()).backgroundTasks.at(-1).state).toBe("suppressed");
 	const count = h.model.requests.length;
 	await writeFile(join(h.workspace, "release-stop"), "late");
-	await api("settings.update", { language: "zh-CN" });
+	await h.api("settings.update", { language: "zh-CN" });
 	await h.relaunch();
 	await selectCore();
 	await h.page().getByText("自动续接已停止", { exact: true }).waitFor();
@@ -108,9 +106,9 @@ it("stops a background task from its inline card and preserves the tombstone in 
 	expect(await readFile(join(h.dataDirectory, "logs/host.log"), "utf8")).not.toContain("B15B_FINAL_13");
 });
 it("returns group completion to the same root and suppresses dissolved group work", async () => {
-	await api("settings.update", { language: "en" });
-	await api("bots.create", { requestId: "reviewer", name: "Reviewer" });
-	await api("groups.change", {
+	await h.api("settings.update", { language: "en" });
+	await h.api("bots.create", { requestId: "reviewer", name: "Reviewer" });
+	await h.api("groups.change", {
 		requestId: "group",
 		action: "create",
 		groupId: "group_background",
@@ -123,7 +121,7 @@ it("returns group completion to the same root and suppresses dissolved group wor
 	await h.page().locator(".compose-area textarea").press("Enter");
 	await approve();
 	await h.page().getByText("Group command started.", { exact: true }).waitFor();
-	const groupSnapshot = () => api("groups.snapshot", { groupId: "group_background" });
+	const groupSnapshot = () => h.api("groups.snapshot", { groupId: "group_background" });
 	await poll(async () => (await groupSnapshot()).backgroundTasks.length).toBe(1);
 	expect((await groupSnapshot()).roots[0].state).toBe("running");
 	h.model.script({ text: "Group final result: B15B_FINAL_13." });
@@ -135,11 +133,11 @@ it("returns group completion to the same root and suppresses dissolved group wor
 	expect(group.posts.filter((p: any) => p.text === "Group final result: B15B_FINAL_13.")).toHaveLength(1);
 	await h.shot("03-group-completion-en");
 	h.model.script(command("release-dissolved"), { text: "Waiting in the group." });
-	await api("groups.send", { groupId: "group_background", requestId: "dissolve-work", text: "Start a background job." });
+	await h.api("groups.send", { groupId: "group_background", requestId: "dissolve-work", text: "Start a background job." });
 	await approve();
 	await h.page().getByText("Waiting in the group.", { exact: true }).waitFor();
 	const current = (await groupSnapshot()).group;
-	await api("groups.change", { requestId: "dissolve", action: "dissolve", groupId: current.groupId, expectedRevision: current.revision });
+	await h.api("groups.change", { requestId: "dissolve", action: "dissolve", groupId: current.groupId, expectedRevision: current.revision });
 	await writeFile(join(h.workspace, "release-dissolved"), "late");
 	await poll(async () => (await groupSnapshot()).backgroundTasks.at(-1).state).toBe("suppressed");
 });
@@ -150,7 +148,7 @@ it("reset suppresses a copied result and an approved follow-up cannot create ano
 	await approve();
 	await h.page().getByText("Reset candidate started.", { exact: true }).waitFor();
 	const before = h.model.requests.length;
-	await api("conversations.reset", { botId: core });
+	await h.api("conversations.reset", { botId: core });
 	await writeFile(join(h.workspace, "release-reset"), "go");
 	await poll(async () => (await snapshot()).backgroundTasks.at(-1).state).toBe("suppressed");
 	expect(h.model.requests.length).toBe(before);
