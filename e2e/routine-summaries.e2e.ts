@@ -18,8 +18,9 @@ beforeAll(async () => {
 	const b = (await api("bots.create", { requestId: "b", name: "International Hunter", role: "International research" })).botId;
 	groupId = "group_summary_acceptance";
 	await api("groups.change", { action: "create", requestId: "group", groupId, expectedRevision: 0, fields: { name: "Research room", objective: "Compare the researchers' reports", memberIds: [core, a, b], leadBotId: core } });
-	// A real calendar firing proves no test action or daily user message is required.
-	const time = new Date(Date.now() + 90000).toISOString().slice(11, 16);
+	// The Host scheduler's own calendar firing proves no test action or daily user message is required. The minute is
+	// far enough ahead to stay in the future during setup; the test then moves the Host clock to it instead of waiting.
+	const time = new Date(Date.now() + 120000).toISOString().slice(11, 16);
 	for (const [index, botId] of [a, b].entries()) {
 		const r = await api("routines.change", { action: "create", requestId: `source-${index}`, botId, fields: { ...fields, name: index ? "International report" : "Domestic report", schedule: { kind: "daily", time, timezone: "UTC" }, reportTo: { groupId, groupRevision: 1 } } });
 		if (index) sourceB = r; else sourceA = r;
@@ -51,7 +52,9 @@ it("confirms generic inputs and automatically waits for both scheduled reports b
 		{ text: "International fact: recovery prerelease. [Primary B](https://example.com/international)", delayMs: 7000 },
 		{ text: "Daily comparison: both reports are available. One stable change and one prerelease. [Primary A](https://example.com/domestic) and [Primary B](https://example.com/international). Suggested priority: recovery." },
 	);
-	await poll(async () => (await detail()).history[0]?.state, 105000).toBe("pending");
+	expect((await detail()).history).toHaveLength(0);
+	await h.advanceHostClockTo(summary.nextAt + 1000);
+	await poll(async () => (await detail()).history[0]?.state).toBe("pending");
 	await h.page().getByRole("status").getByText("Waiting for source reports", { exact: true }).waitFor();
 	await h.shot("02-waiting-inputs-en");
 	await poll(async () => (await detail()).history[0]?.published, 25000).toBe(true);
@@ -71,7 +74,7 @@ it("confirms generic inputs and automatically waits for both scheduled reports b
 	await h.page().getByRole("button", { name: /Completed/, exact: false }).click();
 	await h.page().getByRole("region", { name: "Captured report inputs" }).waitFor();
 	await h.shot("03-captured-inputs-en");
-}, 130000);
+});
 it("opens exact source posts, shows Chinese coverage and keeps one summary after full restart", async () => {
 	await button("Open source report").first().click();
 	await h.page().getByRole("link", { name: "Primary A", exact: true }).first().waitFor();
