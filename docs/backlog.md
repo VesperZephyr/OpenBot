@@ -16,12 +16,21 @@ This is the active delivery queue, not a release history. Task status, contracts
 
 Prerequisites normally merge before dependent implementation. Each implementation needs a ready spec with resolved contracts and acceptance. The owner merges; queue position alone does not authorize scope expansion.
 
+## Research-informed Design Order
+
+After the existing delivery queue and release-priority work above, prepare these design candidates in order. The [October 30 Bot project comparison](research/bot-project-comparison-2026-10-30.md) records external evidence, overlap with existing tasks and the rationale; none is a ready implementation spec.
+
+1. **Bounded memory retrieval.** Continue the [memory research](research/memory-design.md) over B27a records; settle source scope, context budgets, correction/forgetting, backup restoration and measured Chinese retrieval. Do not rebuild provenance or add background extraction in this increment.
+2. **Reusable behavior regression traces.** Extend ScriptedModel and I3/I4 fixtures with sanitized failure replay where existing tests are insufficient. Feature-specific regressions remain in their owning tasks; this is not a prerequisite for B28a or a replacement test harness.
+3. **Policy explanation and preview.** Audit existing decision evidence before designing rule explanations and read-only historical replay. Resolve missing context, privacy/retention and persistence compatibility before claiming a preview matches live policy.
+
 ## Deferred Work
 
 | Area | Design prerequisite |
 | --- | --- |
 | Connector OAuth and optional model review | Separate B9c/B12b specs; supported connector/policy contracts remain bounded |
-| Memory retrieval, semantic contradictions, source citations and role readiness | Evidence and decisions from [memory](research/memory-design.md) and [role research](research/bot-role-design.md); preserve backup compatibility |
+| Semantic memory contradictions, background extraction and role readiness | Evidence and decisions from [memory](research/memory-design.md) and [role research](research/bot-role-design.md); bounded retrieval is ordered above |
+| Automatic skill-candidate extraction | Require evidence of repeated manual-authoring friction; retain B10 review and exact revision pins. See [comparison research](research/bot-project-comparison-2026-10-30.md#later-evidence-for-existing-design-areas) and [role research](research/bot-role-design.md) |
 | Richer menu-bar status, Normal/Verbose tool detail, login item and chat organization | Focused desktop specs rather than an acceptance-task expansion |
 | AI avatar generation, adjustable cropping and proactive greetings | Separate product design; original profile design is [D6](tasks/d6-desktop-design.md) |
 | Browser, takeover/secrets, desktop control, dictation and teaching | [Phase 3 feasibility gates](development-roadmap.md#7-p3-browser-desktop-and-demonstration-deferred), then ready specs |
