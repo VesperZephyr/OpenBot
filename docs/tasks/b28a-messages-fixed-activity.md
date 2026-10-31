@@ -1,6 +1,6 @@
 # B28a: Deliberate Bot Messages and Fixed Activity Status
 
-Status: ready
+Status: in progress
 Branch: `task/b28a-messages-fixed-activity`
 Depends on: B13c, B14a–B14d, B15b, B22–B23, D8; reconcile with B11e before implementation
 Architecture: Sections 5.1–5.3, 5.7, 6.1, 7.1–7.3, 8.1–8.3
