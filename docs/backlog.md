@@ -8,7 +8,7 @@ This is the active delivery queue, not a release history. Task status, contracts
 | --- | --- |
 | [B11e: Bot routines and generated-file Library](tasks/b11e-bot-routines-library.md) | Complete the review/verification tracked in [PR #69](https://github.com/VesperZephyr/OpenBot/pull/69); the spec owns findings and evidence |
 | [B13e: Bot templates](tasks/b13e-bot-templates.md) | Owner review and merge of the implementation candidate; acceptance is linked from the spec |
-| [B28a: Deliberate Bot messages and fixed activity status](tasks/b28a-messages-fixed-activity.md) | Implement and verify the approved message/projection and deterministic activity contracts |
+| [B28a: Deliberate Bot messages and fixed activity status](tasks/b28a-messages-fixed-activity.md) | Owner review of [PR #73](https://github.com/VesperZephyr/OpenBot/pull/73), stacked on the existing design branch; acceptance is linked from the spec |
 | [B28b: Optional AI activity phrasing](tasks/b28b-generated-activity.md) | Depends on B28a; review bounded inference/accounting and default-off evaluation contracts separately |
 
 ## Next

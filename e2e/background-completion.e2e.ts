@@ -47,10 +47,11 @@ it("delivers a final result automatically while another Bot responds, with one i
 			(i: any) => i.kind === "assistant" && i.parts.some((p: any) => p.text === "Another conversation is responsive."),
 		),
 	).toBe(true);
-	h.model.script({ text: "The background result is B15B_FINAL_13." });
+	h.model.script({ tool: "send_message", args: { text: "The background receipt is ready." } }, { text: "The background result is B15B_FINAL_13." });
 	await writeFile(join(h.workspace, "release-one"), "go");
 	await h.page().getByText("The background result is B15B_FINAL_13.", { exact: true }).waitFor();
 	await poll(async () => (await snapshot()).backgroundTasks[0].state).toBe("delivered");
+	expect(await h.page().getByText("The background receipt is ready.", { exact: true }).count()).toBe(1);
 	const before = await snapshot(),
 		record = before.backgroundTasks[0];
 	expect(record.receipt.output).toBe("B15B_FINAL_13");
@@ -124,12 +125,13 @@ it("returns group completion to the same root and suppresses dissolved group wor
 	const groupSnapshot = () => h.api("groups.snapshot", { groupId: "group_background" });
 	await poll(async () => (await groupSnapshot()).backgroundTasks.length).toBe(1);
 	expect((await groupSnapshot()).roots[0].state).toBe("running");
-	h.model.script({ text: "Group final result: B15B_FINAL_13." });
+	h.model.script({ tool: "send_message", args: { text: "The group receipt is ready." } }, { text: "Group final result: B15B_FINAL_13." });
 	await writeFile(join(h.workspace, "release-group"), "go");
 	await h.page().getByText("Group final result: B15B_FINAL_13.", { exact: true }).waitFor();
 	await poll(async () => (await groupSnapshot()).roots[0].state).toBe("completed");
 	const group = await groupSnapshot();
 	expect(group.roots[0].automaticDeliveries).toBe(1);
+	expect(group.posts.filter((p: any) => p.kind === "update" && p.text === "The group receipt is ready.")).toHaveLength(1);
 	expect(group.posts.filter((p: any) => p.text === "Group final result: B15B_FINAL_13.")).toHaveLength(1);
 	await h.shot("03-group-completion-en");
 	h.model.script(command("release-dissolved"), { text: "Waiting in the group." });

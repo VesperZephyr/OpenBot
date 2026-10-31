@@ -39,6 +39,7 @@ export type DisplayWrite = {
 	detailParts?: number;
 };
 export type HistoryBatch = {
+ removeRows?: string[];
 	partition: string;
 	key?: ConversationKey;
 	rows: DisplayWrite[];
@@ -204,6 +205,11 @@ export class HistoryStore {
 		try {
 			this.db.prepare("INSERT OR IGNORE INTO display_state(partition) VALUES(?)").run(batch.partition);
 			if (batch.key) this.db.prepare("INSERT OR IGNORE INTO conversations(key) VALUES(?)").run(batch.key);
+			for (const id of batch.removeRows ?? []) {
+				const deleted = this.db.prepare("DELETE FROM rows WHERE partition=? AND id=?").run(batch.partition, id);
+				this.db.prepare("DELETE FROM details WHERE partition=? AND id=?").run(batch.partition, id);
+				if (deleted.changes) this.db.prepare("UPDATE display_state SET revision=revision+1 WHERE partition=?").run(batch.partition);
+			}
 			for (const row of batch.rows) {
 				const old = this.db.prepare("SELECT hash,revision FROM rows WHERE partition=? AND id=?").get(batch.partition, row.id) as
 					| { hash: string; revision: number }

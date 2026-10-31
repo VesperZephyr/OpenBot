@@ -1,3 +1,4 @@
+export type { ActivityLabel, ExecutionObservation } from "./activity.ts";
 export * from "./templates.ts";
 export { historyPartition } from "./history.ts";
 export type { TimelinePosition, TimelineRow, TimelineWindow, WindowInput, WindowResult, DetailInput, DetailResult, IndexStatus } from "./history.ts";
@@ -144,7 +145,8 @@ export type GroupPost = {
 	readonly routine?: import("./routines.ts").RoutineReport;
 	readonly attachments?: readonly ArtifactRef[];
 	readonly rootId?: string;
-	readonly kind?: "delegation" | "handoff" | "result";
+	readonly kind?: "delegation" | "handoff" | "result" | "update";
+	readonly update?: { readonly runId: string; readonly botId: string; readonly conversationId: string; readonly callId: string; readonly targetId: string; readonly deliveryId: string };
 
 	readonly postId: string;
 	readonly senderId: string;
@@ -270,6 +272,7 @@ export type MessagePart = { readonly type: "text"; readonly text: string };
 export type ToolCallStatus = "pending" | "running" | "succeeded" | "failed" | "interrupted" | "cancelled";
 
 export type TranscriptItem =
+	| { readonly kind: "outcome"; readonly id: string; readonly runId: string; readonly category: "failed" | "cancelled" | "withdrawn" | "empty" | "stopping" | "interrupted" | "queued_cancelled"; readonly at?: number }
 	| {
 			readonly kind: "user";
 			readonly source?:"background" | "routine";
@@ -329,6 +332,7 @@ export type RunState =
 
 /** Live part of a conversation: present while a Run is active. */
 export type LiveRun = {
+ readonly activity?: { readonly runId: string; readonly labelKey: import("./activity.ts").ActivityLabel };
  readonly toolRunning?: boolean;
  readonly tools?: readonly { readonly callId: string; readonly output?: string }[];
 	readonly state: Extract<RunState, "running" | "waiting_approval" | "waiting_user" | "cancelling">;
@@ -338,8 +342,9 @@ export type LiveRun = {
 };
 
 export type ConversationSnapshot = {
+ readonly messageMode?: boolean;
  /** Latest failed user input, independent of the visible history window. */
- readonly retry?:{readonly text:string;readonly artifactIds?:readonly string[];readonly skills?:readonly SkillRef[]};
+ readonly retry?:{readonly outcomeId?:string;readonly text:string;readonly artifactIds?:readonly string[];readonly skills?:readonly SkillRef[]};
  /** Attention derived from committed outcomes, independent of the displayed history page. */
  readonly attention?: boolean;
 	readonly backgroundTasks?:readonly import("./background.ts").BackgroundRecord[];
@@ -986,6 +991,7 @@ export type ExecutorMessage =
 // Tool catalog: what the model is offered. Schemas are plain JSON Schema, which Pi validates tool arguments against.
 
 export type ToolCapability =
+ | "conversation.message"
  | "routines"
  | "connectors"
  | "connectors.discovery"
@@ -1023,6 +1029,7 @@ const object = (properties: Record<string, unknown>, required: readonly string[]
 });
 
 export const TOOL_CATALOG = [
+ { name: "send_message", capability: "conversation.message", destination: "host", description: "Send a meaningful progress update to this conversation. Does not finish the task. Use your final answer for the complete result.", parameters: object({ text: { type: "string", minLength: 1, maxLength: 16384 } }, ["text"]) },
  { name: "routine_propose", capability: "routines", destination: "host", description: "Prepare a recurring task for this Bot when the user asks to schedule work in direct chat. Provide an explicit IANA timezone for daily/weekly schedules; ask if unknown. This only creates a proposal card, never an active schedule. Tell the user to review and confirm it. Runs locally while OpenBot is open and the Mac is awake. Use empty skills unless exact reviewed references are known.", parameters: { ...ROUTINE_PROPOSAL_FIELDS } },
  {name:"skill_load", capability:"skills", destination:"host", description:"Load an exact reviewed shared skill as guidance. Use name, revision and sha256 from the skills list. It grants no permissions.", parameters:object({name:string("Skill name"),revision:integer("Exact revision"),sha256:string("Exact SHA-256")},["name","revision","sha256"])},
  {name:"skill_save", capability:"skills", destination:"host", description:"Propose saving or deleting a shared procedure in a direct user conversation. Always requires exact user review. Use expectedRevision 0 for a new name; otherwise inspect the current revision. Never include secrets or task data. No implicit grants.", parameters:object({action:{type:"string",enum:["save","delete"]},name:string("Skill name"),expectedRevision:{type:"integer",minimum:0},document:object(Object.fromEntries(["name","description","inputs","requirements","steps","validation","output","approvalBoundaries"].map(key=>[key,string(key)])),["name","description","inputs","requirements","steps","validation","output","approvalBoundaries"])},["action","name","expectedRevision"])},

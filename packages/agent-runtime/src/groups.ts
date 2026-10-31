@@ -280,7 +280,7 @@ export function groupStore(
 				if (ids.some((id) => !live.some((b) => b.botId === id && b.status !== "deleted"))) fail("A selected Bot no longer exists");
 				const rootId = `root:${key}`;
 				const post: GroupPost = { rootId, postId: `post:${key}`, senderId: "user", text, at, recipientIds: ids };
-				const recent = (doc.posts[groupId] ?? []).slice(-12).map((p) => ({ senderId: p.senderId, text: p.text.slice(-2000) }));
+				const recent = (doc.posts[groupId] ?? []).filter(p => p.kind !== "update").slice(-12).map((p) => ({ senderId: p.senderId, text: p.text.slice(-2000) }));
 				doc.posts[groupId]!.push(copy(post));
 				await projectConversation(tx, `group:${groupId}`, groupProjection(doc.posts[groupId]!));
 				doc.requests[key] = copy({ fingerprint, post });

@@ -32,6 +32,7 @@ function memoryConfigFile(): MemoryConfigFile {
 describe("HostService", () => {
 	let directory: string;
 	let runtime: BotRuntime;
+ let responses: ReturnType<typeof scriptedModels>;
 	let service: HostService;
 	let events: HostEventType[];
 	/** Bot of every `conversation.updated` event, in order. */
@@ -52,7 +53,8 @@ describe("HostService", () => {
 
 	beforeEach(async () => {
 		directory = await mkdtemp(join(tmpdir(), "openbot-host-"));
-		runtime = await BotRuntime.open({ databasePath: join(directory, "db.sqlite"), models: scriptedModels("Done.").models });
+		responses = scriptedModels("Done.");
+  runtime = await BotRuntime.open({ databasePath: join(directory, "db.sqlite"), models: responses.models });
 		events = [];
 		audit = [];
 		stoppedBots = [];
@@ -242,6 +244,7 @@ describe("HostService", () => {
 	});
 
 	it("sends conversation updates only for the subscribed Bot", async () => {
+  responses.answer("Done.");
 		await service.handle("settings.update", { defaultModel: SCRIPTED_MODEL });
 		const watched = await service.handle("bots.create", { requestId: "w", name: "Watched" });
 		const other = await service.handle("bots.create", { requestId: "o", name: "Other" });

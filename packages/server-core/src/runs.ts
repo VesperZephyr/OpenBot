@@ -251,6 +251,8 @@ export class RunScheduler {
 		);
 	}
 
+	isRunning(runId: string): boolean { return this.#runs.get(runId)?.state === "running"; }
+
 	/** The Bot's newest Run since start, including one that already ended. */
 	latest(botId: BotId): RunRecord | undefined {
 		const run = this.#latest.get(botId);
@@ -261,9 +263,10 @@ export class RunScheduler {
 
 	retry(botId: BotId): import("@openbot/protocol").ConversationSnapshot["retry"] {
 		const run = this.#latestDirect.get(botId),
-			input = run?.inputs.at(-1);
+			input = run?.inputs.findLast(input => input.outcome?.status === "unanswered" && input.outcome.reason !== WITHDRAWN && input.outcome.reason !== "aborted");
 		if (run?.state !== "failed" || (run.origin && run.origin !== "user") || !input) return undefined;
 		return {
+			...(run.messageMode && input.submissionId ? { outcomeId: `outcome:${input.submissionId}` } : {}),
 			text: input.text,
 			...(input.attachments?.length ? { artifactIds: input.attachments.map((a) => a.artifactId) } : {}),
 			...(input.skills?.length ? { skills: input.skills.map(({ name, revision, sha256 }) => ({ name, revision, sha256 })) } : {}),
@@ -318,6 +321,7 @@ export class RunScheduler {
 			}
 			const run: StoredRun = {
 				origin: options.origin ?? "user",
+                ...(options.origin === "routine" ? {} : { messageMode: "messages-v1" as const }),
 				...(channelId === "direct" ? {} : { channelId }),
 				runId: `run_${randomUUID()}`,
 				botId,
@@ -404,6 +408,7 @@ export class RunScheduler {
 			const started: StoredRun = {
 				...next,
 				state: "running",
+                ...(next.origin === "routine" ? {} : { messageMode: "messages-v1" as const }),
 				startedAt: this.#now(),
 				inputs: next.messages.some((message) => message.attachments?.length || message.skills?.length)
 					? next.messages.map((message) => ({ ...message }))

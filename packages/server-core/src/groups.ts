@@ -1,3 +1,4 @@
+import { fixedActivity } from "./activity.ts";
 /** Group lifecycle and durable delivery reconciliation; model replies never choose a destination. */
 import { createHash } from "node:crypto";
 import { isTerminal, type BotRuntime, type StoredRun } from "@openbot/agent-runtime";
@@ -209,7 +210,7 @@ export class Groups {
 						run: record,
 						...(run.state === "queued"
 							? { approvals: [] }
-							: { ...(live ? { live } : {}), approvals: this.#approvals.forBot(d.botId, snapshot.conversationId) }),
+							: { live: { ...(live ?? { state: "running" as const }), ...(run.messageMode ? { partial: [], ...(live?.retry ? { retry: { ...live.retry, error: "The model request will be retried." } } : {}) } : {}), activity: { runId: run.runId, labelKey: fixedActivity(this.runtime.execution.current.get(run.runId)) } }, approvals: this.#approvals.forBot(d.botId, snapshot.conversationId) }),
 					},
 				};
 			}),

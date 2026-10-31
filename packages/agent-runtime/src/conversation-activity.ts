@@ -1,3 +1,4 @@
+import { PublicTranscript } from "./public-transcript.ts";
 /** Small execution/attention projection. It remains available when the disposable history worker fails. */
 import { setImmediate as yieldTurn } from "node:timers/promises";
 import type { Harness, ConversationId, EntryId } from "@earendil-works/pi-durable";
@@ -17,6 +18,8 @@ export class ConversationActivity {
 	latest: ConversationPreview | undefined;
 	readonly artifacts: ArtifactRef[] = [];
 	#last = 0;
+ #latestSource = 0;
+ messageMode = false;
 	#dirty = true;
 	#executions = true;
 	#closed = false;
@@ -58,6 +61,9 @@ export class ConversationActivity {
 		await yieldTurn();
 		const conversation = await this.harness.conversation(this.conversationId as ConversationId, this.context);
 		if (!conversation) return;
+ const selector = new PublicTranscript(this.harness, this.context);
+ let mode = await selector.mode(this.conversationId);
+ this.messageMode = mode !== undefined;
 		while (!this.#closed && (this.#dirty || this.#executions)) {
 			if (this.#dirty) {
 				this.#dirty = false;
@@ -91,12 +97,13 @@ export class ConversationActivity {
 								this.emit({ id: item.id, tool: item.tool, status: item.status });
 							}
 						} else {
-							const items = toTranscript([entry]);
+							if (entry.kind === "openbot.messages-v1") { mode = entry.id; this.messageMode = true; }
+							const selection = await selector.select(entry, mode), items = selection.items;
 							if (items.some((item) => item.kind === "user")) this.attention = false;
 							for (const message of directMessages({ botId: this.botId, items, approvals: [] })) {
 								this.count++;
 								if (message.senderId !== "user") this.incoming++;
-								this.latest = { ...message, text: previewText(message.text) };
+								if (selection.source >= this.#latestSource) { this.latest = { ...message, text: previewText(message.text) }; this.#latestSource = selection.source; }
 							}
 						}
 						this.#last = entry.id;

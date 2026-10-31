@@ -1,3 +1,9 @@
+import { ExecutionObservations } from "./execution-observations.ts";
+import { PublicTranscript } from "./public-transcript.ts";
+import { MessageModeDoc } from "./message-records.ts";
+import { ChannelsDoc } from "./channels.ts";
+import { messageStore } from "./messages.ts";
+export type { MessageCall, MessageReceipt } from "./messages.ts";
 import { TemplateImportsDoc, validateTemplateReceipts, type TemplateImportReceipt } from "./template-imports.ts";
 import { TEMPLATE_LIMITS, normalizeTemplate, type BotTemplateV1, type ImportResult } from "@openbot/protocol";
 import { ConversationActivity, type CommittedToolOutcome } from "./conversation-activity.ts";
@@ -103,12 +109,6 @@ export { isTerminal, KEPT_TERMINAL_RUNS, type RunInput, type RunMessage, type Ru
 
 type PiConversationId = ConversationRecord["id"];
 
-const ChannelsDoc = defineDoc<{ channels: Record<string, { botId: string; channelId: string; conversationId: number }> }>({
-	kind: "openbot.channels",
-	version: 1,
-	scope: "session",
-	initial: () => ({ channels: {} }),
-});
 const channelKey = (botId: string, channelId: string): string => JSON.stringify([botId, channelId]);
 
 /** Application settings that live with the conversation store. */
@@ -232,6 +232,7 @@ export class BotRuntime {
 
  #historyProjection:HistoryProjection|undefined;
  readonly #historyListeners=new Set<()=>void>();
+ execution = new ExecutionObservations();
  readonly #activities=new Map<number,ConversationActivity>();
 	#coreBootstrap: Promise<BotProfile> | undefined;
 
@@ -257,8 +258,10 @@ export class BotRuntime {
 		const context = options.context ?? BACKGROUND_CONTEXT;
 		const models = options.models ?? builtinModels(options.credentials === undefined ? {} : { credentials: options.credentials });
 		const registry = createRegistry();
+        const execution = new ExecutionObservations();
 		const bot = defineExtension({
 			name: BOT_EXTENSION,
+            hooks: [{ task: "pi.generation", handlers: execution.hooks() }],
 			tools:
 				options.tools === undefined
 					? []
@@ -356,6 +359,7 @@ export class BotRuntime {
 				for (const record of Object.values(profiles.bots)) {
 					await configure(tx, record.conversationId as PiConversationId, {
 						instructions: revisionedInstructions(record.instructions, record.revision ?? 1),
+						tools: (await tx.doc(MessageModeDoc, String(record.conversationId), null)).entryId ? null : { remove: (bot.tools ?? []).filter(tool => tool.name === "send_message") },
 						extensions: [bot, connectors, ...(record.kind === "core" ? [core, app] : [])],
 					});
 				}
@@ -365,6 +369,7 @@ export class BotRuntime {
 				const bots = (await tx.doc(BotsDoc)).bots;
 				for (const channel of Object.values(channels.channels))
 					await configure(tx, channel.conversationId as PiConversationId, {
+						tools: !channel.channelId.startsWith("routine_") && (await tx.doc(MessageModeDoc, String(channel.conversationId), null)).entryId ? null : { remove: (bot.tools ?? []).filter(tool => tool.name === "send_message") },
 						extensions: [
 							bot,
 							connectors,
@@ -382,6 +387,20 @@ export class BotRuntime {
 				registry,
 				options.tools?.invoke,
 			);
+			runtime.execution = execution;
+            harness.subscribeCommits(publication => {
+                for (const change of publication.changes) {
+                    if (change.type !== "task" || change.value.kind !== "pi.generation") continue;
+                    const checkpoint = change.value.state.checkpoint;
+                    if (!checkpoint || typeof checkpoint !== "object" || !("phase" in checkpoint) || checkpoint.phase !== "prepare") continue;
+                    const old = [...execution.current.values()].find(o => o.conversationId === String(change.value.conversationId));
+                    if (old) execution.set({ ...old, phase: "preparing" }, `generation:${change.value.id}:${"attempt" in checkpoint ? checkpoint.attempt : 0}:prepare`);
+                }
+                if (publication.changes.some(c => c.type === "document" && c.record.kind === RunsDoc.definition.kind)) void runtime.runsStore().list().then(runs => {
+                    const active = new Set(runs.filter(r => r.state === "running").map(r => r.runId));
+                    for (const id of execution.current.keys()) if (!active.has(id)) execution.clear(id);
+                }).catch(() => {});
+            });
 			if (options.history !== false)
 				runtime.#historyProjection = new HistoryProjection(harness, context, {
 					path: options.history?.path ?? join(dirname(options.databasePath), "cache", "history-v1.sqlite"),
@@ -472,6 +491,7 @@ export class BotRuntime {
 			if (channels.channels[key]) return String(channels.channels[key].conversationId);
 			const conversation = await tx.createConversation({ ownership: { kind: "ownerless" } });
 			await configure(tx, conversation.id, {
+                tools: { remove: (this.#extensions.bot.tools ?? []).filter(tool => tool.name === "send_message") },
 				...agentChange({ ...bot, ...((bot.model ?? defaultModel) ? { model: (bot.model ?? defaultModel)! } : {}) }),
 				instructions: revisionedInstructions(bot.instructions, bot.revision ?? 1),
 				extensions: [
@@ -648,6 +668,7 @@ export class BotRuntime {
 			if (doc.bots[input.botId]) return toProfile(JSON.parse(JSON.stringify(doc.bots[input.botId])) as BotRecord);
 			const conversation = await tx.createConversation({ ownership: { kind: "ownerless" } });
 			await configure(tx, conversation.id, {
+                tools: { remove: (this.#extensions.bot.tools ?? []).filter(tool => tool.name === "send_message") },
 				...agentChange({ ...input, ...(model === undefined ? {} : { model }) }),
 				instructions: revisionedInstructions(input.instructions ?? "", 1),
 				extensions: [this.#extensions.connectors, this.#extensions.bot],
@@ -732,6 +753,8 @@ export class BotRuntime {
 	 * a run when the conversation went idle meanwhile. The same `requestId` returns the existing submission, so a retried
 	 * call never admits the message twice.
 	 */
+	messages() { return messageStore(this.#harness, this.#context); }
+
 	async submit(
 		botId: BotId,
 		requestId: string,
@@ -744,7 +767,21 @@ export class BotRuntime {
 	backgroundInput: boolean | "routine"=false,
 	): Promise<{ submissionId: string }> {
 		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
-		const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [{ type: "text", text }];
+		const activeRunId = await this.#harness.commit(async tx => {
+            const run = Object.values((await tx.doc(RunsDoc)).runs).find(r => r.botId === botId && (r.channelId ?? "direct") === channelId && r.state === "running");
+            if (!run) return undefined;
+            if (run.messageMode && !channelId.startsWith("routine_")) {
+                const mode = await tx.doc(MessageModeDoc, String(conversation.id), null);
+                if (!mode.entryId) {
+                    assertAllowed?.();
+                    mode.entryId = (await tx.appendEntry(conversation.id, { kind: "openbot.messages-v1", data: { version: 1 } })).id;
+                    await configure(tx, conversation.id, { tools: null });
+                }
+            }
+            return run.runId;
+        }, this.#context);
+        if (activeRunId && mode === "start") this.execution.set({ runId: activeRunId, conversationId: String(conversation.id), phase: "preparing" });
+        const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [{ type: "text", text }];
 		for (const item of attachments) {
 			content.push({
 				type: "text",
@@ -1123,10 +1160,12 @@ export class BotRuntime {
 			items: [],
 			approvals: [],
 			attention: activity.attention,
+            messageMode: activity.messageMode,
 			...(live
 				? {
 						live: {
 							...live,
+                            ...(activity.messageMode ? { partial: [], ...(live.retry ? { retry: { ...live.retry, error: "The model request will be retried." } } : {}) } : {}),
 							toolRunning: !!liveDoc?.tools?.some((tool) => tool.status === "running"),
 							tools: (liveDoc?.tools ?? [])
 								.filter((tool) => tool.status === "running")
@@ -1160,6 +1199,8 @@ export class BotRuntime {
 		};
 		activity.outcomes.add(settled);
 		activity.changes.add(publish);
+        const executionChanged = (id: string) => { if (id === String(record.conversationId)) publish(); };
+        this.execution.changes.add(executionChanged);
 		const stop = view.subscribe(publish);
 		publish();
 		return () => {
@@ -1168,6 +1209,7 @@ export class BotRuntime {
 			view.dispose();
 			activity.outcomes.delete(settled);
 			activity.changes.delete(publish);
+            this.execution.changes.delete(executionChanged);
 		};
 	}
 
@@ -1337,21 +1379,33 @@ export class BotRuntime {
 	async #project(record: BotRecord, view: ConversationView, channelId = "direct"): Promise<ConversationSnapshot> {
 		const marker = view.entries[0]?.head === undefined ? undefined : view.entries[0];
 		const earlier = marker === undefined ? [] : await this.#earlierEntries(record, marker);
-		const projected = projectView(record.botId, view, earlier);
+		const selector = new PublicTranscript(this.#harness, this.#context), mode = await selector.mode(record.conversationId);
+        const selected = new Map<string, { item: TranscriptItem; ordinal: number }>();
+        const entries = [...new Map([...earlier, ...view.entries].map(e => [e.id, e])).values()].sort((a, b) => a.id - b.id);
+        for (const entry of entries) {
+            const result = entry.kind === "pi.tool-result" ? entry.model?.[0] : undefined;
+            const seed = result?.role === "toolResult" ? selected.get(result.toolCallId)?.item : undefined;
+            const selection = await selector.select(entry, mode, seed ? [seed] : []);
+            for (const id of selection.remove) selected.delete(id);
+            selection.items.forEach((item, offset) => selected.set(item.id, { item, ordinal: selected.get(item.id)?.ordinal ?? (entry.kind === "pi.compaction" && entry.head !== undefined ? entry.head * 1024 - 1 : selection.source * 1024 + offset) }));
+        }
+        const projected = projectView(record.botId, view, earlier, [...selected.values()].sort((a,b) => a.ordinal - b.ordinal).map(r => r.item));
+        const visible = mode && projected.live ? { ...projected, live: { ...projected.live, partial: [], ...(projected.live.retry ? { retry: { ...projected.live.retry, error: "The model request will be retried." } } : {}) } } : projected;
 		const executions = new Map(
 			Object.values((await this.#harness.snapshot(AppExecutionsDoc, this.#context))?.executions ?? {})
 				.filter((e) => e.conversationId === String(record.conversationId))
 				.map((e) => [e.parentCallId, e]),
 		);
 		const snapshot = {
-			...projected,
-			items: projected.items.map((item) => {
+			...visible,
+			items: visible.items.map((item) => {
 				const execution = executions.get(item.id);
 				return item.kind === "tool" && item.tool === "codemode" && execution ? { ...item, execution } : item;
 			}),
 		};
 		return {
 			...snapshot,
+            messageMode: mode !== undefined,
 			conversationId: String(record.conversationId),
 			...(channelId === "direct" ? { readCursor: await this.conversationIndex().projectDirect(snapshot) } : { channelId }),
 		};
@@ -1422,14 +1476,14 @@ function projectLive(live: LiveState | undefined): LiveRun | undefined {
  * ID and without duplicates, they are the whole transcript, including head markers the view leaves out. A compaction
  * marker is appended after the entries it keeps, so it is placed right before its head, where the summary ends.
  */
-function projectView(botId: BotId, view: ConversationView, earlier: readonly EntryRecord[]): ConversationSnapshot {
+function projectView(botId: BotId, view: ConversationView, earlier: readonly EntryRecord[], selected?: TranscriptItem[]): ConversationSnapshot {
 	// Pi's view exposes built-in documents as untyped JSON keyed by kind; `pi.live` always holds a LiveState.
 	const liveDoc: LiveState | undefined = view.docs[LiveDoc.definition.kind];
 	const byId = new Map<number, EntryRecord>();
 	for (const entry of [...earlier, ...view.entries]) byId.set(entry.id, entry);
 	const position = (entry: EntryRecord): number =>
 		entry.kind === "pi.compaction" && entry.head !== undefined ? entry.head - 0.5 : entry.id;
-	const items = toTranscript([...byId.values()].sort((a, b) => position(a) - position(b)));
+	const items = selected ?? toTranscript([...byId.values()].sort((a, b) => position(a) - position(b)));
 	// Running tool slots carry live status and output until their result entry exists.
 	for (const slot of liveDoc?.tools ?? []) {
 		const item = items.find((entry): entry is MutableToolItem => entry.kind === "tool" && entry.id === slot.callId) as

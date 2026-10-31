@@ -494,7 +494,7 @@ function HistoryTranscript({
 				const items = context.rows.flatMap((r) => (r.content.kind === "direct" ? [r.content.item] : [])),
 					latest = items.findLast((i) => i.kind === "assistant");
 				const retry =
-					context.atLatest && !snapshot.channelId && snapshot.retry && latest?.id === row.id
+					!snapshot.channelId && snapshot.retry && (snapshot.retry.outcomeId ? snapshot.retry.outcomeId === row.id : context.atLatest && latest?.id === row.id)
 						? { id: row.id, ...snapshot.retry }
 						: undefined;
 				const item = row.content.item;
@@ -523,7 +523,9 @@ function Transcript({ snapshot,historyOnly=false,retryOverride }: { readonly sna
 				approval={approvals.get(entry.id)}
 				childApprovals={entry.execution?.children.flatMap((c) => (approvals.get(c.callId) ? [approvals.get(c.callId)!] : [])) ?? []}
 			/>
-		) : entry.kind === "divider" ? (
+		) : entry.kind === "outcome" ? (
+            entry.category === "interrupted" && !snapshot.channelId && snapshot.run?.runId === entry.runId && snapshot.run.state === "needs_attention" ? <InterruptedRun key={entry.id} run={snapshot.run} /> : <OutcomeRow key={entry.id} item={entry} retry={retry?.id === entry.id ? { botId: snapshot.botId, ...retry } : undefined} />
+        ) : entry.kind === "divider" ? (
 			<Divider key={entry.id} item={entry} />
 		) : (
 			<Message
@@ -550,7 +552,7 @@ function Transcript({ snapshot,historyOnly=false,retryOverride }: { readonly sna
 			)}
 			{!historyOnly&&<PendingMessages snapshot={snapshot} />}
  {!historyOnly&&snapshot.approvals.map(approval=><li key={approval.approvalId} className="approval-slot"><ApprovalCard approval={approval}/></li>)}
- {!historyOnly&&!snapshot.channelId?.startsWith("routine_")&&snapshot.run?.state==="needs_attention"&&<InterruptedRun key={snapshot.run.runId} run={snapshot.run}/>}
+ {!historyOnly&&!snapshot.channelId?.startsWith("routine_")&&!snapshot.messageMode&&snapshot.run?.state==="needs_attention"&&<InterruptedRun key={snapshot.run.runId} run={snapshot.run}/>}
             {!historyOnly&&(snapshot.live || snapshot.run?.state === "running" || snapshot.run?.state === "queued") && (
                 <li className="message message-assistant is-live"><LiveReply snapshot={snapshot} /></li>
             )}
@@ -565,7 +567,7 @@ function Message(props: {
 }) {
 	const { item, retry } = props;
 	const author = useStore(state => state.bots.find(bot => bot.botId === props.botId));
-	if (item.kind === "other") return null;
+	if (item.kind === "other" || item.kind === "outcome") return null;
 	if (item.kind === "stopped") return <StoppedNote />;
 	return (
 		<li data-message-id={item.id} className={`message message-${item.kind==="user"&&!!item.source?"background":item.kind}`}>
@@ -1282,5 +1284,33 @@ function Settings() {
 				</p>
 			</div>
 		</section>
+	);
+}
+
+function OutcomeRow({
+	item,
+	retry,
+}: {
+	item: Extract<TranscriptItem, { kind: "outcome" }>;
+	retry:
+		| { botId: string; text: string; artifactIds?: readonly string[]; skills?: readonly import("@openbot/protocol").SkillRef[] }
+		| undefined;
+}) {
+	const labels = {
+		failed: "This input could not be completed.",
+		cancelled: "Work was cancelled.",
+		withdrawn: "Not processed",
+		empty: "No final text was returned for this input.",
+		stopping: "Stopping work",
+		interrupted: "Review completed actions before continuing. An interrupted action may have partly run.",
+		queued_cancelled: "Cancelled before starting",
+	};
+	return (
+		<li className="message message-outcome" data-message-id={item.id}>
+			<p>{t(labels[item.category])}</p>
+			{retry && <RetryButton {...retry} />}
+			{item.category === "failed" && !retry && <p>{t("Retry is unavailable for this outcome.")}</p>}
+			{item.category === "interrupted" && <p>{t("Recovery is unavailable for this historical task.")}</p>}
+		</li>
 	);
 }

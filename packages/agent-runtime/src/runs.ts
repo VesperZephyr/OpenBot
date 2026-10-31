@@ -1,4 +1,5 @@
 import { BackgroundDoc, backgroundTerminal } from "./background.ts";
+import { recordOutcomes } from "./message-records.ts";
 /**
  * Durable Run records (Section 7.2), stored as a session document next to Pi's own state so a Run and the Pi
  * submissions it maps to survive a restart together. Scheduling lives in `server-core`; this module only stores.
@@ -37,6 +38,7 @@ export type RunInput = {
 };
 
 export type StoredRun = RunRecord & {
+	readonly messageMode?: "messages-v1";
 	readonly origin?: "user" | "peer" | "background" | "routine";
 	readonly messages: readonly RunMessage[];
 	readonly inputs: readonly RunInput[];
@@ -83,7 +85,10 @@ export function runStore(harness: Harness, context: Context, capture?: (run: Sto
 			const usage = await capture?.(run);
 			await harness.commit(async (tx) => {
 				const doc = await tx.doc(RunsDoc);
+				const previous = doc.runs[run.runId];
+				if (previous?.messageMode || ((!previous && run.state === "queued" || previous?.state === "queued" && run.state === "running") && run.origin !== "routine")) value.messageMode = "messages-v1";
 				await captureUsage(tx, run, doc.runs[run.runId], usage);
+				await recordOutcomes(tx, value, previous);
 				doc.runs[run.runId] = value;
 				if (isTerminal(run.state)) {
 					const pending = Object.values((await tx.doc(BackgroundDoc)).records).filter(record => !backgroundTerminal(record));

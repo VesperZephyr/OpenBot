@@ -1,3 +1,4 @@
+import { PublicTranscript } from "./public-transcript.ts";
 /** Pi-side projection queue. Only identities cross the synchronous commit listener. */
 import { createHash } from "node:crypto";
 import { stat, rm } from "node:fs/promises";
@@ -116,7 +117,7 @@ export class HistoryProjection {
 	}
 	private async open() {
 		const info = await stat(this.options.databasePath);
-		this.#source = JSON.stringify([3, String(info.dev), String(info.ino)]);
+		this.#source = JSON.stringify([4, String(info.dev), String(info.ino)]);
 		this.#worker = await HistoryClient.open(this.options.path, this.#source, this.options.workerUrl);
 		this.#worker.onFailure = () => {
 			this.#rescan = true;
@@ -239,6 +240,8 @@ export class HistoryProjection {
 				if (checkpoint.source !== source.conversationId || (checkpoint.position && (!entry || digest(entry) !== checkpoint.hash)))
 					throw Error("History source changed");
 			}
+			const selector = new PublicTranscript(this.harness, this.context);
+			let mode = await selector.mode(source.conversationId);
 			let cursor: Parameters<typeof conversation.entries>[2];
 			const executions = Object.values((await this.harness.snapshot(AppExecutionsDoc, this.context))?.executions ?? {}).filter(
 				(e) => e.conversationId === String(source.conversationId),
@@ -288,10 +291,13 @@ export class HistoryProjection {
 						}
 					}
 					let offset = 0;
-					for (let item of toTranscript([entry], seed)) {
+					if (entry.kind === "openbot.messages-v1") mode = entry.id;
+					const selection = await selector.select(entry, mode, seed);
+					if (selection.remove.length) { await flush(); await this.call({ method: "apply", batch: { ...batch, rows: [], messages: [], removeRows: selection.remove } }); }
+					for (let item of selection.items) {
 						const execution = executions.find((e) => e.parentCallId === item.id);
 						if (item.kind === "tool" && execution) item = { ...item, execution };
-						let ordinal = link?.ordinal ?? entry.id * 1024 + offset++;
+						let ordinal = link?.ordinal ?? selection.source * 1024 + offset++;
 						if (entry.kind === "pi.compaction" && entry.head !== undefined) {
 							await flush();
 							ordinal = await this.call<number>({
@@ -302,7 +308,7 @@ export class HistoryProjection {
 							});
 						}
 						if (!Number.isSafeInteger(ordinal) || offset >= 512) throw Error("History ordinal exceeds limit");
-						const row = await this.prepare(source, item.id, ordinal, link?.source ?? entry.id, { kind: "direct", item });
+						const row = await this.prepare(source, item.id, ordinal, link?.source ?? selection.source, { kind: "direct", item });
 						if (result?.role === "toolResult") row.resultSource = entry.id;
 						const publicMessages =
 							source.deliveryId || source.occurrenceId ? [] : directMessages({ botId: source.botId!, items: [item], approvals: [] });

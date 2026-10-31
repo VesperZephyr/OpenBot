@@ -1,7 +1,8 @@
 # B28a: Deliberate Bot Messages and Fixed Activity Status
 
-Status: in progress
+Status: in review
 Branch: `task/b28a-messages-fixed-activity`
+PR: [#73](https://github.com/VesperZephyr/OpenBot/pull/73), based on `task/b28-message-status-design`; owner merge pending
 Depends on: B13c, B14a–B14d, B15b, B22–B23, D8; reconcile with B11e before implementation
 Architecture: Sections 5.1–5.3, 5.7, 6.1, 7.1–7.3, 8.1–8.3
 
@@ -143,7 +144,7 @@ Keep legacy instructions for active legacy Runs. Routine contexts keep their rep
 
 ## Acceptance
 
-These are required future checks, not existing results.
+This is the implementation acceptance checklist. Dated results and verification limits are linked under Evidence.
 
 1. Router/Host tests: forged destination/Target/Run, routine and Code Mode calls fail; policy and lifecycle/membership races preserve authorization. Replay after commit returns one receipt, another digest fails, and quota survives restart without double-counting.
 2. Runtime tests: canonical final IDs/text remain unchanged; shared-answer steers display once; distinct answers stay ordered; Pi-settled/Host-not-recorded crash recovers through existing outcome persistence. Repeated puts, Run pruning and compaction do not erase visibility.
@@ -165,7 +166,9 @@ None unresolved in the revised design. Contracts 2–3 cover input and Run outco
 
 ## Evidence
 
-Self-review on 2026-10-31 checked [Run lifecycle transitions](../../packages/server-core/src/runs.ts) and [Run-store transactions/pruning](../../packages/agent-runtime/src/runs.ts). Run-level interruption and queued cancellation now have metadata independent of Pi input outcomes, explicit intent/settlement/action rules and pruning/rebuild acceptance. Withdrawn steers cannot displace the causal Retry target. Empty-answer wording no longer claims completion of the whole Run. Separate polling invocations retain separate keys in both B28a and B28b; only duplicate progress inside a call preserves identity. No additional design blocker was found in this source/spec review. These are resolved design contracts, not verified runtime behavior; no code, vendor files or product tests changed.
+Implementation acceptance, 2026-10-31: [message, outcome and fixed activity evidence](../acceptance/message-activity-2026-10-31.md). The implementation remains in review; B28b is still draft and excluded.
+
+Design self-review on 2026-10-31 checked [Run lifecycle transitions](../../packages/server-core/src/runs.ts) and [Run-store transactions/pruning](../../packages/agent-runtime/src/runs.ts). Run-level interruption and queued cancellation now have metadata independent of Pi input outcomes, explicit intent/settlement/action rules and pruning/rebuild acceptance. Withdrawn steers cannot displace the causal Retry target. Empty-answer wording no longer claims completion of the whole Run. Separate polling invocations retain separate keys in both B28a and B28b; only duplicate progress inside a call preserves identity. No additional design blocker was found in this source/spec review. These are resolved design contracts, not verified runtime behavior; no code, vendor files or product tests changed.
 
 Design-only source review, 2026-10-30, base `884892e`: [Run persistence](../../packages/agent-runtime/src/runs.ts), [Run settlement](../../packages/server-core/src/runs.ts), [answer lookup/live projection](../../packages/agent-runtime/src/index.ts), [transcript projection](../../packages/agent-runtime/src/transcript.ts), [bounded history](../../packages/agent-runtime/src/history-projection.ts), [lightweight activity](../../packages/agent-runtime/src/conversation-activity.ts), [group context/publication](../../packages/agent-runtime/src/groups.ts), [Desktop error rendering](../../apps/desktop/src/renderer/src/App.tsx), and [observation ordering](../../packages/server-core/src/observation.ts).
 

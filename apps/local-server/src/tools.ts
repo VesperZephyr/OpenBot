@@ -50,8 +50,10 @@ export function createToolRouter(options: {
 		};
 	};
 	return new ToolRouter({
+        observeExecution: (call, phase) => options.service().observeExecution(call, phase),
+  hostReceipt: call => call.tool === "send_message" ? options.service().messages.replay(call) : Promise.resolve(undefined),
 		resolveTool:name=>options.service().connectors.resolve(name),
- assertCallAllowed:async call=>{await options.service().routines.assertExecution(call);await options.service().background.assertExecution(call);await options.service().connectors.assertExecution(call);},
+ assertCallAllowed:async call=>{if (call.tool === "send_message") await options.service().messages.assertExecution(call); await options.service().routines.assertExecution(call);await options.service().background.assertExecution(call);await options.service().connectors.assertExecution(call);},
 		trackCommand:{prepare:(call,digest)=>options.service().background.prepare(call,digest),settle:(call,outcome)=>options.service().background.settle(call,outcome)},
   assertExecutionAllowed:()=>options.service().lifecycle.assertAllowed(),
 		target: options.target,
@@ -59,6 +61,7 @@ export function createToolRouter(options: {
 		approvals: options.approvals,
 		executor: options.executor,
 		hostTools: {
+ send_message: (_args, _signal, call) => options.service().messages.send(call),
  tool_search:async()=>({status:"succeeded",output:"Tool discovery authorized"}),
  routine_propose:(_args,_signal,call)=>options.service().routines.propose(call),
  skill_load:(_args,_signal,call)=>options.service().skills.invoke(call),
