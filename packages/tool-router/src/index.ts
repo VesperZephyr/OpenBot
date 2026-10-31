@@ -71,6 +71,8 @@ export interface ExecutorTransport {
 export type HostToolHandler = (args: Readonly<Record<string, unknown>>, signal: AbortSignal, call: ToolCall) => Promise<ToolOutcome>;
 
 export type ToolRouterOptions = {
+ readonly observeExecution?: (call: ToolCall, phase: "preparing" | "dispatching" | "settled") => void;
+ readonly hostReceipt?: (call: ToolCall) => Promise<ToolOutcome | undefined>;
  readonly resolveTool?:(name:string)=>ToolDefinition|undefined;
 	readonly assertCallAllowed?:(call:ToolCall)=>Promise<void>;
 	readonly trackCommand?: {
@@ -129,7 +131,8 @@ export class ToolRouter {
 				if (management && !this.#options.closeAppManagement)
 					return appFailure("permission_denied", "Application management is not authorized");
 				try {
-					const outcome = await this.#route(call);
+					this.#options.observeExecution?.(call, "preparing");
+                    const outcome = await this.#route(call);
 					if (management && outcome.status !== "succeeded" && !call.signal.aborted) await this.#options.closeAppManagement!(call);
 					return outcome;
 				} catch (error) {
@@ -143,6 +146,7 @@ export class ToolRouter {
 			return await current;
 		} finally {
 			if (this.#active.get(call.conversationId) === current) this.#active.delete(call.conversationId);
+            this.#options.observeExecution?.(call, "settled");
 		}
 	}
 
@@ -165,6 +169,7 @@ export class ToolRouter {
 			return appFailure("invalid_request", "Invalid application arguments");
 		const definition = toolDefinition(call.tool) ?? this.#options.resolveTool?.(call.tool);
 		if (definition === undefined) return { status: "failed", output: `Unknown tool: ${call.tool}` };
+		if (definition.destination === "host") { const receipt = await this.#options.hostReceipt?.(call); if (receipt) return receipt; }
 		if(definition.destination==="executor"&&this.#options.executor.receipt){const receipt=await this.#options.executor.receipt(`${call.conversationId}:${call.callId}`,digest(call.connector?{args:call.args,connector:call.connector}:call.args),call.tool);if(receipt)return this.#options.trackCommand?.settle(call,receipt)??receipt;}
   const binding=await this.#options.policy.binding?.(call,digest(call.connector?{args:call.args,connector:call.connector}:call.args));
   const decision = await this.#options.policy.decide(call, definition);
@@ -207,7 +212,7 @@ export class ToolRouter {
 
 		this.#options.assertExecutionAllowed?.();
   const dispatch=(invoke:(revision?:number)=>Promise<ToolOutcome>)=>{
-			const guarded=async(revision?:number)=>{await this.#options.assertCallAllowed?.(call);call.signal.throwIfAborted();return invoke(revision);};
+			const guarded=async(revision?:number)=>{await this.#options.assertCallAllowed?.(call);call.signal.throwIfAborted();this.#options.observeExecution?.(call, "dispatching");return invoke(revision);};
 			return binding&&this.#options.policy.dispatch?this.#options.policy.dispatch(call,approvedOnce,binding,guarded):guarded();
 		};
 		if (definition.destination === "host") {

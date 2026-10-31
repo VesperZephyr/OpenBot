@@ -413,7 +413,7 @@ describe("RunScheduler", () => {
 		await reaches("a", direct.runId, "completed");
 		expect(JSON.stringify((await runtime.snapshot("a")).items)).toContain("Direct task");
 		expect(JSON.stringify((await runtime.snapshot("a")).items)).not.toContain("Group task");
-		expect((await runtime.snapshot("a", "other")).items).toEqual([]);
+		expect((await runtime.snapshot("a", "other")).items).toEqual([expect.objectContaining({ kind: "outcome", category: "queued_cancelled" })]);
 		await close();
 	});
 
@@ -538,7 +538,7 @@ describe("RunScheduler", () => {
 		expect(await scheduler.cancel(b.runId)).toBe("cancelled");
 		gates.release("a");
 		await reaches("c", c.runId, "completed");
-		expect((await runtime.snapshot("b")).items).toEqual([]);
+		expect((await runtime.snapshot("b")).items).toEqual([expect.objectContaining({ kind: "outcome", category: "queued_cancelled" })]);
 		expect((await runtime.runsStore().get(a.runId))?.state).toBe("completed");
 		// Nothing ran for the queued Run, so there is no background work to stop.
 		expect(stopped).toEqual([]);
@@ -558,7 +558,7 @@ describe("RunScheduler", () => {
 		await reaches("b", b.runId, "completed");
 		const items = (await runtime.snapshot("a")).items;
 		expect(items.find((item) => item.kind === "tool")).toMatchObject({ status: "cancelled" });
-		expect(items.at(-1)).toMatchObject({ kind: "stopped" });
+		expect(items.at(-1)).toMatchObject({ kind: "outcome", category: "cancelled" });
 		// A terminal Run reports its state and changes nothing.
 		expect(await scheduler.cancel(a.runId)).toBe("cancelled");
 

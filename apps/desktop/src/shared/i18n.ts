@@ -1,6 +1,11 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
+ "The model request will be retried.": "即将重试模型请求。",
+ "Preparing response": "正在准备回复", "Generating response": "正在生成回复", "Reading files": "正在读取文件", "Writing files": "正在写入文件", "Running command": "正在运行命令", "Searching web": "正在搜索网页", "Reading web": "正在读取网页", "Using connector": "正在使用连接器", "Sending update": "正在发送进展", "Waiting for result": "正在等待结果",
+ "This input could not be completed.": "本次输入未能完成。", "Work was cancelled.": "任务已取消。", "Not processed": "未处理", "No final text was returned for this input.": "本次输入未返回最终文字。", "Cancelled before starting": "开始前已取消", "Retry is unavailable for this outcome.": "此结果无法重试。",
+    "Recovery is unavailable for this historical task.": "此历史任务已无法继续。",
+
  "Preparing routine": "正在准备定时任务", "Routine proposed": "已生成定时任务提案",
  "Library": "文件库",
  "Bot routines": "Bot 定时任务",

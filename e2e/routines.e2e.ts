@@ -99,7 +99,7 @@ it("reviews before saving, pins a skill and runs an isolated report with a real 
 	expect(JSON.stringify(h.model.requests[count]?.messages)).not.toContain("PRIVATE_ROUTINE_CANARY");
 	expect(JSON.stringify(h.model.requests[count]?.messages)).toContain("ROUTINE_SKILL_CANARY");
 	const tools = JSON.stringify(h.model.requests[count]?.tools);
-	for (const name of ["bot_create", "group_create", "codemode", "bot_delegate"]) expect(tools).not.toContain(`"name":"${name}"`);
+	for (const name of ["bot_create", "group_create", "codemode", "bot_delegate", "send_message"]) expect(tools).not.toContain(`"name":"${name}"`);
 	await h
 		.page()
 		.getByRole("region", { name: "Routine result" })

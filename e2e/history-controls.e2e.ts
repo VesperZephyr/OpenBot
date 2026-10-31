@@ -40,7 +40,7 @@ it("keeps approvals, drafts and Stop usable when history reads fail, then recove
 		expect(await h.page().locator(".compose-area textarea").inputValue()).toBe("Preserved draft 星图");
 		h.model.script({ chunks: ["Must be stopped"], delayMs: 15000, chunkDelayMs: 100 });
 		await h.send("Wait for cancellation");
-		await expect.poll(() => h.page().locator(".live-reply .reply-activity").textContent(), { timeout: 15000 }).toBe("Thinking…");
+		await expect.poll(() => h.page().locator(".live-reply .reply-activity").textContent(), { timeout: 15000 }).toBe("Generating response");
 		await h.page().getByRole("button", { name: "Stop", exact: true }).click();
 		await expect
 			.poll(async () => (await h.api("bots.list")).find((b: any) => b.name === "History controls")?.lastRun?.state, { timeout: 20000 })

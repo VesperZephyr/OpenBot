@@ -61,7 +61,7 @@ it("shows submission feedback before acceptance and keeps empty streamed chunks 
         await h.send("Wait for acceptance");
         await h.page().getByRole("status").filter({hasText:"Sending message"}).waitFor();
         await h.page().locator(".compose-area textarea").fill("A newer draft");
-        await poll(() => activity().textContent()).toBe("Thinking…");
+        await poll(() => activity().textContent()).toBe("Generating response");
         await h.page().getByText("The empty chunks did not hide progress.",{exact:true}).waitFor();
         await poll(()=>activity().count()).toBe(0);
         expect(await h.page().locator(".compose-area textarea").inputValue()).toBe("A newer draft");
@@ -71,37 +71,31 @@ it("shows submission feedback before acceptance and keeps empty streamed chunks 
     }
 });
 
-it("shows first-token feedback and genuine incremental Markdown without replacing completed blocks", async () => {
-    h.model.script({chunks:["## Release notes\n\n", "A checked **update**.\n\n", "```ts\nconst stable = ", "true;\n```\n\n", "[Official source](https://example.com", "/release)\n\nDone."],delayMs:1600,chunkDelayMs:650});
+it("shows fixed feedback and commits canonical Markdown only after settlement", async () => {
+    h.model.script({chunks:["## Release notes\n\n", "A checked **update**.\n\n", "```ts\nconst stable = ", "true;\n```\n\n", "[Official source](https://example.com", "/release)\n\nDone."],delayMs:500,chunkDelayMs:350});
     await h.send("Show the release notes");
-    await poll(() => activity().textContent()).toBe("Thinking…");
-    await h.shot("02-first-token");
-    await h.page().locator(".is-live h2").waitFor();
-    await h.page().evaluate(() => { (window as any).__heading = document.querySelector(".is-live h2"); });
-    await h.page().locator(".is-live strong").filter({hasText:"update"}).waitFor();
-    expect(await h.page().evaluate(() => (window as any).__heading === document.querySelector(".is-live h2"))).toBe(true);
-    await poll(() => activity().textContent()).toBe("Replying");
-    await h.page().locator(".is-live pre").waitFor();
-    await h.shot("03-streaming-markdown");
-    await h.page().locator(".is-live").getByText("Official source", {exact:false}).waitFor();
-    expect(await h.page().locator(".is-live a").count()).toBe(0);
-    await h.page().locator(".is-live").waitFor({state:"hidden"});
+    await poll(() => activity().textContent()).toBe("Generating response");
+    expect(await h.page().locator(".is-live h2").count()).toBe(0);
+    await h.shot("02-generating");
+    await h.page().getByRole("link", {name:"Official source"}).waitFor();
     expect(await h.page().locator(".message-assistant").last().locator("pre").textContent()).toBe("const stable = true;");
     expect(await h.page().getByRole("link", {name:"Official source"}).getAttribute("href")).toBe("https://example.com/release");
-    expect(await activity().count()).toBe(0);
+    await poll(() => activity().count()).toBe(0);
 });
 
-it("keeps older reading anchored as chunks arrive, then follows when requested", async () => {
-    h.model.script({chunks:[Array.from({length:40},(_,i)=>`Finding ${i+1}: verified source.\n\n`).join(""),...Array.from({length:8},(_,i)=>`New evidence ${i+1}.\n\n`)],chunkDelayMs:450,delayMs:200});
+it("keeps older reading anchored while a new answer is pending", async () => {
+    h.model.script({text:Array.from({length:40},(_,i)=>`Finding ${i+1}: verified source.\n\n`).join("")});
     await h.send("Give me the full evidence");
-    const timeline = h.page().locator(".timeline-scroll");
     await h.page().getByText("Finding 40: verified source.",{exact:true}).waitFor();
+    const timeline = h.page().locator(".timeline-scroll");
+    h.model.script({chunks:["New evidence 1.\n\n", "New evidence 2."],chunkDelayMs:900,delayMs:500});
+    await h.send("Add evidence");
+    await activity().waitFor();
     await timeline.evaluate(el => { el.scrollTop = 80; el.dispatchEvent(new Event("scroll")); });
     const top = await timeline.evaluate(el => el.scrollTop);
-    await h.page().getByText("New evidence 3.",{exact:true}).waitFor();
+    await poll(() => activity().count()).toBe(0);
     expect(Math.abs(await timeline.evaluate(el=>el.scrollTop) - top)).toBeLessThan(3);
     await h.page().getByRole("button", {name:/New activity · Jump to latest/}).click();
-    await h.page().locator(".is-live").waitFor({state:"hidden"});
     await poll(() => timeline.evaluate(el=>el.scrollHeight-el.clientHeight-el.scrollTop)).toBeLessThan(3);
 });
 
@@ -111,13 +105,13 @@ it("distinguishes approvals and running tools and clears activity after Stop or 
     await poll(() => activity().textContent()).toBe("Needs approval");
     expect(await activity().getAttribute("class")).not.toContain("is-active");
     await button("Allow once").click();
-    await poll(() => activity().textContent()).toBe("Running a tool");
+    await poll(() => activity().textContent()).toBe("Waiting for result");
     await h.shot("04-tool-running");
     await h.page().getByText("Checked.",{exact:true}).waitFor();
     await poll(() => activity().count()).toBe(0);
     h.model.script({chunks:["Too late"],delayMs:10000,chunkDelayMs:500});
     await h.send("Wait for a long response");
-    await poll(() => activity().textContent()).toBe("Thinking…");
+    await poll(() => activity().textContent()).toBe("Generating response");
     await button("Stop").click();
     await poll(() => activity().count()).toBe(0);
     expect(await h.page().getByText("Too late",{exact:true}).count()).toBe(0);
@@ -127,14 +121,14 @@ it("distinguishes approvals and running tools and clears activity after Stop or 
     expect(await activity().count()).toBe(0);
 });
 
-it("renders group authors and Markdown while streaming; respects reduced motion and compact Chinese dark UI", async () => {
+it("renders group authors and settled Markdown; respects reduced motion and compact Chinese dark UI", async () => {
     await row("Competitor radar").click();
     h.model.script({chunks:["## Group findings\n\n", "- Official changelog checked\n", "- No invented dates\n\n", "**Report complete.**"],delayMs:1000,chunkDelayMs:800});
     await h.page().locator(".compose-area textarea").fill("Give me the group findings");
     await button("Send").click();
-    await poll(() => activity().textContent()).toBe("Thinking…");
+    await poll(() => activity().textContent()).toBe("Generating response");
     expect(await h.page().locator(".live-reply .message-author").textContent()).toContain("OpenBot");
-    await h.page().locator(".group-task-live h2").waitFor();
+    expect(await h.page().locator(".group-task-live h2").count()).toBe(0);
     await h.shot("05-group-streaming");
     await h.page().locator(".group-task-live").waitFor({state:"hidden"});
     await h.page().getByRole("group",{name:"Collaboration task"}).waitFor({state:"hidden"});
