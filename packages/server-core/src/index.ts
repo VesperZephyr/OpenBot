@@ -1,3 +1,5 @@
+import { fixedActivity } from "./activity.ts";
+import { BotMessages } from "./messages.ts";
 import { BotTemplates } from "./templates.ts";
 import { paramsError } from "@openbot/protocol/schemas";
 import { TEMPLATE_LIMITS, templateIpcSize } from "@openbot/protocol";
@@ -120,6 +122,8 @@ export type HostServiceOptions = {
 type Handlers = { [M in HostMethod]: (params: HostParams<M>) => Promise<HostResult<M>> };
 
 export class HostService {
+ readonly messages: BotMessages;
+ observeExecution(call: { runId?: string; conversationId: string; callId: string; tool: string; args: Readonly<Record<string, unknown>> }, phase: "preparing" | "dispatching" | "settled") { if (call.runId && this.#runs.isRunning(call.runId)) this.#runtime.execution.dispatch(call, phase); else if (call.runId) this.#runtime.execution.clear(call.runId); }
  #templateOperations=0;
  readonly routines:Routines;
  readonly connectors:Connectors;
@@ -241,6 +245,7 @@ export class HostService {
   this.skills=new Skills({runtime:this.#runtime,...(options.skills?{port:options.skills}:{}),targetId:this.#status.targetId,assertAllowed:()=>this.lifecycle.assertAllowed(),changed:()=>this.#observation.changed(8)});
  const skillChange=(requestId:string,change:import("@openbot/protocol").SkillChange)=>this.authority.change(async()=>this.skills.change(`desktop:${requestId}`,change,(await this.#runtime.policy().snapshot()).settings.revision));
  this.routines=new Routines({runtime:this.#runtime,runs:this.#runs,approvals:this.#approvals,targetId:this.#status.targetId,canRun:()=>!this.lifecycle.state.blocked,now:this.#now,changed:()=>this.#observation.changed(11),resolveSkills:refs=>this.skills.attachments(refs),changeAuthority:fn=>this.authority.change(fn),settled:this.#toolSettled});
+ this.messages = new BotMessages({ runtime: this.#runtime, targetId: this.#status.targetId, assertAllowed: () => this.lifecycle.assertAllowed(), assertContext: async call => { await this.background.assertExecution(call); const gate = await this.groups.executionGate(call); if (gate?.kind === "deny") throw new ProtocolError("invalid_request", gate.reason); } });
 		const templates = new BotTemplates({
 			runtime: this.#runtime,
 			skills: this.skills,
@@ -785,7 +790,8 @@ export class HostService {
    return snapshot;
   }
 		const { messages, inputs: _inputs, ...run } = stored;
-		if (run.state !== "queued") return { ...snapshot, run };
+        if (stored.messageMode) snapshot = { ...snapshot, messageMode: true, ...(snapshot.live ? { live: { ...snapshot.live, partial: [], ...(snapshot.live.retry ? { retry: { ...snapshot.live.retry, error: "The model request will be retried." } } : {}) } } : {}) };
+		if (run.state !== "queued") return { ...snapshot, run, ...(run.state === "running" && !run.interruption ? { live: { ...(snapshot.live ?? { state: "running" as const }), activity: { runId: run.runId, labelKey: fixedActivity(this.#runtime.execution.current.get(run.runId)) } } } : {}) };
 		const queued = messages.map(({ requestId, text, attachments, skills }) => ({
 			id: requestId,
             ...(stored.origin==="background"?{source:"background" as const}:{}),

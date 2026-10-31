@@ -111,7 +111,7 @@ describe("Runs", () => {
 
 		await page.getByRole("button", { name: "Stop" }).click();
 		await page.locator(".tool-card.tool-cancelled", { hasText: "Wait a while" }).waitFor();
-		await page.getByRole("note").filter({ hasText: "Stopped" }).waitFor();
+		await page.getByText("Work was cancelled.", { exact: true }).waitFor();
 		await expect.poll(async () => (await snapshotOf("Bea")).run).toBeUndefined();
 		await page.getByRole("button", { name: "Stop" }).waitFor({ state: "hidden" });
 		await h.shot("05-stopped");

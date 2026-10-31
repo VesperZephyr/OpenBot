@@ -1,3 +1,4 @@
+import { fixedActivity } from "./activity.ts";
 /** Host-owned scheduling. Durable cursors, immutable inputs and existing Run receipts are authoritative. */
 import { createHash, randomUUID } from "node:crypto";
 import { isTerminal, type BotRuntime, type RoutineState, type StoredRun } from "@openbot/agent-runtime";
@@ -239,7 +240,7 @@ export class Routines {
 				snapshot: {
 					...snapshot,
 					approvals,
-					...(snapshot.live && approvals.length ? { live: { ...snapshot.live, state: "waiting_approval" as const } } : {}),
+					...(snapshot.live && run?.state === "running" ? { live: { ...snapshot.live, ...(approvals.length ? { state: "waiting_approval" as const } : {}), activity: { runId: run.runId, labelKey: fixedActivity(this.options.runtime.execution.current.get(run.runId)) } } } : {}),
 					...(record ? { run: record } : {}),
 				},
 			};

@@ -95,6 +95,8 @@ Candidate revision, acceptance checks and outcomes, and remaining limits; or lin
 - [B21: Conversation Experience](b21-conversation-experience.md)
 - [B22: Conversation List Previews and Unread State](b22-conversation-list.md)
 - [B23: Local Conversation Search and Unread Filtering](b23-conversation-search.md)
+- [B28a: Deliberate Bot Messages and Fixed Activity Status](b28a-messages-fixed-activity.md)
+- [B28b: Optional AI Activity Phrasing](b28b-generated-activity.md)
 - [D7: White chat canvas and focused interactions](d7-chat-interaction.md)
 - [D8: Unified chat and continuous activity feedback](d8-chat-experience.md)
 - [D9: Files and read-only document previews](d9-file-reading.md)

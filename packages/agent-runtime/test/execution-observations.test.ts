@@ -1,0 +1,32 @@
+import { expect, it } from "vitest";
+import { ExecutionObservations } from "../src/execution-observations.ts";
+
+it("keeps progress identity within a call and separates polls, generation, phases and consumed steers", () => {
+	const facts = new ExecutionObservations();
+	const call = { runId: "r", conversationId: "c", callId: "poll-1", tool: "task_output", args: { taskId: "background-1" } };
+	facts.dispatch(call, "preparing");
+	const preparing = facts.current.get("r")!;
+	facts.dispatch(call, "dispatching");
+	const dispatched = facts.current.get("r")!;
+	expect(dispatched.executionKey).not.toBe(preparing.executionKey);
+	facts.dispatch(call, "dispatching");
+	expect(facts.current.get("r")).toEqual(dispatched);
+	facts.dispatch(call, "settled");
+	expect(facts.current.get("r")?.executionKey).not.toBe(dispatched.executionKey);
+	facts.set({ runId: "r", conversationId: "c", phase: "generating", consumedInputId: "input-1" });
+	const generation = facts.current.get("r")!;
+	facts.dispatch({ ...call, callId: "poll-2" }, "dispatching");
+	const second = facts.current.get("r")!;
+	expect(second.executionKey).not.toBe(generation.executionKey);
+	expect(second.executionKey).not.toBe(dispatched.executionKey);
+	expect(second.family).toBe("waiting_result");
+	facts.dispatch({ ...call, callId: "poll-2", args: { taskId: "background-2" } }, "dispatching");
+	expect(facts.current.get("r")?.executionKey).not.toBe(second.executionKey);
+	facts.set({ runId: "r", conversationId: "c", phase: "generating", consumedInputId: "input-2" });
+	const steered = facts.current.get("r");
+	facts.dispatch(call, "settled");
+	expect(facts.current.get("r")).toEqual(steered);
+	facts.clear("r");
+	expect(facts.current.size).toBe(0);
+	expect(facts.identities.size).toBe(0);
+});

@@ -23,12 +23,14 @@ export function LiveReply({ snapshot, botId = snapshot?.botId, queued = false }:
     const state = live?.state ?? snapshot?.run?.state;
     const text = live?.partial?.map(part => part.text).join("\n\n") ?? "";
     const tool = snapshot?.items.findLast(item => item.kind === "tool" && (item.status === "running" || item.status === "pending"));
-    const label = state === "cancelling" ? "Stopping work"
+    const labels = { preparing: "Preparing response", generating: "Generating response", reading_files: "Reading files", writing_files: "Writing files", running_command: "Running command", searching_web: "Searching web", reading_web: "Reading web", using_connector: "Using connector", working_application: "Working with application", sending_update: "Sending update", waiting_result: "Waiting for result" };
+    const label = snapshot?.run?.interruption ? "Stopping work" : state === "cancelling" ? "Stopping work"
         : snapshot?.approvals.length || state === "waiting_approval" ? "Needs approval"
         : state === "waiting_user" ? "Waiting for your reply"
         : paused ? "Queued until work resumes"
         : queued || state === "queued" ? "Waiting for a free slot"
         : live?.retry ? "Retrying response"
+        : live?.activity ? labels[live.activity.labelKey]
         : tool||snapshot?.live?.toolRunning ? "Running a tool"
         : text.trim() ? "Replying" : "Thinking…";
     const animated = !["Needs approval", "Waiting for your reply", "Queued until work resumes"].includes(label);
@@ -36,6 +38,6 @@ export function LiveReply({ snapshot, botId = snapshot?.botId, queued = false }:
         {author && <div className="message-author"><Avatar bot={author} size={28} /><strong>{author.name}</strong></div>}
         {text && <Markdown text={text} streaming />}
         <ActivityIndicator label={label} animated={animated} />
-        {live?.retry && <div className="message-error">{t("Retrying after an error: ")}{live.retry.error}</div>}
+        {live?.retry && <div className="message-error">{t("Retrying after an error: ")}{t(live.retry.error)}</div>}
     </div>;
 }

@@ -74,7 +74,7 @@ describe("Bot quality", () => {
 		const page = h.page();
 		h.model.script({ error: "The model is unavailable for this key" }, { text: "Second try worked." });
 		await h.send("Try this");
-		const failed = page.locator(".message-error", { hasText: "The model is unavailable for this key" });
+		const failed = page.locator(".message-outcome", { hasText: "This input could not be completed." });
 		await failed.waitFor();
 		const before = h.model.requests.length;
 		await failed.getByRole("button", { name: "Retry" }).click();

@@ -382,6 +382,8 @@ export function decide(call: PolicyCall, definition: ToolDefinition, policy: Pol
 			return { kind: "deny", reason: "Group management requires Core authorization" };
 		case "bot.management":
 			return { kind: "ask", reason: "Review this Bot change" };
+		case "conversation.message":
+			return policy.askFirst?.some(rule => matchesAsk(rule, call, policy.workspace)) ? { kind: "ask", reason: "An Ask first rule requires confirmation" } : { kind: "allow" };
 		case "web":
 		case "memory":
 		// Reading or stopping a background command the user already approved.
