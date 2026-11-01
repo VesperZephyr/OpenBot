@@ -9,7 +9,7 @@ This is the active delivery queue, not a release history. Task status, contracts
 | [B11e: Bot routines and generated-file Library](tasks/b11e-bot-routines-library.md) | Complete the review/verification tracked in [PR #69](https://github.com/VesperZephyr/OpenBot/pull/69); the spec owns findings and evidence |
 | [B13e: Bot templates](tasks/b13e-bot-templates.md) | Owner review and merge of the implementation candidate; acceptance is linked from the spec |
 | [B28a: Deliberate Bot messages and fixed activity status](tasks/b28a-messages-fixed-activity.md) | Review corrections in [PR #75](https://github.com/VesperZephyr/OpenBot/pull/75); original delivery merged through #73 and #74, and acceptance is linked from the spec |
-| [B27c: bounded memory selection and retrieval](tasks/b27c-bounded-memory-retrieval.md) | Complete implementation verification in [PR #77](https://github.com/VesperZephyr/OpenBot/pull/77); the spec links actual-product quality and usage evidence |
+| [B27c: bounded memory selection and retrieval](tasks/b27c-bounded-memory-retrieval.md) | Review the verified implementation in [PR #77](https://github.com/VesperZephyr/OpenBot/pull/77); the spec links actual-product quality and usage evidence |
 | [B28b: Optional AI activity phrasing](tasks/b28b-generated-activity.md) | Depends on B28a; review bounded inference/accounting and default-off evaluation contracts separately |
 
 ## Next

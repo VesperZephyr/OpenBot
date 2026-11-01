@@ -41,4 +41,3 @@ export const queries: [string, string, string[]][] = [
   ['passport number', 'absent', []], ['护照号码', 'absent', []],
   ['Warehouse Cedar', 'suppressed', []], ['LANTERN-61', 'suppressed', []], ['MOVED-SECRET', 'suppressed', []],
 ];
-

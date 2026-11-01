@@ -184,6 +184,20 @@ export class MemoryBook {
 				const root = delivery?.rootId ? groups.roots?.[delivery.rootId] : undefined;
 				if (!current || current.status !== "active" || !delivery || delivery.state !== "pending" || delivery.closed || delivery.transferId ||
 					(!current.memberIds.includes(botId) && root?.coreBotId !== botId) || (delivery.rootId && root?.state !== "running")) return memoryReadFailure("unavailable");
+				const seen = new Set<string>();
+				let ancestor = delivery;
+				for (;;) {
+					if (seen.has(ancestor.deliveryId) || ancestor.closed || ancestor.state === "failed" || ancestor.state === "cancelled") return memoryReadFailure("unavailable");
+					seen.add(ancestor.deliveryId);
+					if (ancestor.backgroundSourceId) {
+						const source = groups.deliveries[ancestor.backgroundSourceId];
+						if (!source || source.transferId || source.state === "failed" || source.state === "cancelled") return memoryReadFailure("unavailable");
+					}
+					if (!ancestor.parentId) break;
+					const parent = groups.deliveries[ancestor.parentId];
+					if (!parent) return memoryReadFailure("unavailable");
+					ancestor = parent;
+				}
 			}
 			const local = memoryState(await tx.doc(MemoryDoc, botId, null));
 			const shared = group ? undefined : memoryState(await tx.doc(SharedMemoryDoc));

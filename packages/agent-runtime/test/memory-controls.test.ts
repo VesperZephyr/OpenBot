@@ -247,6 +247,10 @@ it.each(["user", "peer", "result"] as const)("restricts %s group reads to the ex
  const result = await runtime.readMemory("a", groupCall, "memory_search", { query: "ONLY" }, signal);
  expect(result).toMatchObject({ hits: [{ snippet: "LOCAL_ONLY" }] });
  expect(JSON.stringify(result)).not.toContain('"shared"');
+ if (origin === "peer") {
+  await runtime.groups().finish(delivery.parentId!, "failed", "Parent failed", 8);
+  expect(await runtime.readMemory("a", groupCall, "memory_search", { query: "ONLY" }, signal)).toMatchObject({ error: { code: "unavailable" } });
+ }
  await runtime.groups().change({ requestId: "d", action: "dissolve", groupId: "group_read", expectedRevision: 1 }, 3);
  expect(await runtime.readMemory("a", groupCall, "memory_search", { query: "ONLY" }, signal)).toMatchObject({ error: { code: "unavailable" } });
 });
