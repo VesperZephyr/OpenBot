@@ -45,11 +45,18 @@ describe("HostService", () => {
 	/** Resolves with the first conversation snapshot that satisfies the predicate. */
 	let nextSnapshot: (predicate: (snapshot: ConversationSnapshot) => boolean) => Promise<ConversationSnapshot>;
 
- async function answeredWindow(botId:string){
-  let result:Awaited<ReturnType<typeof runtime.historyWindow>>={status:"building"};
-  await expect.poll(async()=>{result=await service.handle("conversations.window",{conversationKey:`bot:${botId}`,position:{kind:"latest"}});return result.status==="ready"&&result.window.rows.some(row=>row.content.kind==="direct"&&row.content.item.kind==="assistant");}).toBe(true);
-  const ready=await runtime.historyWindow({conversationKey:`bot:${botId}`,position:{kind:"latest"}});if(ready.status!=="ready")throw Error("History is not ready");return ready.window;
- }
+	async function answeredWindow(botId: string) {
+		// Cold source workers compete with the full suite; B14c e2e owns latency gates.
+		return vi.waitFor(async () => {
+			const result = await service.handle("conversations.window", {
+				conversationKey: `bot:${botId}`,
+				position: { kind: "latest" },
+			});
+			if (result.status !== "ready") throw Error(`History is ${result.status}`);
+			expect(result.window.rows.some((row) => row.content.kind === "direct" && row.content.item.kind === "assistant")).toBe(true);
+			return result.window;
+		}, { timeout: 10000 });
+	}
 
 	beforeEach(async () => {
 		directory = await mkdtemp(join(tmpdir(), "openbot-host-"));
@@ -122,16 +129,15 @@ describe("HostService", () => {
 
 		await service.handle("settings.update", { defaultModel: SCRIPTED_MODEL });
 		await service.handle("conversations.subscribe", { botId: bot.botId });
-		const answered = answeredWindow(bot.botId);
 		await service.handle("messages.submit", { botId: bot.botId, requestId: "m1", text: "Hi" });
-		expect((await answered).rows.map((row) => row.content.kind==="direct"?row.content.item.kind:row.content.kind)).toEqual(["user", "assistant"]);
+		expect((await answeredWindow(bot.botId)).rows.map((row) => row.content.kind==="direct"?row.content.item.kind:row.content.kind)).toEqual(["user", "assistant"]);
 
 		const list = await service.handle("bots.list", {});
 		expect(list.find((b) => b.botId === bot.botId)?.activity).toBe("unread");
 		await service.handle("conversations.markRead", { conversationKey: `bot:${bot.botId}`, through: 1 });
 		expect((await service.handle("bots.list", {})).find((b) => b.botId === bot.botId)?.activity).toBe("idle");
 		expect(events).toContain("bots.changed");
-	});
+	}, 15000);
 
 	it("lists bounded summaries without loading histories and rejects read receipts for deleted Bots", async () => {
 		const bot = await service.handle("bots.create", { requestId: "index", name: "Reader" });
@@ -154,9 +160,8 @@ describe("HostService", () => {
 		await service.handle("settings.update", { defaultModel: SCRIPTED_MODEL });
 		const bot = await service.handle("bots.create", { requestId: "search", name: "Reader" });
 		await service.handle("conversations.subscribe", { botId: bot.botId });
-		const answered = answeredWindow(bot.botId);
 		await service.handle("messages.submit", { botId: bot.botId, requestId: "q", text: "SEARCH_PRIVATE_SENTINEL" });
-		await answered;
+		await answeredWindow(bot.botId);
 		const snap = vi.spyOn(runtime, "snapshot");
 		const store = runtime.groups(), posts = vi.fn(store.posts), history = vi.fn(store.history);
 		const groups = vi.spyOn(runtime, "groups").mockReturnValue({ ...store, posts, history });
@@ -175,7 +180,7 @@ describe("HostService", () => {
 		expect((await service.handle("conversations.search", { query: "sentinel", includeHidden: true })).items).toHaveLength(1);
 		await service.handle("bots.delete", { botId: bot.botId });
 		expect((await service.handle("conversations.search", { query: "sentinel", includeHidden: true })).items).toHaveLength(0);
-	});
+	}, 15000);
 
 	it("creates one Bot per request ID", async () => {
 		const first = await service.handle("bots.create", { requestId: "same", name: "Scout" });
@@ -251,16 +256,15 @@ describe("HostService", () => {
 		await service.handle("conversations.subscribe", { botId: watched.botId });
 		updated.length = 0;
 
-		const answered = answeredWindow(watched.botId);
 		await service.handle("messages.submit", { botId: other.botId, requestId: "m-other", text: "Hi" });
 		await service.handle("messages.submit", { botId: watched.botId, requestId: "m-watched", text: "Hi" });
-		await answered;
+		await answeredWindow(watched.botId);
 		expect(updated.length).toBeGreaterThan(0);
 		expect(updated.every((botId) => botId === watched.botId)).toBe(true);
 		// The other Bot still reaches the sidebar.
 		expect(events).toContain("bots.changed");
 		await expect(service.handle("conversations.subscribe", { botId: "bot_missing" })).rejects.toThrow("Unknown Bot");
-	});
+	}, 15000);
 
  it("keeps Prompt and memory content out of diagnostics while recording edit and restore outcomes", async () => {
   const bot = await service.handle("bots.create", {requestId: "privacy", name: "Privacy", instructions: "PRIVATE_PROMPT_SENTINEL"});
@@ -281,9 +285,8 @@ describe("HostService", () => {
 		await service.handle("bots.update", { botId: source.botId, thinkingLevel: "high" });
 		await service.handle("bots.memory.update", { expectedRevision: 0, botId: source.botId, content: "## Preferences\n- Short answers\n" });
 		await service.handle("conversations.subscribe", { botId: source.botId });
-		const answered = answeredWindow(source.botId);
 		await service.handle("messages.submit", { botId: source.botId, requestId: "m1", text: "Hi" });
-		await answered;
+		await answeredWindow(source.botId);
 
 		const copy = await service.handle("bots.duplicate", { botId: source.botId, requestId: "d1" });
 		expect(copy).toMatchObject({ name: "Ada (copy)", role: "Research", instructions: "Cite sources.", thinkingLevel: "high" });
@@ -292,7 +295,7 @@ describe("HostService", () => {
 		expect((await service.handle("conversations.snapshot", { botId: copy.botId })).items).toEqual([]);
 		expect((await service.handle("bots.duplicate", { botId: source.botId, requestId: "d1" })).botId).toBe(copy.botId);
 		expect(await service.handle("bots.list", {})).toHaveLength(3);
-	});
+	}, 15000);
 
 	it("deletes a Bot: hidden everywhere, its conversation kept", async () => {
 		const bot = await service.handle("bots.create", { requestId: "x", name: "Gone" });

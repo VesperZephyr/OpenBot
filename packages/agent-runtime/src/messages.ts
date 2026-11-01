@@ -20,7 +20,7 @@ export type MessageCall = {
 	authorityRevision?: number;
 };
 export type MessageReceipt = { messageId: string; publishedAt: number };
-const Receipts = defineDocFamily<{ digest?: string; receipt?: MessageReceipt }, null>({
+export const MessageReceipts = defineDocFamily<{ digest?: string; receipt?: MessageReceipt }, null>({
 	kind: "openbot.message-receipt",
 	version: 1,
 	family: true,
@@ -44,13 +44,13 @@ const fail = (): never => {
 export function messageStore(harness: Harness, context: Context) {
 	return {
 		async receipt(call: MessageCall): Promise<MessageReceipt | undefined> {
-			const old = await harness.snapshot(Receipts, `${call.conversationId}:${call.callId}`, context);
+			const old = await harness.snapshot(MessageReceipts, `${call.conversationId}:${call.callId}`, context);
 			if (old?.digest && old.digest !== fingerprint(call)) throw new ProtocolError("request_conflict", "Message invocation changed");
 			return old?.receipt;
 		},
 		async publish(call: MessageCall, assertAllowed: () => void): Promise<MessageReceipt> {
 			return harness.commit(async (tx) => {
-				const receipt = await tx.doc(Receipts, `${call.conversationId}:${call.callId}`, null),
+				const receipt = await tx.doc(MessageReceipts, `${call.conversationId}:${call.callId}`, null),
 					digest = fingerprint(call);
 				if (receipt.digest && receipt.digest !== digest) throw new ProtocolError("request_conflict", "Message invocation changed");
 				if (receipt.receipt) return { ...receipt.receipt };

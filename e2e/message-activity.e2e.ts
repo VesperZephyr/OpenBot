@@ -1,5 +1,7 @@
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { launchApp, type AppHarness } from "./harness.ts";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 let h: AppHarness, botId: string;
 const button = (name: string) => h.page().getByRole("button", { name, exact: true });
@@ -64,6 +66,52 @@ it("keeps input-specific Retry after an update and a restart", async () => {
 	await h.page().getByText("The retry succeeded.", { exact: true }).waitFor();
 	expect(JSON.stringify(h.model.requests.at(-1)?.messages)).toContain("Retry exactly this request");
 	await expect.poll(() => button("Retry").count()).toBe(0);
+});
+
+it("indexes an artifact-only canonical answer once for unread, preview and search across rebuild and restart", async () => {
+	const bot = await h.api("bots.create", { requestId: "artifact-answer", name: "Artifact Bot" });
+	await writeFile(join(h.workspace, "result.txt"), "Artifact-only answer evidence");
+	h.model.script({ tool: "artifact_publish", args: { path: "result.txt", name: "artifact-only-result.txt" } }, { text: "" });
+	await h.api("messages.submit", { botId: bot.botId, requestId: "artifact-input", text: "Publish the result" });
+	await expect.poll(async () => (await h.api("bots.list")).find((b: any) => b.botId === bot.botId)?.lastRun?.state).toBe("completed");
+	const key = `bot:${bot.botId}`;
+	const summary = async () => (await h.api("conversations.list")).find((c: any) => c.conversationKey === key);
+	await expect.poll(async () => (await summary())?.incomingCount).toBe(1);
+	expect(await summary()).toMatchObject({ unreadCount: 1, latest: { text: "artifact-only-result.txt" } });
+	const snapshot = await h.api("conversations.snapshot", { botId: bot.botId });
+	const answer = snapshot.items.find((i: any) => i.kind === "assistant");
+	expect(answer).toMatchObject({ parts: [], artifacts: [{ name: "artifact-only-result.txt" }] });
+	const verifySearch = async () => {
+		await expect.poll(async () => (await h.api("conversations.search", { conversationKey: key, query: "artifact-only-result.txt" })).items.map((i: any) => i.messageId), { timeout: 10000 }).toEqual([answer.id]);
+		expect(await summary()).toMatchObject({ incomingCount: 1, latest: { id: answer.id, text: "artifact-only-result.txt" } });
+	};
+	await verifySearch();
+	await h.api("conversations.indexRetry", {});
+	await verifySearch();
+	await h.relaunch();
+	await verifySearch();
+	await h.page().locator(".chat-list .bot-row").filter({ hasText: "Artifact Bot" }).click();
+	await h.page().locator(`[data-message-id="${answer.id}"]`).getByText("artifact-only-result.txt", { exact: true }).waitFor();
+	await h.shot("03-artifact-only-answer");
+	await h.page().locator(".chat-list .bot-row").filter({ hasText: "Evidence Bot" }).click();
+});
+
+it("retains one deliberate update and the stopped outcome after cancellation and history rebuild", async () => {
+	h.model.script({ tool: "send_message", args: { text: "This update was delivered before Stop." } },
+		{ tool: "local_exec", args: { command: "printf should-not-run", description: "Pending work" } });
+	await h.send("Send an update then wait for approval");
+	await button("Allow once").waitFor();
+	await h.page().getByText("This update was delivered before Stop.", { exact: true }).waitFor();
+	await button("Stop").click();
+	await expect.poll(async () => (await h.api("bots.list")).find((b: any) => b.botId === botId)?.lastRun?.state).toBe("cancelled");
+	await expect.poll(() => h.page().locator(".live-reply").count()).toBe(0);
+	await h.api("conversations.indexRetry", {});
+	await expect.poll(async () => (await h.api("conversations.window", { conversationKey: `bot:${botId}`, position: { kind: "latest" } })).status, { timeout: 10000 }).toBe("ready");
+	await h.page().getByText("This update was delivered before Stop.", { exact: true }).waitFor();
+	await h.page().getByText("Work was cancelled.", { exact: true }).waitFor();
+	expect(await h.page().getByText("This update was delivered before Stop.", { exact: true }).count()).toBe(1);
+	expect(await h.page().locator(".tool-card").filter({ hasText: "send_message" }).count()).toBe(0);
+	await h.shot("04-update-after-stop");
 });
 
 it("renders fixed feedback accessibly in a narrow Chinese dark view", async () => {

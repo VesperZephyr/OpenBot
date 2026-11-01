@@ -505,7 +505,20 @@ function HistoryTranscript({
 				);
 			}}
 		>
-			<Transcript snapshot={{ ...snapshot, items: [] }} />
+			{({ rows }) => {
+				const run = snapshot.run;
+				const missingInterruption = snapshot.messageMode && !snapshot.channelId && run?.state === "needs_attention" &&
+					!rows.some(row => row.content.kind === "direct" && row.content.item.kind === "outcome" &&
+						row.content.item.runId === run.runId && row.content.item.category === "interrupted");
+				const retry = snapshot.messageMode && !snapshot.channelId && !snapshot.live && snapshot.retry?.outcomeId &&
+					!rows.some(row => row.id === snapshot.retry!.outcomeId) ? snapshot.retry : undefined;
+				return <>
+					<Transcript snapshot={{ ...snapshot, items: missingInterruption
+						? [{ kind: "outcome", id: `run-outcome:${run.runId}`, runId: run.runId, category: "interrupted" }]
+						: [] }} />
+					{retry && <ol className="messages"><OutcomeRow item={{ id: retry.outcomeId!, category: "failed" }} retry={{ botId: snapshot.botId, ...retry }} /></ol>}
+				</>;
+			}}
 		</HistoryTimeline>
 	);
 }
@@ -1291,7 +1304,7 @@ function OutcomeRow({
 	item,
 	retry,
 }: {
-	item: Extract<TranscriptItem, { kind: "outcome" }>;
+	item: Pick<Extract<TranscriptItem, { kind: "outcome" }>, "id" | "category">;
 	retry:
 		| { botId: string; text: string; artifactIds?: readonly string[]; skills?: readonly import("@openbot/protocol").SkillRef[] }
 		| undefined;
