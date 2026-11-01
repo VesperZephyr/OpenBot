@@ -1,8 +1,8 @@
 # B28a: Deliberate Bot Messages and Fixed Activity Status
 
-Status: in review
-Branch: `task/b28a-messages-fixed-activity`
-PR: [#73](https://github.com/VesperZephyr/OpenBot/pull/73), based on `task/b28-message-status-design`; owner merge pending
+Status: in progress
+Branch: `task/b28a-review-fixes`
+PR: review corrections pending; original implementation merged through [#73](https://github.com/VesperZephyr/OpenBot/pull/73) (`e37a4e6`) and [#74](https://github.com/VesperZephyr/OpenBot/pull/74) (`d6bab2c`)
 Depends on: B13c, B14a–B14d, B15b, B22–B23, D8; reconcile with B11e before implementation
 Architecture: Sections 5.1–5.3, 5.7, 6.1, 7.1–7.3, 8.1–8.3
 
@@ -166,7 +166,9 @@ None unresolved in the revised design. Contracts 2–3 cover input and Run outco
 
 ## Evidence
 
-Implementation acceptance, 2026-10-31: [message, outcome and fixed activity evidence](../acceptance/message-activity-2026-10-31.md). The implementation remains in review; B28b is still draft and excluded.
+Implementation acceptance, 2026-10-31: [message, outcome and fixed activity evidence](../acceptance/message-activity-2026-10-31.md). Original delivery merged through #73 and #74; the review corrections below remain separate. B28b is still draft and excluded.
+
+Review corrections, 2026-11-01: [recovery fallbacks, artifact-only indexing, committed-message cancellation and real Pi-to-Router identity coverage](../acceptance/message-activity-2026-10-31.md#review-corrections--november-1-2026).
 
 Design self-review on 2026-10-31 checked [Run lifecycle transitions](../../packages/server-core/src/runs.ts) and [Run-store transactions/pruning](../../packages/agent-runtime/src/runs.ts). Run-level interruption and queued cancellation now have metadata independent of Pi input outcomes, explicit intent/settlement/action rules and pruning/rebuild acceptance. Withdrawn steers cannot displace the causal Retry target. Empty-answer wording no longer claims completion of the whole Run. Separate polling invocations retain separate keys in both B28a and B28b; only duplicate progress inside a call preserves identity. No additional design blocker was found in this source/spec review. These are resolved design contracts, not verified runtime behavior; no code, vendor files or product tests changed.
 
