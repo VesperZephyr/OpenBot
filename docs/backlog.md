@@ -20,9 +20,9 @@ Prerequisites normally merge before dependent implementation. Each implementatio
 
 ## Research-informed Design Order
 
-After the existing delivery queue and release-priority work above, prepare these design candidates in order. The [October 30 Bot project comparison](research/bot-project-comparison-2026-10-30.md) records external evidence, overlap with existing tasks and the rationale; none is a ready implementation spec.
+After the existing delivery queue and release-priority work above, advance these candidates in order. The [October 30 Bot project comparison](research/bot-project-comparison-2026-10-30.md) records external evidence, overlap with existing tasks and the rationale; each linked spec owns readiness and acceptance.
 
-1. **Bounded memory retrieval.** Continue the [memory research](research/memory-design.md) over B27a records; settle source scope, context budgets, correction/forgetting, backup restoration and measured Chinese retrieval. Do not rebuild provenance or add background extraction in this increment.
+1. **[B27c: bounded memory selection and retrieval](tasks/b27c-bounded-memory-retrieval.md).** Implement the opt-in placement/read contract when selected after release priorities; validate its actual product-input savings and bilingual acceptance. [Design measurements](research/b27c-retrieval-evaluation-2026-11-01.md) support rare-note context control, not a default cost optimization. Continue over B27a records without expanding storage or adding background extraction.
 2. **Reusable behavior regression traces.** Extend ScriptedModel and I3/I4 fixtures with sanitized failure replay where existing tests are insufficient. Feature-specific regressions remain in their owning tasks; this is not a prerequisite for B28a or a replacement test harness.
 3. **Policy explanation and preview.** Audit existing decision evidence before designing rule explanations and read-only historical replay. Resolve missing context, privacy/retention and persistence compatibility before claiming a preview matches live policy.
 

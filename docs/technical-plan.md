@@ -32,7 +32,7 @@ These limitations are carried forward from delivery records; fixing or reclassif
 
 Additional follow-ups remain outside existing contracts:
 
-- Memory: bounded retrieval, semantic contradiction handling and source citations need separate design. Complete erasure from journals, backups and prior provider requests is not provided. See [memory research](research/memory-design.md), [B27a](tasks/b27a-memory-provenance.md) and [backup compatibility](tasks/b14d-backup-restore.md).
+- Memory: bounded retrieval follows the [B27c implementation contract](tasks/b27c-bounded-memory-retrieval.md); semantic contradiction handling and answer-to-note citation navigation need separate design. Complete erasure from journals, backups and prior provider requests is not provided. See [memory research](research/memory-design.md), [B27a](tasks/b27a-memory-provenance.md) and [backup compatibility](tasks/b14d-backup-restore.md).
 - Role composition: capability readiness, per-message skill overrides and broader group defaults require their own contracts; see [role research](research/bot-role-design.md) and [B27b](tasks/b27b-role-skills.md).
 - Conversation and files: group pin/hide, manual mark-unread, Office extraction, relative HTML folder bundles and large-document virtualization are separate work. See [B14c](tasks/b14c-history-scaling.md) and [D9](tasks/d9-file-reading.md).
 - Collaboration: cross-group dispatch, direct-chat peer collaboration and parallel model subagents are not implied by the existing group model; see [B13c](tasks/b13c-collaboration.md).
