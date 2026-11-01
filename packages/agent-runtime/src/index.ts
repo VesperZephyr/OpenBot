@@ -1,3 +1,5 @@
+import { selectiveMemory } from "./memory-retrieval.ts";
+import { syncMemoryTools } from "./memory-offering.ts";
 import { ExecutionObservations } from "./execution-observations.ts";
 import { PublicTranscript } from "./public-transcript.ts";
 import { MessageModeDoc } from "./message-records.ts";
@@ -79,7 +81,7 @@ import { AppExecutionsDoc } from "./app-executions.ts";
 import { appCodemode, invokeAppChild, stopAppExecution, type OrchestrationAdmission } from "./codemode.ts";
 import { type ApprovalStore, approvalStore } from "./approvals.ts";
 import { type PolicyStore, policyStore } from "./policy.ts";
-import { checkMemorySize, type MemoryEdit, type MemoryCallContext, MemoryDoc } from "./memory.ts";
+import { checkMemorySize, type MemoryEdit, type MemoryCallContext, MemoryDoc, SharedMemoryDoc, memoryState } from "./memory.ts";
 import { MemoryBook } from "./memory-book.ts";
 import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
 import { botSections } from "./prompt.ts";
@@ -259,9 +261,28 @@ export class BotRuntime {
 		const models = options.models ?? builtinModels(options.credentials === undefined ? {} : { credentials: options.credentials });
 		const registry = createRegistry();
         const execution = new ExecutionObservations();
+        let resolveMemory!: (book: MemoryBook) => void;
+        const memoryReady = new Promise<MemoryBook>(resolve => { resolveMemory = resolve; });
 		const bot = defineExtension({
 			name: BOT_EXTENSION,
-            hooks: [{ task: "pi.generation", handlers: execution.hooks() }],
+            hooks: [{ task: "pi.generation", handlers: { ...execution.hooks(), beforeRequest: async (request, api, context) => {
+                await execution.request(api, context);
+                const profiles = (await api.snapshot(BotsDoc, context))?.bots ?? {};
+                const direct = Object.values(profiles).find(b => b.conversationId === Number(api.conversationId));
+                const channel = Object.values((await api.snapshot(ChannelsDoc, context))?.channels ?? {}).find(c => c.conversationId === Number(api.conversationId));
+                const botId = direct?.botId ?? channel?.botId;
+                if (!botId) return;
+                const snapshot = await (await memoryReady).projection(botId, !!channel && !channel.channelId.startsWith("routine_"));
+                if (!selectiveMemory(snapshot.local, snapshot.shared)) return;
+                const offered = new Set<string>();
+                let memory = "";
+                for (const message of request.messages) if (message.role === "system") {
+                    for (const tool of message.toolsAdded ?? []) offered.add(tool.name);
+                    for (const tool of message.toolsRemoved ?? []) offered.delete(tool.name);
+                    if (message.sections?.memory !== undefined) memory = message.sections.memory ?? "";
+                }
+                if (!offered.has("memory_search") || !offered.has("memory_read") || !memory.includes("Some current notes are on demand.")) throw new Error("On-demand memory requires both registered read tools and a current memory projection");
+            } } satisfies Partial<import("@earendil-works/pi-durable").GenerationHooks> }],
 			tools:
 				options.tools === undefined
 					? []
@@ -282,7 +303,7 @@ export class BotRuntime {
 				);
 				const record = direct ?? (channel ? bots[channel.botId] : undefined);
 				return record ? { ...record, memoryContext: direct ? "direct" as const : channel?.channelId.startsWith("routine_") ? "routine" as const : "group" as const } : undefined;
-			}, undefined, options.skills),
+			}, undefined, options.skills, async bot => (await memoryReady).projection(bot.botId, bot.memoryContext === "group")),
 		});
 		const core = defineExtension({
 			name: CORE_EXTENSION,
@@ -351,6 +372,7 @@ export class BotRuntime {
 			},
 			context,
 		);
+        resolveMemory(new MemoryBook(harness, context));
 		try {
 			await harness.commit(async (tx) => {
 				await tx.doc(AppExecutionsDoc);
@@ -501,6 +523,7 @@ export class BotRuntime {
 				],
 			});
 			channels.channels[key] = { botId, channelId, conversationId: conversation.id };
+			await syncMemoryTools(tx);
 			return String(conversation.id);
 		}, this.#context);
 	}
@@ -768,6 +791,10 @@ export class BotRuntime {
 	): Promise<{ submissionId: string }> {
 		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		const activeRunId = await this.#harness.commit(async tx => {
+            await syncMemoryTools(tx);
+            const local = (await tx.doc(MemoryDoc, botId, null));
+            const shared = channelId === "direct" || channelId.startsWith("routine_") ? await tx.doc(SharedMemoryDoc) : undefined;
+            if (selectiveMemory(memoryState(local), shared ? memoryState(shared) : undefined) && !["memory_search", "memory_read"].every(name => this.#extensions.bot.tools?.some(t => t.name === name))) throw new Error("On-demand memory requires both registered read tools");
             const run = Object.values((await tx.doc(RunsDoc)).runs).find(r => r.botId === botId && (r.channelId ?? "direct") === channelId && r.state === "running");
             if (!run) return undefined;
             if (run.messageMode && !channelId.startsWith("routine_")) {
@@ -1092,6 +1119,10 @@ export class BotRuntime {
 
 	async changeMemoryNote(input: import("@openbot/protocol").MemoryNoteChange) {
 		return new MemoryBook(this.#harness, this.#context).change(input);
+	}
+
+	async readMemory(botId: string, call: MemoryCallContext, tool: "memory_search" | "memory_read", args: unknown, signal: AbortSignal) {
+		return new MemoryBook(this.#harness, this.#context).read(botId, call, tool, args, signal);
 	}
 
 	async memorySource(botId: string, scope: import("@openbot/protocol").MemoryScope, noteId: string, which: "original" | "changed") {

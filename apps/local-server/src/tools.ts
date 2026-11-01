@@ -14,6 +14,7 @@ import {
 	isWithin,
 	loadPolicy,
 	memoryUpdate,
+	memoryRead,
 	type SecretStore,
 } from "@openbot/server-core";
 import { ToolRouter } from "@openbot/tool-router";
@@ -28,6 +29,7 @@ export function createToolRouter(options: {
 	readonly secrets: SecretStore;
 	/** Tavily endpoint override (`OPENBOT_TAVILY_BASE_URL`), for tests against a local fake. */
 	readonly tavilyBaseUrl: string | undefined;
+	readonly readMemory: import("@openbot/agent-runtime").BotRuntime["readMemory"];
 	/** `BotRuntime.editMemory`; called only once tool calls flow, after the runtime opened. */
 	readonly editMemory: (botId: string, edit: MemoryEdit, invocationId: string, call: MemoryCallContext) => Promise<number>;
 	/** `BotRuntime.policy`; like `editMemory`, read only once tool calls flow. */
@@ -97,6 +99,8 @@ export function createToolRouter(options: {
 				...(options.tavilyBaseUrl === undefined ? {} : { tavilyBaseUrl: options.tavilyBaseUrl }),
 			}),
 			memory_update: memoryUpdate(options.editMemory),
+			memory_search: memoryRead(options.readMemory, "memory_search"),
+			memory_read: memoryRead(options.readMemory, "memory_read"),
 		},
 		policy: {
    binding:(call,argsDigest)=>options.service().authority.binding(call,argsDigest),

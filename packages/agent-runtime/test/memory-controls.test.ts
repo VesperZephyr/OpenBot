@@ -165,3 +165,134 @@ it("retains topic tombstones at the quota instead of silently forgetting correct
 	expect((await runtime.memoryState("b")).notes).toHaveLength(128);
 	expect((await runtime.memoryState("b")).content).toBe("");
 });
+
+it("preserves placement through model edits, moves and restore without changing fact provenance", async () => {
+ await runtime.editMemory("a", { action: "replace", section: "City", content: "香港", expectedRevision: 0 }, "learn-city", call);
+ const original = (await runtime.memoryState("a")).notes.find(n => n.heading === "City")!;
+ const change = { botId: "a", scope: "bot" as const, noteId: original.id, action: "placement" as const, placement: "on-demand" as const, expectedRevision: 1, requestId: "placement" };
+ const placed = (await runtime.changeMemoryNote(change)).local;
+ expect(placed.notes.find(n => n.id === original.id)).toEqual({ ...original, placement: "on-demand" });
+ expect((await runtime.changeMemoryNote(change)).local.revision).toBe(2);
+ await expect(runtime.changeMemoryNote({ ...change, placement: "always" })).rejects.toThrow("arguments changed");
+ expect((await runtime.changeMemoryNote({ ...change, expectedRevision: 2, requestId: "noop" })).local.revision).toBe(2);
+ await runtime.editMemory("a", { action: "replace", section: "City", content: "Singapore", expectedRevision: 2 }, "edit-city", call);
+ expect((await runtime.memoryState("a")).notes.find(n => n.id === original.id)).toMatchObject({ placement: "on-demand", protected: false });
+ await runtime.restoreMemory("a", 1, 3);
+ expect((await runtime.memoryState("a")).notes.find(n => n.id === original.id)).toMatchObject({ placement: "always", protected: true, content: "香港" });
+ await runtime.restoreMemory("a", 2, 4);
+ const moved = await runtime.changeMemoryNote({ ...change, action: "share", expectedRevision: 5, requestId: "share", otherRevision: 0 });
+ expect(moved.shared.notes.find(n => n.id === original.id)?.placement).toBe("on-demand");
+ await runtime.close(); runtime = await open();
+ expect((await runtime.sharedMemory()).notes.find(n => n.id === original.id)?.placement).toBe("on-demand");
+});
+
+it("preserves surviving Markdown placement but defaults a re-added topic and old snapshot to always", async () => {
+ await runtime.setMemory("a", "## Topic\nOriginal", 0);
+ const note = (await runtime.memoryState("a")).notes[0]!;
+ await runtime.changeMemoryNote({ botId: "a", scope: "bot", noteId: note.id, action: "placement", placement: "on-demand", expectedRevision: 1, requestId: "p" });
+ await runtime.setMemory("a", "## Topic\nEdited", 2);
+ expect((await runtime.memoryState("a")).notes[0]?.placement).toBe("on-demand");
+ await runtime.setMemory("a", "", 3);
+ await runtime.setMemory("a", "## Topic\nAdded again", 4);
+ expect((await runtime.memoryState("a")).notes.find(n => n.id === note.id)?.placement).toBe("always");
+ await runtime.restoreMemory("a", 0, 5);
+ expect((await runtime.memoryState("a")).notes.find(n => n.status === "active")?.placement).toBe("always");
+ expect((await runtime.memoryState("a")).notes.find(n => n.id === note.id)?.status).toBe("forgotten");
+});
+
+it("rechecks live authority and current revisions on fresh reads across corrections, forgetting and restart", async () => {
+ await runtime.setMemory("a", "## City\n香港", 0);
+ const signal = new AbortController().signal;
+ const search = await runtime.readMemory("a", call, "memory_search", { query: "香港" }, signal);
+ if (!search.ok || !("hits" in search)) throw Error("Search failed");
+ const ref = search.hits[0]!.ref;
+ expect(await runtime.readMemory("b", call, "memory_read", { ref }, signal)).toMatchObject({ error: { code: "unavailable" } });
+ await runtime.setMemory("a", "## City\nSingapore", 1);
+ expect(await runtime.readMemory("a", call, "memory_read", { ref }, signal)).toMatchObject({ error: { code: "stale" } });
+ await runtime.close(); runtime = await open();
+ expect(await runtime.readMemory("a", call, "memory_read", { ref }, signal)).toMatchObject({ error: { code: "stale" } });
+ expect(await runtime.readMemory("a", call, "memory_search", { query: "Singapore" }, signal)).toMatchObject({ hits: [{ snippet: "Singapore" }] });
+ await runtime.setMemory("a", "", 2);
+ expect(await runtime.readMemory("a", call, "memory_search", { query: "Singapore" }, signal)).toMatchObject({ hits: [] });
+ expect(await runtime.readMemory("a", call, "memory_search", { query: "City" }, AbortSignal.abort())).toMatchObject({ error: { code: "cancelled" } });
+ const run = (await runtime.runsStore().get(call.runId))!;
+ await runtime.runsStore().put({ ...run, state: "completed" });
+ expect(await runtime.readMemory("a", call, "memory_search", { query: "City" }, signal)).toMatchObject({ error: { code: "unavailable" } });
+});
+
+it.each(["user", "peer", "result"] as const)("restricts %s group reads to the executing Bot and rejects invalidated deliveries", async origin => {
+ await runtime.setMemory("a", "## Local\nLOCAL_ONLY", 0);
+ await runtime.setSharedMemory("## Shared\nSHARED_ONLY", 0);
+ await runtime.groups().change({ requestId: "g", action: "create", groupId: "group_read", expectedRevision: 0, fields: { name: "Read", objective: "Read", memberIds: ["a", "b"], leadBotId: "a" } }, 1);
+ await runtime.ensureCoreBot(1);
+ await runtime.groups().post("group_read", "post", "Read", [origin === "peer" ? "b" : "a"], 2);
+ let delivery = (await runtime.groups().deliveries())[0]!;
+ if (origin !== "user") {
+  const child = await runtime.groups().dispatch("child", "args", delivery.deliveryId, origin === "peer" ? "a" : "b", "Read", "Result", false, 3);
+  if (origin === "peer") delivery = (await runtime.groups().deliveries()).find(d => d.deliveryId === child.deliveryId)!;
+  else {
+   await runtime.groups().finish(child.deliveryId!, "completed", "Child result", 4);
+   await runtime.groups().finish(delivery.deliveryId, "completed", "Parent result", 5);
+   await runtime.groups().reconcile(6);
+   await runtime.groups().reconcile(7);
+   delivery = (await runtime.groups().deliveries()).find(d => d.origin === "result")!;
+  }
+ }
+ expect(delivery.origin).toBe(origin);
+ const conversationId = await runtime.ensureChannel("a", "group_read");
+ const run = (await runtime.runsStore().get(call.runId))!;
+ await runtime.runsStore().put({ ...run, origin: origin === "user" ? "user" : "peer", channelId: "group_read", requestIds: [`delivery:${delivery.deliveryId}`] });
+ const groupCall = { ...call, conversationId };
+ const signal = new AbortController().signal;
+ const result = await runtime.readMemory("a", groupCall, "memory_search", { query: "ONLY" }, signal);
+ expect(result).toMatchObject({ hits: [{ snippet: "LOCAL_ONLY" }] });
+ expect(JSON.stringify(result)).not.toContain('"shared"');
+ await runtime.groups().change({ requestId: "d", action: "dissolve", groupId: "group_read", expectedRevision: 1 }, 3);
+ expect(await runtime.readMemory("a", groupCall, "memory_search", { query: "ONLY" }, signal)).toMatchObject({ error: { code: "unavailable" } });
+});
+
+it("includes shared reads in routines and direct background continuations without enabling writes", async () => {
+ await runtime.setSharedMemory("## Shared\nSHARED_ONLY", 0);
+ const run = (await runtime.runsStore().get(call.runId))!;
+ for (const origin of ["routine", "background"] as const) {
+  const channelId = origin === "routine" ? "routine_test" : "direct";
+  const conversationId = await runtime.ensureChannel("a", channelId);
+  await runtime.runsStore().put({ ...run, origin, channelId });
+  expect(await runtime.readMemory("a", { ...call, conversationId }, "memory_search", { query: "ONLY" }, new AbortController().signal)).toMatchObject({ hits: [{ ref: { scope: "shared" }, snippet: "SHARED_ONLY" }] });
+ }
+});
+
+it("fails selective admission visibly when read tool registration is missing", async () => {
+ const memory = await runtime.memoryState("a");
+ await runtime.changeMemoryNote({ requestId: "selective", botId: "a", scope: "bot", action: "placement", noteId: memory.notes[0]!.id, placement: "on-demand", expectedRevision: memory.revision });
+ await expect(runtime.submit("a", "missing-tools", "Recall", "start")).rejects.toThrow("both registered read tools");
+});
+
+it("replays a committed Pi result with its original observation instead of performing a new read", async () => {
+ const { TOOL_CATALOG } = await import("@openbot/protocol");
+ const { SCRIPTED_MODEL } = await import("../src/testing.ts");
+ await runtime.close();
+ let calls = 0;
+ const openRead = (answer: boolean) => BotRuntime.open({ databasePath: join(directory, "db.sqlite"), models: scriptedModels(...(answer ? [{ tool: "memory_search", args: { query: "Legacy" } }, "Found"] : [])).models, tools: {
+  definitions: TOOL_CATALOG.filter(t => ["memory_search", "memory_read"].includes(t.name)),
+  invoke: async request => {
+   calls++;
+   const result = await runtime.readMemory(request.botId, { runId: request.runId!, conversationId: request.conversationId }, "memory_search", request.args, request.signal);
+   return { status: result.ok ? "succeeded" : "failed", output: JSON.stringify(result) };
+  },
+ } });
+ runtime = await openRead(true);
+ await runtime.updateBot("a", { model: SCRIPTED_MODEL });
+ const memory = await runtime.memoryState("a");
+ await runtime.changeMemoryNote({ requestId: "selective", botId: "a", scope: "bot", action: "placement", noteId: memory.notes[0]!.id, placement: "on-demand", expectedRevision: memory.revision });
+ await runtime.submitAndWait("a", "recall", "Recall Legacy");
+ expect(calls).toBe(1);
+ const result = (await runtime.snapshot("a")).items.find(i => i.kind === "tool");
+ expect(JSON.stringify(result)).toContain("observedAt");
+ await runtime.setMemory("a", "", 1);
+ await runtime.close(); runtime = await openRead(false);
+ await runtime.submitAndWait("a", "recall", "Recall Legacy");
+ expect(calls).toBe(1);
+ expect((await runtime.snapshot("a")).items.find(i => i.kind === "tool")).toEqual(result);
+ expect((await runtime.memoryState("a")).content).toBe("");
+});

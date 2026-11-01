@@ -169,4 +169,7 @@ None blocking implementation of the opt-in scope. The 2026-11-01 value, bilingua
 
 Design baseline: `d6bab2c`, reviewed 2026-11-01. Read B27a/B14d contracts, the protocol note types, memory conversion/mutation code, prompt projection, existing Memory UI and memory regression tests. [Comparison research](../research/bot-project-comparison-2026-10-30.md) supplies external examples; [memory research](../research/memory-design.md) owns the earlier retrieval experiments.
 
-The [2026-11-01 evaluation](../research/b27c-retrieval-evaluation-2026-11-01.md) records deterministic bilingual queries, two bounded provider comparisons, the experimental-reference bug and affected-case rerun, usage trade-offs and reproducibility. Design readiness does not claim product implementation, full acceptance or general model reliability. Only documentation and synthetic research fixtures changed; no product code, dependencies or owner memory were modified.
+The [2026-11-01 evaluation](../research/b27c-retrieval-evaluation-2026-11-01.md) records deterministic bilingual queries, two bounded provider comparisons, the experimental-reference bug and affected-case rerun, usage trade-offs and reproducibility. Design readiness does not claim product implementation, full acceptance or general model reliability. Design PR #76 changed only documentation and synthetic research fixtures; no product code, dependencies or owner memory were modified.
+
+
+Implementation candidate: [PR #77](https://github.com/VesperZephyr/OpenBot/pull/77). The [2026-11-01 product acceptance record](../acceptance/b27c-memory-retrieval-2026-11-01.md) owns implementation verification, the complete bounded provider comparison, cache observations and remaining gaps.

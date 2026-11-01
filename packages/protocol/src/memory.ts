@@ -12,6 +12,7 @@ export type MemoryProvenance = {
 };
 
 export type MemoryNote = {
+	readonly placement?: "always" | "on-demand";
 	readonly id: string;
 	readonly key: string;
 	/** Empty for an imported Markdown preamble. */
@@ -32,6 +33,7 @@ export type MemoryNoteChange = {
 	| { readonly action: "add"; readonly heading: string; readonly content: string }
 	| { readonly action: "edit"; readonly noteId: string; readonly content: string }
 	| { readonly action: "forget"; readonly noteId: string }
+	| { readonly action: "placement"; readonly noteId: string; readonly placement: "always" | "on-demand" }
 	| { readonly action: "share" | "unshare"; readonly noteId: string; readonly otherRevision: number }
 );
 
