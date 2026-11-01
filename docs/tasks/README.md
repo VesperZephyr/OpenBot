@@ -126,6 +126,7 @@ Candidate revision, acceptance checks and outcomes, and remaining limits; or lin
 - [B12a: Deterministic Policy, Revocation, and Unattended Approval Expiry](b12a-deterministic-policy.md)
 - [B27a: Attributable Memory and Explicit Sharing](b27a-memory-provenance.md)
 - [B27b: Per-Role Skill Defaults](b27b-role-skills.md)
+- [B27c: Bounded Memory Selection and Retrieval](b27c-bounded-memory-retrieval.md)
 
 ## Reliability and local data
 
