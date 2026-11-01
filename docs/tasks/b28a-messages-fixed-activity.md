@@ -1,8 +1,8 @@
 # B28a: Deliberate Bot Messages and Fixed Activity Status
 
-Status: in progress
+Status: in review
 Branch: `task/b28a-review-fixes`
-PR: review corrections pending; original implementation merged through [#73](https://github.com/VesperZephyr/OpenBot/pull/73) (`e37a4e6`) and [#74](https://github.com/VesperZephyr/OpenBot/pull/74) (`d6bab2c`)
+PR: [#75](https://github.com/VesperZephyr/OpenBot/pull/75); original implementation merged through [#73](https://github.com/VesperZephyr/OpenBot/pull/73) (`e37a4e6`) and [#74](https://github.com/VesperZephyr/OpenBot/pull/74) (`d6bab2c`)
 Depends on: B13c, B14a–B14d, B15b, B22–B23, D8; reconcile with B11e before implementation
 Architecture: Sections 5.1–5.3, 5.7, 6.1, 7.1–7.3, 8.1–8.3
 

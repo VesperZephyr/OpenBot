@@ -3,6 +3,7 @@ import type { Context } from "@earendil-works/chord/context";
 import type { TranscriptItem } from "@openbot/protocol";
 import { MessageModeDoc, RunOutcomeDoc, type InputOutcomeData, type RunOutcomeData } from "./message-records.ts";
 import { toTranscript, textParts } from "./transcript.ts";
+import { MessageReceipts } from "./messages.ts";
 
 export type PublicSelection = { items: TranscriptItem[]; source: number; remove: string[] };
 export class PublicTranscript {
@@ -28,8 +29,9 @@ export class PublicTranscript {
 		const raw = toTranscript([entry], seeds),
 			selected: PublicSelection = { items: raw, source: entry.id, remove: [] };
 		if (entry.kind === "openbot.bot-message") {
-			const data = entry.data as { text: string; at: number };
+			const data = entry.data as { text: string; at: number; callId: string };
 			selected.items = [{ kind: "assistant", id: String(entry.id), parts: [{ type: "text", text: data.text }], at: data.at }];
+			selected.remove.push(data.callId);
 		} else if (entry.kind === "openbot.input-outcome") {
 			const data = entry.data as InputOutcomeData,
 				id = `outcome:${data.submissionId}`,
@@ -116,8 +118,11 @@ export class PublicTranscript {
 		} else if (entry.kind === "openbot.messages-v1") selected.items = [];
 		else if (mode !== undefined && entry.id > mode) {
 			selected.items = raw.filter((item) => (entry.kind !== "pi.assistant" || item.kind !== "assistant") && item.kind !== "stopped");
-			for (const item of selected.items)
-				if (item.kind === "tool" && item.tool === "send_message" && item.status === "succeeded") selected.remove.push(item.id);
+			for (const item of selected.items) {
+				if (item.kind !== "tool" || item.tool !== "send_message") continue;
+				const publication = await this.harness.snapshot(MessageReceipts, `${entry.conversationId}:${item.id}`, this.context);
+				if (publication?.receipt) selected.remove.push(item.id);
+			}
 			selected.items = selected.items.filter((item) => !selected.remove.includes(item.id));
 		}
 		return selected;

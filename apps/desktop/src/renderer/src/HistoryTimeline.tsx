@@ -17,10 +17,11 @@ import {
 } from "./history-cache";
 
 type Selector = Pick<WindowInput, "conversationKey" | "deliveryId" | "occurrenceId">;
+type RenderContext = { rows: readonly TimelineRow[]; atLatest: boolean };
 type Props = Selector & {
 	activity: string;
-	renderRow: (row: TimelineRow, context: { rows: readonly TimelineRow[]; atLatest: boolean }) => ReactNode;
-	children?: ReactNode;
+	renderRow: (row: TimelineRow, context: RenderContext) => ReactNode;
+	children?: ReactNode | ((context: RenderContext) => ReactNode);
 	empty?: ReactNode;
 	className?: string;
 };
@@ -384,7 +385,7 @@ function HistoryView({
 								) : (
 									<>
 										{!rows.length && status === "ready" && empty}
-										{children}
+										{typeof children === "function" ? children(renderContext) : children}
 									</>
 								)}
 							</div>

@@ -117,7 +117,7 @@ export class HistoryProjection {
 	}
 	private async open() {
 		const info = await stat(this.options.databasePath);
-		this.#source = JSON.stringify([4, String(info.dev), String(info.ino)]);
+		this.#source = JSON.stringify([5, String(info.dev), String(info.ino)]);
 		this.#worker = await HistoryClient.open(this.options.path, this.#source, this.options.workerUrl);
 		this.#worker.onFailure = () => {
 			this.#rescan = true;
