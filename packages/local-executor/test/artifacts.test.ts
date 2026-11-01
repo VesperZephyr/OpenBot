@@ -3,6 +3,8 @@ import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
+import { randomUUID } from "node:crypto";
+import type { ArtifactRef } from "@openbot/protocol";
 import { ArtifactStore } from "../src/artifacts.ts";
 let root: string, store: ArtifactStore;
 beforeEach(() => {
@@ -17,6 +19,31 @@ function file(name: string, content: string | Buffer) {
 	const path = join(root, name);
 	writeFileSync(path, content);
 	return path;
+}
+
+// Pagination needs committed history, not hundreds of repeated import/fsync operations.
+function seedCopies(template: ArtifactRef, count: number, name: (index: number) => string): ArtifactRef[] {
+	const { availability: _availability, ...stored } = template;
+	const directory = store.directory;
+	const bytes = readFileSync(join(directory, template.artifactId));
+	const copies: ArtifactRef[] = [];
+	store.close();
+	const db = new DatabaseSync(join(directory, "metadata.sqlite"));
+	try {
+		db.exec("begin immediate");
+		const insert = db.prepare("insert into artifacts(id,ref) values(?,?)");
+		for (let i = 0; i < count; i++) {
+			const ref = { ...stored, artifactId: `artifact_${randomUUID().replaceAll("-", "")}`, name: name(i) };
+			writeFileSync(join(directory, ref.artifactId), bytes, { flag: "wx", mode: 0o600 });
+			insert.run(ref.artifactId, JSON.stringify(ref));
+			copies.push({ ...ref, availability: "available" });
+		}
+		db.exec("commit");
+	} finally {
+		db.close();
+		store = new ArtifactStore(directory);
+	}
+	return copies;
 }
 describe("immutable local artifacts", () => {
 	it("retains an independent copy, deduplicates imports and reopens after source removal", () => {
@@ -121,13 +148,22 @@ describe("immutable local artifacts", () => {
 	});
 });
 
-it("lists immutable shared references with stable pagination, filtering and removal",()=>{
- for(let i=0;i<202;i++)store.capture(`list-${i}`,file(`file-${i}.txt`,String(i)));
- const first=store.list(0,""),second=store.list(first.nextOffset!,"");
- expect(first.items).toHaveLength(200);expect(second.items).toHaveLength(2);expect(second.nextOffset).toBeUndefined();
- expect(new Set([...first.items,...second.items].map(item=>item.artifactId)).size).toBe(202);
- const match=store.list(0,"FILE-201");expect(match.items).toHaveLength(1);
- const ref=match.items[0]!;store.remove("list-remove",ref.artifactId);expect(store.list(0,"file-201").items).toHaveLength(0);
+it("lists immutable shared references with stable pagination, filtering and removal", () => {
+	const oldest = store.capture("list-0", file("file-0.txt", "0"));
+	const copies = seedCopies(oldest, 200, (i) => `file-${i + 1}.txt`);
+	const newest = store.capture("list-201", file("file-201.txt", "201"));
+	const first = store.list(0, ""), second = store.list(first.nextOffset!, "");
+	expect(first.items).toHaveLength(200);
+	expect(second.items).toHaveLength(2);
+	expect(second.nextOffset).toBeUndefined();
+	expect([...first.items, ...second.items]).toEqual([oldest, ...copies, newest].reverse());
+	expect(new Set([...first.items, ...second.items].map((item) => item.artifactId)).size).toBe(202);
+	expect(store.content(copies[0]!.artifactId)).toMatchObject({ artifact: { availability: "available" }, text: "0" });
+	expect(store.list(0, "FILE-201").items).toEqual([newest]);
+	store.remove("list-remove", newest.artifactId);
+	expect(store.list(0, "file-201").items).toHaveLength(0);
+	expect(store.list(0, "").items).toEqual([...copies].reverse());
+	expect(store.list(200, "")).toEqual({ items: [oldest] });
 });
 
 it("publishes immutable PDF results without widening model input formats",()=>{
@@ -143,10 +179,11 @@ it("filters generated files by trusted Bot before pagination and preserves legac
 	const legacy = store.capture("legacy", path, "result");
 	const first = store.capture("bot-a", path, "result", undefined, "a");
 	const input = store.capture("input", path, "input", undefined, "a");
-	for (let i = 0; i < 201; i++) store.capture(`other-${i}`, path, "result", undefined, "b");
+	const other = store.capture("other", path, "result", undefined, "b");
+	const copies = seedCopies(other, 200, () => other.name);
 	expect(store.list(0, "", { source: "result", botId: "a" }).items).toEqual([first]);
-	expect(store.list(0, "REPORT", { source: "result", botId: "b" }).nextOffset).toBe(200);
-	expect(store.list(200, "", { source: "result", botId: "b" }).items).toHaveLength(1);
+	expect(store.list(0, "REPORT", { source: "result", botId: "b" })).toEqual({ items: [...copies].reverse(), nextOffset: 200 });
+	expect(store.list(200, "", { source: "result", botId: "b" })).toEqual({ items: [other] });
 	expect(store.list(0, "missing", { botId: "a" }).items).toEqual([]);
 	expect(input.botId).toBeUndefined();
 	expect(legacy.botId).toBeUndefined();
@@ -157,4 +194,4 @@ it("filters generated files by trusted Bot before pagination and preserves legac
 	store.remove("remove-a", first.artifactId);
 	expect(store.list(0, "", { botId: "a" }).items).toEqual([]);
 	expect(store.get(legacy.artifactId).availability).toBe("available");
-}, 30000);
+});
