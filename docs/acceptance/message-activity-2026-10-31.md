@@ -124,7 +124,9 @@ Fresh verification rebuilt commit `b1a7133` with `pnpm run e2e`: all 211 tests i
 
 After the assertion edit, unmodified `pnpm run check` passed package boundaries, both TypeScript projects and all 648 tests in 100 files (51.27 s) at default concurrency. No worker or timeout overrides were supplied. `git diff --check` and changed-document relative paths passed.
 
-No further blocking product omission, excessive abstraction or architecture conflict was found. Recovery fallbacks still derive from current Host authority and disappear when their outcome is loaded; published updates use existing indexed receipts; artifact-only indexing retains canonical answer identity. No production code, public contract, canonical persistence, vendor files, worker setting or B28b work changed during this final review. #75 remains in review and unmerged.
+No further blocking product omission, excessive abstraction or architecture conflict was found. Recovery fallbacks still derive from current Host authority and disappear when their outcome is loaded; published updates use existing indexed receipts; artifact-only indexing retains canonical answer identity. No production code, public contract, canonical persistence, vendor files, worker setting or B28b work changed during this final review.
+
+Remote status reconciliation: #75 was merged externally at 12:14:45 UTC on 2026-11-01, as `9bd7a58`, while this final validation was running. That merge contains `b1a7133`, the exact runtime/e2e source verified above. The reviewer did not execute a merge. The assertion strengthening and this final evidence were committed afterward on the task branch and are a separate, unmerged review addendum. B28a implementation is therefore done; B28b remains draft and untouched.
 
 ## Limits
 

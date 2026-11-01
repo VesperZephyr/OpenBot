@@ -1,8 +1,8 @@
 # B28a: Deliberate Bot Messages and Fixed Activity Status
 
-Status: in review
+Status: done
 Branch: `task/b28a-review-fixes`
-PR: [#75](https://github.com/VesperZephyr/OpenBot/pull/75); original implementation merged through [#73](https://github.com/VesperZephyr/OpenBot/pull/73) (`e37a4e6`) and [#74](https://github.com/VesperZephyr/OpenBot/pull/74) (`d6bab2c`)
+PR: [#75](https://github.com/VesperZephyr/OpenBot/pull/75) merged at `9bd7a58`; original implementation merged through [#73](https://github.com/VesperZephyr/OpenBot/pull/73) (`e37a4e6`) and [#74](https://github.com/VesperZephyr/OpenBot/pull/74) (`d6bab2c`)
 Depends on: B13c, B14a–B14d, B15b, B22–B23, D8; reconcile with B11e before implementation
 Architecture: Sections 5.1–5.3, 5.7, 6.1, 7.1–7.3, 8.1–8.3
 
@@ -166,7 +166,7 @@ None unresolved in the revised design. Contracts 2–3 cover input and Run outco
 
 ## Evidence
 
-Implementation acceptance, 2026-10-31: [message, outcome and fixed activity evidence](../acceptance/message-activity-2026-10-31.md). Original delivery merged through #73 and #74; the review corrections below remain separate. B28b is still draft and excluded.
+Implementation acceptance, 2026-10-31: [message, outcome and fixed activity evidence](../acceptance/message-activity-2026-10-31.md). Original delivery merged through #73 and #74; review corrections merged through #75 at `9bd7a58` on 2026-11-01. B28b is still draft and excluded.
 
 Review corrections, 2026-11-01: [recovery fallbacks, artifact-only indexing, committed-message cancellation and real Pi-to-Router identity coverage](../acceptance/message-activity-2026-10-31.md#review-corrections--november-1-2026).
 
