@@ -109,6 +109,23 @@ Final validation after removing the timing hooks:
 
 Self-review found no new omission or architecture conflict. The helper is local to these two read tests, derives schema values and bytes from a real capture, and keeps real files rather than mocking availability or queries. Exact page contents cover ordering and filtering before pagination; a real capture against the populated store and real removal cover the boundary with mutations. The original dedicated durability/recovery and quota tests were neither removed nor weakened. The test improvement does not imply cheaper production imports, a different quota policy, or a throughput guarantee. No protocol, package boundary, persistence format, runtime API or production setting changed. #75 remains in review and unmerged; B28b remains draft and untouched.
 
+## Final PR review — November 1, 2026
+
+Reviewed #75 against base `d6bab2c`, with particular comparison of the readiness and artifact-fixture corrections from `685b3b3` through `b1a7133`:
+
+| Correction | Preserved coverage | Changed test responsibility |
+| --- | --- | --- |
+| History readiness | Actual Host/runtime ready windows and assistant content; exact user/assistant rows; unread/read, eligible search, subscription isolation, profile duplication, routine privacy and authorization assertions | Functional waits allow cold source-worker startup and use the same observed window. The new promise-gated case verifies Pi settlement while indexing is held. Default concurrency and separate B14c performance gates are unchanged. |
+| Artifact pagination | 202/204 records; page boundaries, unique IDs, case-insensitive search, Bot filtering before pagination, real import/removal/reopen and receipt replay | Repeated durable imports used only to construct historical rows are replaced by real blobs plus transactional fixture metadata. Exact ordered page assertions and seeded-content checks are stronger. These cases no longer exercise hundreds of consecutive imports; dedicated durability, quota and recovery tests remain unchanged. No bulk-import throughput claim is made. |
+
+The review found one additional assertion gap in the real Pi-to-Router committed-message cancellation test: a negative tool-row assertion could pass with a non-ready or empty history window. It now requires a ready window, exact equality between the indexed assistant messages and the live projection's single committed message, and no `send_message` tool row. These checks run before cancellation, after cancellation, after rebuilding history and after reopening the database. The focused four-case integration suite passed after this test-only strengthening.
+
+Fresh verification rebuilt commit `b1a7133` with `pnpm run e2e`: all 211 tests in 54 files passed in 363.85 seconds, using isolated background apps. The subsequent assertion edit above affects only a unit/integration test; runtime and e2e sources are identical to that run. Shard durations were refreshed from its complete report. B14c retained its original gates and passed with switch p95 78.2 ms, search p95 186.2 ms, controls p95 4.9 ms and cold rebuild/launch 10.45 s; Pi/worker bounds remained 256 entries and 129 records / 61,155 bytes. Inspected this run's artifact-only answer, retained update after Stop, Chinese/dark narrow activity, Continue with unavailable history and Retry while history builds screenshots.
+
+After the assertion edit, unmodified `pnpm run check` passed package boundaries, both TypeScript projects and all 648 tests in 100 files (51.27 s) at default concurrency. No worker or timeout overrides were supplied. `git diff --check` and changed-document relative paths passed.
+
+No further blocking product omission, excessive abstraction or architecture conflict was found. Recovery fallbacks still derive from current Host authority and disappear when their outcome is loaded; published updates use existing indexed receipts; artifact-only indexing retains canonical answer identity. No production code, public contract, canonical persistence, vendor files, worker setting or B28b work changed during this final review. #75 remains in review and unmerged.
+
 ## Limits
 
 This is deterministic local acceptance on macOS, using isolated fixture databases, workspace and Keychain service. No owner data or real provider was used. Real-model update quality, VoiceOver interaction, signed/packaged installation, native lifecycle behavior on a sleeping/locked Mac, and release/rollback compatibility are not established by these tests. Browser/computer control and B28b AI phrasing remain separate tasks.
