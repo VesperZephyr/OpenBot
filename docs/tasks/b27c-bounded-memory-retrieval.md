@@ -1,7 +1,7 @@
 # B27c: Bounded Memory Selection and Retrieval
 
-Status: ready
-Branch: unclaimed (design: `task/b27c-memory-retrieval-design`; proposed implementation: `task/b27c-bounded-memory-retrieval`)
+Status: in progress
+Branch: `task/b27c-bounded-memory-retrieval`
 Depends on: B27a, B14d; preserve B13a/B13c context scope and B28a activity presentation
 Architecture: Sections 1.1, 5.1, 5.7, 6.1 and 8.3
 
