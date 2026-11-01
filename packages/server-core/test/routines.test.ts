@@ -680,21 +680,28 @@ it("isolates invalid due schedules and surfaces global scan errors without faili
 	expect((await service.list()).scheduler?.faults.some((f) => f.key === "scheduler")).toBe(true);
 });
 
-it("authorizes bounded occurrence windows and excludes their text from public search",async()=>{
- const routine=await create("private-history"),occurrence=await service.test(routine.routineId,1,"private-history-run");
- await runtime.submitAndWait("bot","private-input","PRIVATE_OCCURRENCE_SENTINEL",occurrence.channelId);
- let window:import("@openbot/protocol").WindowResult={status:"building"};
- await expect.poll(async()=>{window=await runtime.historyWindow({conversationKey:"bot:bot",occurrenceId:occurrence.occurrenceId,position:{kind:"latest"}});return window.status;}).toBe("ready");
- const result=await runtime.historyWindow({conversationKey:"bot:bot",occurrenceId:occurrence.occurrenceId,position:{kind:"latest"}});if(result.status!=="ready")throw Error("History is not ready");
- expect(result.window.readCursor).toBeUndefined();expect(JSON.stringify(result.window)).toContain("PRIVATE_OCCURRENCE_SENTINEL");
- expect((await runtime.searchConversations("PRIVATE_OCCURRENCE_SENTINEL",new Set(["bot:bot"]))).items).toEqual([]);
- expect((await service.detail(routine.routineId,occurrence.occurrenceId)).snapshot?.items).toEqual([]);
- await runtime.createBot({botId:"other",name:"Other",createdAt:now});
- await expect(runtime.historyWindow({conversationKey:"bot:other",occurrenceId:occurrence.occurrenceId,position:{kind:"latest"}})).rejects.toThrow("Occurrence is unavailable");
- await expect(runtime.historyWindow({conversationKey:"group:group_missing",occurrenceId:occurrence.occurrenceId,position:{kind:"latest"}})).rejects.toThrow("Occurrence requires");
- await runtime.updateBot("bot",{status:"deleted"});
- await expect(runtime.historyWindow({conversationKey:"bot:bot",occurrenceId:occurrence.occurrenceId,position:{kind:"latest"}})).rejects.toThrow("unavailable");
-});
+it("authorizes bounded occurrence windows and excludes their text from public search", async () => {
+	const routine = await create("private-history");
+	const occurrence = await service.test(routine.routineId, 1, "private-history-run");
+	await runtime.submitAndWait("bot", "private-input", "PRIVATE_OCCURRENCE_SENTINEL", occurrence.channelId);
+	// Model settlement does not wait for the disposable index's cold worker.
+	const result = await vi.waitFor(async () => {
+		const window = await runtime.historyWindow({
+			conversationKey: "bot:bot", occurrenceId: occurrence.occurrenceId, position: { kind: "latest" },
+		});
+		if (window.status !== "ready") throw Error(`History is ${window.status}`);
+		return window;
+	}, { timeout: 10000 });
+	expect(result.window.readCursor).toBeUndefined();
+	expect(JSON.stringify(result.window)).toContain("PRIVATE_OCCURRENCE_SENTINEL");
+	expect((await runtime.searchConversations("PRIVATE_OCCURRENCE_SENTINEL", new Set(["bot:bot"]))).items).toEqual([]);
+	expect((await service.detail(routine.routineId, occurrence.occurrenceId)).snapshot?.items).toEqual([]);
+	await runtime.createBot({ botId: "other", name: "Other", createdAt: now });
+	await expect(runtime.historyWindow({ conversationKey: "bot:other", occurrenceId: occurrence.occurrenceId, position: { kind: "latest" } })).rejects.toThrow("Occurrence is unavailable");
+	await expect(runtime.historyWindow({ conversationKey: "group:group_missing", occurrenceId: occurrence.occurrenceId, position: { kind: "latest" } })).rejects.toThrow("Occurrence requires");
+	await runtime.updateBot("bot", { status: "deleted" });
+	await expect(runtime.historyWindow({ conversationKey: "bot:bot", occurrenceId: occurrence.occurrenceId, position: { kind: "latest" } })).rejects.toThrow("unavailable");
+}, 15000);
 
 it("only prepares valid direct-user proposals and leaves scheduling unchanged until confirmed", async () => {
 	const run: StoredRun = { runId: "proposal-run", botId: "bot", origin: "user", state: "running", createdAt: now, requestIds: ["request"], messages: [{ requestId: "request", text: "Schedule a report" }], inputs: [] };

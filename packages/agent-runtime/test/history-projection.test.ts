@@ -14,6 +14,44 @@ import { scriptedModels } from "../src/testing.ts";
 const expectIndexState = (readState: () => string, state: "ready" | "unavailable") =>
 	expect.poll(readState, { timeout: 10000 }).toBe(state);
 
+it("settles model work while the history worker is still starting, then indexes the answer", async () => {
+	const { vi } = await import("vitest");
+	const { HistoryClient } = await import("../src/history-client.ts");
+	const { BotRuntime } = await import("../src/index.ts");
+	const root = await mkdtemp(join(tmpdir(), "openbot-history-startup-"));
+	const starting = Promise.withResolvers<void>();
+	const release = Promise.withResolvers<void>();
+	const open = HistoryClient.open;
+	const held = vi.spyOn(HistoryClient, "open").mockImplementation(async (...args) => {
+		starting.resolve();
+		await release.promise;
+		return open(...args);
+	});
+	let runtime: Awaited<ReturnType<typeof BotRuntime.open>> | undefined;
+	try {
+		runtime = await BotRuntime.open({ databasePath: join(root, "db.sqlite"), models: scriptedModels("Answer before index startup").models });
+		await runtime.createBot({ botId: "probe", name: "Probe", createdAt: 0, model: { provider: "faux", modelId: "faux-1" } });
+		await starting.promise;
+		const answer = await runtime.submitAndWait("probe", "input", "Reply while history is building");
+		expect(answer.status).toBe("answered");
+		expect(JSON.stringify(answer)).toContain("Answer before index startup");
+		const input = { conversationKey: "bot:probe", position: { kind: "latest" } } as const;
+		expect(await runtime.historyWindow(input)).toEqual({ status: "building" });
+		release.resolve();
+		await expectIndexState(() => runtime!.historyStatus().state, "ready");
+		const window = await runtime.historyWindow(input);
+		if (window.status !== "ready") throw Error(`History is ${window.status}`);
+		expect(window.window.rows.map((row) => row.content.kind === "direct" ? row.content.item.kind : row.content.kind)).toEqual(["user", "assistant"]);
+		expect(JSON.stringify(window.window)).toContain("Answer before index startup");
+		expect(held).toHaveBeenCalledTimes(1);
+	} finally {
+		release.resolve();
+		await runtime?.close();
+		held.mockRestore();
+		await rm(root, { recursive: true, force: true });
+	}
+}, 15000);
+
 it("builds bounded public windows and reopens checked source checkpoints", async () => {
 	const root = await mkdtemp(join(tmpdir(), "openbot-history-projection-")),
 		databasePath = join(root, "openbot.sqlite");
