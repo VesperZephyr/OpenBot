@@ -100,6 +100,11 @@
 		pointer-events: auto !important;
 		cursor: pointer;
 	}
+	/* A short viewport can give the portaled menu an inline max-height of 0. */
+	[data-openbot-ui]:has([role="listbox"]) {
+		max-height: 240px !important;
+		min-height: 72px !important;
+	}
 	@media (prefers-reduced-motion: reduce) {
 		[data-openbot-ui],
 		[data-openbot-ui] :where(*) {
