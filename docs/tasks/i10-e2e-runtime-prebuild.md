@@ -11,7 +11,7 @@ Reduce repeated E2E process startup by building the real Host Runtime and Execut
 
 ## Scope
 
-In: shared runtime bundling and asset staging, an E2E-only build command, explicit source/bundled test modes, preserved custom fixture entry points, full-suite CI comparisons, and measured acceptance.
+In: shared runtime bundling and asset staging, an E2E-only build command, explicit source/bundled test modes, preserved custom fixture entry points, deterministic renderer-clock setup for the existing template recovery fixture, full-suite CI comparisons, and measured acceptance.
 
 Out: lifecycle/shutdown fixes, dependency or build caches, paid services or runners, worker-count changes, new shards, test removal/skipping, assertion/timeout/retry changes, screenshot removal, shared application state, provider changes, vendored Pi changes, Node upgrades, DMG generation, signing changes, and production startup behavior changes.
 
@@ -60,7 +60,8 @@ Bundling can break dynamic imports, worker locations, WASM assets and native fal
 
 ## Open questions
 
-None at design completion. Record dated findings here if the contract cannot be met; stop the affected work while continuing independent verification.
+- November 2: source baselines [41408050407](https://github.com/VesperZephyr/OpenBot/actions/runs/41408050407) (spec-only revision) and [41408764849](https://github.com/VesperZephyr/OpenBot/actions/runs/41408764849) both failed at template recovery `clock.pauseAt(new Date())`: the target sampled in the test process can already be behind the running renderer clock. Later cases then time out on the unrecovered dialog. Controlled sampling was stopped. Design resolution: initialize the renderer clock slightly before one fixed target and pause at that target before triggering import, as the Playwright clock API recommends. Keep all ten recovery queries, assertions, deadlines, screenshots and restart steps. Apply this fixture-only stabilization identically in source and bundled modes, validate both, then restart sampling on one revision. No product lifecycle or cache fix is authorized by this finding.
+- The spec-only baseline also observed `history-controls` expecting cancelled but reading completed. It did not recur in the next source run; causality is unconfirmed. Preserve its assertions and report the failed sample rather than classifying it as a bundling regression or claiming a fix.
 
 ## Evidence
 
