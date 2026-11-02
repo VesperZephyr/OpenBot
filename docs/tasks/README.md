@@ -150,3 +150,5 @@ Candidate revision, acceptance checks and outcomes, and remaining limits; or lin
 - [I7: Official changelog pagination](i7-official-changelog-pagination.md)
 
 - [I8: Complete CI timings and balanced desktop shards](i8-ci-timings.md)
+
+- [I9: Fast correctness checks with Oxlint](i9-oxlint.md)

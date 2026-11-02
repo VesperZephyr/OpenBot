@@ -6,6 +6,7 @@ This is the active delivery queue, not a release history. Task status, contracts
 
 | Work | Next action / dependency |
 | --- | --- |
+| [I9: Fast correctness checks with Oxlint](tasks/i9-oxlint.md) | Add pinned lint enforcement after I8, preserve coverage and measure CI overhead |
 | [I8: Complete CI timings and balanced desktop shards](tasks/i8-ci-timings.md) | Implement complete timing, refresh weights and compare standard-runner CI; Oxlint follows separately |
 | [B11e: Bot routines and generated-file Library](tasks/b11e-bot-routines-library.md) | Complete the review/verification tracked in [PR #69](https://github.com/VesperZephyr/OpenBot/pull/69); the spec owns findings and evidence |
 | [B13e: Bot templates](tasks/b13e-bot-templates.md) | Owner review and merge of the implementation candidate; acceptance is linked from the spec |
