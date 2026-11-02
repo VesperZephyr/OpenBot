@@ -146,17 +146,17 @@ it('reports a rejected language update and a failed appearance save, then retrie
     await h.api('settings.update', {language:'en'});
     await h.page().getByRole('button', {name:/^Settings/}).click();
     await h.page().evaluate(() => {
-        const methods = (window as any).openbot.methods;
-        const original = methods['settings.update'];
+        const calls = (window as any).openbotCalls;
+        const original = calls['settings.update'];
         (window as any).__settingsUpdate = original;
-        methods['settings.update'] = (params: {language?: string}) => params.language ? Promise.reject(new Error('language save failed')) : original(params);
+        calls['settings.update'] = (params: {language?: string}) => params.language ? Promise.reject(new Error('language save failed')) : original(params);
     });
     await h.page().locator('#settings-language').getByRole('button', {name:/Language/}).click();
     await h.page().getByRole('option', {name:'简体中文', exact:true}).click();
     await h.page().getByRole('status').getByText('language save failed', {exact:true}).waitFor();
     expect(await h.page().locator('html').getAttribute('lang')).toBe('en');
     expect(await h.page().locator('#settings-language').getByRole('button', {name:/Language/}).textContent()).toContain('English');
-    await h.page().evaluate(() => { (window as any).openbot.methods['settings.update'] = (window as any).__settingsUpdate; });
+    await h.page().evaluate(() => { (window as any).openbotCalls['settings.update'] = (window as any).__settingsUpdate; });
     await button('Dismiss').click();
     await h.page().locator('#settings-language').getByRole('button', {name:/Language/}).click();
     await h.page().getByRole('option', {name:'简体中文', exact:true}).click();

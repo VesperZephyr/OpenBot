@@ -34,10 +34,10 @@ it("defaults to English, supports Chinese onboarding and persists language acros
  expect(await page.locator("html").getAttribute("lang")).toBe("zh-CN");
  await page.getByRole("button", { name: /^设置/ }).click();
  const updatesBefore = await page.evaluate(() => {
-  const methods = (window as any).openbot.methods;
-  const original = methods["settings.update"];
+  const calls = (window as any).openbotCalls;
+  const original = calls["settings.update"];
   let writes = 0;
-  methods["settings.update"] = (params: object) => {
+  calls["settings.update"] = (params: object) => {
    writes += 1;
    return original(params);
   };

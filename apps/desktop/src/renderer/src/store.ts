@@ -18,6 +18,7 @@ import type {
 import { create } from "zustand";
 import { composers } from "./useComposer";
 import { ERROR_PREFIX, type HostState } from "../../shared/api";
+import { hostCalls } from "./host-calls";
 
 export type View =
 	| { readonly kind: "group"; readonly groupId: string }
@@ -75,7 +76,8 @@ export const useStore = create<State>(() => ({
 	onboarding: undefined,
 }));
 
-const api = window.openbot.methods;
+const api = hostCalls(window.openbot.methods);
+window.openbotCalls = api;
 
 /** Strip IPC and protocol envelopes so application errors can be translated at the display boundary. */
 export function errorMessage(error: unknown): string {
