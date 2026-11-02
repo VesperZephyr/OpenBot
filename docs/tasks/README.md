@@ -154,3 +154,5 @@ Candidate revision, acceptance checks and outcomes, and remaining limits; or lin
 - [I8: Complete CI timings and balanced desktop shards](i8-ci-timings.md)
 
 - [I9: Fast correctness checks with Oxlint](i9-oxlint.md)
+
+- [I10: Prebuilt Host Runtime and Executor for E2E](i10-e2e-runtime-prebuild.md)

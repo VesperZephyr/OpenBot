@@ -13,12 +13,13 @@
 		"check:boundaries": "node scripts/check-boundaries.mjs",
 		"check": "pnpm run check:quick && pnpm run test",
 		"dev": "pnpm --filter @openbot/desktop run dev",
-		"e2e": "pnpm --filter @openbot/desktop run build && vitest run --config e2e/vitest.config.ts",
+		"e2e": "pnpm --filter @openbot/desktop run build && pnpm run build:e2e-runtime && vitest run --config e2e/vitest.config.ts",
 		"e2e:headed": "OPENBOT_E2E_HEADED=1 pnpm run e2e",
 		"dev:debug": "pnpm --filter @openbot/desktop exec node scripts/build-keychain.mjs && pnpm --filter @openbot/desktop exec electron-vite dev --remoteDebuggingPort 9339",
 		"package": "pnpm --filter @openbot/desktop run package",
 		"lint": "oxlint --deny-warnings apps packages scripts e2e",
-		"check:quick": "pnpm run lint && pnpm run check:boundaries && pnpm run typecheck"
+		"check:quick": "pnpm run lint && pnpm run check:boundaries && pnpm run typecheck",
+		"build:e2e-runtime": "pnpm --filter @openbot/desktop exec node scripts/build-e2e-runtime.mjs"
 	},
 	"devDependencies": {
 		"@types/node": "22.19.19",
