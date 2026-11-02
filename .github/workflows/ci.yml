@@ -5,6 +5,9 @@ on:
   push:
     branches: [main]
 
+env:
+  OPENBOT_E2E_AUDIT: "1"
+
 permissions:
   contents: read
 
@@ -55,6 +58,7 @@ jobs:
             e2e/.run/**/*.png
             e2e/.run/results.json
             e2e/.run/timings.json
+            e2e/.run/audit/*.jsonl
             e2e/.run/history-scaling/performance.json
           include-hidden-files: true
           if-no-files-found: ignore
@@ -106,6 +110,7 @@ jobs:
             e2e/.run/**/*.png
             e2e/.run/results.json
             e2e/.run/timings.json
+            e2e/.run/audit/*.jsonl
             e2e/.run/history-scaling/performance.json
           include-hidden-files: true
           if-no-files-found: ignore
