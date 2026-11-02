@@ -30,6 +30,7 @@ export function normalizeAsk(input: AskFirstInput, workspace: string): AskFirstI
 	if (p.tool !== "local_exec") return { ...input, predicate: { ...p, path: canonicalPath(p.path, workspace) } };
 	if (p.subcommand && p.exact) throw new ProtocolError("invalid_request", "Choose a subcommand or an exact command, not both");
 	for (const value of [p.program, p.subcommand])
+		// oxlint-disable-next-line eslint/no-control-regex -- Control characters are intentionally rejected or removed from untrusted input.
 		if (value !== undefined && (!value.trim() || /[\s\x00-\x1f*?{}$`;&|<>]/.test(value)))
 			throw new ProtocolError("invalid_request", "Programs and subcommands must be literal words");
 	let exact = p.exact;

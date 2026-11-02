@@ -567,7 +567,7 @@ it("gives a caught-up summary its configured wait after wake and keeps the origi
 	expect(submit).not.toHaveBeenCalled();
 	now += 10 * 60000;
 	await service.sweep();
-	const input = (await history(summary.routineId)).find((o) => o.inputSnapshot)?.inputSnapshot!;
+	const input = (await history(summary.routineId)).find((o) => o.inputSnapshot)!.inputSnapshot!;
 	expect(input.windowEnd).toBe(scheduled);
 	expect(input.capturedAt).toBe(now);
 	expect(submit).toHaveBeenCalledTimes(1);

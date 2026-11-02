@@ -3,10 +3,12 @@
  * this assigns files longest-first to the least-loaded shard using `e2e/durations.json`.
  *
  *   node scripts/e2e-shard.ts 2/3 [--exclude e2e/a.e2e.ts ...]   print shard 2's files, one per line
- *   node scripts/e2e-shard.ts --record e2e/.run/results.json ...  refresh durations from Vitest JSON reports
+ *   node scripts/e2e-shard.ts --record e2e/.run/timings.json ...  refresh durations from complete timing reports
  *
  * Files without a recorded duration count as the median, so new suites are spread out until they are recorded.
  */
+import { spawnSync } from "node:child_process";
+import { median, parseTimings, suiteCost } from "./test-timings.ts";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,8 +17,11 @@ export type Durations = Readonly<Record<string, number>>;
 
 export function assignShards(files: readonly string[], durations: Durations, total: number): string[][] {
 	if (!Number.isInteger(total) || total < 1) throw new Error(`Shard total must be a positive integer, got ${total}`);
-	const known = Object.values(durations).sort((a, b) => a - b);
-	const fallback = known.length ? known[Math.floor(known.length / 2)]! : 1;
+	if (new Set(files).size !== files.length || new Set(files.map(file => basename(file))).size !== files.length) throw new Error("Duplicate suite path or basename");
+	for (const [file, cost] of Object.entries(durations))
+		if (!Number.isFinite(cost) || cost <= 0) throw new Error(`Invalid shard weight: ${file}`);
+	const known = Object.values(durations);
+	const fallback = known.length ? median(known) : 1;
 	const cost = (file: string) => durations[basename(file)] ?? fallback;
 	const ordered = [...files].sort((a, b) => cost(b) - cost(a) || a.localeCompare(b));
 	const shards = Array.from({ length: total }, () => ({ files: [] as string[], load: 0 }));
@@ -28,19 +33,38 @@ export function assignShards(files: readonly string[], durations: Durations, tot
 	return shards.map((shard) => shard.files.sort());
 }
 
-type VitestReport = { testResults: { name: string; startTime: number; endTime: number }[] };
-
-/** Merge measured suite durations, rounded to 100 ms, keeping only suites that still exist. */
-export function recordDurations(previous: Durations, reports: readonly VitestReport[], existing: readonly string[]): Record<string, number> {
+export function recordDurations(previous: Durations, inputs: readonly unknown[], existing: readonly string[]): Record<string, number> {
+	if (!inputs.length) throw new Error("Pass at least one complete timing report");
+	assignShards(existing, previous, 1);
+	const reports = inputs.map(parseTimings);
+	const identity = (report: typeof reports[number]) => [report.environment.source, report.environment.platform, report.environment.arch].join("/");
+	if (reports.some(report => identity(report) !== identity(reports[0]!))) throw new Error("Cannot mix timing environments");
 	const next: Record<string, number> = {};
-	const names = new Set(existing.map((file) => basename(file)));
+	const paths = new Set(existing);
+	const names = new Set(existing.map(file => basename(file)));
 	for (const [name, ms] of Object.entries(previous)) if (names.has(name)) next[name] = ms;
-	for (const report of reports)
-		for (const suite of report.testResults) {
-			const name = basename(suite.name);
-			if (names.has(name)) next[name] = Math.max(100, Math.round((suite.endTime - suite.startTime) / 100) * 100);
+	const samples = new Map<string, number[]>();
+	for (const report of reports) {
+		if (!report.success || !report.suites.length || report.suites.some(suite => suite.state !== "passed")) throw new Error("Only complete successful runs can train shard weights");
+		for (const suite of report.suites) {
+			if (!paths.has(suite.file)) continue;
+			const name = basename(suite.file);
+			const costs = samples.get(name) ?? [];
+			costs.push(suiteCost(suite));
+			samples.set(name, costs);
 		}
+	}
+	if (!samples.size) throw new Error("Timing reports contain no existing e2e suites");
+	for (const [name, costs] of samples) next[name] = Math.max(100, Math.round(median(costs) / 100) * 100);
 	return Object.fromEntries(Object.entries(next).sort(([a], [b]) => a.localeCompare(b)));
+}
+
+export function selectShard(files: readonly string[], durations: Durations, index: number, total: number, excluded: readonly string[] = []): string[] {
+	if (!Number.isInteger(index) || index < 1 || index > total) throw new Error(`Shard ${index} is outside 1..${total}`);
+	if (new Set(excluded).size !== excluded.length || excluded.some(file => !files.includes(file))) throw new Error("Unknown or duplicate shard exclusion");
+	const shard = assignShards(files.filter(file => !excluded.includes(file)), durations, total)[index - 1]!;
+	if (!shard.length) throw new Error(`Shard ${index}/${total} has no files`);
+	return shard;
 }
 
 function main(args: string[]): void {
@@ -53,23 +77,28 @@ function main(args: string[]): void {
 	const durations: Durations = JSON.parse(readFileSync(durationsFile, "utf8"));
 
 	if (args[0] === "--record") {
-		const reports = args.slice(1).map((path) => JSON.parse(readFileSync(path, "utf8")) as VitestReport);
-		if (!reports.length) throw new Error("Pass at least one Vitest JSON report");
+		const reports = args.slice(1).map((path) => JSON.parse(readFileSync(path, "utf8")));
+		if (!reports.length) throw new Error("Pass at least one complete timing report");
 		writeFileSync(durationsFile, `${JSON.stringify(recordDurations(durations, reports, files), null, "\t")}\n`);
 		return;
 	}
+	const run = args[0] === "--run";
+	if (run) args = args.slice(1);
 	const match = /^(\d+)\/(\d+)$/.exec(args[0] ?? "");
-	if (!match) throw new Error("Usage: node scripts/e2e-shard.ts <index>/<total> [--exclude <file> ...]");
+	if (!match) throw new Error("Usage: node scripts/e2e-shard.ts [--run] <index>/<total> [--exclude <file> ...]");
 	const [index, total] = [Number(match[1]), Number(match[2])];
 	if (index < 1 || index > total) throw new Error(`Shard ${index} is outside 1..${total}`);
-	const excluded = new Set<string>();
+	const excluded: string[] = [];
 	for (let i = 1; i < args.length; i++) {
 		if (args[i] !== "--exclude" || !args[i + 1]) throw new Error(`Unexpected argument ${args[i]}`);
-		excluded.add(args[++i]!);
+		excluded.push(args[++i]!);
 	}
-	const shard = assignShards(files.filter((file) => !excluded.has(file)), durations, total)[index - 1]!;
-	if (!shard.length) throw new Error(`Shard ${index}/${total} has no files`);
-	console.log(shard.join("\n"));
+	const shard = selectShard(files, durations, index, total, excluded);
+	if (run) {
+		const result = spawnSync("pnpm", ["exec", "vitest", "run", "--config", "e2e/vitest.config.ts", ...shard], { cwd: repo, stdio: "inherit" });
+		if (result.error) throw result.error;
+		process.exitCode = result.status ?? 1;
+	} else console.log(shard.join("\n"));
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2));

@@ -118,6 +118,7 @@ function format(name: string, bytes: Buffer, source: ArtifactRef["source"]): str
 	return type!;
 }
 function displayName(name: string): string {
+	// oxlint-disable-next-line eslint/no-control-regex -- Control characters are intentionally rejected or removed from untrusted input.
 	const clean = basename(name).replace(/[\u0000-\u001f\u007f]/g, "");
 	if (!clean || Array.from(clean).length > 180) fail("Attachment name is too long or empty");
 	return clean;

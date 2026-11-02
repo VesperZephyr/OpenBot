@@ -181,7 +181,7 @@ OpenBot 的桌面界面、Host Runtime、对话存储和执行器都运行在你
 ## 开发与测试
 
 ```sh
-pnpm run check       # 包边界检查、TypeScript、单元及 Host 测试
+pnpm run check       # Oxlint、包边界检查、TypeScript、单元及 Host 测试
 pnpm run e2e         # 构建真实桌面应用，使用脚本模型进行端到端测试
 pnpm run e2e:headed  # 明确显示测试窗口，便于调试
 pnpm run dev:debug   # 使用日常开发数据启动应用，CDP 端口为 9339
@@ -190,7 +190,7 @@ pnpm run package     # 准备运行时、验证并打包 arm64 桌面应用
 
 安装依赖或修改 Pi 后，执行 `pnpm run build:pi`。普通应用修改不需要重新构建 Pi。设置 `CI=true` 时，安装会使用冻结的锁文件；有意更新依赖后，应执行 `pnpm install --no-frozen-lockfile` 并提交更新后的锁文件。
 
-端到端测试的数据、工作目录和钥匙串服务相互隔离，测试文件保存在 `e2e/.run/`。测试窗口默认隐藏且不会获得焦点，通知、Dock 标记、菜单栏图标和电源断言均被抑制，仍然可以渲染截图。后台模式最多并行运行两个测试文件，同一文件内的用例以及有窗口模式仍然串行。各文件和用例的耗时保存在 `e2e/.run/results.json`，并随 CI 截图一起上传。`dev` 和 `dev:debug` 使用日常应用数据。后台测试不能证明原生权限提示或实际睡眠、锁屏行为；现有的复制测试也会使用系统剪贴板。
+端到端测试的数据、工作目录和钥匙串服务相互隔离，测试文件保存在 `e2e/.run/`。测试窗口默认隐藏且不会获得焦点，通知、Dock 标记、菜单栏图标和电源断言均被抑制，仍然可以渲染截图。后台模式最多并行运行两个测试文件，同一文件内的用例以及有窗口模式仍然串行。断言结果保存在 `e2e/.run/results.json`；包含准备与清理 hook 的完整文件耗时单独保存在 `e2e/.run/timings.json`，两者均随 CI 截图上传。使用 `node scripts/e2e-shard.ts --record e2e/.run/timings.json` 从环境一致且成功的计时报告刷新分片权重；传入多份报告时按文件取中位数。`dev` 和 `dev:debug` 使用日常应用数据。后台测试不能证明原生权限提示或实际睡眠、锁屏行为；现有的复制测试也会使用系统剪贴板。
 
 [MVP 验收记录](docs/acceptance/mvp-2026-10-19.md)分别列出了自动化检查、真实模型任务、打包运行时证据以及待完成的发布检查。
 

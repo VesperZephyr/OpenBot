@@ -120,14 +120,14 @@ export default function MarkdownReader({ text, zoom, workspacePath }: { text: st
 	}, [text]);
 	const components = useMemo<ComponentProps<typeof ReactMarkdown>["components"]>(
 		() => ({
-			pre: ({ node, ...props }) => <CodeBlock {...props} />,
-			table: ({ node, ...props }) => (
+			pre: ({ node: _node, ...props }) => <CodeBlock {...props} />,
+			table: ({ node: _node, ...props }) => (
 				<div className="reader-table-scroll">
 					<table {...props} />
 				</div>
 			),
 			img: ({ src, alt }) => <LocalImage src={src} alt={alt} load={loadImage} />,
-			a: ({ node, href, children, ...props }) => (
+			a: ({ node: _node, href, children, ...props }) => (
 				<a
 					{...props}
 					href={href}
