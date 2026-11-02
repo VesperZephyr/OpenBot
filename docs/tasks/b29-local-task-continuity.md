@@ -1,6 +1,6 @@
 # B29: Local Task Continuity and a Responsive Core
 
-Status: in review
+Status: done
 Branch: `task/b29-local-task-continuity`
 Depends on: B13a, B12a, B14a–B14d, B15a, B27a–B27c, B28a; their required implementation must be present on the implementation base
 Architecture: Sections 5.1–5.3, 5.7, 6.1, 6.5, 7.1–7.2 and 8
@@ -240,4 +240,4 @@ None at ready publication. During implementation, record dated contract mismatch
 
 ## Evidence
 
-Design review on 2026-11-02 used `1b550b9` and relevant later-main differences through `f45a707`; [D11](d11-local-task-continuity.md#review-evidence) preserves that review. Implementation, T01–T16 evidence mapping, regression results, inspected screenshots and unverified native boundaries are maintained in the [dated B29 acceptance record](../acceptance/2026-11-02-b29-local-task-continuity.md). [PR #84](https://github.com/VesperZephyr/OpenBot/pull/84) remains draft and unmerged; passing checks does not complete owner review.
+Design review on 2026-11-02 used `1b550b9` and relevant later-main differences through `f45a707`; [D11](d11-local-task-continuity.md#review-evidence) preserves that review. Implementation, T01–T16 evidence mapping, regression results, inspected screenshots and unverified native boundaries are maintained in the [dated B29 acceptance record](../acceptance/2026-11-02-b29-local-task-continuity.md). The owner merged [PR #84](https://github.com/VesperZephyr/OpenBot/pull/84) at `a15bd9f` on 2026-11-02.
