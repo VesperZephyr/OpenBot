@@ -23,4 +23,6 @@ API job/step timestamps have second precision. Queue and setup/build are separat
 
 ## CI calibration and final comparison
 
-Pending instrumented run and CI-derived weights. No speedup claim yet.
+The instrumented candidate `ffb6e45` passed [run 41389603484](https://github.com/VesperZephyr/OpenBot/actions/runs/41389603484) with all 212 e2e cases and 711 check tests. Its workflow took 294 seconds; e2e steps for shards 1/2/3 took 210 / 175 / 213 seconds. This uses the initial local weights, not the final CI-calibrated weights.
+
+All four successful CI timing artifacts contain 54 distinct suites with no overlap. Final weights are refreshed from these complete CI costs, replacing all local samples. The final weighted run remains pending. The observed 325-to-294-second change is a single-run comparison, not an established speedup distribution.
