@@ -82,7 +82,7 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 	let app: ElectronApplication | undefined;
 	let page: Page | undefined;
 	let launches = 0;
-	const mode = process.env.OPENBOT_E2E_RUNTIME ?? "bundled";
+	const mode = process.env.OPENBOT_E2E_RUNTIME ?? "source";
 	const overrides = { ...process.env, ...options.env, ...preparedEnvironment };
 	const start = async (): Promise<void> => {
 		const selectedRuntime = runtimeEnvironment(mode, join(repo, "apps/desktop/out/e2e-runtime"), overrides);

@@ -1,6 +1,6 @@
 # I10: Prebuilt Host Runtime and Executor for E2E
 
-Status: in progress
+Status: in review
 Branch: task/i10-e2e-runtime-prebuild
 Depends on: I8 and I9 (merged)
 Architecture: Sections 3 and 4; existing process, authorization, persistence, and packaging boundaries remain unchanged
@@ -21,7 +21,7 @@ The prior [measurement spike](https://github.com/VesperZephyr/OpenBot/pull/85) m
 
 Extract the runtime bundling implementation from `apps/desktop/scripts/stage-runtime.mjs` into one shared build module. Packaging retains its existing entries, Node target, Bedrock import adaptation, optional native externals, notices and WASM assets. E2E invokes the same module with the checkout's Node target and writes only ignored generated output. It does not download Node, package an application or acquire owner credentials. A build failure must fail the command; clear its own previous output before rebuilding.
 
-The E2E harness selects the prebuilt Host and Executor through the existing unpackaged environment overrides. Every initial launch and relaunch uses the selected entries, with fresh suite state and unchanged Keychain/process isolation. Explicit environment overrides from the caller or fixture retain their current precedence. The history, web-feed and changelog-pagination Host fixtures remain source entries: their pre-start patches must affect the same runtime module instances as before. Their Executor may use the prebuilt default. Source-based offline backup helpers remain unchanged; their correctness and cost stay in the comparison. No production code is changed to bypass fixture hooks or force a faster shutdown.
+The Vitest E2E configuration selects bundled mode by default; standalone acceptance scripts that reuse the harness retain source mode unless explicitly opted in. The harness selects the prebuilt Host and Executor through the existing unpackaged environment overrides. Every initial launch and relaunch uses the selected entries, with fresh suite state and unchanged Keychain/process isolation. Explicit environment overrides from the caller or fixture retain their current precedence. The history, web-feed and changelog-pagination Host fixtures remain source entries: their pre-start patches must affect the same runtime module instances as before. Their Executor may use the prebuilt default. Source-based offline backup helpers remain unchanged; their correctness and cost stay in the comparison. No production code is changed to bypass fixture hooks or force a faster shutdown.
 
 Expose a source mode for controlled comparison and recovery. Missing prebuilt files/assets or an unknown mode fail with an actionable build instruction instead of silently falling back. Record selected entries and successful launch counts in ignored E2E evidence so source/candidate comparisons can verify fixture preservation and restarts.
 
@@ -62,7 +62,8 @@ Bundling can break dynamic imports, worker locations, WASM assets and native fal
 
 - November 2: source baselines [41408050407](https://github.com/VesperZephyr/OpenBot/actions/runs/41408050407) (spec-only revision) and [41408764849](https://github.com/VesperZephyr/OpenBot/actions/runs/41408764849) both failed at template recovery `clock.pauseAt(new Date())`: the target sampled in the test process can already be behind the running renderer clock. Later cases then time out on the unrecovered dialog. Controlled sampling was stopped. Design resolution: initialize the renderer clock slightly before one fixed target and pause at that target before triggering import, as the Playwright clock API recommends. Keep all ten recovery queries, assertions, deadlines, screenshots and restart steps. Apply this fixture-only stabilization identically in source and bundled modes, validate both, then restart sampling on one revision. No product lifecycle or cache fix is authorized by this finding.
 - The spec-only baseline also observed `history-controls` expecting cancelled but reading completed. It did not recur in the next source run; causality is unconfirmed. Preserve its assertions and report the failed sample rather than classifying it as a bundling regression or claiming a fix.
+- November 2: source sample [41413480505](https://github.com/VesperZephyr/OpenBot/actions/runs/41413480505) stopped at the unchanged `always-allow` settings screenshot: Chromium returned `Page.captureScreenshot: Unable to capture screenshot`, after the rule-presence assertion. Sampling stopped for investigation. This is a capture failure, not evidence of a policy assertion failure; its underlying cause remains unconfirmed. Preserve the failed run and missing-image inventory, retain every screenshot and assertion, and do not add retries. A complete additional source sample may follow targeted investigation; only complete successful runs train weights or enter the success-duration comparison.
 
 ## Evidence
 
-Pending implementation and CI comparison.
+[November 2 acceptance record](../acceptance/2026-11-02-e2e-runtime-prebuild.md) records implementation checks, failures, controlled CI comparison and the decision to adopt. [PR #87](https://github.com/VesperZephyr/OpenBot/pull/87) carries the final candidate revision and checks after refreshing weights. Owner merge remains outstanding.
