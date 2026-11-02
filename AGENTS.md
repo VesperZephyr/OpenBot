@@ -64,7 +64,7 @@ Use the selected spec's acceptance checks in addition to this matrix. Run checks
 - Extend e2e coverage for every added or changed user-visible behavior. Use `ScriptedModel` in `e2e/scripted-model.ts`; real providers are occasional spot checks, not deterministic acceptance.
 - Call Host methods through `h.api()`, wait for rendering with `h.nextFrame()`, and advance scheduled routines with `h.advanceHostClockTo()`. Prefer observed signals over fixed `waitForTimeout` delays.
 - Unit tests protect authorization, deduplication, recovery, cancellation, ordering, and precedence. Avoid tests that only restate wiring.
-- After adding an e2e suite or noticeably changing its duration, refresh shard timings from a full run: `node scripts/e2e-shard.ts --record e2e/.run/results.json`. CI runs `check` and `e2e` on macOS for each PR.
+- After adding an e2e suite or noticeably changing its duration, refresh shard timings from a full run: `node scripts/e2e-shard.ts --record e2e/.run/timings.json`. CI runs `check` and `e2e` on macOS for each PR.
 
 ### Isolated App Verification
 

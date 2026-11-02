@@ -10,7 +10,7 @@ export default defineConfig({
 		// Cases within a file share state and remain sequential.
 		fileParallelism: process.env.OPENBOT_E2E_HEADED !== "1",
 		maxWorkers: process.env.OPENBOT_E2E_HEADED === "1" ? 1 : 2,
-		reporters: ["default", "json"],
+		reporters: ["default", "json", "./scripts/e2e-timing-reporter.ts"],
 		outputFile: { json: "e2e/.run/results.json" },
 	},
 });

@@ -53,4 +53,4 @@ None.
 
 ## Evidence
 
-Pending implementation and CI comparison. The audit's current-layout successful cohort had 17 runs, workflow median 286 seconds and 68 macOS jobs; these historical observations are context, not the controlled baseline.
+[November 2 timing acceptance](../acceptance/2026-11-02-ci-timings.md) records the exact baseline, verification and pending CI calibration.

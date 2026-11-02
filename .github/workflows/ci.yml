@@ -45,7 +45,7 @@ jobs:
         run: pnpm exec vitest run --config e2e/vitest.config.ts e2e/history-scaling.e2e.ts --maxWorkers=1
       - name: Summarize history timings
         if: always()
-        run: node scripts/ci-test-summary.mjs e2e/.run/results.json "Isolated history performance"
+        run: node scripts/ci-test-summary.ts e2e/.run/results.json e2e/.run/timings.json "Isolated history performance"
       - name: Upload history screenshots and report
         if: always()
         uses: actions/upload-artifact@v4
@@ -54,6 +54,7 @@ jobs:
           path: |
             e2e/.run/**/*.png
             e2e/.run/results.json
+            e2e/.run/timings.json
             e2e/.run/history-scaling/performance.json
           include-hidden-files: true
           if-no-files-found: ignore
@@ -92,10 +93,10 @@ jobs:
       - run: pnpm --filter @openbot/desktop run build
       - name: Run desktop shard
         # Balanced by recorded suite durations (e2e/durations.json); refresh them with `node scripts/e2e-shard.ts --record`.
-        run: pnpm exec vitest run --config e2e/vitest.config.ts $(node scripts/e2e-shard.ts ${{ matrix.shard }}/3 --exclude e2e/history-scaling.e2e.ts)
+        run: node scripts/e2e-shard.ts --run ${{ matrix.shard }}/3 --exclude e2e/history-scaling.e2e.ts
       - name: Summarize desktop timings
         if: always()
-        run: node scripts/ci-test-summary.mjs e2e/.run/results.json "Desktop shard ${{ matrix.shard }}/3"
+        run: node scripts/ci-test-summary.ts e2e/.run/results.json e2e/.run/timings.json "Desktop shard ${{ matrix.shard }}/3"
       - name: Upload e2e screenshots and report
         if: always()
         uses: actions/upload-artifact@v4
@@ -104,6 +105,7 @@ jobs:
           path: |
             e2e/.run/**/*.png
             e2e/.run/results.json
+            e2e/.run/timings.json
             e2e/.run/history-scaling/performance.json
           include-hidden-files: true
           if-no-files-found: ignore
