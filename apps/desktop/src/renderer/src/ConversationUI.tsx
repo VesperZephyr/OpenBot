@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { activeLegacyDialog } from "./dialog-focus";
+import { activeLegacyDialog, legacyOpenerAction } from "./dialog-focus";
 import { t } from "./i18n";
 
 export function ConversationShell({
@@ -31,6 +31,7 @@ function focusFirst(dialog: HTMLElement) {
 export function useDialogFocus() {
 	useEffect(() => {
 		const openers = new Map<HTMLElement, HTMLElement | null>();
+		let deferredOpener: HTMLElement | null = null;
 		const dialogs = () =>
 			[...document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]')].filter((element) => element.getClientRects().length > 0);
 		const active = () =>
@@ -43,12 +44,18 @@ export function useDialogFocus() {
 			)?.element;
 		const scan = () => {
 			const current = active();
+			const editorOpen = document.querySelector(".dialog-backdrop") !== null;
 			for (const [dialog, opener] of openers)
 				if (!dialog.isConnected) {
 					openers.delete(dialog);
-					if (current) continue;
-					if (opener?.isConnected) opener.focus();
+					const action = legacyOpenerAction(current !== undefined, editorOpen);
+					if (action === "defer") deferredOpener = opener;
+					else if (action === "restore" && opener?.isConnected) opener.focus();
 				}
+			if (!editorOpen && current === undefined && deferredOpener?.isConnected) {
+				deferredOpener.focus();
+				deferredOpener = null;
+			}
 			if (current && !openers.has(current)) {
 				openers.set(current, document.activeElement instanceof HTMLElement ? document.activeElement : null);
 				if (!current.contains(document.activeElement)) focusFirst(current);
@@ -67,7 +74,8 @@ export function useDialogFocus() {
 		};
 		const touchesDialog = (node: Node) =>
 			node instanceof HTMLElement &&
-			(node.matches('[role="dialog"], [role="alertdialog"]') || node.querySelector('[role="dialog"], [role="alertdialog"]') !== null);
+			(node.matches('[role="dialog"], [role="alertdialog"], .dialog-backdrop') ||
+				node.querySelector('[role="dialog"], [role="alertdialog"], .dialog-backdrop') !== null);
 		let tracked: HTMLElement | undefined;
 		const observed = (records: MutationRecord[]) => {
 			if (![...records].some((record) => [...record.addedNodes, ...record.removedNodes].some(touchesDialog))) return;
