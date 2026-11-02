@@ -2,9 +2,10 @@ import type { Page } from "playwright-core";
 
 /** Settings language is a React Aria listbox. Onboarding keeps its native select. */
 export async function chooseSettingsLanguage(page: Page, language: "en" | "zh-CN"): Promise<void> {
-	const trigger = page.locator("#settings-language").getByRole("button", { name: /^(Language|语言)/ });
+	// React Aria names the trigger "English Language" / "简体中文 语言": the value id comes before the label id.
+	const trigger = page.locator("#settings-language").getByRole("button", { name: /Language|语言/ });
 	await trigger.click();
-	await page.getByRole("listbox", { name: /^(Language|语言)/ }).waitFor();
+	await page.getByRole("listbox", { name: /Language|语言/ }).waitFor();
 	await page.getByRole("option", { name: language === "en" ? "English" : "简体中文", exact: true }).click();
 }
 

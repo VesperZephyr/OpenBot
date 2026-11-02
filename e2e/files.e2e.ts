@@ -226,7 +226,7 @@ it("renders HTML resources and linked pages in an isolated embedded browser", as
 	await dialog().getByRole("button", { name: "Reset zoom", exact: true }).getByText("110%", { exact: true }).waitFor();
 	await h.page().getByRole("button", { name: "New", exact: true }).click();
 	await h.page().getByRole("dialog", { name: "New conversation" }).getByRole("button", { name: /^Create new Bot/ }).click();
-	const editor = h.page().getByRole("dialog", { name: "Create a Bot", exact: true });
+	const editor = h.page().locator(".dialog-backdrop").filter({ has: h.page().getByRole("heading", { name: "Create a Bot", exact: true }) });
 	await editor.waitFor();
 	await poll(() =>
 		h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible()),

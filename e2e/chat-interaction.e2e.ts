@@ -31,12 +31,12 @@ it('defaults to white under a dark OS, saves appearance, and keeps drafts throug
     await expect.poll(() => appearance('Dark').isChecked()).toBe(true);
     await h.page().keyboard.press(' ');
     await expect.poll(() => h.page().locator('html').getAttribute('data-theme')).toBe('dark');
-    const language = h.page().locator('#settings-language').getByRole('button', {name:/^Language/});
+    const language = h.page().locator('#settings-language').getByRole('button', {name:/Language/});
     const settingsScroll = h.page().locator('.settings-content');
     await settingsScroll.evaluate((element) => { element.scrollTop = 180; });
     const scrollBefore = await settingsScroll.evaluate((element) => element.scrollTop);
     await language.click();
-    await h.page().getByRole('listbox', {name:/^Language/}).waitFor();
+    await h.page().getByRole('listbox', {name:/Language/}).waitFor();
     await h.page().emulateMedia({colorScheme:'light'});
     await expect.poll(() => h.page().locator('html').getAttribute('data-theme')).toBe('dark');
     const popupAgrees = await h.page().evaluate(() => {
@@ -151,14 +151,14 @@ it('reports a rejected language update and a failed appearance save, then retrie
         (window as any).__settingsUpdate = original;
         methods['settings.update'] = (params: {language?: string}) => params.language ? Promise.reject(new Error('language save failed')) : original(params);
     });
-    await h.page().locator('#settings-language').getByRole('button', {name:/^Language/}).click();
+    await h.page().locator('#settings-language').getByRole('button', {name:/Language/}).click();
     await h.page().getByRole('option', {name:'简体中文', exact:true}).click();
     await h.page().getByRole('status').getByText('language save failed', {exact:true}).waitFor();
     expect(await h.page().locator('html').getAttribute('lang')).toBe('en');
-    expect(await h.page().locator('#settings-language').getByRole('button', {name:/^Language/}).textContent()).toContain('English');
+    expect(await h.page().locator('#settings-language').getByRole('button', {name:/Language/}).textContent()).toContain('English');
     await h.page().evaluate(() => { (window as any).openbot.methods['settings.update'] = (window as any).__settingsUpdate; });
     await button('Dismiss').click();
-    await h.page().locator('#settings-language').getByRole('button', {name:/^Language/}).click();
+    await h.page().locator('#settings-language').getByRole('button', {name:/Language/}).click();
     await h.page().getByRole('option', {name:'简体中文', exact:true}).click();
     await expect.poll(() => h.page().locator('html').getAttribute('lang')).toBe('zh-CN');
     await h.api('settings.update', {language:'en'});

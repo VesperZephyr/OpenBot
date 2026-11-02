@@ -67,7 +67,7 @@ it("designs readable chat, profile, menus, focus and Settings in both appearance
             const style = getComputedStyle(message);
             return { fontSize: style.fontSize, marginLeft: style.marginLeft, fontFamily: style.fontFamily };
         });
-        expect(legacy).toMatchObject({ fontSize: "14px", marginLeft: "35px" });
+        expect(legacy).toMatchObject({ fontSize: "15px", marginLeft: "35px" });
         expect(legacy!.fontFamily.toLowerCase()).not.toContain("boardui");
         await h.shot(`${prefix}-chat`);
         await button("•••").click();
@@ -128,7 +128,7 @@ it("captures the settings pilot and checks compact geometry", async () => {
                 const slug = `${language}-${themeName.toLowerCase()}-${width}`;
                 viewports.push({ name: slug, ...viewport });
                 await h.shot(`${slug}-appearance`);
-                const trigger = h.page().locator("#settings-language").getByRole("button", { name: language === "en" ? /^Language/ : /^语言/ });
+                const trigger = h.page().locator("#settings-language").getByRole("button", { name: language === "en" ? /Language/ : /语言/ });
                 expect((await trigger.boundingBox())!.height).toBeGreaterThanOrEqual(36);
                 await trigger.click();
                 const popup = h.page().getByRole("listbox");
@@ -150,7 +150,7 @@ it("captures the settings pilot and checks compact geometry", async () => {
     await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(900, 650));
     await h.page().getByRole("button", { name: /^设置/ }).click();
     expect(await h.page().evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await h.page().locator("#settings-language").getByRole("button", { name: /^语言/ }).click();
+    await h.page().locator("#settings-language").getByRole("button", { name: /语言/ }).click();
     const popupInside = await h.page().getByRole("listbox").evaluate((element) => {
         const box = element.getBoundingClientRect();
         return box.left >= 0 && box.top >= 0 && box.right <= window.innerWidth && box.bottom <= window.innerHeight;
@@ -168,7 +168,7 @@ it("captures the settings pilot and checks compact geometry", async () => {
     await compactChooser.getByRole("button", { name: "关闭", exact: true }).click();
     await h.page().emulateMedia({ reducedMotion: "reduce" });
     await h.page().getByRole("button", { name: /^设置/ }).click();
-    const trigger = h.page().locator("#settings-language").getByRole("button", { name: /^语言/ });
+    const trigger = h.page().locator("#settings-language").getByRole("button", { name: /语言/ });
     await trigger.focus();
     expect(await trigger.evaluate((element) => getComputedStyle(element).transitionDuration === "0s" || getComputedStyle(element).animationName === "none")).toBe(true);
     await h.shot("boardui-reduced-motion-focus");

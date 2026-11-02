@@ -80,14 +80,22 @@
 }
 
 @layer ob-utilities {
+	/* React Aria paints the real input with inline 1px clipping. Those inline
+	   styles beat layered rules, so Playwright and pointer hits land on the
+	   label instead of the radio. !important restores the full-card hit target. */
 	[data-openbot-ui] .appearance-choice input {
-		position: absolute;
-		inset: 0;
-		z-index: 1;
-		width: 100%;
-		height: 100%;
-		margin: 0;
-		opacity: 0;
+		position: absolute !important;
+		inset: 0 !important;
+		z-index: 1 !important;
+		width: 100% !important;
+		height: 100% !important;
+		margin: 0 !important;
+		padding: 0 !important;
+		overflow: visible !important;
+		clip: auto !important;
+		clip-path: none !important;
+		white-space: normal !important;
+		opacity: 0 !important;
 		cursor: pointer;
 	}
 	@media (prefers-reduced-motion: reduce) {

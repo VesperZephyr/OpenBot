@@ -65,8 +65,12 @@ export function useDialogFocus() {
 				});
 			});
 		};
+		const touchesDialog = (node: Node) =>
+			node instanceof HTMLElement &&
+			(node.matches('[role="dialog"], [role="alertdialog"]') || node.querySelector('[role="dialog"], [role="alertdialog"]') !== null);
 		let tracked: HTMLElement | undefined;
-		const observed = () => {
+		const observed = (records: MutationRecord[]) => {
+			if (![...records].some((record) => [...record.addedNodes, ...record.removedNodes].some(touchesDialog))) return;
 			scan();
 			const current = active();
 			if (current === tracked) return;
