@@ -1,6 +1,6 @@
 # B29: Local Task Continuity and a Responsive Core
 
-Status: in progress
+Status: in review
 Branch: `task/b29-local-task-continuity`
 Depends on: B13a, B12a, B14a–B14d, B15a, B27a–B27c, B28a; their required implementation must be present on the implementation base
 Architecture: Sections 5.1–5.3, 5.7, 6.1, 6.5, 7.1–7.2 and 8
@@ -201,7 +201,7 @@ Archive hides settled work and frees an active slot; it neither deletes evidence
 
 ## Acceptance
 
-These are required future test cases, **not executed evidence**. Named new files below are proposed test homes; existing suites remain regression requirements. Use deterministic ScriptedModel/provider/tool gates, Host `h.api()`, `h.nextFrame()` and observed events rather than fixed delays. Every changed owner flow needs e2e coverage.
+This table preserves the implementation acceptance contract. The [dated acceptance record](../acceptance/2026-11-02-b29-local-task-continuity.md) maps it to executed task-specific and shared-path regression evidence; proposed test homes below are not a second test inventory. Use deterministic ScriptedModel/provider/tool gates, Host `h.api()`, `h.nextFrame()` and observed events rather than fixed delays. Every changed owner flow needs e2e coverage.
 
 | ID | Required case and observable outcome | Test home / name |
 | --- | --- | --- |
@@ -222,7 +222,7 @@ These are required future test cases, **not executed evidence**. Named new files
 | T15 | Enforce 32 active tasks during simultaneous creates/unarchives; archive only settled work and start nothing. With 1,000 archived tasks and 10,000 rows in one task, list responses obey 32/64 KiB and history B14c bounds, no transcript observer per archive, no archived input/receipt scan on list refresh. | Adapter bounded fixture and task e2e `archive and bounded reads` |
 | T16 | Task work/approval counts participate once in power/attention even with window closed, while direct lastRun/previews/native notices remain unchanged. All ordinary Core/Specialist/group/routine/B15b flows retain acceptance. | Desktop attention tests, existing regression suites and task e2e `task attention without duplicate completion` |
 
-Required implementation verification: `pnpm run check`, full `pnpm run e2e`, inspect relevant screenshots (including English/Chinese controls and uncertainty), refresh shard timings after adding the suite with `node scripts/e2e-shard.ts --record e2e/.run/results.json`. Use the isolated background app only. The baseline compatibility fixture must exercise old code in an isolated temporary checkout/store or equivalently pinned test harness, never owner data; inspecting a version number alone does not prove fail-closed startup.
+Required implementation verification: `pnpm run check`, full `pnpm run e2e`, inspect relevant screenshots (including English/Chinese controls and uncertainty), refresh shard timings after adding the suite with `node scripts/e2e-shard.ts --record e2e/.run/timings.json`. Use the isolated background app only. The baseline compatibility fixture must exercise old code in an isolated temporary checkout/store or equivalently pinned test harness, never owner data; inspecting a version number alone does not prove fail-closed startup.
 
 Measure local acceptance/admission separately from provider response. The deterministic gates above prove independence without a fabricated latency SLA. A budgeted isolated real-model report trial may supplement usefulness evidence; it cannot replace deterministic ordering/authorization tests or native packaged lifecycle evidence.
 
@@ -240,4 +240,4 @@ None at ready publication. During implementation, record dated contract mismatch
 
 ## Evidence
 
-Documentation-only review on 2026-11-02 against `1b550b9` and relevant later-main differences through `f45a707`; [D11](d11-local-task-continuity.md#review-evidence) records inspected sources and design corrections. T01–T16 remain unexecuted until implementation. No product code, app launch, real-model trial or runtime acceptance is part of this documentation delivery.
+Design review on 2026-11-02 used `1b550b9` and relevant later-main differences through `f45a707`; [D11](d11-local-task-continuity.md#review-evidence) preserves that review. Implementation, T01–T16 evidence mapping, regression results, inspected screenshots and unverified native boundaries are maintained in the [dated B29 acceptance record](../acceptance/2026-11-02-b29-local-task-continuity.md). [PR #84](https://github.com/VesperZephyr/OpenBot/pull/84) remains draft and unmerged; passing checks does not complete owner review.

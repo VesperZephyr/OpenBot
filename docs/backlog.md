@@ -6,7 +6,7 @@ This is the active delivery queue, not a release history. Task status, contracts
 
 | Work | Next action / dependency |
 | --- | --- |
-| [B29: Local task continuity and a responsive Core](tasks/b29-local-task-continuity.md) | Implement the owner-selected increment and complete its acceptance/regression checks; the spec owns status and evidence |
+| [B29: Local task continuity and a responsive Core](tasks/b29-local-task-continuity.md) | Owner review of the task branch and draft PR; the spec owns status and acceptance evidence |
 | [B11e: Bot routines and generated-file Library](tasks/b11e-bot-routines-library.md) | Complete the review/verification tracked in [PR #69](https://github.com/VesperZephyr/OpenBot/pull/69); the spec owns findings and evidence |
 | [B13e: Bot templates](tasks/b13e-bot-templates.md) | Owner review and merge of the implementation candidate; acceptance is linked from the spec |
 | [B27c: bounded memory selection and retrieval](tasks/b27c-bounded-memory-retrieval.md) | Review the verified implementation in [PR #77](https://github.com/VesperZephyr/OpenBot/pull/77); the spec links actual-product quality and usage evidence |
