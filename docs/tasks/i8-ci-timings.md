@@ -1,6 +1,7 @@
 # I8: Complete CI Timings and Balanced Desktop Shards
 
-Status: in review
+Status: done
+Merged: November 2, 2026 — [PR #79](https://github.com/VesperZephyr/OpenBot/pull/79), commit [`259b2ad`](https://github.com/VesperZephyr/OpenBot/commit/259b2ad6ce26ab2962bc2c290b5d0638464c466a)
 Branch: task/i8-ci-timings
 Depends on: I5
 Architecture: verification tooling only; no product contract changes

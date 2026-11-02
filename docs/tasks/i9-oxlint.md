@@ -1,8 +1,9 @@
 # I9: Fast Correctness Checks with Oxlint
 
-Status: in review
+Status: done
+Merged: November 2, 2026 — [PR #81](https://github.com/VesperZephyr/OpenBot/pull/81), commit [`4bc6e98`](https://github.com/VesperZephyr/OpenBot/commit/4bc6e984413faf7814d9ba3fc460883a95f66acc)
 Branch: task/i9-oxlint
-Depends on: I8 (stacked review; owner merges I8 first)
+Depends on: I8 (merged in [PR #79](https://github.com/VesperZephyr/OpenBot/pull/79))
 Architecture: verification tooling; product boundaries and contracts unchanged
 
 ## Goal
