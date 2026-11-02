@@ -101,6 +101,7 @@ Candidate revision, acceptance checks and outcomes, and remaining limits; or lin
 - [D8: Unified chat and continuous activity feedback](d8-chat-experience.md)
 - [D9: Files and read-only document previews](d9-file-reading.md)
 - [D10: Reader polish and real report acceptance](d10-reader-polish.md)
+- [D11: Local task continuity and a responsive Core](d11-local-task-continuity.md)
 
 ## Collaboration and application capabilities
 
