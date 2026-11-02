@@ -1,3 +1,4 @@
+import { assertTaskRun } from "./local-tasks.ts";
 import { createHash } from "node:crypto";
 import type { Context } from "@earendil-works/chord/context";
 import type { Harness } from "@earendil-works/pi-durable";
@@ -177,7 +178,8 @@ export class MemoryBook {
 			const channel = Object.values((await tx.doc(ChannelsDoc)).channels).find(c => c.botId === botId && c.channelId === channelId);
 			const conversation = channelId === "direct" ? bot.conversationId : channel?.conversationId;
 			if (String(conversation) !== call.conversationId || conversation === undefined) return memoryReadFailure("unavailable");
-			const group = channelId !== "direct" && !channelId.startsWith("routine_");
+			await assertTaskRun(tx,run);
+            const group = channel?.kind === "group";
 			if (group) {
 				const groups = await tx.doc(GroupsDoc), current = groups.groups[channelId];
 				const delivery = Object.values(groups.deliveries).find(d => d.botId === botId && d.groupId === channelId && run.requestIds.includes(`delivery:${d.deliveryId}`));

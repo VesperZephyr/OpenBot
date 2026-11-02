@@ -1,12 +1,25 @@
 name: CI
 
 on:
+  workflow_dispatch:
+    inputs:
+      runtime:
+        description: E2E runtime for controlled comparison
+        type: choice
+        options: [bundled, source]
+        default: bundled
+      cache_mode:
+        description: Dependency cache state for acceptance
+        type: choice
+        options: [cached, cold]
+        default: cached
   pull_request:
   push:
     branches: [main]
 
 env:
   OPENBOT_E2E_AUDIT: "1"
+  OPENBOT_E2E_RUNTIME: ${{ inputs.runtime || 'bundled' }}
 
 permissions:
   contents: read
@@ -24,14 +37,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          # B29 compatibility tests execute the pinned pre-task Host and backup reader.
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
-          cache: pnpm
+          cache: ${{ inputs.cache_mode != 'cold' && 'pnpm' || '' }}
       - run: pnpm install --frozen-lockfile
       # Vendored Pi changes rarely; reuse its build output while its sources, lockfile and Node are unchanged.
       - name: Restore vendored Pi build
+        if: inputs.cache_mode != 'cold'
         id: pi-build
         uses: actions/cache@v4
         with:
@@ -44,6 +60,8 @@ jobs:
         working-directory: apps/desktop
         run: node node_modules/electron/install.js
       - run: pnpm --filter @openbot/desktop run build
+      - name: Build E2E runtime
+        run: pnpm run build:e2e-runtime
       - name: Run isolated history performance acceptance
         run: pnpm exec vitest run --config e2e/vitest.config.ts e2e/history-scaling.e2e.ts --maxWorkers=1
       - name: Summarize history timings
@@ -59,6 +77,7 @@ jobs:
             e2e/.run/results.json
             e2e/.run/timings.json
             e2e/.run/audit/*.jsonl
+            e2e/.run/runtime-launches.jsonl
             e2e/.run/history-scaling/performance.json
           include-hidden-files: true
           if-no-files-found: ignore
@@ -80,10 +99,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
-          cache: pnpm
+          cache: ${{ inputs.cache_mode != 'cold' && 'pnpm' || '' }}
       - run: pnpm install --frozen-lockfile
       # Vendored Pi changes rarely; reuse its build output while its sources, lockfile and Node are unchanged.
       - name: Restore vendored Pi build
+        if: inputs.cache_mode != 'cold'
         id: pi-build
         uses: actions/cache@v4
         with:
@@ -95,6 +115,8 @@ jobs:
         working-directory: apps/desktop
         run: node node_modules/electron/install.js
       - run: pnpm --filter @openbot/desktop run build
+      - name: Build E2E runtime
+        run: pnpm run build:e2e-runtime
       - name: Run desktop shard
         # Balanced by recorded suite durations (e2e/durations.json); refresh them with `node scripts/e2e-shard.ts --record`.
         run: node scripts/e2e-shard.ts --run ${{ matrix.shard }}/3 --exclude e2e/history-scaling.e2e.ts
@@ -111,6 +133,7 @@ jobs:
             e2e/.run/results.json
             e2e/.run/timings.json
             e2e/.run/audit/*.jsonl
+            e2e/.run/runtime-launches.jsonl
             e2e/.run/history-scaling/performance.json
           include-hidden-files: true
           if-no-files-found: ignore

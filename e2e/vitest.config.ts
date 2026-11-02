@@ -4,6 +4,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
 	test: {
 		...(process.env.OPENBOT_E2E_AUDIT === "1" ? { runner: "./e2e/audit-runner.ts" } : {}),
+		env: { OPENBOT_E2E_RUNTIME: process.env.OPENBOT_E2E_RUNTIME ?? "bundled" },
+		globalSetup: ["./e2e/runtime-evidence-setup.ts"],
 		include: ["e2e/**/*.e2e.ts"],
 		testTimeout: 60_000,
 		hookTimeout: 90_000,

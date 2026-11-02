@@ -6,9 +6,10 @@
  */
 import { auditSpan } from "./audit-profile.ts";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright-core";
+import { runtimeEnvironment } from "./runtime.ts";
 import { ScriptedModel } from "./scripted-model.ts";
 
 export const repo = resolve(import.meta.dirname, "..");
@@ -83,12 +84,18 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 	const preparedEnvironment = await auditSpan("fixture.prepare", name, async () => options.prepare?.(run));
 	let app: ElectronApplication | undefined;
 	let page: Page | undefined;
+	let launches = 0;
+	const mode = process.env.OPENBOT_E2E_RUNTIME ?? "source";
+	const overrides = { ...process.env, ...options.env, ...preparedEnvironment };
 	const start = async (): Promise<void> => {
+		const selectedRuntime = runtimeEnvironment(mode, join(repo, "apps/desktop/out/e2e-runtime"), overrides);
+		const started = performance.now();
 		app = await auditSpan("app.launch", name, () => electron.launch({
 			args: [join(repo, "apps/desktop"), ...(options.debugPort ? [`--remote-debugging-port=${options.debugPort}`] : [])],
 			cwd: join(repo, "apps/desktop"),
 			env: {
 				...process.env,
+				...selectedRuntime,
 				OPENBOT_DATA_DIR: dataDirectory,
 				OPENBOT_HOME: join(run, "home"),
 				OPENBOT_WORKSPACE: workspace,
@@ -101,6 +108,11 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 		}));
 		page = await auditSpan("app.firstWindow", name, () => app!.firstWindow());
 		await auditSpan("app.sidebarReady", name, () => page!.locator(".sidebar").waitFor());
+		await appendFile(join(repo, "e2e/.run/runtime-launches.jsonl"), `${JSON.stringify({
+			suite: name, mode, launch: ++launches, startupMs: performance.now() - started,
+			host: overrides.OPENBOT_HOST_ENTRY ?? selectedRuntime.OPENBOT_HOST_ENTRY ?? join(repo, "apps/local-server/src/main.ts"),
+			executor: overrides.OPENBOT_EXECUTOR_ENTRY ?? selectedRuntime.OPENBOT_EXECUTOR_ENTRY ?? join(repo, "apps/local-executor/src/main.ts"),
+		})}\n`);
 	};
 	try {
 		await start();

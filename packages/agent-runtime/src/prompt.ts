@@ -10,7 +10,7 @@ import { eligibleMemory } from "./memory-retrieval.ts";
 
 import { MemoryDoc, SharedMemoryDoc, memoryState, renderNotes } from "./memory.ts";
 
-export type PromptBot = { readonly botId: string; readonly name: string; readonly role: string; readonly memoryContext?: "direct" | "group" | "routine" };
+export type PromptBot = { readonly botId: string; readonly name: string; readonly role: string; readonly memoryContext?: "direct" | "group" | "routine" | "task" };
 
 /** Resolves the Bot that owns the conversation being prompted. */
 export type BotLookup = (input: PromptInput, context: Context) => Promise<PromptBot | undefined>;

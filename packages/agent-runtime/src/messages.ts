@@ -1,3 +1,4 @@
+import { assertTaskRun } from "./local-tasks.ts";
 import { createHash } from "node:crypto";
 import { defineDocFamily, type Harness } from "@earendil-works/pi-durable";
 import type { Context } from "@earendil-works/chord/context";
@@ -105,7 +106,8 @@ export function messageStore(harness: Harness, context: Context) {
 					)
 						fail();
 				}
-				const groups = run!.channelId && run!.channelId !== "direct" ? await tx.doc(GroupsDoc) : undefined;
+				await assertTaskRun(tx,run!);
+                const groups = run!.origin!=="task" && run!.channelId && run!.channelId !== "direct" ? await tx.doc(GroupsDoc) : undefined;
 				const delivery = groups && Object.values(groups.deliveries).find((d) => run!.requestIds.includes(`delivery:${d.deliveryId}`));
 				const group = groups && groups.groups[run!.channelId!],
 					root = delivery?.rootId ? groups?.roots?.[delivery.rootId] : undefined;

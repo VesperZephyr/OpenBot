@@ -32,6 +32,9 @@ export type RunSchedulerOptions = {
 	/** Runs right before a running Run's conversation is aborted, so work it left in the background stops too. */
 	readonly stopping?: (botId: BotId, channelId?: string, runId?: string) => void;
 	readonly admissible?: (run: StoredRun) => Promise<boolean>;
+ readonly taskChanged?: () => void;
+ readonly taskInput?: (run:StoredRun,submit:()=>Promise<{submissionId:string}>)=>Promise<{submissionId:string}>;
+ readonly taskPreparing?: (runId:string,work:Promise<void>)=>void;
 };
 
 export type SubmitOutcome = { readonly runId: RunId; readonly state: RunRecord["state"]; readonly steered: boolean };
@@ -42,6 +45,9 @@ export class RunScheduler {
 	readonly #resolveAttachments: NonNullable<RunSchedulerOptions["resolveAttachments"]>;
 	readonly #hydrateAttachments: NonNullable<RunSchedulerOptions["hydrateAttachments"]>;
 	readonly #runtime: BotRuntime;
+ readonly #taskChanged:()=>void;
+ readonly #taskInput:NonNullable<RunSchedulerOptions["taskInput"]>;
+ readonly #taskPreparing:(runId:string,work:Promise<void>)=>void;
  readonly #resolveSkills:NonNullable<RunSchedulerOptions["resolveSkills"]>;
 	readonly #canAdmit: () => boolean;
 	readonly #store: RunStore;
@@ -66,6 +72,9 @@ export class RunScheduler {
 
 	constructor(options: RunSchedulerOptions) {
 		this.#runtime = options.runtime;
+ this.#taskChanged=options.taskChanged??(()=>{});
+ this.#taskPreparing=options.taskPreparing??(()=>{});
+ this.#taskInput=options.taskInput??((_run,submit)=>submit());
  this.#resolveSkills=options.resolveSkills??(async refs=>{if(refs.length)throw new Error("Skill library unavailable");return [];});
 		this.#resolveAttachments = options.resolveAttachments ?? (async () => []);
 		this.#hydrateAttachments = options.hydrateAttachments ?? (async () => []);
@@ -88,12 +97,12 @@ export class RunScheduler {
 	start(): Promise<void> {
 		return this.#serial(async () => {
 			for (const run of await this.#store.list()) {
-				if (!isTerminal(run.state) || (run.state === "needs_attention" && !run.interruption?.settledAt)) this.#runs.set(run.runId, run);
+				if (!isTerminal(run.state) || (run.state === "needs_attention" && !run.interruption?.settledAt) || await this.#taskOccupied(run)) this.#runs.set(run.runId, run);
 				this.#rememberChannel(run);
 				if ((run.channelId ?? "direct") === "direct" && (this.#latestDirect.get(run.botId)?.createdAt ?? -Infinity) <= run.createdAt)
 					this.#latestDirect.set(run.botId, run);
 				const latest = this.#latest.get(run.botId);
-				if (!latest || latest.createdAt <= run.createdAt) this.#latest.set(run.botId, run);
+				if (run.origin!=="task" && (!latest || latest.createdAt <= run.createdAt)) this.#latest.set(run.botId, run);
 				if (isTerminal(run.state)) continue;
 
 				if (this.#canAdmit()) await this.#recover(run);
@@ -104,6 +113,7 @@ export class RunScheduler {
 
 	async #recover(run: StoredRun): Promise<void> {
 		if (!this.#canAdmit()) return;
+  if(run.taskId && ((await this.#runtime.tasks().metadata(run.taskId))?.stopIntent || run.interruption)){this.#taskChanged();return;}
 		const admissible = await this.#admissible(run);
 		if (!this.#canAdmit()) return;
 		if (!admissible) {
@@ -112,11 +122,11 @@ export class RunScheduler {
 				await this.#runtime.cancel(run.botId, run.channelId, true);
 			}
 			await this.#put({ ...run, state: "cancelled", endedAt: this.#now() });
-		} else if (run.state === "running") await this.#submitInputs(run);
+		} else if (run.state === "running") { if (run.taskId) this.#prepareTask(run); else await this.#submitInputs(run); }
 	}
 
 	hasWork(): boolean {
-		return [...this.#runs.values()].some((run) => !isTerminal(run.state));
+		return [...this.#runs.values()].some((run) => !isTerminal(run.state) || !!run.taskId);
 	}
 	resume(): Promise<void> {
 		return this.#serial(async () => {
@@ -193,7 +203,7 @@ export class RunScheduler {
  }
 
 	#rememberChannel(run: StoredRun): void {
-  if(run.origin==="routine")return;
+  if(run.origin==="routine" || run.origin==="task")return;
 		const key = JSON.stringify([run.botId, run.channelId ?? "direct"]),
 			previous = this.#latestChannel.get(key);
 		if (!previous || previous.runId === run.runId || previous.createdAt <= run.createdAt) this.#latestChannel.set(key, run);
@@ -345,6 +355,7 @@ export class RunScheduler {
 		const target = await this.#serial(async () => {
 			const run = this.#runs.get(runId) ?? (await this.#store.get(runId));
 			if (run === undefined) throw new ProtocolError("not_found", `Unknown Run: ${runId}`);
+   if(run.taskId || run.origin==="task")throw new ProtocolError("invalid_request","Use task Stop for this Run");
 			if (run.state === "queued") {
 				await this.#put({ ...run, state: "cancelled", endedAt: this.#now() });
 				return { state: "cancelled" as const };
@@ -388,15 +399,20 @@ export class RunScheduler {
 		for (;;) {
 			if (!this.#canAdmit()) return;
 			const runs = [...this.#runs.values()];
-			const running = runs.filter((run) => run.state === "running");
-			if (running.length >= this.#cap) return;
-			const busy = new Set(running.map((run) => run.botId));
-			const next = runs
-				.filter((run) => run.state === "queued" && !busy.has(run.botId))
-				.sort((a, b) => {
-					const tier = (r: StoredRun) => (!r.channelId || r.channelId === "direct" || this.#now() - r.createdAt >= 30_000 ? 0 : 1);
-					return tier(a) - tier(b) || a.createdAt - b.createdAt;
-				})[0];
+   const occupied=await Promise.all(runs.map(async run=>run.state==="running" || await this.#taskOccupied(run)));
+   const running=runs.filter((_,i)=>occupied[i]);
+   if(running.length>=this.#cap)return;
+   const lane=(r:StoredRun)=>r.taskId?`task:${r.taskId}`:`bot:${r.botId}`;
+   const busy=new Set(running.map(lane));
+   const core=(await this.#runtime.listBots()).find(b=>b.kind==="core")?.botId;
+   const directCore=(r:StoredRun)=>r.botId===core && (!r.channelId || r.channelId==="direct") && r.origin==="user";
+   const reserved=this.#cap>=2 && runs.some(r=>r.taskId && (r.state==="queued" || running.includes(r)));
+   const generalFull=reserved && running.filter(r=>!directCore(r)).length>=this.#cap-1;
+   const next=runs.filter(r=>r.state==="queued" && !busy.has(lane(r)) && (!generalFull || directCore(r))).sort((a,b)=>{
+    if(reserved && directCore(a)!==directCore(b))return directCore(a)?-1:1;
+    const tier=(r:StoredRun)=>(!r.channelId || r.channelId==="direct" || this.#now()-r.createdAt>=30000?0:1);
+    return tier(a)-tier(b)||a.createdAt-b.createdAt;
+   })[0];
 			if (next === undefined) return;
 			if (!(await this.#admissible(next))) {
 				await this.#put({ ...next, state: "cancelled", endedAt: this.#now() });
@@ -415,10 +431,41 @@ export class RunScheduler {
 					: [{ requestId: next.requestIds[0]!, text: next.messages.map((message) => message.text).join("\n\n") }],
 			};
 			// Written before Pi admits the first input, so a crash in between resubmits it on start.
-			await this.#put(started);
-			await this.#submitInputs(started);
+            try { await this.#put(started); }
+            catch (error) {
+                if (!started.taskId) throw error;
+                const fresh = await this.#store.get(started.runId);
+                if (fresh) this.#runs.set(fresh.runId, fresh); else this.#runs.delete(started.runId);
+                this.#taskChanged();
+                return;
+            }
+            if (started.taskId) this.#prepareTask(started); else await this.#submitInputs(started);
 		}
 	}
+
+    readonly #preparingTasks = new Set<string>();
+    #prepareTask(run: StoredRun): void {
+        if (this.#preparingTasks.has(run.runId)) return;
+        this.#preparingTasks.add(run.runId);
+        const work = this.#submitInputs(run).catch(error => this.#serial(async () => {
+            const current = await this.#store.get(run.runId);
+            if (current && !isTerminal(current.state)) await this.#put({...current, state:"failed", endedAt:this.#now(), error:error instanceof Error ? error.message : "Task input could not be admitted"});
+        })).finally(() => this.#preparingTasks.delete(run.runId));
+        this.#taskPreparing(run.runId, work);
+    }
+    async #saveInputs(run: StoredRun): Promise<StoredRun> {
+        if (!run.taskId) { await this.#put(run); return run; }
+        return this.#serial(async () => {
+            const fresh = await this.#store.get(run.runId);
+            if (!fresh || isTerminal(fresh.state)) return fresh ?? run;
+            const updated = {...fresh, inputs: fresh.inputs.map(input => {
+                const progress = run.inputs.find(candidate => candidate.requestId === input.requestId);
+                return {...input, ...(progress?.submissionId ? {submissionId:progress.submissionId} : {}), ...(input.outcome ? {} : progress?.outcome ? {outcome:progress.outcome} : {})};
+            })};
+            await this.#put(updated);
+            return updated;
+        });
+    }
 
 	/**
 	 * Admit every input of a running Run that has no Pi submission yet, record its submission ID, and observe every
@@ -440,7 +487,7 @@ export class RunScheduler {
 				} catch (error) {
 					const reason = error instanceof Error ? error.message : "Attachment content is unavailable";
 					for (const candidate of current.inputs)
-						if (candidate.submissionId === undefined)
+						if (candidate.submissionId === undefined && !run.taskId)
 							await this.#runtime.recordInputFailure(
 								run.botId,
 								candidate.requestId,
@@ -456,27 +503,28 @@ export class RunScheduler {
 							candidate.submissionId === undefined ? { ...candidate, outcome: { status: "unanswered" as const, reason } } : candidate,
 						),
 					};
-					await this.#put(current);
+					current = await this.#saveInputs(current);
 					break;
 				}
 				try {
-					submissionId = (await this.#runtime.submit(run.botId, input.requestId, input.text, mode, run.channelId, attachments, () => {
+					const submit=()=>this.#runtime.submit(run.botId, input.requestId, input.text, mode, run.channelId, attachments, () => {
 						if (!this.#canAdmit()) throw new ProtocolError("invalid_request", "Work is paused. Resume work before continuing.");
-					}, input.skills, run.origin==="routine"?"routine":run.origin==="background")).submissionId;
+					}, input.skills, run.origin==="routine"?"routine":run.origin==="background");
+                    submissionId=(await (run.taskId?this.#taskInput(run,submit):submit())).submissionId;
 				} catch (error) {
 					if (!this.#canAdmit()) return;
 					throw error;
 				}
 			}
 			current = withInput(current, input.requestId, { submissionId });
-			await this.#put(current);
+			current = await this.#saveInputs(current);
 		}
 		if (!this.#canAdmit()) return;
 		for (const input of current.inputs) {
 			if (input.outcome !== undefined || input.submissionId === undefined) continue;
 			this.#observe(current.runId, input.requestId, input.submissionId, current.botId, current.channelId);
 		}
-		await this.#finishIfSettled(current.runId);
+		if (run.taskId) await this.#serial(() => this.#finishIfSettled(current.runId)); else await this.#finishIfSettled(current.runId);
 	}
 
 	#observe(runId: RunId, requestId: string, submissionId: string, botId: BotId, channelId?: string): void {
@@ -525,7 +573,8 @@ export class RunScheduler {
 		if (outcomes.some((outcome) => outcome === undefined)) return;
 		// A stop wins over the error the abort surfaced; a Run whose answer landed before the stop stays completed.
 		const failure = outcomes.find((outcome) => outcome?.status === "unanswered");
-		const cancelled = outcomes.some((outcome) => outcome?.reason === "aborted") || (this.#cancelling.has(runId) && failure !== undefined);
+		const taskStopped = run.taskId && (await this.#runtime.tasks().metadata(run.taskId))?.stopIntent?.runId === runId;
+		const cancelled = outcomes.some((outcome) => outcome?.reason === "aborted") || ((this.#cancelling.has(runId) || taskStopped) && failure !== undefined);
 		const interrupted =
 			run.interruption ??
 			(!this.#canAdmit() && failure !== undefined ? { reason: "recovery" as const, requestedAt: this.#now() } : undefined);
@@ -562,15 +611,32 @@ export class RunScheduler {
 
 	async #put(run: StoredRun): Promise<void> {
 		await this.#store.put(run);
-		if (isTerminal(run.state) && !(run.state === "needs_attention" && !run.interruption?.settledAt)) this.#runs.delete(run.runId);
+		if (isTerminal(run.state) && !(run.state === "needs_attention" && !run.interruption?.settledAt) && !await this.#taskOccupied(run)) this.#runs.delete(run.runId);
 		else this.#runs.set(run.runId, run);
 		this.#rememberChannel(run);
 		if ((run.channelId ?? "direct") === "direct" && (this.#latestDirect.get(run.botId)?.createdAt ?? -Infinity) <= run.createdAt)
 			this.#latestDirect.set(run.botId, run);
 		const latest = this.#latest.get(run.botId);
-		if (latest === undefined || latest.runId === run.runId || latest.createdAt <= run.createdAt) this.#latest.set(run.botId, run);
+		if (run.origin!=="task" && (latest === undefined || latest.runId === run.runId || latest.createdAt <= run.createdAt)) this.#latest.set(run.botId, run);
 		this.#changed(run.botId);
+  if(run.taskId)this.#taskChanged();
 	}
+
+ async #taskOccupied(run:StoredRun):Promise<boolean>{
+  if(!run.taskId || run.startedAt===undefined)return false;
+  const task=await this.#runtime.tasks().metadata(run.taskId);
+  return task?.currentRunId===run.runId && task.settlement?.runId!==run.runId;
+ }
+ acceptTask(runId:string):Promise<void>{return this.#serial(async()=>{
+  const run=await this.#store.get(runId);if(!run?.taskId)throw new ProtocolError("invalid_request","Task Run is unavailable");
+  if(!isTerminal(run.state) || await this.#taskOccupied(run))this.#runs.set(runId,run);else this.#runs.delete(runId);
+  await this.#admit();
+ });}
+ refreshTask(runId:string):Promise<void>{return this.acceptTask(runId);}
+ taskActivity(botId:string):"working"|"queued"|undefined{
+  const tasks=[...this.#runs.values()].filter(r=>r.botId===botId && r.taskId);
+  return tasks.some(r=>r.state!=="queued")?"working":tasks.length?"queued":undefined;
+ }
 
 	#serial<T>(step: () => Promise<T>): Promise<T> {
 		const result = this.#line.then(step);

@@ -174,3 +174,13 @@ describe("local composers", () => {
 		expect(store.snapshot()["bot:a"]).toBeUndefined();
 	});
 });
+
+it("task attempts freeze destination, revision and recovery across navigation and restart",async()=>{
+ const disk=storage(),store=new ComposerStore(disk),key="task:a" as const;
+ store.edit(key,{text:"Change the dates"});store.edit("bot:core",{text:"Core draft"});store.edit("task:b",{text:"B draft"});store.edit("new-task:draft",{text:"New task draft"});
+ let accepted="";
+ await store.send(key,async attempt=>{accepted=attempt.requestId;expect(attempt.task).toEqual({taskId:"a",expectedRevision:2,expectedRunId:"run-a",recoveryToken:"evidence-a"});throw Error("Lost response");},false,{taskId:"a",expectedRevision:2,expectedRunId:"run-a",recoveryToken:"evidence-a"});
+ store.edit(key,{text:"Newer unsent correction"});const restored=new ComposerStore(disk);
+ await restored.send(key,async attempt=>{expect(attempt.requestId).toBe(accepted);expect(attempt.task?.expectedRunId).toBe("run-a");expect(attempt.task?.recoveryToken).toBe("evidence-a");},true,{taskId:"b",expectedRevision:8,expectedRunId:"run-b"});
+ expect(restored.get(key).draft.text).toBe("Newer unsent correction");expect(restored.get("bot:core").draft.text).toBe("Core draft");expect(restored.get("task:b").draft.text).toBe("B draft");expect(restored.get("new-task:draft").draft.text).toBe("New task draft");
+});

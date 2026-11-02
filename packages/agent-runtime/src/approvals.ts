@@ -1,3 +1,6 @@
+import { ChannelsDoc } from "./channels.ts";
+import { assertTaskRun } from "./local-tasks.ts";
+import { RunsDoc } from "./runs.ts";
 /**
  * Approvals as a Pi session document (`openbot.approvals`, Section 5.3), so a pending request and the user's decision
  * survive a Host restart and commit atomically with the rest of Host state. Only Host code writes it, through
@@ -45,6 +48,12 @@ export function approvalStore(harness: Harness, context: Context): ApprovalStore
 			await harness.commit(async (tx) => {
 				const policy=await tx.doc(PolicyDoc);
     if(record.state==="allowed"&&record.binding&&record.binding.revision!==(policy.revision??0))throw new ProtocolError("request_conflict","Approval authority changed");
+    if(record.state==="allowed" || saved){
+     const run=record.binding?.runId?(await tx.doc(RunsDoc)).runs[record.binding.runId]:undefined;
+     const channel=Object.values((await tx.doc(ChannelsDoc)).channels).find(c=>String(c.conversationId)===record.conversationId);
+     if(channel?.kind==="task" && (!run || channel.taskId!==run.taskId))throw new ProtocolError("invalid_request","Task approval is no longer authorized");
+     if(run?.taskId || run?.origin==="task")await assertTaskRun(tx,run);
+    }
     if (saved !== undefined) {await saveScope(tx, saved);if(copy.binding)copy={...copy,binding:{...copy.binding,revision:policy.revision??0}};}
     (await tx.doc(ApprovalsDoc)).approvals[record.approvalId] = copy;
 			}, context);

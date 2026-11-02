@@ -66,7 +66,7 @@ export function readUsage(
 							epoch,
 						)
 					: usageSummary({}));
-			const group = run.channelId && run.channelId !== "direct" ? run.channelId : undefined;
+			const group = !run.taskId && run.channelId && run.channelId !== "direct" ? run.channelId : undefined;
 			const refs: import("@openbot/protocol").RunEvidence["references"][number][] = [];
 			let more = false;
 			if (group) {
@@ -113,6 +113,7 @@ export function readUsage(
 			}
 			rows.push({
 				runId: run.runId,
+                ...(run.taskId?{taskId:run.taskId}:{}),
 				state: run.state,
 				createdAt: run.createdAt,
 				...(run.endedAt === undefined ? {} : { endedAt: run.endedAt }),

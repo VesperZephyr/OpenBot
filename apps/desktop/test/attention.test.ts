@@ -48,3 +48,9 @@ describe("attention", () => {
 		expect(attention(undefined, [bot("a", { activity: "needs_attention" }), bot("b", { activity: "unread" })]).keepAwake).toBe(false);
 	});
 });
+it("task work and approvals count once without duplicating direct completion",()=>{
+ const direct={runId:"direct",state:"completed" as const};const idle=bot("core",{kind:"core",lastRun:direct});
+ const working={...idle,activity:"working" as const,pendingApprovals:1};
+ const admitted=attention([idle],[working]);expect(admitted.keepAwake).toBe(true);expect(admitted.badge).toBe(1);expect(admitted.notices).toHaveLength(1);expect(admitted.notices[0]?.body).toBe("Needs your approval to continue");
+ const completed=attention([working],[idle]);expect(completed).toEqual({keepAwake:false,badge:0,notices:[]});
+});

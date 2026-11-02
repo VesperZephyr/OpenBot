@@ -115,7 +115,7 @@ export class PublicTranscript {
 				if (category !== "failed")
 					selected.remove.push(...data.inputs.flatMap((i) => (i.submissionId ? [`outcome:${i.submissionId}`] : [])));
 			}
-		} else if (entry.kind === "openbot.messages-v1") selected.items = [];
+		} else if (["openbot.messages-v1","openbot.task-execution"].includes(entry.kind)) selected.items = [];
 		else if (mode !== undefined && entry.id > mode) {
 			selected.items = raw.filter((item) => (entry.kind !== "pi.assistant" || item.kind !== "assistant") && item.kind !== "stopped");
 			for (const item of selected.items) {
