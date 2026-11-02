@@ -108,7 +108,7 @@ export function ownerNotes(state: MemoryState, content: string, source: MemoryPr
 		const previous = state.notes.find(n => n.key === note.key);
 		if (!previous) return note;
 		if (previous.status === "active" && previous.content === note.content && previous.heading === note.heading && source.kind !== "restore") return previous;
-		return { ...previous, content: note.content, heading: note.heading, status: "active" as const, protected: true, changed: source };
+		return { ...previous, ...(previous.status === "active" ? {} : { placement: "always" as const }), content: note.content, heading: note.heading, status: "active" as const, protected: true, changed: source };
 	});
 	for (const previous of state.notes) if (!keys.has(previous.key))
 		next.push(previous.status === "active" ? { ...previous, content: "", status: "forgotten", protected: true, changed: source } : previous);

@@ -21,6 +21,7 @@ export function MemoryNotes({ botId, scope, state, other, busy, disabled, setBus
 	const [review, setReview] = useState<MemoryNote>();
 	const [source, setSource] = useState<{ noteId: string; original: MemorySourceEvidence; changed: MemorySourceEvidence }>();
 	const [error, setError] = useState("");
+	const [placement, setPlacement] = useState<{ noteId: string; value: "always" | "on-demand"; revision: number }>();
 	const attempt = useRef<{ fingerprint: string; id: string } | undefined>(undefined);
 	const run = async (change: NoteInput): Promise<void> => {
 		const fingerprint = JSON.stringify(change);
@@ -28,7 +29,7 @@ export function MemoryNotes({ botId, scope, state, other, busy, disabled, setBus
 		setBusy(true); setError("");
 		try {
 			const result = await api["bots.memory.note"]({ ...change, requestId: attempt.current.id } as MemoryNoteChange);
-			onChange(result); setEditing(undefined); setReview(undefined); setSource(undefined); attempt.current = undefined;
+			onChange(result); setEditing(undefined); setReview(undefined); setSource(undefined); setPlacement(undefined); attempt.current = undefined;
 		} catch (error) { setError(errorMessage(error)); }
 		finally { setBusy(false); }
 	};
@@ -43,21 +44,29 @@ export function MemoryNotes({ botId, scope, state, other, busy, disabled, setBus
 	const base = { botId, scope, expectedRevision: state.revision };
 	const active = state.notes.filter(note => note.status === "active");
 	return <section className="memory-notes" aria-label={t("Memory notes")} onKeyDown={event => { if (event.key === "Enter" && event.target instanceof HTMLInputElement) event.preventDefault(); }}>
-		<div className="memory-note-heading"><strong>{t("Remembered topics")}</strong><button type="button" disabled={busy || disabled} onClick={() => { setEditing("new"); setHeading(""); setDraft(""); setError(""); }}>{t("Add note")}</button></div>
+		<div className="memory-note-heading"><strong>{t("Remembered topics")}</strong><button type="button" disabled={busy || disabled || !!placement} onClick={() => { setEditing("new"); setHeading(""); setDraft(""); setError(""); }}>{t("Add note")}</button></div>
 		{disabled && <p className="field-hint">{t("Save or reload your Markdown draft before changing notes.")}</p>}
 		{active.length === 0 && <p className="field-hint">{t("No remembered topics in this scope.")}</p>}
 		{active.map(note => <article key={note.id} className="memory-note" data-note-id={note.id}>
 			<div className="memory-note-heading"><strong>{note.heading || t("Legacy notes")}</strong>{note.protected && <span className="memory-badge">{t("Owner protected")}</span>}</div>
 			<p className="memory-note-content">{note.content}</p>
 			<p className="field-hint">{t(labels[note.changed.kind])}{note.changed.at !== null ? ` · ${new Date(note.changed.at).toLocaleString()}` : ""}</p>
+			<label className="field"><span>{t("Memory placement")}</span><select aria-label={`${t("Memory placement")}: ${note.heading || t("Legacy notes")}`} disabled={busy || disabled || !!editing || !!review || (!!placement && placement.noteId !== note.id)} value={placement?.noteId === note.id ? placement.value : note.placement ?? "always"} onChange={event => setPlacement({ noteId: note.id, value: event.target.value as "always" | "on-demand", revision: placement?.revision ?? state.revision })}>
+				<option value="always">{t("Always in context")}</option><option value="on-demand">{t("Read when needed")}</option>
+			</select></label>
+			{placement?.noteId === note.id && <div className="memory-note-actions">
+				<button type="button" disabled={busy || disabled} onClick={() => void run({ ...base, expectedRevision: placement.revision, action: "placement", noteId: note.id, placement: placement.value })}>{t("Save placement")}</button>
+				<button type="button" disabled={busy} onClick={() => setPlacement(undefined)}>{t("Cancel placement change")}</button>
+			</div>}
 			{scope === "bot" && other.notes.some(n => n.status !== "shared" && n.key === note.key) && <p className="field-hint">{t("The shared topic takes precedence in private chats and routines.")}</p>}
 			<div className="memory-note-actions">
 				<button type="button" disabled={busy} onClick={() => void showSource(note.id)}>{t("View source")}</button>
-				<button type="button" disabled={busy || disabled} onClick={() => { setEditing(note.id); setDraft(note.content); setError(""); }}>{t("Edit note")}</button>
-				<button type="button" disabled={busy || disabled} onClick={() => { setReview(note); setError(""); }}>{t(scope === "bot" ? "Share across Bots" : "Move to this Bot")}</button>
-				<button type="button" disabled={busy || disabled} onClick={() => void run({ ...base, action: "forget", noteId: note.id })}>{t("Forget note")}</button>
+				<button type="button" disabled={busy || disabled || !!placement} onClick={() => { setEditing(note.id); setDraft(note.content); setError(""); }}>{t("Edit note")}</button>
+				<button type="button" disabled={busy || disabled || !!placement} onClick={() => { setReview(note); setError(""); }}>{t(scope === "bot" ? "Share across Bots" : "Move to this Bot")}</button>
+				<button type="button" disabled={busy || disabled || !!placement} onClick={() => void run({ ...base, action: "forget", noteId: note.id })}>{t("Forget note")}</button>
 			</div>
 			{source?.noteId === note.id && <div className="memory-source">
+				<p className="field-hint">{t("Sources describe current memory. Earlier tool results retain their recorded revisions.")}</p>
 				{(["original", "changed"] as const).map(which => <div key={which}>
 					<strong>{t(which === "original" ? "Original source" : "Last change")}</strong>
 					<p>{t(source[which].source.kind === "model" && source[which].source.botId !== botId ? "Learned by another Bot" : labels[source[which].source.kind])}{source[which].source.at !== null ? ` · ${new Date(source[which].source.at!).toLocaleString()}` : ""}</p>

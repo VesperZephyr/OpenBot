@@ -1,6 +1,6 @@
 import { BotRuntime } from "../packages/agent-runtime/src/index.ts";
 import { randomUUID } from "node:crypto";
-import type { TemplateImportInput, ImportResult } from "../packages/protocol/src/index.ts";
+import type { TemplateImportInput, ImportResult, MemoryState } from "../packages/protocol/src/index.ts";
 import { DatabaseSync } from "node:sqlite";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { mkdir, readdir, readFile, writeFile, rm, cp, rename } from "node:fs/promises";
@@ -14,8 +14,8 @@ let h: AppHarness,
 	routine: any,
 	artifact: any,
 	archive: string,
-	localMemory: unknown,
-	sharedMemory: unknown;
+	localMemory: MemoryState,
+	sharedMemory: MemoryState;
 let templateInput: TemplateImportInput, templateResult: ImportResult, templateAvatar: unknown;
 const button = (name: string) => h.page().getByRole("button", { name, exact: true });
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 30000 });
@@ -45,6 +45,11 @@ beforeAll(async () => {
 	await h.api("memory.shared.update", { expectedRevision: 0, content: "## Format\nCite original sources" });
 	localMemory = await h.api("bots.memory.get", { botId: bot.botId });
 	sharedMemory = await h.api("memory.shared.get");
+ for (const [scope, memory] of [["bot", localMemory], ["shared", sharedMemory]] as const) {
+  await h.api("bots.memory.note", { botId: bot.botId, scope, requestId: `placement-${scope}`, expectedRevision: memory.revision, action: "placement", noteId: memory.notes[0]!.id, placement: "on-demand" });
+ }
+ localMemory = await h.api("bots.memory.get", { botId: bot.botId });
+ sharedMemory = await h.api("memory.shared.get");
 	skill = await h.api("skills.save", {
 		requestId: "backup-skill",
 		name: "source-review",
