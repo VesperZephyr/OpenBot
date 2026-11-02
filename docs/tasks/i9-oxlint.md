@@ -53,4 +53,4 @@ None.
 
 ## Evidence
 
-Pending. The preliminary local audit of pinned Oxlint 1.90.0 found 44 warnings in 391 files in approximately 0.10 seconds after installation; this is not a CI result.
+[November 2 Oxlint acceptance](../acceptance/2026-11-02-oxlint.md) records enforcement probes, local verification and the remote comparison.
