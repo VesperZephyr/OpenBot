@@ -1,6 +1,6 @@
 # D12: Free BoardUI Components and an OpenBot Chat Interface
 
-Status: draft — design proposal; implementation has not started
+Status: draft — staged design; Stage 1's implementation contract is owned by [D12a](d12a-boardui-foundation.md)
 Branch: docs/d12-boardui-refactor
 Depends on: the existing D7–D10 desktop behavior; each implementation cut must reconcile with the then-current merged desktop
 Architecture: existing Electron renderer and typed Host Runtime API; no protocol, persistence or process-boundary changes
@@ -94,7 +94,9 @@ The stages are sequential and independently revertible. Prepare the next stage's
 
 ### Stage 1 — UI foundation and a contained pilot
 
-**Deliver:** renderer Tailwind integration, source/license inventory, semantic token adapter, and a pilot covering the existing Language select, Appearance radio choices and New conversation chooser dialog. Keep the appearance choices as one radio group, and keep the chooser's existing Bot/group actions. Its destination editors remain legacy components during this stage. Preserve Settings navigation and field behavior. Do not restyle the conversation yet.
+The concrete source/dependency pins, pilot interactions and executable acceptance are owned by [D12a](d12a-boardui-foundation.md). The following remains the staged design rationale.
+
+**Deliver:** renderer Tailwind integration, source/license inventory, semantic token adapter, and a pilot covering the existing Language select, Appearance radio choices and New conversation chooser dialog. Keep the appearance choices as one radio group, and keep the chooser's existing Bot/group/template-import actions. Its destination editors remain legacy components during this stage. Preserve Settings navigation and field behavior. Do not restyle the conversation yet.
 
 **Exit gate:**
 
@@ -160,8 +162,8 @@ Rollback is a code revert of the affected stage and its dependent stages where n
 
 ## Open questions
 
-- 2026-11-02: The exact free revision and minimal dependency closure must be fixed in the Stage 1 ready implementation spec. This does not reopen the selected free-only direction or authorize installing the full catalogue.
-- 2026-11-02: Electron integration, overlay interoperability and performance have not been demonstrated. Stage 1 establishes this evidence before the conversation migration proceeds; any required protocol or persistence change returns to design.
+- 2026-11-02: Source/dependency selection and the first pilot are resolved in [D12a](d12a-boardui-foundation.md#1-pinned-source-and-dependency-contract), including a design-time compatibility probe. This does not authorize importing the full catalogue.
+- 2026-11-02: Full Electron integration, overlay interoperability and product performance remain [D12a implementation acceptance](d12a-boardui-foundation.md#5-acceptance). Complete that evidence before preparing the conversation migration; any required protocol or persistence change returns to design.
 
 ## Design evidence
 
