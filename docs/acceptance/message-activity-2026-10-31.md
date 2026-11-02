@@ -128,6 +128,18 @@ No further blocking product omission, excessive abstraction or architecture conf
 
 Remote status reconciliation: #75 was merged externally at 12:14:45 UTC on 2026-11-01, as `9bd7a58`, while this final validation was running. That merge contains `b1a7133`, the exact runtime/e2e source verified above. The reviewer did not execute a merge. The assertion strengthening and this final evidence were committed afterward on the task branch and are a separate, unmerged review addendum. B28a implementation is therefore done; B28b remains draft and untouched.
 
+## Main integration — November 2, 2026
+
+PR [#78](https://github.com/VesperZephyr/OpenBot/pull/78) incorporates main `0e491e3` through merge commit `efb1f3d`. The backlog resolution retains main's B27c entry and revised design order, removing only the completed B28a entry. The duration conflict starts from main's measurements and is refreshed from the complete integrated e2e run below. No main runtime change is reverted, and B28b remains unchanged.
+
+Default-concurrency `pnpm run check` passed package boundaries, both TypeScript projects and all 704 tests in 102 files (35.80 s). No worker limits, timeout overrides or concurrent e2e run were used. This includes the stronger real Pi-to-Router assertion on the integrated runtime.
+
+Full `pnpm run e2e` rebuilt the integrated source and passed all 212 tests in 54 files (312.78 s), using background isolated apps. B14c passed unchanged gates: switch p95 91.4 ms, search p95 159.1 ms, controls p95 7.0 ms and cold rebuild/launch 9.06 s; Pi/worker bounds stayed at 256 entries and 129 records / 61,155 bytes. Inspected fresh history-rebuild, retained update after Stop, Chinese/dark narrow activity and Retry-during-building screenshots. Shard durations were regenerated from this complete report, superseding both conflicting timing snapshots.
+
+After recording durations, all four shard-tool tests passed. A direct check matched all 54 recorded durations to the full report and verified that the three CI shards cover every non-isolated suite exactly once. Relative documentation paths and `git diff --check` passed.
+
+Final self-review compared the integrated branch with main: the only executable change remains the stronger committed-message test assertion. It still requires one expected live message, a ready history window with exactly matching assistant records and no contradictory tool row at all four lifecycle checkpoints. The backlog differs only by B28a's removal; main's other content is preserved. No runtime, protocol, vendor, CI configuration, timeout, concurrency or B28b changes were introduced. The addendum remains unmerged in #78; the earlier real-model/native verification limits still apply.
+
 ## Limits
 
 This is deterministic local acceptance on macOS, using isolated fixture databases, workspace and Keychain service. No owner data or real provider was used. Real-model update quality, VoiceOver interaction, signed/packaged installation, native lifecycle behavior on a sleeping/locked Mac, and release/rollback compatibility are not established by these tests. Browser/computer control and B28b AI phrasing remain separate tasks.
