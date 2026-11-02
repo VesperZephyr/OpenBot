@@ -55,7 +55,7 @@ export function createToolRouter(options: {
         observeExecution: (call, phase) => options.service().observeExecution(call, phase),
   hostReceipt: call => call.tool === "send_message" ? options.service().messages.replay(call) : Promise.resolve(undefined),
 		resolveTool:name=>options.service().connectors.resolve(name),
- assertCallAllowed:async call=>{if (call.tool === "send_message") await options.service().messages.assertExecution(call); await options.service().routines.assertExecution(call);await options.service().background.assertExecution(call);await options.service().connectors.assertExecution(call);},
+ assertCallAllowed:async call=>{await options.service().tasks.assertExecution(call);if (call.tool === "send_message") await options.service().messages.assertExecution(call); await options.service().routines.assertExecution(call);await options.service().background.assertExecution(call);await options.service().connectors.assertExecution(call);},
 		trackCommand:{prepare:(call,digest)=>options.service().background.prepare(call,digest),settle:(call,outcome)=>options.service().background.settle(call,outcome)},
   assertExecutionAllowed:()=>options.service().lifecycle.assertAllowed(),
 		target: options.target,
@@ -119,13 +119,13 @@ export function createToolRouter(options: {
 								: decide(call, definition, await policyFor(call.tool))),
 			// The current grants; an approved call outside them may touch exactly the path the user saw on the card.
 			grants: async (call, approvedOnce) => {
-				const { grants } = await policyFor(call.tool);
-				const path = typeof call.args.path === "string" ? call.args.path : undefined;
-				if (!approvedOnce || path === undefined) return grants;
-				const approved = canonicalPath(path, workspace);
-				return call.tool === "local_write" || call.tool === "local_edit"
-					? { readwrite: [...grants.readwrite, approved], read: grants.read }
-					: { readwrite: grants.readwrite, read: [...grants.read, approved] };
+    let { grants } = await policyFor(call.tool);
+    const path=typeof call.args.path==="string"?call.args.path:undefined;
+    if(approvedOnce && path!==undefined){const approved=canonicalPath(path,workspace);grants=call.tool==="local_write" || call.tool==="local_edit"?{readwrite:[...grants.readwrite,approved],read:grants.read}:{readwrite:grants.readwrite,read:[...grants.read,approved]};}
+    const root=await options.service().tasks.assertExecution(call);
+    if(!root)return grants;
+    const readwrite=grants.readwrite.some(g=>isWithin(root,g))?[root]:grants.readwrite.filter(g=>isWithin(g,root));
+    return {readwrite,read:call.tool==="artifact_publish"?[]:[...grants.read,...grants.readwrite]};
 			},
 		},
 	});

@@ -13,12 +13,15 @@ export function ChatComposer({
 	members,
 	readOnly = false,
 	controls,
+ onSend, sendDisabled = false, pinned = false, taskAttempt,
 }: {
 	conversationKey: ConversationKey;
 	label: string;
 	members?: readonly { id: string; name: string }[];
 	readOnly?: boolean;
 	controls?: ReactNode;
+ onSend?: (attempt:SendAttempt)=>Promise<unknown>;
+ sendDisabled?:boolean; pinned?:boolean; taskAttempt?:import("./composers").TaskAttempt;
 }) {
 	const { draft, attempt } = useComposer(conversationKey);
 	const run = useStore(s => conversationKey.startsWith("bot:") ? s.conversations[conversationKey.slice(4)]?.run : undefined);
@@ -33,7 +36,7 @@ export function ChatComposer({
  const [skillPicker,setSkillPicker]=useState(false),[skillActive,setSkillActive]=useState(0),[skillDismissed,setSkillDismissed]=useState<string>();
  const skillListId=useId();
  const skillMatch=members?null:draft.text.match(/(?:^|\s)\/([a-z0-9-]*)$/);
- const skillShowing=!members&&!readOnly&&(skillPicker||!!skillMatch&&skillDismissed!==draft.text);
+ const skillShowing=!members&&!readOnly&&!pinned&&(skillPicker||!!skillMatch&&skillDismissed!==draft.text);
  const skillOptions=(skills??[]).filter(s=>s.available&&!s.deleted&&!draft.skills?.some(ref=>ref.name===s.name)&&s.name.includes(skillMatch?.[1]??""));
  useEffect(()=>setSkillActive(0),[skillMatch?.[1],skillOptions.length]);
  const chooseSkill=(skill:import("@openbot/protocol").SkillSummary)=>{
@@ -71,7 +74,7 @@ export function ChatComposer({
 		setDismissed(draft.text);
 		input.current?.focus();
 	};
-	const dispatch = (a: SendAttempt) =>
+	const dispatch = (a: SendAttempt) => onSend ? onSend(a) :
 		conversationKey.startsWith("bot:")
 			? sendMessage(
 					conversationKey.slice(4),
@@ -87,7 +90,7 @@ export function ChatComposer({
 					...(a.recipientIds.length ? { recipientIds: a.recipientIds } : {}),
 				});
 	const send = async (retry = false) => {
-		if (readOnly || attaching || (!retry && stale)) return;
+		if (readOnly || attaching || (!retry && (stale || sendDisabled))) return;
 		if (
 			await composers.send(
 				conversationKey,
@@ -96,7 +99,7 @@ export function ChatComposer({
 						report(error);
 						throw error;
 					}),
-				retry,
+				retry, taskAttempt,
 			)
 		) {
 			window.dispatchEvent(new CustomEvent("openbot:sent", { detail: conversationKey }));
@@ -276,7 +279,7 @@ export function ChatComposer({
 									@
 								</button>
 							)}
-							{!members && (
+							{!members && !pinned && (
 								<button
 									type="button"
 									className="compose-tool"
@@ -305,14 +308,14 @@ export function ChatComposer({
 									<InterfaceIcon name="plus" />
 								</button>
 							)}
-							{!members&&<button type="button" className="compose-tool" aria-label={t("Attach a skill")} aria-expanded={skillShowing} onClick={()=>{setSkillPicker(!skillShowing);setSkillDismissed(skillShowing?draft.text:undefined);input.current?.focus();}}><InterfaceIcon name="skills" /><span>{t("Skills")}</span></button>}
+							{!members&&!pinned&&<button type="button" className="compose-tool" aria-label={t("Attach a skill")} aria-expanded={skillShowing} onClick={()=>{setSkillPicker(!skillShowing);setSkillDismissed(skillShowing?draft.text:undefined);input.current?.focus();}}><InterfaceIcon name="skills" /><span>{t("Skills")}</span></button>}
  <span className="composer-spacer" />{controls}
 							{(!activeRun || hasContent) && <button
 								type="button"
 								aria-label={t("Send")}
 								title={t(working ? "Send follow-up" : "Send")}
 								className="primary send"
-								disabled={(!draft.text.trim() && !draft.attachments?.length && !draft.skills?.length) || !!attempt || !!stale || attaching}
+								disabled={sendDisabled || (!draft.text.trim() && !draft.attachments?.length && !draft.skills?.length) || !!attempt || !!stale || attaching}
 								onClick={() => void send()}
 							>
 								<InterfaceIcon name="arrow" />

@@ -97,10 +97,12 @@ Candidate revision, acceptance checks and outcomes, and remaining limits; or lin
 - [B23: Local Conversation Search and Unread Filtering](b23-conversation-search.md)
 - [B28a: Deliberate Bot Messages and Fixed Activity Status](b28a-messages-fixed-activity.md)
 - [B28b: Optional AI Activity Phrasing](b28b-generated-activity.md)
+- [B29: Local Task Continuity and a Responsive Core](b29-local-task-continuity.md)
 - [D7: White chat canvas and focused interactions](d7-chat-interaction.md)
 - [D8: Unified chat and continuous activity feedback](d8-chat-experience.md)
 - [D9: Files and read-only document previews](d9-file-reading.md)
 - [D10: Reader polish and real report acceptance](d10-reader-polish.md)
+- [D11: Local task continuity and a responsive Core](d11-local-task-continuity.md)
 - [D12: Free BoardUI components and an OpenBot chat interface](d12-boardui-refactor.md)
 - [D12a: BoardUI foundation and Settings/chooser pilot](d12a-boardui-foundation.md)
 

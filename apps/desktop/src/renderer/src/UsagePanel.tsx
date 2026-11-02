@@ -34,7 +34,8 @@ export function UsagePanel({ botId, onNavigate }: { botId: string; onNavigate: (
 	const navigate = async (run: RunEvidence, messageId?: string) => {
 		const id = run.conversationKey.slice(run.conversationKey.indexOf(":") + 1);
 		const target = messageId ? { conversationKey: run.conversationKey, messageId, nonce: crypto.randomUUID() } : undefined;
-		if (run.conversationKey.startsWith("bot:")) await openBot(id, target);
+		if(run.taskId)useStore.setState({view:{kind:"tasks",botId:id,taskId:run.taskId},searchTarget:undefined});
+        else if (run.conversationKey.startsWith("bot:")) await openBot(id, target);
 		else if (useStore.getState().groups.some((g) => g.groupId === id))
 			useStore.setState({ view: { kind: "group", groupId: id }, searchTarget: target });
 		else throw new Error(t("Unavailable conversation"));

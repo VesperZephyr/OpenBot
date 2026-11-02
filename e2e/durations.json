@@ -30,6 +30,7 @@
 	"history-scaling.e2e.ts": 56900,
 	"https-connectors.e2e.ts": 24200,
 	"lifecycle.e2e.ts": 15500,
+	"local-tasks.e2e.ts": 11200,
 	"locale.e2e.ts": 9200,
 	"login-path.e2e.ts": 3300,
 	"memory-controls.e2e.ts": 10400,

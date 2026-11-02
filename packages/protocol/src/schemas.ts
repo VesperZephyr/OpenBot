@@ -59,7 +59,15 @@ const ConnectorChange=strict({requestId:Id,connectorId:ConnectorId,expectedRevis
 const HistoryId=Type.String({minLength:1,maxLength:2048});
 const ConversationKey=Type.TemplateLiteral([Type.Union([Type.Literal("bot:"),Type.Literal("group:")]),Type.String()],{pattern:"^(bot|group):.+$",maxLength:262});
 const WindowBase={position:Type.Union([strict({kind:Type.Literal("latest")}),strict({kind:Type.Literal("around"),rowId:HistoryId}),strict({kind:Type.Literal("cursor"),cursor:Type.String({minLength:1,maxLength:4096})})]),limit:Type.Optional(Type.Integer({minimum:1,maximum:100}))};
+const TaskBase={taskId:Id,requestId:Id,expectedRevision:Type.Integer({minimum:1}),expectedRunId:Id};
+const TaskText=Type.String({minLength:1,maxLength:24576});
 export const HOST_PARAM_SCHEMAS = {
+ "tasks.create":strict({requestId:Id,text:TaskText,attachments:Type.Optional(Type.Array(ArtifactId,{maxItems:4,uniqueItems:true})),skills:Type.Optional(Type.Array(strict({name:SkillName,revision:Type.Integer({minimum:1}),sha256:Type.String({pattern:"^[a-f0-9]{64}$"})}),{maxItems:2}))}),
+ "tasks.submit":strict({...TaskBase,input:Type.Union([strict({kind:Type.Literal("input"),text:TaskText}),strict({kind:Type.Literal("continue")})]),recoveryToken:Type.Optional(Type.String({pattern:"^[a-f0-9]{64}$"}))}),
+ "tasks.stop":strict(TaskBase),
+ "tasks.archive":strict({taskId:Id,requestId:Id,expectedRevision:Type.Integer({minimum:1}),archived:Type.Boolean()}),
+ "tasks.list":strict({archived:Type.Optional(Type.Boolean()),cursor:Type.Optional(Type.String({maxLength:4096}))}),
+ "tasks.get":strict({taskId:Id}),
  ...ROUTINE_SCHEMAS,
  "connectors.list":NoParams,
  "connectors.install":Type.Union([
@@ -146,7 +154,8 @@ export const HOST_PARAM_SCHEMAS = {
  "conversations.window":Type.Union([
  strict({...WindowBase,conversationKey:ConversationKey}),
  strict({...WindowBase,conversationKey:Type.TemplateLiteral([Type.Literal("group:"),Type.String()],{pattern:"^group:.+$",maxLength:262}),deliveryId:HistoryId}),
- strict({...WindowBase,conversationKey:Type.TemplateLiteral([Type.Literal("bot:"),Type.String()],{pattern:"^bot:.+$",maxLength:262}),occurrenceId:HistoryId})]),
+ strict({...WindowBase,conversationKey:Type.TemplateLiteral([Type.Literal("bot:"),Type.String()],{pattern:"^bot:.+$",maxLength:262}),occurrenceId:HistoryId}),
+ strict({...WindowBase,conversationKey:Type.TemplateLiteral([Type.Literal("bot:"),Type.String()],{pattern:"^bot:.+$",maxLength:262}),taskId:Id})]),
  "conversations.detail":strict({conversationKey:ConversationKey,detail:HistoryId,part:Type.Integer({minimum:0,maximum:Number.MAX_SAFE_INTEGER})}),
  "conversations.indexStatus":NoParams,
  "conversations.indexRetry":NoParams,

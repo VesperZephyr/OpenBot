@@ -1,3 +1,4 @@
+import { LocalTasks } from "./local-tasks.ts";
 import { fixedActivity } from "./activity.ts";
 import { BotMessages } from "./messages.ts";
 import { BotTemplates } from "./templates.ts";
@@ -122,6 +123,7 @@ export type HostServiceOptions = {
 type Handlers = { [M in HostMethod]: (params: HostParams<M>) => Promise<HostResult<M>> };
 
 export class HostService {
+ readonly tasks: LocalTasks;
  readonly messages: BotMessages;
  observeExecution(call: { runId?: string; conversationId: string; callId: string; tool: string; args: Readonly<Record<string, unknown>> }, phase: "preparing" | "dispatching" | "settled") { if (call.runId && this.#runs.isRunning(call.runId)) this.#runtime.execution.dispatch(call, phase); else if (call.runId) this.#runtime.execution.clear(call.runId); }
  #templateOperations=0;
@@ -200,9 +202,12 @@ export class HostService {
 			canAdmit: () => !this.lifecycle.state.blocked,
 			maxActiveRuns: options.maxActiveRuns ?? DEFAULT_MAX_ACTIVE_RUNS,
 			changed: (botId) => this.#republish(botId),
+   taskChanged:()=>{this.#observation.changed(1);void this.tasks?.changed();},
+   taskPreparing:(runId,work)=>this.tasks.preparing(runId,work),
+   taskInput:(run,submit)=>this.authority.change(async()=>{this.lifecycle.assertAllowed();await this.#runtime.tasks().assertRun(run.runId);return submit();}),
 			now: this.#now,
 			stopping: (botId, channelId, runId) => this.#conversationStopped(botId, channelId, runId),
-			admissible: async (run) => await this.groups.admissible(run) && await this.background.admissible(run) && await this.routines.admissible(run),
+			admissible: async (run) => await this.tasks.admissible(run) && await this.groups.admissible(run) && await this.background.admissible(run) && await this.routines.admissible(run),
 		});
 		this.groups = new Groups({
 			canRun: () => !this.lifecycle.state.blocked,
@@ -234,7 +239,7 @@ export class HostService {
 		this.background=new BackgroundTasks({audit:event=>this.#audit({operationId:randomUUID(),operation:"background.delivery",at:Date.now(),durationMs:event.durationMs,outcome:event.state==="attention"?"failed":"succeeded",background:event}),runtime:this.#runtime,runs:this.#runs,...(options.background?{port:options.background}:{}),targetId:this.#status.targetId,canRun:()=>!this.lifecycle.state.blocked,groupAdmissible:run=>this.groups.admissible(run),changed:botId=>{this.#republish(botId);this.#emit({type:"groups.changed",payload:{}});}});
 		this.capabilities = new AppCapabilities(this.#runtime, this.#status.targetId, (run) => this.groups.admissible(run));
 		this.management.appGuard = (call) => this.capabilities.authorizeManagement(call);
-		this.authority=new AuthorityCoordinator({resolveTool:name=>this.connectors.resolve(name),assertCall:async call=>{await this.connectors.assertExecution(call);await this.routines.assertExecution(call);},dataDirectory:this.#dataDirectory,runtime:this.#runtime,workspace:this.#workspace,targetId:this.#status.targetId,approvals:this.#approvals,executor:options.authorityExecutor??{synchronize:async()=>{},revoke:async()=>{}},interrupt:async(ids,stop)=>{await this.#runs.interruptSelected(ids,stop);await this.groups.interruptActive();}});
+		this.authority=new AuthorityCoordinator({resolveTool:name=>this.connectors.resolve(name),assertCall:async call=>{await this.tasks.assertExecution(call);await this.connectors.assertExecution(call);await this.routines.assertExecution(call);},dataDirectory:this.#dataDirectory,runtime:this.#runtime,workspace:this.#workspace,targetId:this.#status.targetId,approvals:this.#approvals,executor:options.authorityExecutor??{synchronize:async()=>{},revoke:async()=>{}},interrupt:async(ids,stop)=>{await this.#runs.interruptSelected(ids,stop);await this.groups.interruptActive();}});
   this.#policy = new PolicyService({resolveTool:name=>this.connectors.resolve(name), runtime: this.#runtime, approvals: this.#approvals, workspace: this.#workspace, now: this.#now,change:fn=>this.authority.change(fn),reconcile:()=>this.authority.reconcile() });
 		this.#feed = new ConversationFeed({
 			deliver: (snapshot) => this.#emit({ type: "conversation.updated", payload: snapshot }),
@@ -245,7 +250,8 @@ export class HostService {
   this.skills=new Skills({runtime:this.#runtime,...(options.skills?{port:options.skills}:{}),targetId:this.#status.targetId,assertAllowed:()=>this.lifecycle.assertAllowed(),changed:()=>this.#observation.changed(8)});
  const skillChange=(requestId:string,change:import("@openbot/protocol").SkillChange)=>this.authority.change(async()=>this.skills.change(`desktop:${requestId}`,change,(await this.#runtime.policy().snapshot()).settings.revision));
  this.routines=new Routines({runtime:this.#runtime,runs:this.#runs,approvals:this.#approvals,targetId:this.#status.targetId,canRun:()=>!this.lifecycle.state.blocked,now:this.#now,changed:()=>this.#observation.changed(11),resolveSkills:refs=>this.skills.attachments(refs),changeAuthority:fn=>this.authority.change(fn),settled:this.#toolSettled});
- this.messages = new BotMessages({ runtime: this.#runtime, targetId: this.#status.targetId, assertAllowed: () => this.lifecycle.assertAllowed(), assertContext: async call => { await this.background.assertExecution(call); const gate = await this.groups.executionGate(call); if (gate?.kind === "deny") throw new ProtocolError("invalid_request", gate.reason); } });
+ this.tasks=new LocalTasks({runtime:this.#runtime,runs:this.#runs,authority:this.authority,...(options.authorityExecutor?{executor:options.authorityExecutor}:{}),approvals:this.#approvals,workspace:this.#workspace,targetId:this.#status.targetId,cap:options.maxActiveRuns??DEFAULT_MAX_ACTIVE_RUNS,now:this.#now,paused:()=>this.lifecycle.state.blocked,changed:()=>this.#observation.changed(1),resolveAttachments:(botId,ids)=>this.#resolveAttachments(botId,ids),resolveSkills:refs=>this.skills.attachments(refs)});
+ this.messages = new BotMessages({ runtime: this.#runtime, targetId: this.#status.targetId, assertAllowed: () => this.lifecycle.assertAllowed(), assertContext: async call => { await this.tasks.assertExecution(call);await this.background.assertExecution(call); const gate = await this.groups.executionGate(call); if (gate?.kind === "deny") throw new ProtocolError("invalid_request", gate.reason); } });
 		const templates = new BotTemplates({
 			runtime: this.#runtime,
 			skills: this.skills,
@@ -261,6 +267,12 @@ export class HostService {
 
 
  this.#handlers = {
+   "tasks.create":input=>this.tasks.create(input),
+   "tasks.submit":input=>this.tasks.submit(input),
+   "tasks.stop":input=>this.tasks.stop(input),
+   "tasks.archive":input=>this.tasks.archive(input),
+   "tasks.list":input=>this.tasks.list(input),
+   "tasks.get":({taskId})=>this.tasks.get(taskId),
   "bots.templates.export":({botId,expectedRevision})=>templates.export(botId,expectedRevision),
   "bots.templates.inspect":({template})=>templates.inspect(template),
   "bots.templates.import":input=>templates.import(input),
@@ -517,7 +529,9 @@ export class HostService {
 	 * restart show before Pi reruns.
 	 */
 	async start(): Promise<void> {
-  this.#stopHistory=this.#runtime.onHistoryChanged(()=>this.#observation.changed(7));
+  const historyStop=this.#runtime.onHistoryChanged(()=>{this.#observation.changed(7);void this.tasks.changed();});
+  const taskActivity=()=>this.#observation.changed(1);this.#runtime.execution.changes.add(taskActivity);
+  this.#stopHistory=()=>{historyStop();this.#runtime.execution.changes.delete(taskActivity);};
 		await this.lifecycle.start();
 		await this.#reloadModelConfig();
 		const at = this.#now();
@@ -534,6 +548,7 @@ export class HostService {
 		await this.authority.reconcile();
   await this.routines.prepare();
   await this.#runs.start();
+  await this.tasks.changed();
 		if (this.lifecycle.state.needsResume && !this.lifecycle.state.autoResume) await this.lifecycle.pause("recovery").catch(() => {});
 		await this.groups.start();
 		await this.background.start();
@@ -544,6 +559,7 @@ export class HostService {
 	/** Call before the runtime closes: the shutdown aborts waiting calls, and their approvals must stay pending. */
 	async stop(): Promise<void> {
  this.#stopHistory?.();
+ await this.tasks.close();
   await this.routines.close();
 		await this.background.close();
  await this.connectors.close();
@@ -679,6 +695,18 @@ export class HostService {
 		});
 	}
 
+ async admitTaskDispatch(invocation:import("@openbot/protocol").ToolInvocation,signal:AbortSignal,send:()=>void):Promise<void>{
+  const run=invocation.runId?await this.#runtime.runsStore().get(invocation.runId):undefined;
+  const channel=(await this.#runtime.channels()).find(c=>String(c.conversationId)===invocation.conversationId);
+  if(channel?.kind!=="task" && !run?.taskId && run?.origin!=="task"){signal.throwIfAborted();send();return;}
+  await this.authority.change(async()=>{
+   this.lifecycle.assertAllowed();
+   if(invocation.target.kind!=="local" || invocation.target.targetId!==this.#status.targetId || invocation.authorityRevision!==(await this.#runtime.policy().settings()).revision)throw new ProtocolError("permission_revoked","Task authority changed before dispatch");
+   const rejection=await this.#approvals.rejection(`approval:${invocation.invocationId}`);if(rejection)throw new ProtocolError("permission_revoked",rejection);
+   await this.tasks.assertExecution({...invocation,tool:invocation.tool,args:invocation.args});
+   signal.throwIfAborted();send();
+  });
+ }
 	async #listBots(): Promise<BotSummary[]> {
 		const bots = await this.#runtime.listBots();
 		const index = new Map((await this.#runtime.conversationIndex().list()).map((row) => [row.conversationKey, row]));
@@ -686,7 +714,9 @@ export class HostService {
 			.filter((bot) => bot.status !== "deleted")
 			.map((bot) => {
 				const lastRun = this.#runs.latest(bot.botId);
-				const activity = this.#observers.get(bot.botId)?.activity ?? "idle";
+				const directActivity = this.#observers.get(bot.botId)?.activity ?? "idle";
+    const taskActivity=this.#runs.taskActivity(bot.botId);
+    const activity=taskActivity==="working" || directActivity==="working" ? "working" : taskActivity??directActivity;
 				return {
 					...bot,
 					activity: activity === "idle" && (index.get(`bot:${bot.botId}`)?.unreadCount ?? 0) > 0 ? ("unread" as const) : activity,

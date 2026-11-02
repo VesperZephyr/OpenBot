@@ -1,3 +1,4 @@
+export * from "./local-tasks.ts";
 export * from "./memory-read.ts";
 import { MEMORY_READ_SCHEMA, MEMORY_SEARCH_SCHEMA } from "./memory-read.ts";
 export type { ActivityLabel, ExecutionObservation } from "./activity.ts";
@@ -386,6 +387,7 @@ export type UsageSummary = UsageCounters & {
  readonly available: boolean; readonly estimatedUsd?: number; readonly models: readonly UsageBucket[]; readonly truncated: boolean;
 };
 export type RunEvidence = {
+ readonly taskId?: string;
  readonly runId: string; readonly state: RunRecord["state"]; readonly createdAt: number; readonly endedAt?: number;
  readonly conversationKey: ConversationKey; readonly usage: UsageSummary;
  readonly references: readonly { readonly kind: "result" | "tool" | "approval"; readonly messageId: string; readonly approvalId?: string; readonly approvalState?: ApprovalState }[];
@@ -543,6 +545,12 @@ export type ObservationCursor = { readonly streamId: string; readonly seq: numbe
 export type ObservationUpdate = ObservationCursor & { readonly changes: number };
 
 export type HostMethods = {
+ "tasks.create":{params:import("./local-tasks.ts").LocalTaskCreate;result:import("./local-tasks.ts").LocalTaskAccepted};
+ "tasks.submit":{params:import("./local-tasks.ts").LocalTaskSubmit;result:import("./local-tasks.ts").LocalTaskAccepted};
+ "tasks.stop":{params:import("./local-tasks.ts").LocalTaskControl;result:import("./local-tasks.ts").LocalTaskAccepted};
+ "tasks.archive":{params:import("./local-tasks.ts").LocalTaskArchive;result:import("./local-tasks.ts").LocalTaskAccepted};
+ "tasks.list":{params:{archived?:boolean;cursor?:string};result:{tasks:readonly import("./local-tasks.ts").LocalTaskCard[];next?:string}};
+ "tasks.get":{params:{taskId:string};result:import("./local-tasks.ts").LocalTaskSnapshot};
  "bots.templates.export": { params: {botId:string;expectedRevision:number}; result: import("./templates.ts").TemplateReview };
  "bots.templates.inspect": { params: {template:import("./templates.ts").BotTemplateV1}; result: import("./templates.ts").TemplateReview };
  "bots.templates.import": { params: import("./templates.ts").TemplateImportInput; result: import("./templates.ts").ImportResult };
@@ -735,6 +743,7 @@ export type HostResult<M extends HostMethod> = HostMethods[M]["result"];
 
 export const HOST_METHODS = [
 	"background.stop",
+ "tasks.create", "tasks.submit", "tasks.stop", "tasks.archive", "tasks.list", "tasks.get",
 	"observation.wait",
 	"artifacts.import",
 	"artifacts.export",

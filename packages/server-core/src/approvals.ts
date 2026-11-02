@@ -225,6 +225,9 @@ export class ApprovalBook {
 			}
 		});
 	}
+ revokeRun(runId:string):Promise<void>{return this.#serial(async()=>{
+  for(const entry of this.#entries.values())if(entry.record.binding?.runId===runId && ["pending","allowed"].includes(entry.record.state))await this.#terminal(entry,"withdrawn");
+ });}
 	forBot(botId: BotId, conversationId?: string): PendingApproval[] {
 		return [...this.#entries.values()]
 			.filter(
