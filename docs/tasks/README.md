@@ -103,6 +103,8 @@ Candidate revision, acceptance checks and outcomes, and remaining limits; or lin
 - [D9: Files and read-only document previews](d9-file-reading.md)
 - [D10: Reader polish and real report acceptance](d10-reader-polish.md)
 - [D11: Local task continuity and a responsive Core](d11-local-task-continuity.md)
+- [D12: Free BoardUI components and an OpenBot chat interface](d12-boardui-refactor.md)
+- [D12a: BoardUI foundation and Settings/chooser pilot](d12a-boardui-foundation.md)
 
 ## Collaboration and application capabilities
 
