@@ -202,7 +202,10 @@ it("keeps one committed message when cancellation wins before Pi records its too
 		expect(items.filter(i => i.kind === "tool" && i.tool === "send_message")).toEqual([]);
 		await expect.poll(() => runtime.historyStatus().state, { timeout: 10000 }).toBe("ready");
 		const window = await runtime.historyWindow({ conversationKey: `bot:${h.botId}`, position: { kind: "latest" } });
-		expect(window.status === "ready" && window.window.rows.some(r => r.content.kind === "direct" && r.content.item.kind === "tool" && r.content.item.tool === "send_message")).toBe(false);
+		if (window.status !== "ready") throw Error(`History is ${window.status}`);
+		const indexed = window.window.rows.flatMap(r => r.content.kind === "direct" ? [r.content.item] : []);
+		expect(indexed.filter(i => i.kind === "assistant")).toEqual(items.filter(i => i.kind === "assistant"));
+		expect(indexed.filter(i => i.kind === "tool" && i.tool === "send_message")).toEqual([]);
 	};
 	await assertVisible();
 	await service.handle("runs.cancel", { runId: run.runId });

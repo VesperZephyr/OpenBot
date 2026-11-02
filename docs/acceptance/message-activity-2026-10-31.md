@@ -109,6 +109,37 @@ Final validation after removing the timing hooks:
 
 Self-review found no new omission or architecture conflict. The helper is local to these two read tests, derives schema values and bytes from a real capture, and keeps real files rather than mocking availability or queries. Exact page contents cover ordering and filtering before pagination; a real capture against the populated store and real removal cover the boundary with mutations. The original dedicated durability/recovery and quota tests were neither removed nor weakened. The test improvement does not imply cheaper production imports, a different quota policy, or a throughput guarantee. No protocol, package boundary, persistence format, runtime API or production setting changed. #75 remains in review and unmerged; B28b remains draft and untouched.
 
+## Final PR review — November 1, 2026
+
+Reviewed #75 against base `d6bab2c`, with particular comparison of the readiness and artifact-fixture corrections from `685b3b3` through `b1a7133`:
+
+| Correction | Preserved coverage | Changed test responsibility |
+| --- | --- | --- |
+| History readiness | Actual Host/runtime ready windows and assistant content; exact user/assistant rows; unread/read, eligible search, subscription isolation, profile duplication, routine privacy and authorization assertions | Functional waits allow cold source-worker startup and use the same observed window. The new promise-gated case verifies Pi settlement while indexing is held. Default concurrency and separate B14c performance gates are unchanged. |
+| Artifact pagination | 202/204 records; page boundaries, unique IDs, case-insensitive search, Bot filtering before pagination, real import/removal/reopen and receipt replay | Repeated durable imports used only to construct historical rows are replaced by real blobs plus transactional fixture metadata. Exact ordered page assertions and seeded-content checks are stronger. These cases no longer exercise hundreds of consecutive imports; dedicated durability, quota and recovery tests remain unchanged. No bulk-import throughput claim is made. |
+
+The review found one additional assertion gap in the real Pi-to-Router committed-message cancellation test: a negative tool-row assertion could pass with a non-ready or empty history window. It now requires a ready window, exact equality between the indexed assistant messages and the live projection's single committed message, and no `send_message` tool row. These checks run before cancellation, after cancellation, after rebuilding history and after reopening the database. The focused four-case integration suite passed after this test-only strengthening.
+
+Fresh verification rebuilt commit `b1a7133` with `pnpm run e2e`: all 211 tests in 54 files passed in 363.85 seconds, using isolated background apps. The subsequent assertion edit above affects only a unit/integration test; runtime and e2e sources are identical to that run. Shard durations were refreshed from its complete report. B14c retained its original gates and passed with switch p95 78.2 ms, search p95 186.2 ms, controls p95 4.9 ms and cold rebuild/launch 10.45 s; Pi/worker bounds remained 256 entries and 129 records / 61,155 bytes. Inspected this run's artifact-only answer, retained update after Stop, Chinese/dark narrow activity, Continue with unavailable history and Retry while history builds screenshots.
+
+After the assertion edit, unmodified `pnpm run check` passed package boundaries, both TypeScript projects and all 648 tests in 100 files (51.27 s) at default concurrency. No worker or timeout overrides were supplied. `git diff --check` and changed-document relative paths passed.
+
+No further blocking product omission, excessive abstraction or architecture conflict was found. Recovery fallbacks still derive from current Host authority and disappear when their outcome is loaded; published updates use existing indexed receipts; artifact-only indexing retains canonical answer identity. No production code, public contract, canonical persistence, vendor files, worker setting or B28b work changed during this final review.
+
+Remote status reconciliation: #75 was merged externally at 12:14:45 UTC on 2026-11-01, as `9bd7a58`, while this final validation was running. That merge contains `b1a7133`, the exact runtime/e2e source verified above. The reviewer did not execute a merge. The assertion strengthening and this final evidence were committed afterward on the task branch and are a separate, unmerged review addendum. B28a implementation is therefore done; B28b remains draft and untouched.
+
+## Main integration — November 2, 2026
+
+PR [#78](https://github.com/VesperZephyr/OpenBot/pull/78) incorporates main `0e491e3` through merge commit `efb1f3d`. The backlog resolution retains main's B27c entry and revised design order, removing only the completed B28a entry. The duration conflict starts from main's measurements and is refreshed from the complete integrated e2e run below. No main runtime change is reverted, and B28b remains unchanged.
+
+Default-concurrency `pnpm run check` passed package boundaries, both TypeScript projects and all 704 tests in 102 files (35.80 s). No worker limits, timeout overrides or concurrent e2e run were used. This includes the stronger real Pi-to-Router assertion on the integrated runtime.
+
+Full `pnpm run e2e` rebuilt the integrated source and passed all 212 tests in 54 files (312.78 s), using background isolated apps. B14c passed unchanged gates: switch p95 91.4 ms, search p95 159.1 ms, controls p95 7.0 ms and cold rebuild/launch 9.06 s; Pi/worker bounds stayed at 256 entries and 129 records / 61,155 bytes. Inspected fresh history-rebuild, retained update after Stop, Chinese/dark narrow activity and Retry-during-building screenshots. Shard durations were regenerated from this complete report, superseding both conflicting timing snapshots.
+
+After recording durations, all four shard-tool tests passed. A direct check matched all 54 recorded durations to the full report and verified that the three CI shards cover every non-isolated suite exactly once. Relative documentation paths and `git diff --check` passed.
+
+Final self-review compared the integrated branch with main: the only executable change remains the stronger committed-message test assertion. It still requires one expected live message, a ready history window with exactly matching assistant records and no contradictory tool row at all four lifecycle checkpoints. The backlog differs only by B28a's removal; main's other content is preserved. No runtime, protocol, vendor, CI configuration, timeout, concurrency or B28b changes were introduced. The addendum remains unmerged in #78; the earlier real-model/native verification limits still apply.
+
 ## Limits
 
 This is deterministic local acceptance on macOS, using isolated fixture databases, workspace and Keychain service. No owner data or real provider was used. Real-model update quality, VoiceOver interaction, signed/packaged installation, native lifecycle behavior on a sleeping/locked Mac, and release/rollback compatibility are not established by these tests. Browser/computer control and B28b AI phrasing remain separate tasks.
