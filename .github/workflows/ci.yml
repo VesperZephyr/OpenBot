@@ -18,6 +18,7 @@ on:
     branches: [main]
 
 env:
+  OPENBOT_E2E_AUDIT: "1"
   OPENBOT_E2E_RUNTIME: ${{ inputs.runtime || 'bundled' }}
 
 permissions:
@@ -75,6 +76,7 @@ jobs:
             e2e/.run/**/*.png
             e2e/.run/results.json
             e2e/.run/timings.json
+            e2e/.run/audit/*.jsonl
             e2e/.run/runtime-launches.jsonl
             e2e/.run/history-scaling/performance.json
           include-hidden-files: true
@@ -130,6 +132,7 @@ jobs:
             e2e/.run/**/*.png
             e2e/.run/results.json
             e2e/.run/timings.json
+            e2e/.run/audit/*.jsonl
             e2e/.run/runtime-launches.jsonl
             e2e/.run/history-scaling/performance.json
           include-hidden-files: true
