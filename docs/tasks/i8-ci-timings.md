@@ -1,6 +1,6 @@
 # I8: Complete CI Timings and Balanced Desktop Shards
 
-Status: in progress
+Status: in review
 Branch: task/i8-ci-timings
 Depends on: I5
 Architecture: verification tooling only; no product contract changes
@@ -53,4 +53,4 @@ None.
 
 ## Evidence
 
-[November 2 timing acceptance](../acceptance/2026-11-02-ci-timings.md) records the exact baseline, verification and pending CI calibration.
+[November 2 timing acceptance](../acceptance/2026-11-02-ci-timings.md) records the 50-run audit, exact baseline, CI calibration, successful weighted comparison and one investigated native screenshot failure. Review: [PR #79](https://github.com/VesperZephyr/OpenBot/pull/79).
