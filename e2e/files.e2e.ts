@@ -1,3 +1,4 @@
+import { auditSpan } from "./audit-profile.ts";
 import { createServer, type Server } from "node:http";
 import { mkdir, writeFile, readFile, copyFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -253,7 +254,7 @@ it("renders HTML resources and linked pages in an isolated embedded browser", as
 		h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible()),
 	).toBe(true);
 	await page.getByRole("button", { name: "Reviewed 1" }).waitFor();
-	await page.screenshot({ path: join(h.run, "02-html-content-en.png") });
+	await auditSpan("screenshot", "files/02-html-content-en", () => page.screenshot({ path: join(h.run, "02-html-content-en.png") }));
 	await h.shot("02-html-shell-en");
 	const oldUrl = page.url();
 	await page.getByRole("link", { name: "Read source page", exact: true }).click();

@@ -16,7 +16,7 @@ import {
 	type HistoryAnchor,
 } from "./history-cache";
 
-type Selector = Pick<WindowInput, "conversationKey" | "deliveryId" | "occurrenceId">;
+type Selector = Pick<WindowInput, "conversationKey" | "deliveryId" | "occurrenceId" | "taskId">;
 type RenderContext = { rows: readonly TimelineRow[]; atLatest: boolean };
 type Props = Selector & {
 	activity: string;
@@ -35,6 +35,7 @@ function HistoryView({
 	conversationKey,
 	deliveryId,
 	occurrenceId,
+ taskId,
 	activity,
 	renderRow,
 	children,
@@ -42,9 +43,9 @@ function HistoryView({
 	className = "",
 }: Props & { cacheKey: string }) {
 	const revision = useStore((s) => s.historyRevision);
-	const selector = { conversationKey, ...(deliveryId ? { deliveryId } : {}), ...(occurrenceId ? { occurrenceId } : {}) };
+	const selector = { conversationKey, ...(deliveryId ? { deliveryId } : {}), ...(occurrenceId ? { occurrenceId } : {}), ...(taskId ? {taskId} : {}) };
 	const target = useStore((s) =>
-		!deliveryId && !occurrenceId && s.searchTarget?.conversationKey === conversationKey ? s.searchTarget : undefined,
+		!deliveryId && !occurrenceId && s.searchTarget?.taskId === taskId && s.searchTarget?.conversationKey === conversationKey ? s.searchTarget : undefined,
 	);
 	const [pages, setPages] = useState(() => cachedHistory(cacheKey));
 	const [status, setStatus] = useState("loading"),
@@ -115,7 +116,7 @@ function HistoryView({
 			return selected.sort((a, b) => a - b);
 		},
 	});
-	useReadReceipt(conversationKey, !deliveryId && !occurrenceId && tail ? last?.readCursor : undefined, ref, () => anchor.current.following);
+	useReadReceipt(conversationKey, !deliveryId && !occurrenceId && !taskId && tail ? last?.readCursor : undefined, ref, () => anchor.current.following);
 	const capture = () => {
 		if (restoring.current || !initialized.current || !ref.current) return;
 		const el = ref.current,
@@ -271,7 +272,7 @@ function HistoryView({
 			void load({ kind: "latest" });
 		};
 		const sent = (event: Event) => {
-			if ((event as CustomEvent).detail === conversationKey && !deliveryId && !occurrenceId) latest();
+			if ((event as CustomEvent).detail === conversationKey && !deliveryId && !occurrenceId && !taskId) latest();
 		};
 		window.addEventListener("openbot:history-reset", reset);
 		window.addEventListener("openbot:sent", sent);

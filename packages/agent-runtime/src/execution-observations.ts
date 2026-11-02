@@ -32,7 +32,8 @@ export class ExecutionObservations {
 				?.botId ??
 			Object.values((await api.snapshot(ChannelsDoc, context))?.channels ?? {}).find((c) => c.conversationId === Number(api.conversationId))
 				?.botId;
-		const run = Object.values((await api.snapshot(RunsDoc, context))?.runs ?? {}).find((r) => r.state === "running" && r.botId === botId);
+		const channel=Object.values((await api.snapshot(ChannelsDoc,context))?.channels??{}).find(c=>c.conversationId===Number(api.conversationId));
+        const run = Object.values((await api.snapshot(RunsDoc, context))?.runs ?? {}).find((r) => r.state === "running" && r.botId === botId && (r.channelId??"direct")===(channel?.channelId??"direct"));
 		if (!run) return;
 		this.set({
 			runId: run.runId,

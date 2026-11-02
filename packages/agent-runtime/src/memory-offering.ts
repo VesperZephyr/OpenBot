@@ -11,7 +11,7 @@ export async function syncMemoryTools(tx: Tx): Promise<void> {
 	for (const bot of Object.values(bots)) {
 		if (bot.status === "deleted") continue;
 		const local = memoryState(await tx.doc(MemoryDoc, bot.botId, null));
-		const contexts = [{ conversationId: bot.conversationId, group: false }, ...Object.values(channels).filter(c => c.botId === bot.botId).map(c => ({ conversationId: c.conversationId, group: !c.channelId.startsWith("routine_") }))];
+		const contexts = [{ conversationId: bot.conversationId, group: false }, ...Object.values(channels).filter(c => c.botId === bot.botId).map(c => ({ conversationId: c.conversationId, group: c.kind === "group" }))];
 		for (const c of contexts) {
 			const offered = selectiveMemory(local, c.group ? undefined : shared);
 			const agent = await tx.doc(AgentDoc, c.conversationId as ConversationRecord["id"]);

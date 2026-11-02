@@ -20,7 +20,9 @@ import { composers } from "./useComposer";
 import { ERROR_PREFIX, type HostState } from "../../shared/api";
 import { hostCalls } from "./host-calls";
 
+export type TaskView = {readonly kind:"tasks"; readonly botId:string; readonly taskId?:string; readonly draftId?:string; readonly archived?:boolean; readonly cursor?:string};
 export type View =
+ | TaskView
 	| { readonly kind: "group"; readonly groupId: string }
 	| { readonly kind: "bot"; readonly botId: string }
 	| { readonly kind: "settings" }
@@ -29,9 +31,11 @@ export type View =
  | {readonly kind:"routines"; readonly botId?:string; readonly proposal?:import("@openbot/protocol").RoutineProposal; readonly groupId?:string; readonly routineId?:string; readonly occurrenceId?:string}
 	| { readonly kind: "home" };
 
-export type SearchTarget = { conversationKey: ConversationKey; messageId: string; nonce: string };
+export type SearchTarget = { taskId?:string; conversationKey: ConversationKey; messageId: string; nonce: string };
 
 type State = {
+ tasks: {tasks:readonly import("@openbot/protocol").LocalTaskCard[];next?:string}|undefined;
+ task:import("@openbot/protocol").LocalTaskSnapshot|undefined;
  historyRevision:number;
  routines:import("@openbot/protocol").RoutineList|undefined;
  connectors:readonly import("@openbot/protocol").ConnectorProfile[]|undefined;
@@ -54,7 +58,11 @@ type State = {
 	onboarding: boolean | undefined;
 };
 
+function restoredTaskView(): TaskView | undefined {
+ try { const view = JSON.parse(localStorage.getItem("openbot.task-view.v1") ?? "null"); if (view?.kind === "tasks" && typeof view.botId === "string" && [view.taskId,view.draftId].every(id=>id===undefined||typeof id==="string")) return view; } catch { /* A stale selection must not prevent opening the app. */ }
+}
 export const useStore = create<State>(() => ({
+ tasks:undefined,task:undefined,
  historyRevision:0,
  routines:undefined,
 	connectors:undefined,
@@ -70,7 +78,7 @@ export const useStore = create<State>(() => ({
 	conversations: {},
 	settings: undefined,
 	models: [],
-	view: { kind: "home" },
+	view: restoredTaskView() ?? { kind: "home" },
 	showHidden: false,
 	notice: undefined,
 	onboarding: undefined,
@@ -147,7 +155,14 @@ const skillsRead=new LatestRead(()=>api["skills.list"]({}),skills=>useStore.setS
 export const refreshSkills=()=>skillsRead.request();
 const routinesRead=new LatestRead(()=>api["routines.list"]({}),routines=>useStore.setState({routines}));
 export const refreshRoutines=()=>routinesRead.request();
-const readers = [routinesRead,connectorsRead,skillsRead,summariesRead, groupsRead, botsRead, settingsRead, conversationRead, groupRead, lifecycleRead];
+const taskRead = new LatestRead(async () => {
+ const view=useStore.getState().view;
+ if(view.kind!=="tasks")return;
+ try {return {view, ...(view.taskId ? {task:await api["tasks.get"]({taskId:view.taskId})} : !view.draftId ? {tasks:await api["tasks.list"]({archived:view.archived??false,...(view.cursor?{cursor:view.cursor}:{})})} : {})};}
+ catch(error) {if(useStore.getState().view===view && view.taskId && /\[not_found\]|Task is unavailable/.test(String(error))){useStore.setState({view:{kind:"tasks",botId:view.botId}});report(error);}else throw error;}
+}, value => {if(value && useStore.getState().view===value.view)useStore.setState({task:"task" in value ? value.task : undefined,tasks:"tasks" in value ? value.tasks : undefined});});
+export const refreshTasks=()=>taskRead.request();
+const readers = [taskRead,routinesRead,connectorsRead,skillsRead,summariesRead, groupsRead, botsRead, settingsRead, conversationRead, groupRead, lifecycleRead];
 let readGeneration = 0;
 function resetReads() {
  resetHistory();
@@ -234,8 +249,10 @@ export function connect(): () => void {
 	const stopSelection = useStore.subscribe((state, previous) => {
 		if (state.view !== previous.view) {
 			conversationRead.reset();
+            taskRead.reset();
+            try {if(state.view.kind==="tasks")localStorage.setItem("openbot.task-view.v1",JSON.stringify(state.view));else localStorage.removeItem("openbot.task-view.v1");}catch{}
 			groupRead.reset();
-			if (state.host.status === "ready") void Promise.all([conversationRead.request(), groupRead.request()]).catch(report);
+			if (state.host.status === "ready") void Promise.all([conversationRead.request(), groupRead.request(), taskRead.request()]).catch(report);
 		}
 	});
 	// A clicked notification: main showed the window, the renderer opens the Bot.
@@ -264,10 +281,11 @@ async function loadAll(changes: number): Promise<void> {
 	if(changes&7)useStore.setState(s=>({historyRevision:s.historyRevision+1}));
  const { view, onboarding, settings, bots } = useStore.getState();
 	if (onboarding === undefined && settings) useStore.setState({ onboarding: needsOnboarding(settings, bots) });
-	if (view.kind === "home" || (view.kind === "bot" && !bots.some((bot) => bot.botId === view.botId))) {
+	if(view.kind==="tasks" && !bots.some(bot=>bot.kind==="core" && bot.botId===view.botId)){const core=bots.find(bot=>bot.kind==="core");if(core)useStore.setState({view:{kind:"tasks",botId:core.botId}});}
+ else if (view.kind === "home" || (view.kind === "bot" && !bots.some((bot) => bot.botId === view.botId))) {
 		const core = bots.find((b) => b.kind === "core");
 		if (core) await openBot(core.botId);
-	} else await Promise.all([...(changes & 5 ? [conversationRead.request()] : []), ...(changes & 3 ? [groupRead.request()] : [])]);
+	} else await Promise.all([...(changes & 9 ? [refreshTasks()] : []), ...(changes & 5 ? [conversationRead.request()] : []), ...(changes & 3 ? [groupRead.request()] : [])]);
 }
 
 /**

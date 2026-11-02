@@ -138,3 +138,18 @@ it("normalizes WAL snapshots so repeated validation does not change the archive"
 	f.service.validate(archive);
 	expect(existsSync(join(archive, "data/openbot.sqlite-wal"))).toBe(false);
 });
+
+it("task backup tokens accept only the known legacy generation and baseline refuses new exports",async()=>{
+ const {BACKUP_RUNTIME_VERSION,LEGACY_BACKUP_RUNTIME_VERSION}=await import("@openbot/agent-runtime");
+ const f=fixture();const current=new LocalBackups({...f.options,producer:{...producer,runtime:BACKUP_RUNTIME_VERSION}});
+ const old=new LocalBackups({...f.options,producer:{...producer,runtime:LEGACY_BACKUP_RUNTIME_VERSION}});
+ const legacy=old.export(f.out).path!;expect(current.validate(legacy).manifest.producer.runtime).toBe(LEGACY_BACKUP_RUNTIME_VERSION);
+ await current.restore(legacy);
+ const fresh=current.export(f.out).path!;
+ const source=spawnSync("git",["show","1b550b9:packages/server-core/src/backup.ts"],{encoding:"utf8"});expect(source.status).toBe(0);
+ const baseline=join(f.root,"baseline-backup.mts");writeFileSync(baseline,source.stdout);
+ const script=join(f.root,"probe.mjs");writeFileSync(script,`import {LocalBackups} from ${JSON.stringify(baseline)};const reader=new LocalBackups(${JSON.stringify({...f.options,producer:{...producer,runtime:LEGACY_BACKUP_RUNTIME_VERSION}})});try{reader.validate(${JSON.stringify(fresh)});process.exitCode=1;}catch(error){if(!error.message.includes("runtime is incompatible"))throw error;console.log("baseline refused");}`);
+ const refused=spawnSync(process.execPath,["--experimental-strip-types","--disable-warning=ExperimentalWarning",script],{encoding:"utf8",timeout:30000});expect(refused.status,refused.stderr).toBe(0);expect(refused.stdout).toContain("baseline refused");
+ const manifestPath=join(fresh,"manifest.json"),manifest=JSON.parse(readFileSync(manifestPath,"utf8"));
+ for(const runtime of [BACKUP_RUNTIME_VERSION.replace("/2;","/3;"),BACKUP_RUNTIME_VERSION.replace("pi-b45","pi-000")]){writeFileSync(manifestPath,JSON.stringify({...manifest,producer:{...manifest.producer,runtime}}));expect(()=>current.validate(fresh)).toThrow("runtime is incompatible");}
+});

@@ -449,7 +449,7 @@ export class HistoryStore {
 					atLatest: !newer,
 					...(older ? { before: token("before", first!.ordinal) } : {}),
 					...(newer ? { after: token("after", last!.ordinal) } : {}),
-					...(!newer && !input.deliveryId && !input.occurrenceId ? { readCursor: state.incoming } : {}),
+					...(!newer && !input.deliveryId && !input.occurrenceId && !input.taskId ? { readCursor: state.incoming } : {}),
 				},
 			};
 		};

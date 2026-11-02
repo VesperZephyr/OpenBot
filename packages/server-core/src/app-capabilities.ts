@@ -62,7 +62,7 @@ export class AppCapabilities {
 		if (bot?.kind !== "core" || bot.status !== "active" || call.target?.kind !== "local" || call.target.targetId !== this.targetId || !authority || authority.runId !== call.runId)
 			return fail("permission_denied","Application access is not authorized");
 		const run = await this.runtime.runsStore().get(authority.runId);
-		if (!run || run.state !== "running" || run.botId !== call.botId || run.origin !== authority.origin || (run.channelId ?? "direct") !== authority.channelId || run.requestIds[0] !== authority.rootRequestId || await this.runtime.conversationKey(call.botId, authority.channelId) !== call.conversationId)
+		if (!run || run.origin === "task" || run.taskId || run.state !== "running" || run.botId !== call.botId || run.origin !== authority.origin || (run.channelId ?? "direct") !== authority.channelId || run.requestIds[0] !== authority.rootRequestId || await this.runtime.conversationKey(call.botId, authority.channelId) !== call.conversationId)
 			return fail("permission_denied","Application access is not authorized");
 		if (call.appExecutionId) {
 			const execution = await this.runtime.appExecution(call.appExecutionId);

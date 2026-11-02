@@ -1,3 +1,5 @@
+import { LocalTasks } from "./LocalTasks";
+import "./local-tasks.css";
 import { BotTemplateDialog, ExportTemplateItem, beginTemplateImport, useTemplateState } from "./BotTemplates";
 import { HistoryTimeline } from "./HistoryTimeline";
 import { BackupSettings, RestoreNotice } from "./BackupSettings";
@@ -63,7 +65,7 @@ export function App() {
 	const host = useStore((state) => state.host);
 	const view = useStore((state) => state.view);
 	const lastChat = useRef(view);
-	if (["bot", "group", "home"].includes(view.kind)) lastChat.current = view;
+	if (["bot", "group", "home", "tasks"].includes(view.kind)) lastChat.current = view;
 	const notice = useStore((state) => state.notice);
 	const onboarding = useStore((state) => state.onboarding);
 	const [creating, setCreating] = useState(false);
@@ -117,7 +119,8 @@ export function App() {
 					<Onboarding />
 				) : (
 					<>
-						{view.kind === "bot" && <Conversation key={view.botId} botId={view.botId} />}
+						{view.kind === "tasks" && <LocalTasks key={view.taskId??view.draftId??`list:${view.archived}:${view.cursor}`} view={view} renderHistory={(snapshot,taskId)=><HistoryTranscript snapshot={snapshot} taskId={taskId}/>}/>}
+                        {view.kind === "bot" && <Conversation key={view.botId} botId={view.botId} />}
 						{["settings", "skills", "connectors", "routines"].includes(view.kind) && (
 							<div className="settings-workspace">
 								<nav className="settings-navigation" aria-label={t("Settings navigation")}>
@@ -464,12 +467,14 @@ function EmptyConversation({ bot }: { readonly bot: BotSummary }) {
 
 function HistoryTranscript({
 	snapshot,
+ taskId,
 	occurrenceId,
 	deliveryId,
 	conversationKey,
 	empty,
 }: {
 	snapshot: ConversationSnapshot;
+ taskId?:string;
 	occurrenceId?: string;
 	deliveryId?: string;
 	conversationKey?: import("@openbot/protocol").ConversationKey;
@@ -478,7 +483,8 @@ function HistoryTranscript({
 	return (
 		<HistoryTimeline
 			conversationKey={conversationKey ?? `bot:${snapshot.botId}`}
-			{...(occurrenceId ? { occurrenceId } : {})}
+			{...(taskId ? {taskId} : {})}
+            {...(occurrenceId ? { occurrenceId } : {})}
 			{...(deliveryId ? { deliveryId } : {})}
 			activity={JSON.stringify(snapshot)}
 			empty={empty}
@@ -880,7 +886,8 @@ function EditProfile({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 	const [tab, setTab] = useState<"profile" | "memory" | "routines" | "library">("profile");
 	return (
 		<div className="profile">
-			<div className="profile-tabs" role="tablist">
+			{bot.kind==="core"&&<button onClick={()=>{onClose();useStore.setState({view:{kind:"tasks",botId:bot.botId}});}}>{t("Tasks")}</button>}
+            <div className="profile-tabs" role="tablist">
 				<button type="button" role="tab" aria-selected={tab === "profile"} onClick={() => setTab("profile")}>
 					{t("Profile")}
 				</button>

@@ -5,6 +5,7 @@
 import type { GrantAccess, HostMethod, HostParams, HostResult } from "@openbot/protocol";
 
 export const RENDERER_METHODS = [
+ "tasks.create", "tasks.submit", "tasks.stop", "tasks.archive", "tasks.list", "tasks.get",
 	"bots.templates.export", "bots.templates.inspect", "bots.templates.import", "bots.templates.status",
 	"files.list",
 	"files.read",

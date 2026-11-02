@@ -156,10 +156,12 @@ it("recovers a lost import response after renderer reload and restart without a 
 	});
 	await importFile();
 	await dialog().getByLabel("Template Bot name").fill("Recovered Copy");
-	await h.page().clock.install();
+	const pausedAt = Date.now();
+	// Pause before import so the running renderer cannot overtake a test-process timestamp.
+	await h.page().clock.install({ time: pausedAt - 60_000 });
 	try {
+		await h.page().clock.pauseAt(pausedAt);
 		await dialog().getByRole("button", { name: "Import Bot", exact: true }).click();
-		await h.page().clock.pauseAt(new Date());
 		// Exercise every recovery query without racing nine real seconds against a ten-second UI timeout.
 		await poll(async () => {
 			await h.page().clock.fastForward(1000);

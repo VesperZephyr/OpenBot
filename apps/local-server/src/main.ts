@@ -66,6 +66,7 @@ const workspace = await realpath(workspaceSetting);
 
 let serviceReady=false;
 const executor = new ExecutorProcess({
+ admit:(invocation,signal,send)=>service.admitTaskDispatch(invocation,signal,send),
  connectorChanged:id=>{if(serviceReady)void service.connectors.refresh(id).catch(()=>{});},
 	assertAllowed: () => service.lifecycle.assertAllowed(),
 	// Development layout: the executor app is a sibling of this app in the workspace.
