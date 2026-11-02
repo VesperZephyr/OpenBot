@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, Ref } from "react";
 import {
 	Button as AriaButton,
@@ -13,7 +13,7 @@ import type { Key, ListBoxItemProps as AriaListBoxItemProps, SelectProps as Aria
 import { InterfaceIcon } from "../../../../../InterfaceIcon";
 import { MENU_ITEM, MENU_ITEM_ACTIVE, MENU_ITEMS_CONTAINER, MENU_POPOVER_SURFACE, MENU_POPOVER_WIDTH } from "../dropdown/menu-styles";
 import { cx } from "../../../utils/cx";
-import { useDismissOnOutsidePress, useTriggerToggle } from "../../../utils/use-dismiss-on-outside-press";
+import { isUnmovedScroll, useDismissOnOutsidePress, useTriggerToggle, type ScrollOffset } from "../../../utils/use-dismiss-on-outside-press";
 
 export interface SelectProps<T extends object> extends Omit<AriaSelectProps<T>, "children" | "onSelectionChange"> {
 	className?: string;
@@ -39,9 +39,37 @@ export function Select<T extends object>({
 }: SelectProps<T>) {
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	const popoverRef = useRef<HTMLDivElement>(null);
+	const ignoreUnmovedScrollClose = useRef(false);
 	const [isOpen, setIsOpen] = useState(false);
 	useDismissOnOutsidePress(isOpen, () => setIsOpen(false), [triggerRef, popoverRef]);
 	const allowOpenChange = useTriggerToggle(isOpen, triggerRef);
+	useLayoutEffect(() => {
+		if (!isOpen) return;
+		const trigger = triggerRef.current;
+		if (trigger === null) return;
+		const offsets = new Map<EventTarget, ScrollOffset>();
+		const remember = (target: EventTarget, node: Element) => {
+			offsets.set(target, { top: node.scrollTop, left: node.scrollLeft });
+		};
+		let parent = trigger.parentElement;
+		while (parent !== null) {
+			remember(parent, parent);
+			parent = parent.parentElement;
+		}
+		const scrollingElement = document.scrollingElement;
+		if (scrollingElement !== null) remember(document, scrollingElement);
+		const onScroll = (event: Event) => {
+			const target = event.target;
+			if (target === null || triggerRef.current === null) return;
+			const node = target === document ? document.scrollingElement : target instanceof Element ? target : null;
+			if (node === null || !node.contains(triggerRef.current)) return;
+			const next = { top: node.scrollTop, left: node.scrollLeft };
+			if (isUnmovedScroll(offsets.get(target), next)) ignoreUnmovedScrollClose.current = true;
+			else offsets.set(target, next);
+		};
+		window.addEventListener("scroll", onScroll, true);
+		return () => window.removeEventListener("scroll", onScroll, true);
+	}, [isOpen]);
 	const listProps = items === undefined ? {} : { items };
 	const selectionProps = onSelectionChange === undefined ? {} : { onSelectionChange };
 	return (
@@ -51,6 +79,10 @@ export function Select<T extends object>({
 			{...selectionProps}
 			isOpen={isOpen}
 			onOpenChange={(open) => {
+				if (!open && ignoreUnmovedScrollClose.current) {
+					ignoreUnmovedScrollClose.current = false;
+					return;
+				}
 				if (allowOpenChange(open)) setIsOpen(open);
 			}}
 			data-openbot-ui=""
@@ -80,7 +112,7 @@ export function Select<T extends object>({
 				data-openbot-ui=""
 				className={cx(MENU_POPOVER_WIDTH, MENU_POPOVER_SURFACE, "ob:p-2", popoverClassName)}
 			>
-				<AriaListBox {...listProps} className={cx(MENU_ITEMS_CONTAINER, "ob:max-h-60 ob:overflow-auto")}>
+				<AriaListBox {...listProps} className={cx(MENU_ITEMS_CONTAINER, "ob:max-h-60 ob:overflow-auto ob:bg-surface-raised")}>
 					{children}
 				</AriaListBox>
 			</AriaPopover>

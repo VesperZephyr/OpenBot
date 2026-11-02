@@ -23,6 +23,18 @@ export function useDismissOnOutsidePress(
 	}, [isOpen, onDismiss, refs]);
 }
 
+export interface ScrollOffset {
+	top: number;
+	left: number;
+}
+
+// React Aria closes a non-modal popover when an ancestor of the trigger
+// receives a scroll event. The event that finishes scroll-into-view can arrive
+// after the menu is open even though scrollTop did not change again.
+export function isUnmovedScroll(before: ScrollOffset | undefined, after: ScrollOffset): boolean {
+	return before !== undefined && before.top === after.top && before.left === after.left;
+}
+
 export function useTriggerToggle(isOpen: boolean, triggerRef: RefObject<HTMLElement | null>) {
 	const suppressReopenRef = useRef(false);
 	useEffect(() => {
