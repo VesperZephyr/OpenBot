@@ -148,3 +148,5 @@ Candidate revision, acceptance checks and outcomes, and remaining limits; or lin
 - [I5: E2E coverage and execution efficiency](i5-e2e-efficiency.md)
 - [I6: Integrated daily radar acceptance](i6-radar-integration.md)
 - [I7: Official changelog pagination](i7-official-changelog-pagination.md)
+
+- [I8: Complete CI timings and balanced desktop shards](i8-ci-timings.md)
