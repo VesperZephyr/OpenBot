@@ -229,10 +229,10 @@ it('chooser owns focus and hands off to legacy editors', async () => {
     expect(closeBox!.width).toBeGreaterThanOrEqual(32);
     expect(closeBox!.height).toBeGreaterThanOrEqual(32);
     await chooser.getByRole('button', {name:/^Create new Bot/}).click();
-    const editor = h.page().getByRole('dialog', {name:'Create a Bot', exact:true});
+    const editor = h.page().locator('.dialog-backdrop').filter({ has: h.page().getByRole('heading', { name: 'Create a Bot', exact: true }) });
     await editor.waitFor();
     await h.nextFrame();
-    expect(await h.page().getByRole('dialog').count()).toBe(1);
+    expect(await h.page().getByRole('dialog').count()).toBe(0);
     expect(await h.page().getByPlaceholder('Piper').evaluate((element) => element === document.activeElement)).toBe(true);
     await h.page().keyboard.press('Escape');
     await h.nextFrame();
