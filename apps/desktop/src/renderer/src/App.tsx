@@ -344,9 +344,21 @@ function Home({ onNew }: { onNew: () => void }) {
 	);
 }
 
+function focusNewButton(): void {
+	requestAnimationFrame(() => document.querySelector<HTMLElement>(".new-button")?.focus());
+}
+
 function NewBotDialog({ onClose }: { onClose: () => void }) {
 	const [name, setName] = useState("");
 	const [busy, setBusy] = useState(false);
+	const nameInput = useRef<HTMLInputElement>(null);
+	useEffect(() => {
+		nameInput.current?.focus();
+	}, []);
+	const cancel = (): void => {
+		onClose();
+		focusNewButton();
+	};
 	const submit = async (event: FormEvent): Promise<void> => {
 		event.preventDefault();
 		if (name.trim() === "" || busy) return;
@@ -360,21 +372,24 @@ function NewBotDialog({ onClose }: { onClose: () => void }) {
 		}
 	};
 	return (
-		<div className="dialog-backdrop" onMouseDown={onClose}>
+		<div className="dialog-backdrop" onMouseDown={cancel}>
 			<form className="dialog" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
 				<h2>{t("Create a Bot")}</h2>
 				<label className="field">
 					<span>{t("Bot name")}</span>
 					<input
+						ref={nameInput}
 						autoFocus
 						value={name}
 						placeholder="Piper"
 						onChange={(event) => setName(event.target.value)}
-						onKeyDown={(event) => event.key === "Escape" && onClose()}
+						onKeyDown={(event) => {
+							if (event.key === "Escape") cancel();
+						}}
 					/>
 				</label>
 				<div className="dialog-actions">
-					<button type="button" data-dialog-close onClick={onClose}>
+					<button type="button" data-dialog-close onClick={cancel}>
 						{t("Cancel")}
 					</button>
 					<button type="submit" className="primary" disabled={name.trim() === "" || busy}>
