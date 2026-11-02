@@ -1,13 +1,13 @@
 # B29: Local Task Continuity and a Responsive Core
 
-Status: ready
-Branch: unclaimed; use `task/b29-local-task-continuity` when implementation starts
+Status: in progress
+Branch: `task/b29-local-task-continuity`
 Depends on: B13a, B12a, B14a–B14d, B15a, B27a–B27c, B28a; their required implementation must be present on the implementation base
 Architecture: Sections 5.1–5.3, 5.7, 6.1, 6.5, 7.1–7.2 and 8
 Design: [D11 reviewed decisions](d11-local-task-continuity.md)
 Contract date: 2026-11-02
 
-This is an unclaimed implementation contract. The current delivery is documentation only; it does not start implementation. Follow the [backlog](../backlog.md) order and claim this task on its own implementation branch/PR.
+Claimed on 2026-11-02 for the owner-requested implementation. This branch includes the reviewed design from PR #82 and current main through `f45a707`; the owner retains merge authority.
 
 ## Goal
 
