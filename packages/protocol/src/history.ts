@@ -23,6 +23,7 @@ export type WindowInput = {
 	conversationKey: ConversationKey;
 	deliveryId?: string;
 	occurrenceId?: string;
+ taskId?: string;
 	position: TimelinePosition;
 	limit?: number;
 };
@@ -35,12 +36,12 @@ export type DetailResult = { text: string; nextPart?: number; revision: number }
 export type IndexStatus = { state: "ready" | "building" | "unavailable"; retryable: boolean };
 
 /** Selector discriminators keep public, delivery and routine execution partitions distinct. */
-export function historyPartition(input: Pick<WindowInput, "conversationKey" | "deliveryId" | "occurrenceId">): string {
+export function historyPartition(input: Pick<WindowInput, "conversationKey" | "deliveryId" | "occurrenceId" | "taskId">): string {
 	return JSON.stringify(
 		input.deliveryId
 			? [input.conversationKey, "delivery", input.deliveryId]
 			: input.occurrenceId
 				? [input.conversationKey, "occurrence", input.occurrenceId]
-				: [input.conversationKey, null],
+				: input.taskId ? [input.conversationKey, "task", input.taskId] : [input.conversationKey, null],
 	);
 }

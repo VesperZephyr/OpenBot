@@ -1,3 +1,5 @@
+import { LocalTaskDoc, assertTaskRun } from "./local-tasks.ts";
+import { ProtocolError } from "@openbot/protocol";
 import { BackgroundDoc, backgroundTerminal } from "./background.ts";
 import { recordOutcomes } from "./message-records.ts";
 /**
@@ -39,7 +41,8 @@ export type RunInput = {
 
 export type StoredRun = RunRecord & {
 	readonly messageMode?: "messages-v1";
-	readonly origin?: "user" | "peer" | "background" | "routine";
+	readonly origin?: "user" | "peer" | "background" | "routine" | "task";
+ readonly taskId?: string;
 	readonly messages: readonly RunMessage[];
 	readonly inputs: readonly RunInput[];
 };
@@ -86,6 +89,12 @@ export function runStore(harness: Harness, context: Context, capture?: (run: Sto
 			await harness.commit(async (tx) => {
 				const doc = await tx.doc(RunsDoc);
 				const previous = doc.runs[run.runId];
+                if (run.taskId && run.state === "running" && previous?.state !== "running") {
+                    if (previous?.state !== "queued") throw new ProtocolError("invalid_request", "Task admission is no longer available");
+                    await assertTaskRun(tx, value);
+                }
+                if (run.taskId && previous?.interruption && !value.interruption) value.interruption = previous.interruption;
+                if (run.taskId && previous && isTerminal(previous.state) && !isTerminal(value.state)) throw new ProtocolError("invalid_request", "Task Run already ended");
 				if (previous?.messageMode || ((!previous && run.state === "queued" || previous?.state === "queued" && run.state === "running") && run.origin !== "routine")) value.messageMode = "messages-v1";
 				await captureUsage(tx, run, doc.runs[run.runId], usage);
 				await recordOutcomes(tx, value, previous);
@@ -93,7 +102,12 @@ export function runStore(harness: Harness, context: Context, capture?: (run: Sto
 				if (isTerminal(run.state)) {
 					const pending = Object.values((await tx.doc(BackgroundDoc)).records).filter(record => !backgroundTerminal(record));
 					prune(doc.runs, run.botId, new Set(pending.flatMap(record => [record.sourceRunId,...(record.continuationRunId ? [record.continuationRunId] : [])])));
-					await pruneUsage(tx, new Set(Object.keys(doc.runs)));
+					if (run.taskId) {
+                        const task = (await tx.doc(LocalTaskDoc, run.taskId, null)).task;
+                        const ended = Object.values(doc.runs).filter(item => item.taskId === run.taskId && isTerminal(item.state)).sort((a,b) => b.createdAt-a.createdAt);
+                        for (const old of ended.slice(KEPT_TERMINAL_RUNS)) if (old.runId !== task?.currentRunId) delete doc.runs[old.runId];
+                    }
+                    await pruneUsage(tx, new Set(Object.keys(doc.runs)));
 				}
 			}, context);
 		},

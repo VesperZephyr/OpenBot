@@ -1,7 +1,7 @@
 import { validSkillRef, type SkillRef } from "@openbot/protocol";
 import type { ArtifactRef } from "@openbot/protocol";
 /** Local UI state only. Host snapshots remain the sole source of accepted messages. */
-export type ConversationKey = `bot:${string}` | `group:${string}`;
+export type ConversationKey = `bot:${string}` | `group:${string}` | `task:${string}` | `new-task:${string}`;
 export type ComposerDraft = {
 	attachments?: readonly ArtifactRef[];
  skills?:readonly SkillRef[];
@@ -11,7 +11,9 @@ export type ComposerDraft = {
 	revision: number;
 	updatedAt: number;
 };
+export type TaskAttempt = { taskId:string; expectedRevision:number; expectedRunId:string; recoveryToken?:string };
 export type SendAttempt = {
+ task?: TaskAttempt;
 	attachments?: readonly ArtifactRef[];
  skills?:readonly SkillRef[];
 	requestId: string;
@@ -33,7 +35,7 @@ const attachmentsValid = (value: unknown) =>
 			(a) => a && typeof a.artifactId === "string" && /^artifact_[a-f0-9]{32}$/.test(a.artifactId) && typeof a.name === "string",
 		));
 const skillsValid=(v:unknown)=>v===undefined||Array.isArray(v)&&v.length<=2&&v.every(validSkillRef);
-const keyValid = (v: string): v is ConversationKey => /^(bot|group):.+$/.test(v);
+const keyValid = (v: string): v is ConversationKey => /^(bot|group|task|new-task):.+$/.test(v);
 const integer = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
 export class ComposerStore {
 	private records: Readonly<Record<string, ComposerRecord>> = {};
@@ -125,7 +127,7 @@ export class ComposerStore {
 		this.save();
 		this.publish();
 	}
-	async send(key: ConversationKey, dispatch: (attempt: SendAttempt) => Promise<unknown>, retry = false): Promise<boolean> {
+	async send(key: ConversationKey, dispatch: (attempt: SendAttempt) => Promise<unknown>, retry = false, task?: TaskAttempt): Promise<boolean> {
 		const old = this.get(key);
 		if (
 			old.attempt?.state === "pending" ||
@@ -137,8 +139,9 @@ export class ComposerStore {
 			? { ...old.attempt, state: "pending" }
 			: {
 					requestId: crypto.randomUUID(),
+ ...(task ? {task:{...task}} : {}),
 					conversationKey: key,
-					text: old.draft.text.trim(),
+					text: key.startsWith("task:") || key.startsWith("new-task:") ? old.draft.text : old.draft.text.trim(),
 					recipientIds: [...old.draft.recipientIds],
 					...(old.draft.attachments?.length ? { attachments: old.draft.attachments.map((a) => ({ ...a })) } : {}),
 					...(old.draft.skills?.length?{skills:old.draft.skills.map(s=>({...s}))}:{}),

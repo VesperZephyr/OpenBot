@@ -21,6 +21,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          # B29 compatibility tests execute the pinned pre-task Host and backup reader.
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:

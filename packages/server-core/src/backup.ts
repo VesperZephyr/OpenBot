@@ -17,6 +17,7 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { BACKUP_RUNTIME_VERSION, LEGACY_BACKUP_RUNTIME_VERSION } from "@openbot/agent-runtime";
 import type { BackupResult } from "@openbot/protocol";
 
 const ROOTS = ["openbot.sqlite", "executor", "attachments", "skills"] as const;
@@ -196,7 +197,7 @@ export class LocalBackups {
 		if (
 			!m.producer ||
 			m.producer.protocol !== this.options.producer.protocol ||
-			m.producer.runtime !== this.options.producer.runtime ||
+			(m.producer.runtime !== this.options.producer.runtime && !(this.options.producer.runtime === BACKUP_RUNTIME_VERSION && m.producer.runtime === LEGACY_BACKUP_RUNTIME_VERSION)) ||
 			typeof m.producer.application !== "string"
 		)
 			fail("Backup runtime is incompatible");

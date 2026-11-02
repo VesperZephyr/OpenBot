@@ -5,7 +5,7 @@ export const historyAnchors = new Map<string, HistoryAnchor>();
 const entries = new Map<string, TimelineWindow[]>();
 let epoch = 0;
 export const historyEpoch = () => epoch;
-export const historyKey = (input: Pick<WindowInput, "conversationKey" | "deliveryId" | "occurrenceId">) => historyPartition(input);
+export const historyKey = (input: Pick<WindowInput, "conversationKey" | "deliveryId" | "occurrenceId" | "taskId">) => historyPartition(input);
 export function saveAnchor(key: string, value: HistoryAnchor) {
 	historyAnchors.delete(key);
 	historyAnchors.set(key, value);

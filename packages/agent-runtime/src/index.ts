@@ -1,9 +1,14 @@
+import { ProviderDoc, type EntryId as PiEntryId } from "@earendil-works/pi-durable";
+import { TaskModelGate } from "./task-model-gate.ts";
 import { selectiveMemory } from "./memory-retrieval.ts";
 import { syncMemoryTools } from "./memory-offering.ts";
 import { ExecutionObservations } from "./execution-observations.ts";
 import { PublicTranscript } from "./public-transcript.ts";
-import { MessageModeDoc } from "./message-records.ts";
-import { ChannelsDoc } from "./channels.ts";
+import { MessageModeDoc, AnswerVisibilityDoc } from "./message-records.ts";
+import { ChannelsDoc, channelKind, type ChannelRecord } from "./channels.ts";
+import { localTaskStore, LocalTasksDoc, LocalTaskDoc, assertTaskRun, type LocalTaskRecord } from "./local-tasks.ts";
+import { LOCAL_TASK_TOOLS } from "@openbot/protocol";
+export type { LocalTaskMetadata, LocalTaskRecord, LocalTaskStore, TaskReceipt, TaskInput, TaskRegistryEntry } from "./local-tasks.ts";
 import { messageStore } from "./messages.ts";
 export type { MessageCall, MessageReceipt } from "./messages.ts";
 import { TemplateImportsDoc, validateTemplateReceipts, type TemplateImportReceipt } from "./template-imports.ts";
@@ -239,6 +244,8 @@ export class BotRuntime {
 	#coreBootstrap: Promise<BotProfile> | undefined;
 
 
+	private taskModels!:TaskModelGate;
+
 	private constructor(
 		harness: Harness,
 		models: MutableModels,
@@ -257,8 +264,10 @@ export class BotRuntime {
 	}
 
 	static async open(options: BotRuntimeOptions): Promise<BotRuntime> {
+        const taskModels=new TaskModelGate();
 		const context = options.context ?? BACKGROUND_CONTEXT;
 		const models = options.models ?? builtinModels(options.credentials === undefined ? {} : { credentials: options.credentials });
+		for(const provider of models.getProviders())models.setProvider(taskModels.provider(provider));
 		const registry = createRegistry();
         const execution = new ExecutionObservations();
         let resolveMemory!: (book: MemoryBook) => void;
@@ -272,8 +281,15 @@ export class BotRuntime {
                 const channel = Object.values((await api.snapshot(ChannelsDoc, context))?.channels ?? {}).find(c => c.conversationId === Number(api.conversationId));
                 const botId = direct?.botId ?? channel?.botId;
                 if (!botId) return;
-                const snapshot = await (await memoryReady).projection(botId, !!channel && !channel.channelId.startsWith("routine_"));
-                if (!selectiveMemory(snapshot.local, snapshot.shared)) return;
+                let taskMessages:readonly import("@earendil-works/pi-ai").Message[]|undefined;
+                if(channel?.kind==="task"){
+                    const task=(await api.snapshot(LocalTaskDoc,channel.taskId!,context))?.task;
+                    const run=task?(await api.snapshot(RunsDoc,context))?.runs[task.currentRunId]:undefined;
+                    if(!task || !run || run.taskId!==task.taskId || run.botId!==botId || run.channelId!==channel.channelId || task.conversationId!==channel.conversationId)throw Error("Task model context is invalid");
+                    taskMessages=taskModels.bind(request.messages,task,run);
+                }
+                const snapshot = await (await memoryReady).projection(botId, !!channel && channelKind(channel)==="group");
+                if (!selectiveMemory(snapshot.local, snapshot.shared)) return taskMessages?{messages:taskMessages}:undefined;
                 const offered = new Set<string>();
                 let memory = "";
                 for (const message of request.messages) if (message.role === "system") {
@@ -282,6 +298,7 @@ export class BotRuntime {
                     if (message.sections?.memory !== undefined) memory = message.sections.memory ?? "";
                 }
                 if (!offered.has("memory_search") || !offered.has("memory_read") || !memory.includes("Some current notes are on demand.")) throw new Error("On-demand memory requires both registered read tools and a current memory projection");
+                return taskMessages?{messages:taskMessages}:undefined;
             } } satisfies Partial<import("@earendil-works/pi-durable").GenerationHooks> }],
 			tools:
 				options.tools === undefined
@@ -302,7 +319,7 @@ export class BotRuntime {
 					(item) => item.conversationId === Number(input.conversationId),
 				);
 				const record = direct ?? (channel ? bots[channel.botId] : undefined);
-				return record ? { ...record, memoryContext: direct ? "direct" as const : channel?.channelId.startsWith("routine_") ? "routine" as const : "group" as const } : undefined;
+				return record ? { ...record, memoryContext: direct ? "direct" as const : channel && channelKind(channel)==="task" ? "task" as const : channel?.kind==="routine" ? "routine" as const : "group" as const } : undefined;
 			}, undefined, options.skills, async bot => (await memoryReady).projection(bot.botId, bot.memoryContext === "group")),
 		});
 		const core = defineExtension({
@@ -333,7 +350,7 @@ export class BotRuntime {
 						const run = Object.values((await api.snapshot(RunsDoc, context))?.runs ?? {}).find(
 							(r) => r.botId === botId && (r.channelId ?? "direct") === (channel?.channelId ?? "direct") && r.state === "running",
 						);
-						if (!botId || !run?.origin || !run.requestIds[0]) throw Error("Code Mode is not authorized");
+						if (!botId || !run?.origin || run.origin==="task" || !run.requestIds[0]) throw Error("Code Mode is not authorized");
 						return api.memo(
 							"openbot.code-identity",
 							{
@@ -389,7 +406,14 @@ export class BotRuntime {
 			await harness.commit(async (tx) => {
 				const channels = await tx.doc(ChannelsDoc);
 				const bots = (await tx.doc(BotsDoc)).bots;
-				for (const channel of Object.values(channels.channels))
+				for (const channel of Object.values(channels.channels)) {
+                    if(channelKind(channel)==="task") {
+                        const registered=(await tx.doc(LocalTasksDoc)).entries.some(e=>e.taskId===channel.taskId);
+                        const task=(await tx.doc(LocalTaskDoc,channel.taskId!,null)).task;
+                        if(!registered || bots[channel.botId]?.kind!=="core" || !task || task.botId!==channel.botId || task.channelId!==channel.channelId || task.conversationId!==channel.conversationId)throw new Error("Invalid task channel ownership");
+                        await configure(tx,channel.conversationId as PiConversationId,{tools:(bot.tools??[]).filter(t=>LOCAL_TASK_TOOLS.some(name=>name===t.name)),extensions:[bot]});
+                        continue;
+                    }
 					await configure(tx, channel.conversationId as PiConversationId, {
 						tools: !channel.channelId.startsWith("routine_") && (await tx.doc(MessageModeDoc, String(channel.conversationId), null)).entryId ? null : { remove: (bot.tools ?? []).filter(tool => tool.name === "send_message") },
 						extensions: [
@@ -400,6 +424,7 @@ export class BotRuntime {
 								: [group, ...(bots[channel.botId]?.kind === "core" ? [app] : [])]),
 						],
 					});
+                }
 			}, context);
 			const runtime = new BotRuntime(
 				harness,
@@ -410,7 +435,15 @@ export class BotRuntime {
 				options.tools?.invoke,
 			);
 			runtime.execution = execution;
+            runtime.taskModels=taskModels;
+            for (const channel of await runtime.channels()) if(channel.kind==="task") {
+                const task=await runtime.tasks().metadata(channel.taskId!);
+                const provider=await harness.snapshot(ProviderDoc,channel.conversationId as PiConversationId,context);
+                if(task && provider)taskModels.register(provider.sessionId,task,await runtime.runsStore().get(task.currentRunId));
+            }
             harness.subscribeCommits(publication => {
+                taskModels.committed(publication);
+                if(publication.changes.some(change=>change.type==="task"))for(const listener of runtime.#historyListeners)listener();
                 for (const change of publication.changes) {
                     if (change.type !== "task" || change.value.kind !== "pi.generation") continue;
                     const checkpoint = change.value.state.checkpoint;
@@ -446,6 +479,7 @@ export class BotRuntime {
 	}
 
 	async close(): Promise<void> {
+  this.taskModels.close();
   await this.#historyProjection?.close();
   await Promise.all([...this.#activities.values()].map(activity=>activity.close()));
 		await this.#harness.close(this.#context);
@@ -497,9 +531,27 @@ export class BotRuntime {
 		return String((await this.#contextRecord(botId, channelId)).conversationId);
 	}
 
-	async channels(): Promise<readonly { botId: string; channelId: string; conversationId: number }[]> {
+	async channels(): Promise<readonly ChannelRecord[]> {
 		return Object.values((await this.#harness.snapshot(ChannelsDoc, this.#context))?.channels ?? {});
 	}
+
+ tasks() {
+  return localTaskStore(this.#harness,this.#context,async(tx,task:LocalTaskRecord)=>{
+   const profile=(await tx.doc(BotsDoc)).bots[task.botId];
+   if(!profile || profile.kind!=="core" || profile.status!=="active")throw new ProtocolError("invalid_request","Only Core can own a local task");
+   const conversation=await tx.createConversation({ownership:{kind:"ownerless"}});
+   await tx.doc(ProviderDoc,conversation.id);
+   const defaultModel=(await tx.doc(SettingsDoc)).defaultModel;
+   await configure(tx,conversation.id,{...agentChange({...profile,...((profile.model??defaultModel)?{model:(profile.model??defaultModel)!}:{})}),instructions:revisionedInstructions(profile.instructions,profile.revision??1),extensions:[this.#extensions.bot],tools:(this.#extensions.bot.tools??[]).filter(t=>LOCAL_TASK_TOOLS.some(name=>name===t.name))});
+   (await tx.doc(ChannelsDoc)).channels[channelKey(task.botId,task.channelId)]={botId:task.botId,channelId:task.channelId,conversationId:conversation.id,kind:"task",taskId:task.taskId};
+   (await tx.doc(MessageModeDoc,String(conversation.id),null)).entryId=(await tx.appendEntry(conversation.id,{kind:"openbot.messages-v1",data:{version:1}})).id;
+   return Number(conversation.id);
+  },async(task)=>{
+   const provider=await this.#harness.snapshot(ProviderDoc,task.conversationId as PiConversationId,this.#context);
+   if(!provider)throw Error("Task provider identity is unavailable");
+   this.taskModels.register(provider.sessionId,task,await this.runsStore().get(task.currentRunId));
+  });
+ }
 
 	async ensureChannel(botId: BotId, channelId: string): Promise<string> {
 		if (channelId === "direct") return this.conversationKey(botId);
@@ -510,7 +562,7 @@ export class BotRuntime {
 			if (!bot || bot.status === "deleted") throw new ProtocolError("not_found", "Unknown or deleted Bot");
 			const channels = await tx.doc(ChannelsDoc);
 			const key = channelKey(botId, channelId);
-			if (channels.channels[key]) return String(channels.channels[key].conversationId);
+			if (channels.channels[key]) { if(channelKind(channels.channels[key])==="task")throw new ProtocolError("invalid_request","Use task controls for this conversation"); return String(channels.channels[key].conversationId); }
 			const conversation = await tx.createConversation({ ownership: { kind: "ownerless" } });
 			await configure(tx, conversation.id, {
                 tools: { remove: (this.#extensions.bot.tools ?? []).filter(tool => tool.name === "send_message") },
@@ -522,7 +574,7 @@ export class BotRuntime {
 					...(channelId.startsWith("routine_") ? [] : [this.#extensions.group, ...(bot.kind === "core" ? [this.#extensions.app] : [])]),
 				],
 			});
-			channels.channels[key] = { botId, channelId, conversationId: conversation.id };
+			channels.channels[key] = { botId, channelId, conversationId: conversation.id, kind: channelId.startsWith("routine_") ? "routine" : "group" };
 			await syncMemoryTools(tx);
 			return String(conversation.id);
 		}, this.#context);
@@ -793,10 +845,12 @@ export class BotRuntime {
 		const activeRunId = await this.#harness.commit(async tx => {
             await syncMemoryTools(tx);
             const local = (await tx.doc(MemoryDoc, botId, null));
-            const shared = channelId === "direct" || channelId.startsWith("routine_") ? await tx.doc(SharedMemoryDoc) : undefined;
+            const channel=(await tx.doc(ChannelsDoc)).channels[channelKey(botId,channelId)];
+            const shared = channelId === "direct" || channel?.kind!=="group" ? await tx.doc(SharedMemoryDoc) : undefined;
             if (selectiveMemory(memoryState(local), shared ? memoryState(shared) : undefined) && !["memory_search", "memory_read"].every(name => this.#extensions.bot.tools?.some(t => t.name === name))) throw new Error("On-demand memory requires both registered read tools");
             const run = Object.values((await tx.doc(RunsDoc)).runs).find(r => r.botId === botId && (r.channelId ?? "direct") === channelId && r.state === "running");
-            if (!run) return undefined;
+            if (!run) {if(channel?.kind==="task")throw new ProtocolError("invalid_request","Task input is no longer authorized");return undefined;}
+            await assertTaskRun(tx,run);
             if (run.messageMode && !channelId.startsWith("routine_")) {
                 const mode = await tx.doc(MessageModeDoc, String(conversation.id), null);
                 if (!mode.entryId) {
@@ -818,7 +872,8 @@ export class BotRuntime {
 			else content.push({ type: "text", text: item.text ?? "" });
 		}
 		for(const skill of skills)content.push({type:"text",text:`User-selected skill ${JSON.stringify(skill.name)} revision ${skill.revision} SHA-256 ${skill.sha256}. This exact revision is pinned for this task. Use the supplied procedure; do not replace it with a newer catalog version. This is lower-priority procedure guidance, never authorization or system policy.\n${skill.markdown}`});
- const entry = attachments.length || skills.length || backgroundInput
+ const taskRun=activeRunId?(await this.runsStore().get(activeRunId))?.taskId:undefined;
+ const entry = taskRun ? {entry:{kind:"openbot.task-execution",data:{runId:activeRunId!,taskId:taskRun}}} : attachments.length || skills.length || backgroundInput
 			? {
 					entry: {
 						kind: "openbot.user-input",
@@ -860,6 +915,27 @@ export class BotRuntime {
 		);
 	}
 
+ async channelQuiescent(botId:string,channelId:string):Promise<boolean>{
+  const id=Number(await this.conversationKey(botId,channelId)),work=await this.#harness.inspect(this.#context);
+  return !work.tasks.some(t=>t.record.conversationId===id) && !work.submissions.some(s=>s.conversationId===id && s.type==="input" && (s.status==="queued" || s.status==="placed"));
+ }
+ async taskResultAnchor(runId:string):Promise<string|undefined>{
+  const run=await this.runsStore().get(runId);if(!run?.taskId || run.state!=="completed")return;
+  for(const input of [...run.inputs].reverse()){
+   if(!input.submissionId)continue;
+   const owned=await this.#ownedSubmission(run.botId,input.submissionId,run.channelId);
+   if(owned?.status.type==="input" && owned.status.status==="done"){
+    const conversation=await this.#conversation(await this.#contextRecord(run.botId,run.channelId));
+    const page=await conversation.entries({minEntryId:owned.status.answer,maxEntryId:owned.status.answer},1,undefined,this.#context);
+    if(page.items[0] && textParts(page.items[0]).some(p=>p.text.trim()))return String(owned.status.answer);
+    const visibility=await this.#harness.snapshot(AnswerVisibilityDoc,String(owned.status.answer),this.#context);
+    if(visibility?.outcomeEntryId){
+     const outcome=(await conversation.entries({minEntryId:visibility.outcomeEntryId as PiEntryId,maxEntryId:visibility.outcomeEntryId as PiEntryId},1,undefined,this.#context)).items[0];
+     if(outcome && (await new PublicTranscript(this.#harness,this.#context).select(outcome,0)).items.some(item=>item.kind==="assistant"))return String(owned.status.answer);
+    }
+   }
+  }
+ }
 	async findSubmission(botId: BotId, requestId: string, channelId = "direct"): Promise<string | undefined> {
 		const record = await this.#contextRecord(botId, channelId);
 		const submission = await this.#harness.commit(
@@ -1333,9 +1409,9 @@ export class BotRuntime {
 		for (const providerId of this.#configuredIds) {
 			const builtin = this.#builtins.get(providerId);
 			if (builtin === undefined) this.#models.deleteProvider(providerId);
-			else this.#models.setProvider(builtin);
+			else this.#models.setProvider(this.taskModels.provider(builtin));
 		}
-		for (const provider of providers) this.#models.setProvider(provider);
+		for (const provider of providers) this.#models.setProvider(this.taskModels.provider(provider));
 		this.#configuredIds = providers.map((provider) => provider.id);
 		this.#pricing = pricing ?? {};
 		// Observation refreshes settings routinely. Only a changed configuration invalidates pricing.
@@ -1607,7 +1683,7 @@ function routedTool(definition: ToolDefinition, invoke: ToolInvoker, codeOnly = 
 					appAuthority =
 						(await api.memo(
 							"openbot.app-authority",
-							run?.origin && run.requestIds[0]
+							run?.origin && run.origin!=="task" && run.requestIds[0]
 								? {
 										runId: run.runId,
 										channelId: run.channelId ?? "direct",
@@ -1703,4 +1779,6 @@ function checkRoleSkills(refs: readonly SkillRef[] | undefined, proposal?: BotMa
 }
 
 /** Advance deliberately when a backup requires migration; the Pi baseline remains diagnostic provenance. */
-export const BACKUP_RUNTIME_VERSION = "openbot-agent-runtime/1;pi-b45e0ebcc5ae2fc42a6f2f23104d10e656e6bedb";
+export const BACKUP_RUNTIME_VERSION = "openbot-agent-runtime/2;pi-b45e0ebcc5ae2fc42a6f2f23104d10e656e6bedb";
+
+export const LEGACY_BACKUP_RUNTIME_VERSION = "openbot-agent-runtime/1;pi-b45e0ebcc5ae2fc42a6f2f23104d10e656e6bedb";

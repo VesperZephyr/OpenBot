@@ -17,6 +17,8 @@ import {
 	type WindowInput,
 	type WindowResult,
 } from "@openbot/protocol";
+import { LocalTaskDoc } from "./local-tasks.ts";
+import type { ChannelRecord } from "./channels.ts";
 import { BotsDoc } from "./bots.ts";
 import { RoutinesDoc } from "./routines.ts";
 import { AppExecutionsDoc } from "./app-executions.ts";
@@ -27,9 +29,9 @@ import type { DisplayWrite, HistoryBatch, HistoryMessage } from "./history-store
 import { toTranscript } from "./transcript.ts";
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const size = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
-const partition = (key: ConversationKey, deliveryId?: string, occurrenceId?: string) =>
-	historyPartition({ conversationKey: key, ...(deliveryId ? { deliveryId } : {}), ...(occurrenceId ? { occurrenceId } : {}) });
-type Channel = { botId: string; channelId: string; conversationId: number };
+const partition = (key: ConversationKey, deliveryId?: string, occurrenceId?: string, taskId?: string) =>
+	historyPartition({ conversationKey: key, ...(deliveryId ? { deliveryId } : {}), ...(occurrenceId ? { occurrenceId } : {}), ...(taskId ? {taskId} : {}) });
+type Channel = ChannelRecord;
 type Source = {
 	key: ConversationKey;
 	partition: string;
@@ -37,6 +39,7 @@ type Source = {
 	botId?: string;
 	deliveryId?: string;
 	occurrenceId?: string;
+ taskId?: string;
 };
 type Checkpoint = { source: number | string; position: number; hash: string };
 /** UTF-8 byte bound without splitting a surrogate pair. */
@@ -257,7 +260,7 @@ export class HistoryProjection {
 					messages: HistoryMessage[] = [];
 				let batch: HistoryBatch = {
 					partition: source.partition,
-					...(!source.deliveryId && !source.occurrenceId ? { key: source.key } : {}),
+					...(!source.deliveryId && !source.occurrenceId && !source.taskId ? { key: source.key } : {}),
 					rows,
 					messages,
 					checkpoint: JSON.stringify(checkpoint ?? { source: source.conversationId, position: 0, hash: "" }),
@@ -311,7 +314,7 @@ export class HistoryProjection {
 						const row = await this.prepare(source, item.id, ordinal, link?.source ?? selection.source, { kind: "direct", item });
 						if (result?.role === "toolResult") row.resultSource = entry.id;
 						const publicMessages =
-							source.deliveryId || source.occurrenceId ? [] : directMessages({ botId: source.botId!, items: [item], approvals: [] });
+							source.deliveryId || source.occurrenceId || source.taskId ? [] : directMessages({ botId: source.botId!, items: [item], approvals: [] });
 						for (const message of publicMessages) messages.push(await this.message(source, message));
 						rows.push(row);
 						if (rows.length + messages.length >= 128 || size(batch) > 256 * 1024) await flush();
@@ -471,12 +474,18 @@ export class HistoryProjection {
 			await this.call({ method: "stageMessage", partition: source.partition, rowId: message.id, part: part++, text });
 		return { ...message, text: "", conversationKey: source.key };
 	}
-	private async authorize(key: ConversationKey, deliveryId?: string, occurrenceId?: string): Promise<Source> {
-		if (deliveryId && occurrenceId) throw new ProtocolError("invalid_request", "Choose one history selector");
+	private async authorize(key: ConversationKey, deliveryId?: string, occurrenceId?: string, taskId?: string): Promise<Source> {
+		if ([deliveryId, occurrenceId, taskId].filter(Boolean).length > 1) throw new ProtocolError("invalid_request", "Choose one history selector");
 		if (key.startsWith("bot:")) {
 			if (deliveryId) throw new ProtocolError("invalid_request", "Delivery requires a group");
 			const bot = (await this.harness.snapshot(BotsDoc, this.context))?.bots[key.slice(4)];
 			if (!bot || bot.status === "deleted") throw new ProtocolError("not_found", "Conversation is unavailable");
+            if (taskId) {
+                const task = (await this.harness.snapshot(LocalTaskDoc, taskId, this.context))?.task;
+                const channel = (await this.options.channels()).find(c => c.taskId === taskId && c.kind === "task");
+                if (!task || bot.kind !== "core" || task.botId !== bot.botId || channel?.botId !== bot.botId || channel.channelId !== task.channelId || channel.conversationId !== task.conversationId) throw new ProtocolError("not_found", "Task history is unavailable");
+                return {key, partition:partition(key, undefined, undefined, taskId), taskId, conversationId:task.conversationId, botId:bot.botId};
+            }
 			if (occurrenceId) {
 				const routines = await this.harness.snapshot(RoutinesDoc, this.context),
 					occurrence = routines?.occurrences[occurrenceId];
@@ -501,7 +510,7 @@ export class HistoryProjection {
 			}
 			return { key, partition: partition(key), conversationId: bot.conversationId, botId: bot.botId };
 		}
-		if (occurrenceId) throw new ProtocolError("invalid_request", "Occurrence requires a Bot");
+		if (occurrenceId || taskId) throw new ProtocolError("invalid_request", "Occurrence requires a Bot");
 		const groups = await this.harness.snapshot(GroupsDoc, this.context),
 			id = key.slice(6);
 		if (!groups?.groups[id]) throw new ProtocolError("not_found", "Conversation is unavailable");
@@ -513,8 +522,9 @@ export class HistoryProjection {
 		return { key, partition: partition(key, deliveryId), deliveryId, conversationId: channel.conversationId, botId: channel.botId };
 	}
 	async window(input: WindowInput): Promise<WindowResult> {
-		const source = await this.authorize(input.conversationKey, input.deliveryId, input.occurrenceId);
-		this.#selected = source.partition;
+		const source = await this.authorize(input.conversationKey, input.deliveryId, input.occurrenceId, input.taskId);
+		for(const [key,previous] of this.#sources)if(previous.taskId && key!==source.partition){this.#sources.delete(key);this.#validated.delete(key);}
+        this.#selected = source.partition;
 		if (!this.#sources.has(source.partition)) {
 			this.#sources.set(source.partition, source);
 			this.dirty(source.partition);
@@ -529,7 +539,7 @@ export class HistoryProjection {
 			return { status: "building" };
 		try {
 			const result = await this.call<WindowResult>({ method: "window", input });
-			await this.authorize(input.conversationKey, input.deliveryId, input.occurrenceId);
+			await this.authorize(input.conversationKey, input.deliveryId, input.occurrenceId, input.taskId);
 			return result;
 		} catch (error) {
 			if (error instanceof ProtocolError) throw error;
@@ -537,22 +547,23 @@ export class HistoryProjection {
 		}
 	}
 	async detail(input: DetailInput): Promise<DetailResult> {
-		let delivery: string | undefined, occurrence: string | undefined;
+		let delivery: string | undefined, occurrence: string | undefined, task: string | undefined;
 		try {
 			const token = await this.call<{ partition: string }>({ method: "resolveDetail", key: input.conversationKey, token: input.detail });
 			const [key, kind, id] = JSON.parse(token.partition);
 			if (key !== input.conversationKey) throw Error();
 			if (kind === "delivery") delivery = id;
 			else if (kind === "occurrence") occurrence = id;
-			else if (kind !== null) throw Error();
+			else if (kind === "task") task = id;
+            else if (kind !== null) throw Error();
 		} catch (error) {
 			if (error instanceof ProtocolError) throw error;
 			throw new ProtocolError("invalid_request", "Invalid detail reference");
 		}
-		const source = await this.authorize(input.conversationKey, delivery, occurrence);
+		const source = await this.authorize(input.conversationKey, delivery, occurrence, task);
 		if (!this.#validated.has(source.partition)) throw Error("History is still indexing");
 		const result = await this.call<DetailResult>({ method: "detail", key: input.conversationKey, token: input.detail, part: input.part });
-		await this.authorize(input.conversationKey, delivery, occurrence);
+		await this.authorize(input.conversationKey, delivery, occurrence, task);
 		return result;
 	}
 	async search(query: string, keys: ConversationKey[], scope: string, cursor?: string, signal?: AbortSignal) {

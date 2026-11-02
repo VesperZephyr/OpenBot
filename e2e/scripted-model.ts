@@ -15,7 +15,7 @@ export type ScriptedTurn = (
 	/** `args` may be computed from the request, for arguments only known at run time, such as a returned task ID. */
 	| { readonly tool: string; readonly preface?: string; readonly args: Record<string, unknown> | ((request: ModelRequest) => Record<string, unknown>) }
 	/** The provider rejects the request with HTTP 400 and this message; not retried by Pi. */
-	| { readonly error: string }) & { readonly usage?: { readonly prompt_tokens: number; readonly completion_tokens: number; readonly total_tokens: number; readonly prompt_tokens_details?: { cached_tokens: number }; readonly completion_tokens_details?: { reasoning_tokens: number } } };
+	| { readonly error: string }) & { readonly wait?: Promise<void>; readonly usage?: { readonly prompt_tokens: number; readonly completion_tokens: number; readonly total_tokens: number; readonly prompt_tokens_details?: { cached_tokens: number }; readonly completion_tokens_details?: { reasoning_tokens: number } } };
 
 export class ScriptedModel {
 	readonly requests: ModelRequest[] = [];
@@ -71,7 +71,8 @@ export class ScriptedModel {
                     return;
                 }
 				if ("delayMs" in turn && turn.delayMs) setTimeout(() => response.end(this.#stream(turn, sent)), turn.delayMs);
-				else response.end(this.#stream(turn, sent));
+				else if(turn.wait){response.flushHeaders();void turn.wait.then(()=>{if(!response.destroyed)response.end(this.#stream(turn,sent));});}
+                else response.end(this.#stream(turn, sent));
 			});
 		});
 		await new Promise<void>((resolve) => this.#server?.listen(0, "127.0.0.1", resolve));

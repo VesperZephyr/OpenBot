@@ -28,6 +28,7 @@ export class ExecutorProcess implements ExecutorTransport {
 		{ resolve: (result: ArtifactOperationResult) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
 	>();
 	readonly #assertAllowed: () => void;
+ readonly #admit:(invocation:ToolInvocation,signal:AbortSignal,send:()=>void)=>Promise<void>;
 	readonly #pending = new Map<string, Pending>();
 	readonly #statusWaiters = new Map<string, ((reply: StatusReply) => void)[]>();
 	readonly #controls=new Map<string,{resolve:()=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
@@ -44,9 +45,11 @@ export class ExecutorProcess implements ExecutorTransport {
 		dataDirectory: string;
 		env: NodeJS.ProcessEnv;
 		assertAllowed?: () => void;
+  admit?:(invocation:ToolInvocation,signal:AbortSignal,send:()=>void)=>Promise<void>;
  connectorChanged?:(id:string)=>void;
 	}) {
 		this.#entry = options.entry;
+  this.#admit=options.admit??(async(_invocation,_signal,send)=>send());
  this.#connectorChanged=options.connectorChanged??(()=>{});
 		this.#assertAllowed = options.assertAllowed ?? (() => {});
 		this.#targetId = options.targetId;
@@ -76,11 +79,14 @@ export class ExecutorProcess implements ExecutorTransport {
 		const child = this.#child;
 		if (child === undefined || !child.connected) return { status: "failed", output: "The local executor is not running" };
 		const { promise, resolve } = Promise.withResolvers<ToolOutcome>();
-		this.#pending.set(invocation.invocationId, { resolve, onProgress });
-		const cancel = (): void => this.#send({ kind: "tool.cancel", invocationId: invocation.invocationId });
-		signal.addEventListener("abort", cancel, { once: true });
-		this.#send({ kind: "tool.invoke", invocation });
-		try {
+  const cancel = (): void => this.#send({ kind: "tool.cancel", invocationId: invocation.invocationId });
+  try {
+   await this.#admit(invocation,signal,()=>{
+    signal.throwIfAborted();this.#assertAllowed();
+    this.#pending.set(invocation.invocationId,{resolve,onProgress});
+    signal.addEventListener("abort",cancel,{once:true});
+    this.#send({kind:"tool.invoke",invocation});
+   });
 			return await promise;
 		} finally {
 			signal.removeEventListener("abort", cancel);
