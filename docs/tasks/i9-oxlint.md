@@ -1,6 +1,6 @@
 # I9: Fast Correctness Checks with Oxlint
 
-Status: in progress
+Status: in review
 Branch: task/i9-oxlint
 Depends on: I8 (stacked review; owner merges I8 first)
 Architecture: verification tooling; product boundaries and contracts unchanged
@@ -53,4 +53,4 @@ None.
 
 ## Evidence
 
-[November 2 Oxlint acceptance](../acceptance/2026-11-02-oxlint.md) records enforcement probes, local verification and the remote comparison.
+[November 2 Oxlint acceptance](../acceptance/2026-11-02-oxlint.md) records enforcement probes, local verification and the remote comparison. Review and final warm-cache follow-up: [PR #81](https://github.com/VesperZephyr/OpenBot/pull/81).
