@@ -741,6 +741,8 @@ B21 implements a shared private/group conversation shell, name/role filtering, u
 
 ### 7.2 Scheduling
 
+**Specified follow-up, not implemented:** [B29](tasks/b29-local-task-continuity.md) owns the contract and acceptance for explicit personal tasks in typed local contexts, with separate execution lanes and reserved Core capacity inside the configured cap. [D11](tasks/d11-local-task-continuity.md) records the reviewed design rationale. The current scheduling and group behavior below remains unchanged until that implementation lands.
+
 OpenBot keeps a durable Run queue. A Run starts when its conversation is idle and the number of active Runs is below the configurable cap (default 3); queued Runs are admitted oldest first across Bots. Routine occurrences wait for a slot like user work but run in their own conversations. One Run may execute per Bot. Direct queued work has priority; non-direct work aged 30 seconds joins the oldest-first tier. A user message to a Bot with an active Run in the same channel steers that Run (`whenBusy: "steer"`) instead of starting a new one; a message to a Bot whose Run is still queued joins that queued Run. Pi's submission ID is associated with the OpenBot Run; the stable request ID reconciles a crash between Pi admission and recording that association.
 
 Within a Run, tools are sequential. Across Runs, the executor accepts concurrent invocations; it serializes writes to the same file, and desktop input waits for the single control lease.
