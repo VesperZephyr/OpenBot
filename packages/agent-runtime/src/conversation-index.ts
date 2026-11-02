@@ -28,6 +28,7 @@ export function previewText(text: string): string {
 		.replace(/(\*\*|__|~~)(.+?)\1/g, "$2")
 		.replace(/(?<!\w)([*_])(\S(?:.*?\S)?)\1(?!\w)/g, "$2")
 		.replace(/`+/g, "")
+		// oxlint-disable-next-line eslint/no-control-regex -- Control characters are intentionally rejected or removed from untrusted input.
 		.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, " ")
 		.replace(/\s+/g, " ")
 		.trim();

@@ -121,7 +121,7 @@ const conversationRead = new LatestRead(
 	(snapshot) => {
 		const view = useStore.getState().view;
 		if (snapshot && view.kind === "bot" && view.botId === snapshot.botId)
-			useStore.setState((s) => ({ conversations: { [snapshot.botId]: snapshot } }));
+			useStore.setState(() => ({ conversations: { [snapshot.botId]: snapshot } }));
 	},
 );
 const groupRead = new LatestRead(
@@ -132,7 +132,7 @@ const groupRead = new LatestRead(
 	(snapshot) => {
 		const view = useStore.getState().view;
 		if (snapshot && view.kind === "group" && view.groupId === snapshot.group.groupId)
-			useStore.setState((s) => ({ groupSnapshots: { [view.groupId]: snapshot } }));
+			useStore.setState(() => ({ groupSnapshots: { [view.groupId]: snapshot } }));
 	},
 );
 const lifecycleRead = new LatestRead(

@@ -181,7 +181,7 @@ OpenBot 的桌面界面、Host Runtime、对话存储和执行器都运行在你
 ## 开发与测试
 
 ```sh
-pnpm run check       # 包边界检查、TypeScript、单元及 Host 测试
+pnpm run check       # Oxlint、包边界检查、TypeScript、单元及 Host 测试
 pnpm run e2e         # 构建真实桌面应用，使用脚本模型进行端到端测试
 pnpm run e2e:headed  # 明确显示测试窗口，便于调试
 pnpm run dev:debug   # 使用日常开发数据启动应用，CDP 端口为 9339

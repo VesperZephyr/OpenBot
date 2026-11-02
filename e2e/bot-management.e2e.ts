@@ -108,7 +108,7 @@ it("inspects and updates, rejects stale proposals, denial and cancellation prese
 	await h.shot("03-stale-denied-cancelled");
 });
 it("Specialists cannot manage Bots, and Core protection holds", async () => {
-	const bot = (await roster()).find((b: any) => b.kind === "specialist");
+	await roster();
 	await h.page().locator(".bot-row").filter({ has: h.page().getByText("Analyst", { exact: true }) }).click();
 	const first = h.model.requests.length;
 	h.model.script({ tool: "bot_create", args: { name: "Forged" } }, { text: "Management unavailable." });

@@ -1,5 +1,5 @@
 import { lstatSync, opendirSync, realpathSync } from "node:fs";
-import { basename, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { READER_LIMITS as L, type FileListing, type ReaderFile } from "@openbot/protocol";
 import { bytesAt, imageSize, selectedPath } from "./artifacts.ts";
 import { webpSize } from "./avatars.ts";

@@ -31,12 +31,11 @@ import type {
 	ConversationSnapshot,
 	ModelRef,
 	ModelSummary,
-	RunRecord,
 	ThinkingLevel,
 	SkillRef,
 	TranscriptItem,
 } from "@openbot/protocol";
-import { type ReactNode, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { LiveReply, ActivityIndicator } from "./LiveReply";
 import { Markdown } from "./markdown";
 import { WebSearchSettings } from "./WebSearchSettings";
@@ -51,7 +50,7 @@ import { ModelSetup } from "./ModelSetup";
 import { Onboarding } from "./Onboarding";
 import { transcriptRows } from "./steps";
 import { MessageTime, RevealButton, StepsRow } from "./TranscriptDetails";
-import { api, connect, createBot, openBot, refreshBots, refreshSettings, report, errorMessage, sendMessage, useStore } from "./store";
+import { api, connect, createBot, openBot, refreshBots, refreshSettings, report, errorMessage, useStore } from "./store";
 
 export function App() {
 	useDialogFocus();

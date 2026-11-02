@@ -154,7 +154,7 @@ export function groupStore(
 			return (await read()).posts[id] ?? [];
 		},
 		async publishRoutine(occurrenceId: string): Promise<void> {
-			const groupId = await harness.commit(async (tx) => {
+			await harness.commit(async (tx) => {
 				const state = await tx.doc(RoutinesDoc);
 				const o = state.occurrences[occurrenceId];
 				if (!o?.reportTo || o.published || ["pending", "running", "skipped"].includes(o.state)) return;
@@ -421,7 +421,7 @@ export function groupStore(
 				if (root!.state === "running") halt(doc, root!, "cancelled", reason);
 			}, context);
 		},
-		async reconcile(at: number): Promise<void> {
+		async reconcile(_at: number): Promise<void> {
 			await harness.commit(async (tx) => {
 				const doc = await tx.doc(GroupsDoc);
 				const live = await bots(tx);
@@ -547,7 +547,7 @@ export function groupStore(
 					});
 				await projectConversation(tx, `group:${d.groupId}`, groupProjection(doc.posts[d.groupId]!));
 			}, context);
-			const delivery = (await read()).deliveries[id];
+			await read();
 		},
 	};
 }

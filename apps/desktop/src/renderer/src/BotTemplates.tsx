@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 import type {
-	BotTemplateV1,
 	ImportChoices,
 	ImportResult,
 	ModelChoice,

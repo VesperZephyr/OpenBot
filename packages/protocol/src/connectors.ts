@@ -80,9 +80,10 @@ export function isConnectorEndpoint(value: unknown): value is string {
 	if (
 		typeof value !== "string" ||
 		value.length > 2048 ||
-		!/^https:\/\//.test(value) ||
+		!value.startsWith("https://") ||
 		/^https:\/\/[^/]*@/.test(value) ||
 		/[\s\\?#]/.test(value) ||
+		// oxlint-disable-next-line eslint/no-control-regex -- Control characters are intentionally rejected or removed from untrusted input.
 		/[\u0000-\u001f\u007f]/.test(value)
 	)
 		return false;

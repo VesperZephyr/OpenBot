@@ -7,7 +7,6 @@ import { readFile, writeFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { parseArgs } from "node:util";
-import { execFileSync } from "node:child_process";
 import { launchApp, repo, type AppHarness } from "../../e2e/harness.ts";
 
 const { values } = parseArgs({

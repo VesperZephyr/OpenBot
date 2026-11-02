@@ -53,6 +53,7 @@ export class Coalescer<K, V> {
 	}
 
 	cancelAll(): void {
+		// oxlint-disable-next-line unicorn/no-useless-spread -- Snapshot the collection before callbacks or cleanup can mutate it.
 		for (const key of [...this.#open.keys()]) this.cancel(key);
 	}
 

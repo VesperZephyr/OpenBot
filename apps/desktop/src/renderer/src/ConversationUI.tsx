@@ -1,7 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { useStore } from "./store";
-import { useReadReceipt } from "./useReadReceipt";
-import type { ConversationKey } from "@openbot/protocol";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { t } from "./i18n";
 
 export function ConversationShell({

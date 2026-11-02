@@ -247,6 +247,7 @@ export class DesktopCredentials {
 				let migrated = 0,
 					blocked = 0,
 					cleanupPending = 0;
+				// oxlint-disable-next-line unicorn/no-useless-spread -- Snapshot the collection before callbacks or cleanup can mutate it.
 				for (const id of [...legacy]) {
 					try {
 						// The native write may already have committed before an index write/restart.
