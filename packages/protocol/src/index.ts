@@ -18,7 +18,7 @@ import type {ConnectorInstall,ConnectorChange,ConnectorProfile} from "./connecto
 export * from "./connectors.ts";
 export * from "./background.ts";
 export * from "./skills.ts";
-import type { SkillChange, SkillSummary, SkillDetail, SkillVersion, SkillRef, SkillAttachment, SkillOperation, SkillResult } from "./skills.ts";
+import type { SkillSummary, SkillDetail, SkillVersion, SkillRef, SkillOperation, SkillResult } from "./skills.ts";
 import type { ArtifactRef, ArtifactContent, ArtifactOperation, ArtifactOperationResult, ArtifactListing } from "./artifacts.ts";
 import type {LifecycleState,NativeLifecycle,LifecycleReason} from "./lifecycle.ts";
 export type {LifecycleState,NativeLifecycle,LifecycleReason,LifecycleRecord} from "./lifecycle.ts";

@@ -146,6 +146,7 @@ export class McpStdio {
 	#fail(): void {
 		if (this.#closed) return;
 		this.#closed = true;
+		// oxlint-disable-next-line unicorn/no-useless-spread -- Snapshot the collection before callbacks or cleanup can mutate it.
 		for (const pending of [...this.#pending.values()]) pending.reject(new McpError(true));
 		this.#changed();
 	}

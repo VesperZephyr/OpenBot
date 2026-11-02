@@ -8,6 +8,7 @@ export function readBotTemplate(path: string): TemplateFile {
 		const template = parseTemplateJson(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
 		if (template.profile.avatar.kind === "png") validateAvatar(template.profile.avatar.base64);
 		return {
+			// oxlint-disable-next-line eslint/no-control-regex -- Control characters are intentionally rejected or removed from untrusted input.
 			name: Array.from(basename(path).replace(/[\u0000-\u001f\u007f]/g, ""))
 				.slice(0, 200)
 				.join(""),

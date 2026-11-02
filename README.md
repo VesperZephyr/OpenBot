@@ -181,7 +181,7 @@ All Bots share your Mac, workspace and grants. A Specialist's role is not a secu
 ## Development
 
 ```sh
-pnpm run check       # package boundaries, TypeScript, unit and Host tests
+pnpm run check       # Oxlint, package boundaries, TypeScript, unit and Host tests
 pnpm run e2e         # build and test the real desktop with a scripted model
 pnpm run e2e:headed  # explicitly show test windows for debugging
 pnpm run dev:debug   # normal development app with CDP on port 9339

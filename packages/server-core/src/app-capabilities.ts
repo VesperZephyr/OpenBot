@@ -121,7 +121,7 @@ export class AppCapabilities {
 	async #guard(action: ()=>Promise<AppResult<unknown>>, signal?: AbortSignal): Promise<AppResult<unknown>> {
 		try { return await action(); } catch(error) {
 			if (signal?.aborted) return {ok:false,error:{code:"cancelled",message:"Application read was cancelled"}};
-			if(error instanceof Error && /^History /.test(error.message))return {ok:false,error:{code:"resource_limit",message:"History is busy or still indexing. Try again."}};
+			if(error instanceof Error && error.message.startsWith("History "))return {ok:false,error:{code:"resource_limit",message:"History is busy or still indexing. Try again."}};
 			if (error instanceof AppFailure) return {ok:false,error:{code:error.code,message:error.message}};
 			if (error instanceof ProtocolError && error.code === "invalid_request") return {ok:false,error:{code:"invalid_request",message:"Invalid application request or cursor"}};
 			return {ok:false,error:{code:"not_found",message:"Application data is unavailable"}};

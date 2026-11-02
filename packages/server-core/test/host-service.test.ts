@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BotRuntime } from "@openbot/agent-runtime";
 import { SCRIPTED_MODEL, scriptedModels } from "@openbot/agent-runtime/testing";
-import { type ConversationSnapshot, type HostEventType, PROTOCOL_VERSION } from "@openbot/protocol";
+import { type HostEventType, PROTOCOL_VERSION } from "@openbot/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApprovalBook, HostService, MemorySecretStore, type ModelConfigFile } from "../src/index.ts";
 
@@ -42,8 +42,6 @@ describe("HostService", () => {
 	/** Bots whose background commands the service asked the Host to stop. */
 	let stoppedBots: string[];
 	let audit: unknown[];
-	/** Resolves with the first conversation snapshot that satisfies the predicate. */
-	let nextSnapshot: (predicate: (snapshot: ConversationSnapshot) => boolean) => Promise<ConversationSnapshot>;
 
 	async function answeredWindow(botId: string) {
 		// Cold source workers compete with the full suite; B14c e2e owns latency gates.
@@ -68,13 +66,6 @@ describe("HostService", () => {
 		updated = [];
 		secrets = new MemorySecretStore();
 		configFile = memoryConfigFile();
-		const waiters: { predicate: (snapshot: ConversationSnapshot) => boolean; resolve: (s: ConversationSnapshot) => void }[] =
-			[];
-		nextSnapshot = (predicate) => {
-			const { promise, resolve } = Promise.withResolvers<ConversationSnapshot>();
-			waiters.push({ predicate, resolve });
-			return promise;
-		};
 		service = new HostService({
 			runtime,
 			audit: (event) => audit.push(event),
@@ -89,12 +80,7 @@ describe("HostService", () => {
 				events.push(event.type);
 				if (event.type !== "conversation.updated") return;
 				expect(event.payload.items).toEqual([]);
- updated.push(event.payload.botId);
-				for (const waiter of [...waiters]) {
-					if (!waiter.predicate(event.payload)) continue;
-					waiters.splice(waiters.indexOf(waiter), 1);
-					waiter.resolve(event.payload);
-				}
+				updated.push(event.payload.botId);
 			},
 		});
 		await service.start();

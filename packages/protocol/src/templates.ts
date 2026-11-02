@@ -238,6 +238,7 @@ export function parseTemplateJson(input: string): BotTemplateV1 {
 }
 export function templateFilename(name: string): string {
 	const clean = name
+		// oxlint-disable-next-line eslint/no-control-regex -- Control characters are intentionally rejected or removed from untrusted input.
 		.replace(/[\\/\u0000-\u001f\u007f:*?"<>|]/g, "-")
 		.replace(/^\.+/, "")
 		.trim();

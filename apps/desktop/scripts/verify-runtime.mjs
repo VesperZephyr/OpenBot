@@ -76,7 +76,8 @@ export async function verifyRuntime(stage) {
 				if (message.kind !== "response" || message.messageId !== messageId) return;
 				clearTimeout(timer);
 				host.removeListener("message", listen);
-				message.ok ? resolve(message.result) : reject(Error(message.error.message));
+				if (message.ok) resolve(message.result);
+				else reject(Error(message.error.message));
 			}
 			host.on("message", listen);
 			host.send({ protocolVersion: 1, kind: "request", messageId, method, params });

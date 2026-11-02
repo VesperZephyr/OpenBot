@@ -24,6 +24,7 @@ const fingerprint = (value: unknown) => createHash("sha256").update(JSON.stringi
 const lexical = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 export const normalizeHistoryText = (text: string) =>
 	text
+		// oxlint-disable-next-line eslint/no-control-regex -- Control characters are intentionally rejected or removed from untrusted input.
 		.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, " ")
 		.replace(/\s+/gu, " ")
 		.trim();
@@ -189,6 +190,7 @@ export class HistoryStore {
 	}
 	stageMessage(partition: string, id: string, part: number, text: string) {
 		if (Buffer.byteLength(text) > HISTORY_DETAIL_BYTES) throw Error("Message chunk exceeds limit");
+		// oxlint-disable-next-line eslint/no-control-regex -- Control characters are intentionally rejected or removed from untrusted input.
 		const normalized = text.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, " ").replace(/\s+/gu, " ");
 		if (part === 0)
 			this.db.prepare("INSERT OR REPLACE INTO staged_messages VALUES(?,?,?,?)").run(partition, id, text, normalized.trimStart());

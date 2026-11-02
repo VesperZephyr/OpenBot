@@ -1,7 +1,7 @@
 import { StepsRow } from "./TranscriptDetails";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
-import type { TimelinePosition, TimelineRow, TimelineWindow, WindowInput } from "@openbot/protocol";
+import type { TimelinePosition, TimelineRow, WindowInput } from "@openbot/protocol";
 import { api, useStore } from "./store";
 import { t } from "./i18n";
 import { useReadReceipt } from "./useReadReceipt";

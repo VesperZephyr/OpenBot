@@ -38,6 +38,7 @@ export class ConversationSearchIndex {
 		const old = this.#messages.get(key) ?? [];
 		if (messages.length <= old.length) return;
 		this.#messages.set(key, [...old, ...messages.slice(old.length).map((m) => ({
+			// oxlint-disable-next-line eslint/no-control-regex -- Control characters are intentionally rejected or removed from untrusted input.
 			...m, conversationKey: key, searchText: m.text.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, " ").replace(/\s+/gu, " ").trim(),
 		}))]);
 	}

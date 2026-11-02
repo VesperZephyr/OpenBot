@@ -15,6 +15,7 @@ export class Observation {
 		if (this.#closed) return;
 		this.#seq++;
 		for (let i = 0; i < 4; i++) if (mask & (1 << i)) this.#revisions[i] = this.#seq;
+		// oxlint-disable-next-line unicorn/no-useless-spread -- Snapshot the collection before callbacks or cleanup can mutate it.
 		for (const finish of [...this.#waiting]) finish();
 	}
 	wait(cursor?: ObservationCursor, waitMs = 5000): Promise<ObservationUpdate> {
@@ -40,6 +41,7 @@ export class Observation {
 	}
 	close(): void {
 		this.#closed = true;
+		// oxlint-disable-next-line unicorn/no-useless-spread -- Snapshot the collection before callbacks or cleanup can mutate it.
 		for (const finish of [...this.#waiting]) finish();
 	}
 }

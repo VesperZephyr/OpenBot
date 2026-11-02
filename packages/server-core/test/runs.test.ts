@@ -74,6 +74,7 @@ describe("RunScheduler", () => {
 		});
 		const waiters = new Set<() => Promise<boolean>>();
 		changed = () => {
+			// oxlint-disable-next-line unicorn/no-useless-spread -- Snapshot the collection before callbacks or cleanup can mutate it.
 			for (const check of [...waiters]) void check().then((done) => done && waiters.delete(check));
 		};
 		reaches = (_botId, runId, state) => {
