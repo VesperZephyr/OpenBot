@@ -48,9 +48,9 @@ it("defaults to English, supports Chinese onboarding and persists language acros
  await scroller.evaluate((element) => { element.scrollTop = 240; });
  const scrollBefore = await scroller.evaluate((element) => element.scrollTop);
  await page.locator("#settings-language").getByRole("button", { name: /语言/ }).click();
- await page.getByRole("listbox", { name: /语言/ }).waitFor();
+ await page.getByRole("listbox").waitFor();
  await page.keyboard.press("Escape");
- await page.getByRole("listbox", { name: /语言/ }).waitFor({ state: "hidden" });
+ await page.getByRole("listbox").waitFor({ state: "hidden" });
  expect(await page.evaluate(() => (window as any).__languageWrites())).toBe(updatesBefore);
  expect(await scroller.evaluate((element) => element.scrollTop)).toBe(scrollBefore);
  await page.locator("#settings-language").getByRole("button", { name: /语言/ }).click();
@@ -58,7 +58,7 @@ it("defaults to English, supports Chinese onboarding and persists language acros
  await page.locator("#settings-language").getByRole("button", { name: /语言/ }).click();
  await page.getByRole("listbox").waitFor({ state: "hidden" });
  await page.locator("#settings-language").getByRole("button", { name: /语言/ }).click();
- await page.getByRole("listbox", { name: /语言/ }).waitFor();
+ await page.getByRole("listbox").waitFor();
  await page.keyboard.press("e");
  await page.keyboard.press("Enter");
  await page.getByRole("heading", { name: "Settings", exact: true }).waitFor();

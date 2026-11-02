@@ -80,10 +80,11 @@
 }
 
 @layer ob-utilities {
-	/* React Aria paints the real input with inline 1px clipping. Those inline
-	   styles beat layered rules, so Playwright and pointer hits land on the
-	   label instead of the radio. !important restores the full-card hit target. */
-	[data-openbot-ui] .appearance-choice input {
+	/* The hidden wrapper around the radio is a span with inline 1px clipping.
+	   Layered rules lose to those inline styles, so the label receives the hit.
+	   !important stretches that wrapper and the input across the card. */
+	[data-openbot-ui] .appearance-choice > span:first-child,
+	[data-openbot-ui] .appearance-choice > span:first-child input {
 		position: absolute !important;
 		inset: 0 !important;
 		z-index: 1 !important;
@@ -96,6 +97,7 @@
 		clip-path: none !important;
 		white-space: normal !important;
 		opacity: 0 !important;
+		pointer-events: auto !important;
 		cursor: pointer;
 	}
 	@media (prefers-reduced-motion: reduce) {

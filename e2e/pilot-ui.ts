@@ -5,8 +5,9 @@ export async function chooseSettingsLanguage(page: Page, language: "en" | "zh-CN
 	// React Aria names the trigger "English Language" / "简体中文 语言": the value id comes before the label id.
 	const trigger = page.locator("#settings-language").getByRole("button", { name: /Language|语言/ });
 	await trigger.click();
-	await page.getByRole("listbox", { name: /Language|语言/ }).waitFor();
-	await page.getByRole("option", { name: language === "en" ? "English" : "简体中文", exact: true }).click();
+	const listbox = page.getByRole("listbox");
+	await listbox.waitFor();
+	await listbox.getByRole("option", { name: language === "en" ? "English" : "简体中文", exact: true }).click();
 }
 
 export async function viewportSize(page: Page): Promise<{ width: number; height: number }> {

@@ -1,9 +1,6 @@
 export const MENU_POPOVER_SURFACE = [
 	"ob:max-w-[calc(100vw-32px)] ob:overflow-y-auto",
 	"ob:rounded-2xl ob:border ob:border-muted ob:bg-surface-raised ob:p-2.5 ob:shadow-dropdown",
-	"ob:transition ob:duration-150 ob:ease-out",
-	"ob:data-[entering]:opacity-0 ob:data-[entering]:scale-95",
-	"ob:data-[exiting]:opacity-0 ob:data-[exiting]:scale-95",
 	"ob:data-[placement=bottom]:origin-top-left ob:data-[placement=top]:origin-bottom-left",
 ].join(" ");
 

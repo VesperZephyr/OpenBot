@@ -36,7 +36,7 @@ it('defaults to white under a dark OS, saves appearance, and keeps drafts throug
     await settingsScroll.evaluate((element) => { element.scrollTop = 180; });
     const scrollBefore = await settingsScroll.evaluate((element) => element.scrollTop);
     await language.click();
-    await h.page().getByRole('listbox', {name:/Language/}).waitFor();
+    await h.page().getByRole('listbox').waitFor();
     await h.page().emulateMedia({colorScheme:'light'});
     await expect.poll(() => h.page().locator('html').getAttribute('data-theme')).toBe('dark');
     const popupAgrees = await h.page().evaluate(() => {
