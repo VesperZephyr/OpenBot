@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import type { TimelinePosition, WindowResult } from "@openbot/protocol";
+import type { TimelinePosition, WindowResult } from "../packages/protocol/src/index.ts";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { launchApp, type AppHarness } from "./harness.ts";
 let h: AppHarness, core: string;
