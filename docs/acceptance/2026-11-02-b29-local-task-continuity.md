@@ -1,6 +1,6 @@
 # B29 Local Task Continuity Acceptance — November 2, 2026
 
-Contract: [B29](../tasks/b29-local-task-continuity.md). Review: [draft PR #84](https://github.com/VesperZephyr/OpenBot/pull/84), branch `task/b29-local-task-continuity`, based on the reviewed D11 design and main through `4b98a42` (the update after `f45a707` adds only D12/D12a design documents and task-index links). The owner retains merge authority.
+The owner merged the [B29 implementation](https://github.com/VesperZephyr/OpenBot/pull/84) at `a15bd9f`. The [task spec](../tasks/b29-local-task-continuity.md) owns the acceptance contract. [Draft follow-up #89](https://github.com/VesperZephyr/OpenBot/pull/89) tracks the T14 test correction described below.
 
 ## Verification environment
 
@@ -41,7 +41,7 @@ The table maps the contract to new task-specific tests and existing shared-path 
 - New-task drafts survive navigation; stopped drafts survive restart and remain explicit sends. Header sizing and Chinese Archive copy were corrected after screenshot inspection.
 - An initial e2e fixture passed an unsupported `description` argument to `local_write` and asserted only the subsequent text answer. It was corrected to assert real write/edit bytes and the published artifact hash. The final suite no longer treats “Report saved” as file evidence.
 
-## Full regression
+## Original branch regression
 
 - `pnpm run check`: 745 tests across 108 files passed, including lint, package boundaries and both TypeScript projects. Repeated after the final timing refresh: 43.41 seconds of Vitest execution; PR checks retain remote results.
 - `pnpm run e2e`: all 217 cases across 55 suites passed with no skips after the cancellation-outcome fix; Vitest reported 319.59 seconds. The task suite contributes five real Electron/Host/executor flows.
@@ -49,9 +49,19 @@ The table maps the contract to new task-specific tests and existing shared-path 
 - `git diff --check` and referenced local documentation paths checked.
 - Inspected `e2e/.run/local-tasks/01-stopped-draft.png` through `07-task-approval.png`: stopped draft, exact task result, Chinese minimum-size result, English/Chinese uncertain-effects review, paused stopped draft and unattended approval. The final result screenshot shows the prior cancelled attempt followed by the explicit corrected result.
 
-Implementation/test commit: `0b8b077`; merge `13ac92c` only incorporates the newer main task-index/design documents. Current remote CI is tracked on [PR #84](https://github.com/VesperZephyr/OpenBot/pull/84), rather than copying changing run state into this dated record.
+All five remote checks passed on the [original acceptance head `e7ceb7f`](https://github.com/VesperZephyr/OpenBot/actions/runs/41421581961).
 
 Earlier exploratory checks encountered the missing local Oxlint installation and timeout failures in existing login-path/shard tooling tests during a machine stall. Frozen dependency installation and isolated reruns resolved those checks; no timeout or assertion was weakened. The earlier full e2e pass (217 cases) preceded the final cancellation-outcome correction and is not substituted for the final run.
+
+## Integration and CI follow-up
+
+After integrating the prebuilt E2E runtime, the [final #84 head `292e9a9`](https://github.com/VesperZephyr/OpenBot/actions/runs/41423702541) passed all five macOS checks. The matching local run passed 755 unit tests in 109 files and 217 Electron cases in 55 suites.
+
+The [first run on merge commit `a15bd9f`](https://github.com/VesperZephyr/OpenBot/actions/runs/41423755792/attempts/1) failed T14 in Desktop shard 3. The test probed the second task's latest window and assumed its next request would still see a ready index. The cursor request returned `building` while the projection was being rebuilt. The [targeted rerun on the same merge commit](https://github.com/VesperZephyr/OpenBot/actions/runs/41423755792/attempts/2) reproduced the same result. Neither failure returned another task's rows.
+
+The corrected test requires a real cursor that reads successfully in the source task. After returning to the task list it presents the same cursor to another task, repeats that exact request only while indexing, and requires the specific history-conflict error. A successful foreign read, an unavailable window, a timeout or an unrelated error fails the test. The fix changes only the acceptance harness.
+
+On the corrected head `fe71245`, local `pnpm run check` passed 755 tests in 109 files and full background `pnpm run e2e` passed 217 tests in 55 suites with no skips. The minimum-size Chinese task screenshot showed the published report and its controls. All three remote Desktop shards passed on the [first follow-up run](https://github.com/VesperZephyr/OpenBot/actions/runs/41429573893/attempts/1). The separate warm history-switch performance gate measured 515.3 ms p95 against 500 ms, compared with 74.3 ms locally. This benchmark also crossed its limit in the [earlier I10 qualification](2026-11-02-e2e-runtime-prebuild.md). A [same-head performance rerun](https://github.com/VesperZephyr/OpenBot/actions/runs/41429573893/attempts/2) measured 507.1 ms. The benchmark and its limit are unchanged. The [follow-up PR checks](https://github.com/VesperZephyr/OpenBot/pull/89/checks) track the full qualification including this record.
 
 ## Limits
 
