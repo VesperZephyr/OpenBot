@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { type AppHarness, createBot, launchApp } from "./harness.ts";
+import { chooseSettingsLanguage } from "./pilot-ui.ts";
 import type { BotSummary, MemoryState } from "../packages/protocol/src/index.ts";
 
 let h: AppHarness;
@@ -93,7 +94,7 @@ it("reviews scope changes and supplies shared facts to a second Bot without unre
 it("forgets shared facts across restart and offers usable Chinese controls in a small window", async () => {
 	let page = h.page();
 	await page.getByRole("button", { name: /^Settings/ }).click();
-	await page.getByLabel("Language", { exact: true }).selectOption("zh-CN");
+	await chooseSettingsLanguage(page, "zh-CN");
 	await page.getByRole("button", { name: /Maple/ }).first().click();
 	await edit(true);
 	await page.getByRole("button", { name: "所有 Bot 共享", exact: true }).click();
@@ -107,7 +108,7 @@ it("forgets shared facts across restart and offers usable Chinese controls in a 
 	page = h.page();
 	expect((await h.api("memory.shared.get")).notes[0]).toMatchObject({ status: "forgotten", protected: true });
 	await page.getByRole("button", { name: /^设置/ }).click();
-	await page.getByLabel("语言", { exact: true }).selectOption("en");
+	await chooseSettingsLanguage(page, "en");
 	await page.getByRole("button", { name: /Maple/ }).first().click();
 	await edit();
 	await page.getByRole("button", { name: "Add note", exact: true }).click();

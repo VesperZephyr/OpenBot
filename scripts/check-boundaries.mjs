@@ -2,7 +2,8 @@
 // Enforces the package dependency rules in docs/architecture.md Section 4.2 for
 // workspace manifests and source imports under apps/ and packages/.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const root = new URL("..", import.meta.url).pathname;
 
@@ -57,8 +58,9 @@ function sourceFiles(dir) {
 const importPattern = /(?:^|[^\w.])(?:import|export)\s[^'"]*?from\s*["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g;
 const specifierPackage = (spec) => (spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0]);
 
-const errors = [];
-for (const dir of packageDirs()) {
+export function packageBoundaryErrors() {
+	const errors = [];
+	for (const dir of packageDirs()) {
 	const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
 	const rules = allowed[manifest.name];
 	const where = relative(root, dir);
@@ -82,10 +84,101 @@ for (const dir of packageDirs()) {
 			if (isGuarded(dep) && !permits(rules, dep)) errors.push(`${relative(root, file)}: ${manifest.name} must not import ${spec}`);
 		}
 	}
+	}
+	return errors;
 }
 
-if (errors.length > 0) {
-	for (const error of errors) console.error(error);
-	process.exit(1);
+const uiPackages = new Set(["react", "react-dom", "react-aria-components", "tailwind-merge"]);
+const iconPackages = new Set(["react", "react-dom", "lucide-react"]);
+const sourceExtensions = [".tsx", ".ts", ".jsx", ".js", ".mjs", ".cjs"];
+const importPatterns = [
+	/(?:^|[^\w.])(?:import|export)\s[^'"]*?from\s*["']([^"']+)["']/g,
+	/(?:^|[^\w.])import\s*["']([^"']+)["']/g,
+	/import\(\s*["']([^"']+)["']\s*\)/g,
+];
+
+function inside(parent, file) {
+	const rel = relative(parent, file);
+	return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
-console.log("Package boundaries OK");
+
+function resolveRelative(fromFile, spec) {
+	const base = resolve(dirname(fromFile), spec);
+	const candidates = [base, ...sourceExtensions.map((ext) => base + ext), ...sourceExtensions.flatMap((ext) => [join(base, `index${ext}`)])];
+	return candidates.find((candidate) => existsSync(candidate)) ?? base;
+}
+
+function specifiers(text) {
+	const found = [];
+	for (const pattern of importPatterns) {
+		for (const match of text.matchAll(new RegExp(pattern.source, pattern.flags))) if (match[1]) found.push(match[1]);
+	}
+	return found;
+}
+
+function packageName(spec) {
+	return spec.startsWith("@") ? spec.split("/").slice(0, 2).join("/") : spec.split("/")[0];
+}
+
+function allowedPackage(spec, allowed) {
+	if (spec.startsWith(".") || spec.startsWith("node:") || spec === "electron") return false;
+	return allowed.has(packageName(spec));
+}
+
+export function checkRendererUi(uiDir, iconFile) {
+	const errors = [];
+	const remedy = "pass state and actions as props";
+	if (!existsSync(uiDir)) return [`${uiDir}: renderer ui directory is missing`];
+	const icon = iconFile ? resolve(iconFile) : "";
+	for (const file of sourceFiles(uiDir)) {
+		for (const spec of specifiers(readFileSync(file, "utf8"))) {
+			if (spec.startsWith(".")) {
+				const resolved = resolve(resolveRelative(file, spec));
+				if (icon !== "" && resolved === icon) continue;
+				if (!inside(uiDir, resolved))
+					errors.push(`${relative(root, file)}: ${spec} leaves the renderer UI boundary (${relative(root, resolved) || resolved}). ${remedy}`);
+				continue;
+			}
+			if (!allowedPackage(spec, uiPackages))
+				errors.push(`${relative(root, file)}: cannot import ${spec} from the renderer UI boundary. ${remedy}`);
+		}
+	}
+	if (iconFile && existsSync(iconFile)) {
+		for (const spec of specifiers(readFileSync(iconFile, "utf8"))) {
+			if (!allowedPackage(spec, iconPackages))
+				errors.push(`${relative(root, iconFile)}: InterfaceIcon may only import React and lucide-react, not ${spec}`);
+		}
+	}
+	return errors;
+}
+
+const rendererUiPackages = ["react-aria-components", "tailwind-merge", "tailwindcss", "@tailwindcss/vite"];
+
+export function checkProcessUiImports(desktopSrc) {
+	const errors = [];
+	for (const area of ["main", "preload"]) {
+		const dir = join(desktopSrc, area);
+		if (!existsSync(dir)) continue;
+		for (const file of sourceFiles(dir)) {
+			for (const spec of specifiers(readFileSync(file, "utf8"))) {
+				if (rendererUiPackages.some((name) => spec === name || spec.startsWith(`${name}/`)))
+					errors.push(`${relative(root, file)}: main and preload must not import ${spec}`);
+			}
+		}
+	}
+	return errors;
+}
+
+const invokedDirectly = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (invokedDirectly) {
+	const errors = [
+		...packageBoundaryErrors(),
+		...checkRendererUi(join(root, "apps/desktop/src/renderer/src/ui"), join(root, "apps/desktop/src/renderer/src/InterfaceIcon.tsx")),
+		...checkProcessUiImports(join(root, "apps/desktop/src")),
+	];
+	if (errors.length > 0) {
+		for (const error of errors) console.error(error);
+		process.exit(1);
+	}
+	console.log("Package boundaries OK");
+}

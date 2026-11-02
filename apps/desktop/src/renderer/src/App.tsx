@@ -4,6 +4,8 @@ import { BackupSettings, RestoreNotice } from "./BackupSettings";
 import { WorkspaceLayout } from "./WorkspaceLayout";
 import { openFiles } from "./reader-store";
 import { AppearanceSelect } from "./appearance";
+import { LanguageField } from "./ui/language-field";
+import { NewConversationDialog } from "./ui/new-conversation-dialog";
 import { InterfaceIcon } from "./InterfaceIcon";
 import { Avatar, PersonalStar } from "./Avatar";
 import { AvatarEditor } from "./AvatarEditor";
@@ -149,39 +151,31 @@ export function App() {
 			</main>
             </WorkspaceLayout>
 			<BotTemplateDialog />
-			{newMenu && (
-				<div className="dialog-backdrop">
-					<div className="dialog new-conversation" role="dialog" aria-label={t("New conversation")}>
-						<div className="details-heading">
-							<h2>{t("New conversation")}</h2>
-							<button data-dialog-close aria-label={t("Close")} onClick={() => setNewMenu(false)}>
-								×
-							</button>
-						</div>
-						<button
-							onClick={() => {
-								setNewMenu(false);
-								setQuery("");
-								setCreating(true);
-							}}
-						>
-							{t("Create new Bot")}
-							<small>{t("A teammate with a specific job")}</small>
-						</button>
-						<button
-							onClick={() => {
-								setNewMenu(false);
-								setQuery("");
-								setCreatingGroup(true);
-							}}
-						>
-							{t("Create group")}
-							<small>{t("Bring your Bots together for a task")}</small>
-						</button>
-						<button onClick={() => { setNewMenu(false); beginTemplateImport(); }}>{t("Import template")}</button>
-					</div>
-				</div>
-			)}
+			<NewConversationDialog
+				open={newMenu}
+				title={t("New conversation")}
+				closeLabel={t("Close")}
+				createBot={t("Create new Bot")}
+				createBotDetail={t("A teammate with a specific job")}
+				createGroup={t("Create group")}
+				createGroupDetail={t("Bring your Bots together for a task")}
+				importTemplate={t("Import template")}
+				onClose={() => setNewMenu(false)}
+				onCreateBot={() => {
+					setNewMenu(false);
+					setQuery("");
+					setCreating(true);
+				}}
+				onCreateGroup={() => {
+					setNewMenu(false);
+					setQuery("");
+					setCreatingGroup(true);
+				}}
+				onImport={() => {
+					setNewMenu(false);
+					beginTemplateImport();
+				}}
+			/>
 			{creatingGroup && <GroupEditor onClose={() => setCreatingGroup(false)} />}
 			{creating && <NewBotDialog onClose={() => setCreating(false)} />}
 			{notice !== undefined && (
@@ -1180,22 +1174,14 @@ function Settings() {
 			</div>
 
 			<div className="settings-group" id="settings-language">
-				<label className="field">
-					<span>{t("Language")}</span>
-					<select
-						aria-label={t("Language")}
-						value={settings.language ?? "en"}
-						onChange={(event) =>
-							void api["settings.update"]({ language: event.target.value as "en" | "zh-CN" })
-								.then(refreshSettings)
-								.catch(report)
-						}
-					>
-						<option value="en">English</option>
-						<option value="zh-CN">简体中文</option>
-					</select>
-				</label>
-				<p className="model-caption">{t("Changes the app interface. Your conversations and Bot instructions stay as written.")}</p>
+				<LanguageField
+					label={t("Language")}
+					caption={t("Changes the app interface. Your conversations and Bot instructions stay as written.")}
+					value={settings.language ?? "en"}
+					onChange={(language) => {
+						void api["settings.update"]({ language }).then(refreshSettings).catch(report);
+					}}
+				/>
 			</div>
 			<div className="settings-group">
 				<h2>{t("Connect a model")}</h2>

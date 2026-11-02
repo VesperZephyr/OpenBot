@@ -6,6 +6,7 @@ This is the active delivery queue, not a release history. Task status, contracts
 
 | Work | Next action / dependency |
 | --- | --- |
+| [D12a: BoardUI foundation and Settings/chooser pilot](tasks/d12a-boardui-foundation.md) | Review the implementation on `task/d12a-boardui-foundation`; the spec owns the pilot contract and acceptance |
 | [B11e: Bot routines and generated-file Library](tasks/b11e-bot-routines-library.md) | Complete the review/verification tracked in [PR #69](https://github.com/VesperZephyr/OpenBot/pull/69); the spec owns findings and evidence |
 | [B13e: Bot templates](tasks/b13e-bot-templates.md) | Owner review and merge of the implementation candidate; acceptance is linked from the spec |
 | [B27c: bounded memory selection and retrieval](tasks/b27c-bounded-memory-retrieval.md) | Review the verified implementation in [PR #77](https://github.com/VesperZephyr/OpenBot/pull/77); the spec links actual-product quality and usage evidence |

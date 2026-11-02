@@ -4,6 +4,7 @@ import {
 	ArrowRight,
 	ArrowUp,
 	BookOpen,
+	ChevronDown,
 	ChevronRight,
 	FileText,
 	Folder,
@@ -31,6 +32,7 @@ const icons = {
 	forward: ArrowRight,
 	refresh: RotateCw,
 	chevron: ChevronRight,
+	chevronDown: ChevronDown,
 	panel: PanelRight,
 	export: ArrowDownToLine,
 	search: Search,
@@ -43,9 +45,9 @@ const icons = {
 	arrow: ArrowUp,
 	group: Users,
 };
-export function InterfaceIcon({ name }: { name: keyof typeof icons }) {
+export function InterfaceIcon({ name, size = 19 }: { name: keyof typeof icons; size?: number }) {
 	const Icon = icons[name];
-	return <Icon className="interface-icon" size={19} strokeWidth={1.6} aria-hidden="true" focusable="false" />;
+	return <Icon className="interface-icon" size={size} strokeWidth={1.6} aria-hidden="true" focusable="false" />;
 }
 export function BrandSymbol() {
 	return (

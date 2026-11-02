@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { launchApp, createBot, type AppHarness } from "./harness.ts";
+import { chooseSettingsLanguage } from "./pilot-ui.ts";
 import type { BotSummary, SkillRef, SkillDocument } from "../packages/protocol/src/index.ts";
 
 let h: AppHarness, botId: string, original: SkillRef, latest: SkillRef;
@@ -106,7 +107,7 @@ it("requires deliberate version adoption and rejects ambiguous or unavailable me
 it("shows stale pins and supports removal in Chinese at a small window size", async () => {
 	const page = h.page();
 	await page.getByRole("button", { name: /^Settings/ }).click();
-	await page.getByLabel("Language", { exact: true }).selectOption("zh-CN");
+	await chooseSettingsLanguage(page, "zh-CN");
 	await page.getByRole("button", { name: /Invoice Analyst/ }).filter({ hasNotText: "copy" }).first().click();
 	await edit(true);
 	await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(880, 560));

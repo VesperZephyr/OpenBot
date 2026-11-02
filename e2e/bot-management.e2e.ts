@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { type AppHarness, launchApp } from "./harness.ts";
+import { chooseSettingsLanguage } from "./pilot-ui.ts";
 let h: AppHarness;
 const roster = () => h.api("bots.list");
 const approve = () =>
@@ -180,7 +181,7 @@ it("deletes a working Specialist, retains local history, and shows bilingual con
 		.click();
 	await h.page().getByRole("heading", { name: "Bot management activity" }).scrollIntoViewIfNeeded();
 	await h.shot("05-local-activity-en");
-	await h.page().getByRole("combobox", { name: "Language", exact: true }).selectOption("zh-CN");
+	await chooseSettingsLanguage(h.page(), "zh-CN");
 	await h.page().locator(".management-history h2").scrollIntoViewIfNeeded();
 	await h.shot("06-local-activity-zh");
 });

@@ -1,0 +1,7 @@
+/*
+ * Pilot coexistence order. Legacy styles stay in one layer so their internal
+ * specificity, source order and scoped !important rules behave as before.
+ * ob-base then ob-utilities win on the same properties inside [data-openbot-ui].
+ * Remove this bridge in Stage 3, when the legacy element selectors are gone.
+ */
+@layer legacy, theme, ob-base, ob-utilities;
