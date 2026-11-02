@@ -192,6 +192,7 @@ export const HOST_PARAM_SCHEMAS = {
 		strict({ ...MemoryNoteBase, action: Type.Literal("add"), heading: Type.String({ minLength: 1, maxLength: 120 }), content: Type.String({ minLength: 1, maxLength: 8192 }) }),
 		strict({ ...MemoryNoteBase, action: Type.Literal("edit"), noteId: Id, content: Type.String({ minLength: 1, maxLength: 8192 }) }),
 		strict({ ...MemoryNoteBase, action: Type.Literal("forget"), noteId: Id }),
+		strict({ ...MemoryNoteBase, action: Type.Literal("placement"), noteId: Id, placement: Type.Enum(["always", "on-demand"]) }),
 		strict({ ...MemoryNoteBase, action: Type.Enum(["share", "unshare"]), noteId: Id, otherRevision: Type.Integer({ minimum: 0 }) }),
 	]),
 	"bots.memory.source": strict({ botId: Id, scope: MemoryScope, noteId: Id, which: Type.Enum(["original", "changed"]) }),

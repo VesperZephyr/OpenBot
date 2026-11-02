@@ -7,6 +7,11 @@ import {
 } from "@openbot/protocol";
 import { BotsDoc } from "./bots.ts";
 import { RunsDoc } from "./runs.ts";
+import { ChannelsDoc } from "./channels.ts";
+import { GroupsDoc } from "./groups.ts";
+import { syncMemoryTools } from "./memory-offering.ts";
+import { retrieveMemory } from "./memory-retrieval.ts";
+import { memoryReadFailure, validMemoryRead, validMemorySearch, type MemoryReadResponse } from "@openbot/protocol";
 import {
 	MemoryDoc, MemoryReceiptDoc, SharedMemoryDoc, checkMemorySize, checkNotes, memoryState, modelNotes, newNote, ownerNotes, renderNotes, topicKey,
 	type MemoryCallContext, type MemoryDocument, type MemoryEdit, type StoredMemory,
@@ -35,6 +40,10 @@ export class MemoryBook {
 	readonly context: Context;
 	constructor(harness: Harness, context: Context) { this.harness = harness; this.context = context; }
 
+	async projection(botId: string, group: boolean) {
+		return this.harness.commit(async tx => ({ local: copy(memoryState(await tx.doc(MemoryDoc, botId, null))), ...(group ? {} : { shared: copy(memoryState(await tx.doc(SharedMemoryDoc))) }) }), this.context);
+	}
+
 	async get(botId?: string): Promise<MemoryState> {
 		if (botId !== undefined && !(await this.harness.snapshot(BotsDoc, this.context))?.bots[botId])
 			throw new ProtocolError("not_found", "Unknown Bot");
@@ -50,14 +59,19 @@ export class MemoryBook {
 			const doc = botId === undefined ? await tx.doc(SharedMemoryDoc) : await tx.doc(MemoryDoc, botId, null);
 			const state = memoryState(doc);
 			if (state.revision !== expectedRevision) conflict();
+			let restoredNotes: readonly MemoryNote[] | undefined;
 			if (restoreRevision !== undefined) {
 				const previous = state.history.find(item => item.revision === restoreRevision);
 				if (!previous) throw new ProtocolError("not_found", "Memory version is no longer available");
 				content = previous.content;
+				restoredNotes = previous.notes ?? [];
 			}
 			const source: MemoryProvenance = { kind: restoreRevision === undefined ? "user" : "restore", at: Date.now(), ...(botId ? { botId } : {}) };
 			checkMemorySize(content ?? "", botId === undefined ? SHARED_MEMORY_LIMIT_BYTES : MEMORY_LIMIT_BYTES);
-			commitNotes(doc, state, ownerNotes(state, content ?? "", source), source, botId === undefined ? "shared" : "bot", restoreRevision);
+			let notes = ownerNotes(state, content ?? "", source);
+			if (restoredNotes) notes = notes.map(note => note.status === "active" ? { ...note, placement: restoredNotes.find(n => n.key === note.key)?.placement ?? "always" } : note);
+			commitNotes(doc, state, notes, source, botId === undefined ? "shared" : "bot", restoreRevision);
+			await syncMemoryTools(tx);
 			return copy(memoryState(doc));
 		}, this.context);
 	}
@@ -86,6 +100,7 @@ export class MemoryBook {
 				requestIds: run.inputs.map(input => input.requestId).slice(-8),
 			};
 			commitNotes(doc, state, modelNotes(state, edit, source, memoryState(await tx.doc(SharedMemoryDoc))), source, "bot");
+			await syncMemoryTools(tx);
 			receipt.fingerprint = fingerprint;
 			receipt.binding = binding;
 			receipt.revision = doc.revision!;
@@ -120,7 +135,14 @@ export class MemoryBook {
 			} else {
 				const note = notes.find(n => n.id === input.noteId && n.status === "active");
 				if (!note) throw new ProtocolError("not_found", "Memory note is no longer active");
-				if (action === "edit") {
+				if (action === "placement") {
+					if (input.placement !== "always" && input.placement !== "on-demand") throw new ProtocolError("invalid_request", "Invalid memory placement");
+					if ((note.placement ?? "always") === input.placement) {
+						receipt.fingerprint = fingerprint; receipt.revision = state.revision;
+						return result();
+					}
+					notes = notes.map(n => n.id === note.id ? { ...n, placement: input.placement } : n);
+				} else if (action === "edit") {
 					if (!input.content.trim()) throw new ProtocolError("invalid_request", "Enter memory content or use Forget");
 					notes = notes.map(n => n.id === note.id ? { ...n, content: input.content.trim(), protected: true, changed: source } : n);
 				} else {
@@ -138,10 +160,51 @@ export class MemoryBook {
 				}
 			}
 			commitNotes(doc, state, notes, source, scope);
+			await syncMemoryTools(tx);
 			receipt.fingerprint = fingerprint;
 			receipt.revision = doc.revision!;
 			return result();
 		}, this.context);
+	}
+
+	async read(botId: string, call: MemoryCallContext, tool: "memory_search" | "memory_read", args: unknown, signal: AbortSignal): Promise<MemoryReadResponse> {
+		if (tool === "memory_search" ? !validMemorySearch(args) : !validMemoryRead(args)) return memoryReadFailure("invalid_arguments");
+		if (signal.aborted) return memoryReadFailure("cancelled");
+		const result = await this.harness.commit(async tx => {
+			const bot = (await tx.doc(BotsDoc)).bots[botId], run = (await tx.doc(RunsDoc)).runs[call.runId];
+			if (!bot || bot.status === "deleted" || !run || run.botId !== botId || run.state !== "running" || run.interruption) return memoryReadFailure("unavailable");
+			const channelId = run.channelId ?? "direct";
+			const channel = Object.values((await tx.doc(ChannelsDoc)).channels).find(c => c.botId === botId && c.channelId === channelId);
+			const conversation = channelId === "direct" ? bot.conversationId : channel?.conversationId;
+			if (String(conversation) !== call.conversationId || conversation === undefined) return memoryReadFailure("unavailable");
+			const group = channelId !== "direct" && !channelId.startsWith("routine_");
+			if (group) {
+				const groups = await tx.doc(GroupsDoc), current = groups.groups[channelId];
+				const delivery = Object.values(groups.deliveries).find(d => d.botId === botId && d.groupId === channelId && run.requestIds.includes(`delivery:${d.deliveryId}`));
+				const root = delivery?.rootId ? groups.roots?.[delivery.rootId] : undefined;
+				if (!current || current.status !== "active" || !delivery || delivery.state !== "pending" || delivery.closed || delivery.transferId ||
+					(!current.memberIds.includes(botId) && root?.coreBotId !== botId) || (delivery.rootId && root?.state !== "running")) return memoryReadFailure("unavailable");
+				const seen = new Set<string>();
+				let ancestor = delivery;
+				for (;;) {
+					if (seen.has(ancestor.deliveryId) || ancestor.closed || ancestor.state === "failed" || ancestor.state === "cancelled") return memoryReadFailure("unavailable");
+					seen.add(ancestor.deliveryId);
+					if (ancestor.backgroundSourceId) {
+						const source = groups.deliveries[ancestor.backgroundSourceId];
+						if (!source || source.transferId || source.state === "failed" || source.state === "cancelled") return memoryReadFailure("unavailable");
+					}
+					if (!ancestor.parentId) break;
+					const parent = groups.deliveries[ancestor.parentId];
+					if (!parent) return memoryReadFailure("unavailable");
+					ancestor = parent;
+				}
+			}
+			const local = memoryState(await tx.doc(MemoryDoc, botId, null));
+			const shared = group ? undefined : memoryState(await tx.doc(SharedMemoryDoc));
+			if (signal.aborted) return memoryReadFailure("cancelled");
+			return retrieveMemory({ botId, conversationId: call.conversationId, local, shared, observedAt: Date.now() }, tool, args);
+		}, this.context);
+		return signal.aborted ? memoryReadFailure("cancelled") : result;
 	}
 
 	async evidence(botId: string, scope: MemoryScope, noteId: string, which: "original" | "changed"): Promise<MemorySourceEvidence> {

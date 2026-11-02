@@ -56,7 +56,7 @@ it("keeps input-specific Retry after an update and a restart", async () => {
 	h.model.script({ tool: "send_message", args: { text: "The first check is complete." } }, { error: "PRIVATE_PROVIDER_DIAGNOSTIC" });
 	await h.send("Retry exactly this request");
 	await button("Retry").waitFor();
-	expect(await h.page().getByText("The first check is complete.", { exact: true }).count()).toBe(1);
+	await expect.poll(() => h.page().getByText("The first check is complete.", { exact: true }).count()).toBe(1);
 	expect(await h.page().getByText("PRIVATE_PROVIDER_DIAGNOSTIC", { exact: false }).count()).toBe(0);
 	await h.relaunch();
 	await h.page().locator(".chat-list .bot-row").filter({ hasText: "Evidence Bot" }).click();

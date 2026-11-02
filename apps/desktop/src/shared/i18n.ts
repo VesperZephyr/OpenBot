@@ -1,6 +1,11 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
+ "Sources describe current memory. Earlier tool results retain their recorded revisions.": "来源描述的是当前记忆，先前的工具结果仍保留其记录的版本。",
+ "Memory placement": "记忆放置方式", "Always in context": "始终加入上下文", "Read when needed": "需要时检索", "Save placement": "保存放置方式", "Cancel placement change": "取消放置更改",
+ "Keep important preferences always in context. On-demand notes can be missed and add latency or cost. Placement affects future memory sections, not old chats, summaries or provider requests; protected topic names can remain visible.": "重要偏好应始终加入上下文。按需记忆可能被遗漏，也可能增加延迟或费用。放置方式仅影响后续记忆区段，不会移除旧聊天、摘要或已发送的模型请求；受保护的主题名称仍可能可见。",
+ "This scope: {always} always-loaded bytes / {total} stored bytes. These are Markdown estimates, not model tokens.": "此范围：始终加载 {always} 字节 / 已存储 {total} 字节。这是 Markdown 估算值，并非模型 token 数。",
+ "Restoring also restores placement. Older versions without placement use Always in context.": "恢复版本也会恢复放置方式。没有放置记录的旧版本使用“始终加入上下文”。",
  "The model request will be retried.": "即将重试模型请求。",
  "Preparing response": "正在准备回复", "Generating response": "正在生成回复", "Reading files": "正在读取文件", "Writing files": "正在写入文件", "Running command": "正在运行命令", "Searching web": "正在搜索网页", "Reading web": "正在读取网页", "Using connector": "正在使用连接器", "Sending update": "正在发送进展", "Waiting for result": "正在等待结果",
  "This input could not be completed.": "本次输入未能完成。", "Work was cancelled.": "任务已取消。", "Not processed": "未处理", "No final text was returned for this input.": "本次输入未返回最终文字。", "Cancelled before starting": "开始前已取消", "Retry is unavailable for this outcome.": "此结果无法重试。",

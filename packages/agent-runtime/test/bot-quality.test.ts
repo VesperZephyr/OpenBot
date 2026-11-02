@@ -208,6 +208,48 @@ describe("Bot quality", () => {
 		expect(items.some((item) => item.kind === "other")).toBe(false);
 	});
 
+	it("keeps default tool offering and scopes selective context without denial fallback", async () => {
+  const { models, requests } = recordingModels([
+   fauxAssistantMessage("Default"),
+   fauxAssistantMessage(fauxToolCall("memory_search", { query: "LOCAL" }), { stopReason: "toolUse" }),
+   fauxAssistantMessage("Denied"), fauxAssistantMessage("Group"), fauxAssistantMessage("Routine"),
+  ]);
+  runtime = await BotRuntime.open({ databasePath, models, tools: { definitions: TOOL_CATALOG.filter(t => t.capability === "memory"), invoke: async () => ({ status: "failed", failureReason: "approval_denied", output: "Denied" }) } });
+  await runtime.createBot({ ...bot, model: { provider: "faux", modelId: "faux-1" } });
+  await runtime.setMemory("scout", "## City\nLOCAL_PRIVATE", 0);
+  await runtime.submitAndWait("scout", "default", "Default");
+  const offered = (request: ModelContext | undefined) => {
+   const names = new Set<string>();
+   for (const message of request?.messages ?? []) if (message.role === "system") {
+    for (const tool of message.toolsAdded ?? []) names.add(tool.name);
+    for (const name of message.toolsRemoved ?? []) names.delete(name.name);
+   }
+   return [...names];
+  };
+  expect(systemText(requests[0])).toContain("LOCAL_PRIVATE");
+  expect(offered(requests[0])).toEqual(["memory_update"]);
+  const note = (await runtime.memoryState("scout")).notes[0]!;
+  await runtime.changeMemoryNote({ requestId: "selective", botId: "scout", scope: "bot", action: "placement", noteId: note.id, placement: "on-demand", expectedRevision: 1 });
+  await runtime.submitAndWait("scout", "selective", "Recall");
+  expect(offered(requests[1])).toContain("memory_search");
+  expect(offered(requests[1])).toContain("memory_read");
+  expect(systemText(requests[1])).not.toContain("LOCAL_PRIVATE");
+  expect(systemText(requests[2])).not.toContain("LOCAL_PRIVATE");
+  await runtime.changeMemoryNote({ requestId: "always", botId: "scout", scope: "bot", action: "placement", noteId: note.id, placement: "always", expectedRevision: 2 });
+  await runtime.setSharedMemory("## Shared\nSHARED_PRIVATE", 0);
+  const shared = (await runtime.sharedMemory()).notes[0]!;
+  await runtime.changeMemoryNote({ requestId: "shared", botId: "scout", scope: "shared", action: "placement", noteId: shared.id, placement: "on-demand", expectedRevision: 1 });
+  await runtime.ensureChannel("scout", "group_fixture");
+  await runtime.submitAndWait("scout", "group", "Group", "group_fixture");
+  expect(systemText(requests[3])).toContain("LOCAL_PRIVATE");
+  expect(systemText(requests[3])).not.toContain("SHARED_PRIVATE");
+  expect(offered(requests[3])).not.toContain("memory_search");
+  await runtime.ensureChannel("scout", "routine_fixture");
+  await runtime.submitAndWait("scout", "routine", "Routine", "routine_fixture");
+  expect(systemText(requests[4])).not.toContain("SHARED_PRIVATE");
+  expect(offered(requests[4])).toContain("memory_search");
+ });
+
 	it("projects thinking", async () => {
 		await open([fauxAssistantMessage([fauxThinking("The user wants a city."), fauxText("Paris.")])]);
 		await runtime!.createBot({ ...bot, model: { provider: "faux", modelId: "faux-1" } });

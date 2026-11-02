@@ -51,6 +51,7 @@ export function ProfileMemory({ botId, onClose }: { readonly botId: string; read
 	};
 	const bytes = new TextEncoder().encode(content).length;
 	const previous = state?.history.find((item) => item.revision === selected);
+	const alwaysBytes = new TextEncoder().encode(state?.notes.filter(n => n.status === "active" && n.placement !== "on-demand").map(n => n.heading ? `## ${n.heading}${n.content ? `\n${n.content}` : ""}` : n.content).join("\n\n") ?? "").length;
 	const save = async (event: FormEvent): Promise<void> => {
 		event.preventDefault();
 		if (!state || busy) return;
@@ -86,6 +87,8 @@ export function ProfileMemory({ botId, onClose }: { readonly botId: string; read
 				}}>{t(value === "bot" ? "This Bot" : "Shared across Bots")}</button>)}
 			</div>
 			<p className="field-hint">{t(scope === "bot" ? "This Bot uses these notes in its private chats, groups and routines. Bots share this Mac; this is not a privacy boundary." : "Shared notes apply to every Bot's private chats and routines, not groups. Edits and forgetting affect all Bots.")}</p>
+			<p className="field-hint">{t("Keep important preferences always in context. On-demand notes can be missed and add latency or cost. Placement affects future memory sections, not old chats, summaries or provider requests; protected topic names can remain visible.")}</p>
+			{state && <p className="field-hint">{t("This scope: {always} always-loaded bytes / {total} stored bytes. These are Markdown estimates, not model tokens.", { always: alwaysBytes, total: new TextEncoder().encode(state.content).length })}</p>}
 			{state && other && <MemoryNotes key={scope} botId={botId} scope={scope} state={state} other={other} busy={busy} disabled={content !== state.content} setBusy={setBusy} onChange={({ local, shared }) => {
 				setLocal(local); setShared(shared); accept(scope === "bot" ? local : shared);
 			}} />}
@@ -158,6 +161,8 @@ export function ProfileMemory({ botId, onClose }: { readonly botId: string; read
 					{previous && (
 						<>
 							<pre className="memory-preview">{previous.content || t("Empty memory")}</pre>
+							<p className="field-hint">{t("Restoring also restores placement. Older versions without placement use Always in context.")}</p>
+							{previous.notes?.filter(note => note.status === "active").map(note => <p className="field-hint" key={note.id}>{note.heading || t("Legacy notes")}: {t(note.placement === "on-demand" ? "Read when needed" : "Always in context")}</p>)}
 							<button type="button" disabled={busy} onClick={() => void restore()}>
 								{t("Restore this version")}
 							</button>
