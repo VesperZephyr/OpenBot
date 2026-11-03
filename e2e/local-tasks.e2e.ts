@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import type { TimelinePosition, WindowResult } from "../packages/protocol/src/index.ts";
-import { afterAll, beforeAll, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { launchApp, type AppHarness } from "./harness.ts";
 let h: AppHarness, core: string;
 beforeAll(async () => {
@@ -171,21 +171,27 @@ it("fresh output folder, private history, archive and localized controls", async
         a.sha256 === createHash("sha256").update(edited).digest("hex"),
     ),
   ).toBe(true);
-  const readWindow = (taskId: string, position: TimelinePosition) =>
-    vi.waitUntil(async () => {
-      const result: WindowResult = await h.api("conversations.window", {
-        conversationKey: `bot:${core}`,
-        taskId,
-        position,
-        limit: 1,
-      });
-      return result.status === "building" ? undefined : result;
-    });
-  const selected = await readWindow(a.taskId, { kind: "latest" });
-  if (selected.status !== "ready" || !selected.window.before)
-    throw Error("Expected a cursor for the report's preceding history");
+  const readyWindow = async (taskId: string, position: TimelinePosition) => {
+    let result: WindowResult | undefined;
+    await expect
+      .poll(async () => {
+        const next: WindowResult = await h.api("conversations.window", {
+          conversationKey: `bot:${core}`,
+          taskId,
+          position,
+          limit: 1,
+        });
+        result = next;
+        return next.status;
+      }, { timeout: 10_000 })
+      .toBe("ready");
+    if (!result || result.status !== "ready") throw Error("History did not become ready");
+    return result;
+  };
+  const selected = await readyWindow(a.taskId, { kind: "latest" });
+  if (!selected.window.before) throw Error("Expected a cursor for the report's preceding history");
   const position = { kind: "cursor", cursor: selected.window.before } as const;
-  expect((await readWindow(a.taskId, position)).status).toBe("ready");
+  expect((await readyWindow(a.taskId, position)).status).toBe("ready");
   await h.page().getByRole("button", { name: "Archive", exact: true }).click();
   await expect
     .poll(async () => (await h.api("tasks.get", { taskId: a.taskId })).archived)
@@ -196,9 +202,14 @@ it("fresh output folder, private history, archive and localized controls", async
   ).toBe(0);
   const other = (await h.api("tasks.list")).tasks[0];
   expect(other.taskId).not.toBe(a.taskId);
-  await expect(readWindow(other.taskId, position)).rejects.toThrow(
-    "History changed. Reload this location.",
-  );
+  await expect(
+    h.api("conversations.window", {
+      conversationKey: `bot:${core}`,
+      taskId: other.taskId,
+      position,
+      limit: 1,
+    }),
+  ).rejects.toThrow("History changed. Reload this location.");
   await h.page().getByRole("checkbox", { name: "Archived tasks" }).check();
   await h.page().getByText("Output report", { exact: true }).click();
   await h

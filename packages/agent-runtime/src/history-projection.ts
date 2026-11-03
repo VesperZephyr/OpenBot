@@ -25,7 +25,7 @@ import { AppExecutionsDoc } from "./app-executions.ts";
 import { GroupsDoc } from "./groups.ts";
 import { directMessages, groupMessages } from "./conversation-index.ts";
 import { HistoryClient } from "./history-client.ts";
-import type { DisplayWrite, HistoryBatch, HistoryMessage } from "./history-store.ts";
+import { cursorNamesOtherPartition, type DisplayWrite, type HistoryBatch, type HistoryMessage } from "./history-store.ts";
 import { toTranscript } from "./transcript.ts";
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const size = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
@@ -523,6 +523,10 @@ export class HistoryProjection {
 	}
 	async window(input: WindowInput): Promise<WindowResult> {
 		const source = await this.authorize(input.conversationKey, input.deliveryId, input.occurrenceId, input.taskId);
+		// Building means this partition is not indexed yet. A cursor minted for a different partition
+		// will never resolve here, so it is a conflict rather than another indexing wait.
+		if (input.position.kind === "cursor" && cursorNamesOtherPartition(input.position.cursor, source.partition))
+			throw new ProtocolError("request_conflict", "History changed. Reload this location.");
 		for(const [key,previous] of this.#sources)if(previous.taskId && key!==source.partition){this.#sources.delete(key);this.#validated.delete(key);}
         this.#selected = source.partition;
 		if (!this.#sources.has(source.partition)) {

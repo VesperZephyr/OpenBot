@@ -34,17 +34,29 @@ it("keeps approvals, drafts and Stop usable when history reads fail, then recove
 		await h.page().locator(".compose-area textarea").fill("Preserved draft 星图");
 		await h.shot("01-unavailable-approval");
 		await h.page().getByRole("button", { name: "Allow once", exact: true }).click();
-		await expect
-			.poll(async () => (await h.api("bots.list")).find((b: any) => b.name === "History controls")?.lastRun?.state, { timeout: 20000 })
-			.toBe("completed");
+		const bot = () => h.api("bots.list").then((bots: any[]) => bots.find((b) => b.name === "History controls"));
+		await expect.poll(async () => (await bot())?.lastRun?.state, { timeout: 20000 }).toBe("completed");
+		const finished = (await bot()).lastRun.runId as string;
 		expect(await h.page().locator(".compose-area textarea").inputValue()).toBe("Preserved draft 星图");
-		h.model.script({ chunks: ["Must be stopped"], delayMs: 15000, chunkDelayMs: 100 });
-		await h.send("Wait for cancellation");
-		await expect.poll(() => h.page().locator(".live-reply .reply-activity").textContent(), { timeout: 15000 }).toBe("Generating response");
-		await h.page().getByRole("button", { name: "Stop", exact: true }).click();
-		await expect
-			.poll(async () => (await h.api("bots.list")).find((b: any) => b.name === "History controls")?.lastRun?.state, { timeout: 20000 })
-			.toBe("cancelled");
+		// The settled answer can still be on screen as "Generating response" while the renderer catches up.
+		// Stop must target the next Run, and that Run must still be in flight when Stop is clicked.
+		await expect.poll(() => h.page().locator(".live-reply").count()).toBe(0);
+		const held = Promise.withResolvers<void>();
+		h.model.script({ text: "Must be stopped", wait: held.promise });
+		try {
+			await h.send("Wait for cancellation");
+			await expect
+				.poll(async () => {
+					const run = (await bot())?.lastRun;
+					return run && run.runId !== finished ? run.state : "";
+				})
+				.toBe("running");
+			await expect.poll(() => h.page().locator(".live-reply .reply-activity").textContent()).toBe("Generating response");
+			await h.page().getByRole("button", { name: "Stop", exact: true }).click();
+			await expect.poll(async () => (await bot())?.lastRun?.state, { timeout: 20000 }).toBe("cancelled");
+		} finally {
+			held.resolve();
+		}
 		await h.page().locator(".history-status").getByRole("button", { name: "Retry", exact: true }).click();
 	} finally {
 		await h.app().evaluate(({ ipcMain }) => {

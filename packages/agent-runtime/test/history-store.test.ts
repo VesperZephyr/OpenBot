@@ -139,6 +139,41 @@ it("keeps timeline anchors, byte bounds and stale cursor conflicts independent o
 	expect(() => store.window({ conversationKey: key, position: { kind: "around", rowId: "absent" } })).toThrow("unavailable");
 });
 
+it("rejects a cursor minted for another partition while the target partition is still building", () => {
+	const readyKey = "bot:ready" as const;
+	const pendingKey = "bot:pending" as const;
+	const row = (id: string, ordinal: number) => ({
+		id,
+		ordinal,
+		source: ordinal,
+		hash: id,
+		content: { kind: "direct" as const, item: { kind: "assistant" as const, id, parts: [{ type: "text" as const, text: id }] } },
+	});
+	store.apply({
+		partition: JSON.stringify([readyKey, null]),
+		key: readyKey,
+		checkpoint: "ready",
+		ready: true,
+		rows: [row("older", 0), row("newer", 1)],
+		messages: [],
+	});
+	store.apply({
+		partition: JSON.stringify([pendingKey, null]),
+		key: pendingKey,
+		checkpoint: "pending",
+		ready: false,
+		rows: [],
+		messages: [],
+	});
+	const page = store.window({ conversationKey: readyKey, position: { kind: "latest" }, limit: 1 });
+	expect(page.status).toBe("ready");
+	if (page.status !== "ready" || !page.window.before) throw Error("Expected a cursor");
+	expect(store.window({ conversationKey: pendingKey, position: { kind: "latest" } })).toEqual({ status: "building" });
+	expect(() =>
+		store.window({ conversationKey: pendingKey, position: { kind: "cursor", cursor: page.window.before! } }),
+	).toThrow("History changed. Reload this location.");
+});
+
 it("atomically applies checkpoints, replays stable rows, and updates an earlier tool without adding a row", () => {
 	const partition = JSON.stringify([key, null]);
 	const row = {

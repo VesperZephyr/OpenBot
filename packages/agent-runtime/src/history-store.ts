@@ -21,6 +21,21 @@ export const HISTORY_DETAIL_BYTES = 32 * 1024;
 const SEARCH_PREFIX_POINTS = 512;
 const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
 const fingerprint = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+/**
+ * A window cursor names the partition it was minted for. That check does not need the target
+ * partition to be indexed: a cursor for somewhere else can never become ready here.
+ */
+export function cursorNamesOtherPartition(cursor: string, partition: string): boolean {
+	try {
+		if (cursor.length > 4096) return false;
+		const data = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as Record<string, unknown>;
+		if (Object.keys(data).sort().join() !== "boundary,direction,generation,partition,revision" || typeof data.partition !== "string")
+			return false;
+		return data.partition !== fingerprint(partition);
+	} catch {
+		return false;
+	}
+}
 const lexical = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 export const normalizeHistoryText = (text: string) =>
 	text
@@ -362,6 +377,8 @@ export class HistoryStore {
 	}
 	window(input: WindowInput): WindowResult {
 		const partition = historyPartition(input);
+		if (input.position.kind === "cursor" && cursorNamesOtherPartition(input.position.cursor, partition))
+			throw new ProtocolError("request_conflict", "History changed. Reload this location.");
 		const state = this.db.prepare("SELECT revision,incoming,ready FROM display_state WHERE partition=?").get(partition) as
 			| { revision: number; incoming: number; ready: number }
 			| undefined;
