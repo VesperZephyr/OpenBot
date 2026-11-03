@@ -1,6 +1,6 @@
 # D12b: BoardUI conversation
 
-Status: in progress
+Status: in review
 Branch: task/d12b-boardui-conversation
 Depends on: [D12](d12-boardui-refactor.md) stage 2; [D12a](d12a-boardui-foundation.md) merged in PR #88
 Architecture: existing renderer and Host snapshots; no protocol, persistence or process-boundary changes
@@ -41,7 +41,8 @@ Out:
 - `pnpm run check:quick` passed on Linux (lint, boundaries, typecheck).
 - New unit tests for avatar mapping, step summaries, examples and header status passed.
 - Full `pnpm run test` still fails in `packages/local-executor` and `apps/desktop/test/login-path.test.ts`. Those failures are the existing Linux process-group and zsh login gaps; this change does not touch them.
-- Electron e2e was not run here. The desktop build compiles `keychain.node` with the macOS Security framework, which this Linux agent does not have. Screenshots and the macOS e2e aggregate are the CI evidence.
+- Electron e2e was not run on this Linux agent. The desktop build compiles `keychain.node` with the macOS Security framework.
+- CI run [41573944239](https://github.com/VesperZephyr/OpenBot/actions/runs/41573944239) on `73fc2b8` completed with all five jobs green, including Check and history performance, Desktop e2e shards 1–3, and the Check and e2e (macOS) aggregate. Captures are in the `e2e-screenshots-1` artifact under `boardui-conversation/`.
 
 ## Open questions
 
