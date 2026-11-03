@@ -105,6 +105,7 @@ Candidate revision, acceptance checks and outcomes, and remaining limits; or lin
 - [D11: Local task continuity and a responsive Core](d11-local-task-continuity.md)
 - [D12: Free BoardUI components and an OpenBot chat interface](d12-boardui-refactor.md)
 - [D12a: BoardUI foundation and Settings/chooser pilot](d12a-boardui-foundation.md)
+- [D12b: BoardUI conversation](d12b-boardui-conversation.md)
 
 ## Collaboration and application capabilities
 

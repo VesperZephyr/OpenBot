@@ -1,23 +1,22 @@
 # D7: Light and dark appearance
 
-The two themes share composition and identity, with separate surface, text, interaction and state colors. Light is the initial preference; System is an explicit choice. Uploaded images and generated avatar colors retain their identity.
+The two themes share composition and identity, with separate surface, text, interaction and state colors. Light is the initial preference; System is an explicit choice. Uploaded images and generated avatar colors retain their identity. D12b replaced the earlier plum accent: the workspace is a neutral gray with white cards, and blue is used for primary actions, toggles and send.
 
 | Role | Light | Dark |
 | --- | --- | --- |
-| Chat canvas | White `#ffffff` | Soft charcoal `#19181e` |
-| Sidebar | Pale lilac `#f4f2f7` | Near-black plum `#141218` |
-| Cards / composer | White `#ffffff` | Raised charcoal `#232129` |
-| Hover / code / controls | Cool paper `#f6f3f9` | Graphite `#2d2a35` |
-| User bubble | Pale lilac `#eee7f6` | Muted plum `#353040` |
-| Main text | Plum ink `#30283f` | Warm white `#eeeaf3` |
-| Secondary text | Gray plum `#6d6479` | Lavender gray `#b0a8bc` |
-| Primary action | Plum `#644689`, white ink | Lavender `#bfa4e5`, dark ink |
-| Quote / supporting note | Pale olive, dark olive ink | Dark olive, pale olive ink |
+| App background | Cool gray `#e8eaee` | Near-black `#101114` |
+| Cards / sidebar / chat | White `#ffffff` | Raised charcoal `#1c1d22` |
+| Hover / code / controls | Cool gray `#f3f4f6` | Graphite `#2a2c33` |
+| User bubble | Cool gray `#f3f4f6` | Graphite `#2a2c33` |
+| Main text | Neutral ink `#1c1d21` | Off-white `#f4f5f7` |
+| Secondary text | Gray `#5c6370` | Cool gray `#c0c4cc` |
+| Primary action | Blue `#1d4ed8`, white ink | Blue `#1d4ed8`, white ink |
+| Quote / supporting note | Neutral gray, neutral ink | Graphite, off-white ink |
 
 ## Application
 
 - Use semantic tokens throughout components, including artifact icons, identity stars, quote blocks, welcome notes, sidebars, focus rings, popovers and destructive actions. Do not depend on raw system media queries inside individual components.
-- Dark mode uses lighter surfaces to distinguish the composer, menus and dialogs from the canvas, plus deliberate boundaries. Avoid a purple wash and isolated white cards. Light mode uses white space with subtle borders and restrained shadows.
+- Dark mode uses lighter card surfaces against the app background. Light mode uses white cards on a gray app background, with shadow instead of divider lines. Color in the conversation is reserved for Bot avatars; blue is the primary action.
 - Primary and destructive actions have their own ink tokens. Sidebar text, status colors, identity stars and brand marks have distinct light and dark values. Light uses dark ink throughout the sidebar; no dark navigation block remains. Disabled controls remain distinguishable; hover never suggests an unavailable action is enabled.
 - Appearance selection uses three miniature previews with a native radio group. Selection persists, follows OS changes only under System, and does not reset conversation drafts or profile edits.
 - Verify main and secondary text, primary/destructive action ink, quote text, sidebar status, selected states and input placeholders against their actual rendered backgrounds. Required normal text contrast is at least 4.5:1. Capture matching conversation, profile, Settings and approval states in both themes, including compact Chinese screens.

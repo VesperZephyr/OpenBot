@@ -9,7 +9,8 @@ import { AppearanceSelect } from "./appearance";
 import { LanguageField } from "./ui/language-field";
 import { NewConversationDialog } from "./ui/new-conversation-dialog";
 import { InterfaceIcon } from "./InterfaceIcon";
-import { Avatar, PersonalStar } from "./Avatar";
+import { Avatar, AvatarStack, PersonalStar } from "./Avatar";
+import { BotIdentity, GroupIdentity } from "./BotIdentity";
 import { AvatarEditor } from "./AvatarEditor";
 import type { AvatarChange } from "@openbot/protocol";
 import { RoleSkills } from "./RoleSkills";
@@ -54,7 +55,10 @@ import { ModelSetup } from "./ModelSetup";
 import { Onboarding } from "./Onboarding";
 import { transcriptRows } from "./steps";
 import { MessageTime, RevealButton, StepsRow } from "./TranscriptDetails";
-import { api, connect, createBot, openBot, refreshBots, refreshSettings, report, errorMessage, useStore } from "./store";
+import { conversationPresence, presenceLabel } from "./conversation-status";
+import { botGreeting, conversationExamples } from "./examples";
+import { composers } from "./useComposer";
+import { api, connect, createBot, openBot, refreshBots, refreshSettings, report, errorMessage, sendMessage, useStore } from "./store";
 
 export function App() {
 	useDialogFocus();
@@ -68,6 +72,8 @@ export function App() {
 	if (["bot", "group", "home", "tasks"].includes(view.kind)) lastChat.current = view;
 	const notice = useStore((state) => state.notice);
 	const onboarding = useStore((state) => state.onboarding);
+	const wide = useWideLayout();
+	const [editorBotId, setEditorBotId] = useState<string>();
 	const [creating, setCreating] = useState(false);
 	const [newMenu, setNewMenu] = useState(false);
 	const [creatingGroup, setCreatingGroup] = useState(false);
@@ -107,7 +113,10 @@ export function App() {
 
 	return (
 		<div className="app">
-            <WorkspaceLayout sidebar={<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />}>
+            <WorkspaceLayout
+				sidebar={<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />}
+				inspector={wide && view.kind === "bot" ? <BotIdentity botId={view.botId} editing={editorBotId === view.botId} /> : wide && view.kind === "group" ? <GroupIdentity groupId={view.groupId} /> : undefined}
+			>
 			<main className="main">
 				<RestoreNotice />
 				{host.status !== "ready" && (
@@ -120,7 +129,7 @@ export function App() {
 				) : (
 					<>
 						{view.kind === "tasks" && <LocalTasks key={view.taskId??view.draftId??`list:${view.archived}:${view.cursor}`} view={view} renderHistory={(snapshot,taskId)=><HistoryTranscript snapshot={snapshot} taskId={taskId}/>}/>}
-                        {view.kind === "bot" && <Conversation key={view.botId} botId={view.botId} />}
+                        {view.kind === "bot" && <Conversation key={view.botId} botId={view.botId} editing={editorBotId === view.botId} onEditing={setEditorBotId} />}
 						{["settings", "skills", "connectors", "routines"].includes(view.kind) && (
 							<div className="settings-workspace">
 								<nav className="settings-navigation" aria-label={t("Settings navigation")}>
@@ -401,21 +410,28 @@ function NewBotDialog({ onClose }: { onClose: () => void }) {
 	);
 }
 
-function Conversation({ botId }: { readonly botId: string }) {
+function Conversation({ botId, editing, onEditing }: { readonly botId: string; readonly editing: boolean; readonly onEditing: (botId: string | undefined) => void }) {
 	const bot = useStore((state) => state.bots.find((candidate) => candidate.botId === botId));
 	const snapshot = useStore((state) => state.conversations[botId]);
-	const [editing, setEditing] = useState(false);
+	const setEditing = (open: boolean): void => onEditing(open ? botId : undefined);
 	const importedProfile = useTemplateState(s => s.profileBotId === botId);
 	useEffect(() => {
 		if (importedProfile) {
-			setEditing(true);
+			onEditing(botId);
 			useTemplateState.setState({ profileBotId: null });
 		}
-	}, [importedProfile]);
+	}, [importedProfile, botId, onEditing]);
+	useEffect(() => () => onEditing(undefined), [onEditing]);
  const count=useStore(state=>state.summaries[`bot:${botId}`]?.latest!==undefined);
 
 	if (bot === undefined) return null;
 	const running = snapshot?.live !== undefined || snapshot?.run !== undefined || (snapshot?.pending?.length ?? 0) > 0;
+	const presence = conversationPresence({
+		approvals: snapshot?.approvals.length ?? 0,
+		live: snapshot?.live !== undefined,
+		pending: snapshot?.pending?.length ?? 0,
+		runState: snapshot?.run?.state,
+	});
 
 	return (
 		<ConversationShell
@@ -434,6 +450,7 @@ function Conversation({ botId }: { readonly botId: string }) {
 				<div className="conversation-title">
 					<div className="conversation-name"><span title={bot.name}>{bot.name}</span>{bot.kind === "core" && <PersonalStar />}</div>
 					<div className="conversation-role">{bot.role || t("No label")}</div>
+					<p className="conversation-status" role="status">{t(presenceLabel(presence))}</p>
 				</div>
 				<MarkReadButton conversationKey={`bot:${botId}`} cursor={snapshot?.readCursor} />
 				<button className="details-toggle" aria-label={t("Conversation details")} onClick={() => setEditing(!editing)}>
@@ -453,31 +470,68 @@ function Conversation({ botId }: { readonly botId: string }) {
 
 function EmptyConversation({ bot }: { readonly bot: BotSummary }) {
 	const hasModel = useStore((state) => bot.model !== undefined || state.settings?.defaultModel !== undefined);
+	const skills = useStore((state) => state.skills);
+	const greeting = botGreeting(bot.instructions);
+	const examples = conversationExamples(
+		bot.instructions,
+		(bot.defaultSkills ?? []).flatMap((ref) => {
+			const skill = skills?.find((item) => item.name === ref.name && item.available && !item.deleted);
+			return skill ? [{ description: skill.description }] : [];
+		}),
+	);
+	const sendExample = (text: string): void => {
+		const key = `bot:${bot.botId}` as const;
+		composers.edit(key, { text });
+		void composers
+			.send(key, (attempt) =>
+				sendMessage(
+					bot.botId,
+					attempt.text,
+					attempt.requestId,
+					attempt.attachments?.map((ref) => ref.artifactId),
+					attempt.skills,
+				).catch((error) => {
+					report(error);
+					throw error;
+				}),
+			)
+			.then((sent) => {
+				if (sent) window.dispatchEvent(new CustomEvent("openbot:sent", { detail: key }));
+			});
+	};
 	return (
 		<div className="empty-conversation">
-			<div className="welcome-copy">
-				<p className="greeting-label">
-					<InterfaceIcon name="routines" />
-					{t("A little room for you")}
-				</p>
-				<h2>
-					{t("Good to see you.")}
-					<br />
-					<em>{t("What’s on your mind?")}</em>
-				</h2>
-				<p>{t("We can think it through, make a plan, or just untangle one small thing.")}</p>
-				{!hasModel && (
-					<button type="button" onClick={() => useStore.setState({ view: { kind: "settings" } })}>
-						{t("Connect a model")}
-					</button>
-				)}
-			</div>
-			<div className="welcome-character">
-				<span className="welcome-note">{t("One thing at a time.")}</span>
-				<Avatar bot={bot} size={164} />
-			</div>
+			<AvatarStack bots={[bot]} size={84} />
+			<h2>{bot.name}</h2>
+			{greeting ? <p className="empty-greeting">{greeting}</p> : null}
+			{examples.length > 0 && (
+				<div className="example-list">
+					{examples.map((example) => (
+						<button key={example} type="button" disabled={!hasModel} onClick={() => sendExample(example)}>
+							{example}
+						</button>
+					))}
+				</div>
+			)}
+			{!hasModel && (
+				<button type="button" onClick={() => useStore.setState({ view: { kind: "settings" } })}>
+					{t("Connect a model")}
+				</button>
+			)}
 		</div>
 	);
+}
+
+function useWideLayout(): boolean {
+	const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1180px)").matches);
+	useEffect(() => {
+		const query = window.matchMedia("(min-width: 1180px)");
+		const apply = (): void => setWide(query.matches);
+		apply();
+		query.addEventListener("change", apply);
+		return () => query.removeEventListener("change", apply);
+	}, []);
+	return wide;
 }
 
 function HistoryTranscript({

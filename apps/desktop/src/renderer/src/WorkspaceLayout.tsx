@@ -4,12 +4,12 @@ import { FileWorkspace } from "./FileWorkspace";
 import { useReader } from "./reader-store";
 import { t } from "./i18n";
 
-export function WorkspaceLayout({ sidebar, children }: { sidebar: ReactNode; children: ReactNode }) {
+export function WorkspaceLayout({ sidebar, children, inspector }: { sidebar: ReactNode; children: ReactNode; inspector?: ReactNode }) {
 	const open = useReader((state) => state.open);
 	const outer = useDefaultLayout({ id: "openbot.sidebar-layout", onlySaveAfterUserInteractions: true });
 	const inner = useDefaultLayout({
 		id: "openbot.reader-layout",
-		panelIds: open ? ["chat", "reader"] : ["chat"],
+		panelIds: open ? ["chat", "reader"] : inspector ? ["chat", "identity"] : ["chat"],
 		onlySaveAfterUserInteractions: true,
 	});
 	useEffect(() => {
@@ -41,6 +41,12 @@ export function WorkspaceLayout({ sidebar, children }: { sidebar: ReactNode; chi
 					<Panel id="chat" className="chat-panel" minSize={300} defaultSize="50%">
 						{children}
 					</Panel>
+					{inspector && !open && <Separator className="workspace-divider" aria-label={t("Resize Bot details")} />}
+					{inspector && !open && (
+						<Panel id="identity" className="identity-panel" defaultSize={300} minSize={250} maxSize={380}>
+							{inspector}
+						</Panel>
+					)}
 					{open && <Separator className="workspace-divider" aria-label={t("Resize file preview")} />}
 					{open && (
 						<Panel id="reader" className="reader-panel" minSize={320} defaultSize="50%">

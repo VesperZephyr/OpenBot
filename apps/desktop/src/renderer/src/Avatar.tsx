@@ -6,8 +6,11 @@ import {
 	type AvatarUpload,
 	type GeneratedAvatar,
 } from "@openbot/protocol";
+import { AVATAR_PALETTES, generatedAvatarAppearance } from "./avatar-appearance";
 import { api, useStore } from "./store";
 import { t } from "./i18n";
+
+export { generatedAvatarAppearance } from "./avatar-appearance";
 
 const images = new Map<string, Promise<string | undefined>>();
 function imageFor(botId: string, sha256: string): Promise<string | undefined> {
@@ -80,30 +83,26 @@ export function PersonalStar() {
 	);
 }
 
-/** Original V1 artwork: retain geometry and palettes for existing saved recipes. */
+/** V1 geometry. Color index and shape come from generatedAvatarAppearance; only the paint is richer. */
 function Character({ recipe }: { recipe: GeneratedAvatar }) {
-	const palettes = [
-		["#ded1ee", "#534060", "#eee8b5"],
-		["#d5e8dc", "#385d4c", "#eed5ad"],
-		["#f2dac2", "#78523d", "#e4d5ef"],
-		["#d4e3ef", "#3b5269", "#e8e7b5"],
-		["#eed7e1", "#714757", "#d9e7c0"],
-		["#e3e5bf", "#555d35", "#e4d8ee"],
-	];
-	const n = recipe.seed,
-		[body, ink, accent] = palettes[n % 6]!,
-		shape = Math.floor(n / 6) % 3;
+	const { colorIndex, shape } = generatedAvatarAppearance(recipe);
+	const [body, ink, accent] = AVATAR_PALETTES[colorIndex]!;
+	const n = recipe.seed >>> 0;
+	const bodyShape =
+		shape === 0 ? (
+			<path d="M37 31C56 10 99 12 117 35c16 22 18 59 2 83-13 21-40 27-62 20-28-8-39-34-36-61 1-19 6-35 16-46Z" />
+		) : shape === 1 ? (
+			<rect x="24" y="24" width="104" height="116" rx="37" />
+		) : (
+			<path d="M26 59 38 25l31 10c12-3 23-3 34 0l22-9 3 40c10 35-5 70-39 76-34 6-66-9-68-44-1-15 1-29 5-39Z" />
+		);
 	return (
 		<svg viewBox="0 0 150 165" fill="none" aria-hidden="true">
-			<g fill={body} stroke={ink} strokeWidth="1.8">
-				{shape === 0 ? (
-					<path d="M37 31C56 10 99 12 117 35c16 22 18 59 2 83-13 21-40 27-62 20-28-8-39-34-36-61 1-19 6-35 16-46Z" />
-				) : shape === 1 ? (
-					<rect x="24" y="24" width="104" height="116" rx="37" />
-				) : (
-					<path d="M26 59 38 25l31 10c12-3 23-3 34 0l22-9 3 40c10 35-5 70-39 76-34 6-66-9-68-44-1-15 1-29 5-39Z" />
-				)}
+			<ellipse cx="76" cy="154" rx="34" ry="7" fill={ink} opacity="0.18" />
+			<g fill={body} stroke={ink} strokeWidth="2.4">
+				{bodyShape}
 			</g>
+			<ellipse cx="58" cy="48" rx="14" ry="8" fill="#ffffff" opacity="0.28" />
 			<g fill={ink}>
 				<ellipse cx="57" cy="78" rx="5" ry="8" />
 				<ellipse cx="96" cy="78" rx="5" ry="8" />
@@ -127,6 +126,20 @@ function Character({ recipe }: { recipe: GeneratedAvatar }) {
 			/>
 			<path d="m48 136-5 15m58-14 6 13" stroke={ink} strokeWidth="2" strokeLinecap="round" />
 		</svg>
+	);
+}
+
+/** Overlapping member identities for an empty conversation. */
+export function AvatarStack({ bots, size = 72 }: { readonly bots: readonly Pick<BotProfile, "botId" | "avatar">[]; readonly size?: number }) {
+	const shown = bots.slice(0, 3);
+	return (
+		<span className="avatar-stack" aria-hidden="true">
+			{shown.map((bot, index) => (
+				<span key={bot.botId} className="avatar-stack-item" style={{ zIndex: shown.length - index }}>
+					<Avatar bot={bot} size={size} />
+				</span>
+			))}
+		</span>
 	);
 }
 

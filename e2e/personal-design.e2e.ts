@@ -279,10 +279,8 @@ it("shows the approved welcome and conversation composition using real local pro
 		.click();
 	await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1280, 820));
 	await h.page().emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
-	await h
-		.page()
-		.getByRole("heading", { name: /Good to see you/ })
-		.waitFor();
+	await h.page().getByRole("heading", { name: "OpenBot", exact: true }).waitFor();
+	await h.page().locator(".empty-greeting").waitFor();
 	await h.page().getByText("Scribe", { exact: true }).waitFor();
 	await poll(() => h.page().locator(".conversation-header .avatar path").first().getAttribute("d")).toMatch(/^M37 31/);
 	await h.shot("06-reference-welcome");

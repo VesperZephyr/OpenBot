@@ -23,6 +23,8 @@ export function ApprovalCard({ approval }: { readonly approval: PendingApproval 
 	};
 	const tool = legacyManagementName(approval.tool);
 	const args = (approval.args ?? {}) as Record<string, unknown>;
+	const scopeId = `approval-scope-${approval.approvalId}`;
+	const argsId = `approval-args-${approval.approvalId}`;
  const skillChange=tool==="skill_save"&&validSkillOperation(args)&&(args.action==="save"||args.action==="delete")?args as SkillChange:undefined;
 	return (
 		<div className="approval" data-approval-id={approval.approvalId} role="group" aria-label={t("Approval request")}>
@@ -34,17 +36,18 @@ export function ApprovalCard({ approval }: { readonly approval: PendingApproval 
 			) : ["bot_create", "bot_update", "bot_delete"].includes(tool) ? (
 				<ManagementPreview args={{ ...args, action: tool.slice(4) }} />
 			) : (
-				<pre className="approval-args">
+				<pre id={argsId} className="approval-args">
 					{approval.tool === "local_exec"
 						? `${String(args.command ?? "")}${args.cwd === undefined ? "" : `\n# in ${String(args.cwd)}`}`
 						: JSON.stringify(approval.args, null, 2)}
 				</pre>
 			)}
+			<p id={scopeId} className="approval-scope">{t("Allow once applies only to this request.")}</p>
 			<div className="approval-actions">
 				<button type="button" disabled={pending||expired} onClick={() => decide("deny")}>
 					{t("Deny")}
 				</button>
-				<button type="button" disabled={pending||expired} className="primary" onClick={() => decide("allow_once")}>
+				<button type="button" disabled={pending||expired} className="primary" aria-describedby={skillChange || tool.startsWith("group_") || ["bot_create", "bot_update", "bot_delete"].includes(tool) ? scopeId : `${scopeId} ${argsId}`} onClick={() => decide("allow_once")}>
 					{t("Allow once")}
 				</button>
 			</div>
