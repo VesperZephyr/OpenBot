@@ -1,4 +1,5 @@
 import { StepsRow } from "./TranscriptDetails";
+import { elapsedSeconds, formatStepSummary, summarizeSteps } from "./steps";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import type { TimelinePosition, TimelineRow, WindowInput } from "@openbot/protocol";
@@ -87,6 +88,37 @@ function HistoryView({
 		flush();
 		return result;
 	}, [pages]);
+	const bundleSummary = (listed: typeof rows, index: number): string => {
+		const row = listed[index];
+		if (!row?.bundle) return "";
+		const toolOf = (entry: TimelineRow | undefined) =>
+			entry?.content.kind === "direct" && entry.content.item.kind === "tool" ? entry.content.item : undefined;
+		const tools = row.bundle.map((entry) => toolOf(entry)).filter((item) => item !== undefined);
+		const failed = [];
+		for (let cursor = index + 1; cursor < listed.length; cursor++) {
+			const item = toolOf(listed[cursor]);
+			if (!item || listed[cursor]?.bundle || !["failed", "interrupted", "cancelled"].includes(item.status)) break;
+			failed.push(item);
+		}
+		const flat = pages.flatMap((page) => page.rows);
+		const at = (entry: TimelineRow | undefined) => {
+			const item = entry?.content.kind === "direct" ? entry.content.item : undefined;
+			return item && "at" in item && typeof item.at === "number" ? item.at : undefined;
+		};
+		const start = flat.findIndex((entry) => entry.id === row.bundle![0]?.id);
+		const end = flat.findIndex((entry) => entry.id === row.bundle!.at(-1)?.id);
+		let before: number | undefined;
+		for (let cursor = start - 1; cursor >= 0; cursor--) {
+			before = at(flat[cursor]);
+			if (before !== undefined) break;
+		}
+		let after: number | undefined;
+		for (let cursor = end + 1; cursor < flat.length; cursor++) {
+			after = at(flat[cursor]);
+			if (after !== undefined) break;
+		}
+		return formatStepSummary(summarizeSteps([...tools, ...failed]), elapsedSeconds(before, after), t);
+	};
 	const first = pages[0],
 		last = pages.at(-1);
 	const renderContext = { rows: pages.flatMap((p) => p.rows), atLatest: last?.atLatest === true };
@@ -370,6 +402,7 @@ function HistoryView({
 									) : row.bundle ? (
 										<StepsRow
 											count={row.bundle.length}
+											summary={bundleSummary(rows, v.index)}
 											forceOpen={row.bundle.some((r) => r.id === target?.messageId)}
 											onExpanded={(open) =>
 												setExpanded((previous) => {

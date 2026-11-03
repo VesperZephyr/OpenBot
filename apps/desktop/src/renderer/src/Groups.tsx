@@ -1,6 +1,9 @@
 import { HistoryTimeline } from "./HistoryTimeline";
 import { LiveReply } from "./LiveReply";
-import { Avatar, GroupAvatar } from "./Avatar";
+import { Avatar, AvatarStack, GroupAvatar } from "./Avatar";
+import { conversationPresence, presenceLabel } from "./conversation-status";
+import { botGreeting, conversationExamples } from "./examples";
+import { composers } from "./useComposer";
 import { BackgroundTask } from "./BackgroundTask";
 import { ArtifactCard } from "./ArtifactCard";
 import { ChatComposer } from "./ChatComposer";
@@ -14,6 +17,60 @@ import { Markdown } from "./markdown";
 import { routineScheduleLabel } from "./Routines";
 import { ApprovalCard } from "./ApprovalCard";
 import "./groups.css";
+
+function GroupEmpty({ groupId }: { readonly groupId: string }) {
+	const snapshot = useStore((state) => state.groupSnapshots[groupId]);
+	const bots = useStore((state) => state.bots);
+	const skills = useStore((state) => state.skills);
+	if (!snapshot) return null;
+	const { group } = snapshot;
+	const members = group.memberIds.map((id) => bots.find((bot) => bot.botId === id) ?? { botId: id });
+	const examples = conversationExamples(
+		[group.objective, ...members.flatMap((member) => ("instructions" in member ? [member.instructions] : []))].join("\n"),
+		members.flatMap((member) =>
+			("defaultSkills" in member ? member.defaultSkills ?? [] : []).flatMap((ref) => {
+				const skill = skills?.find((item) => item.name === ref.name && item.available && !item.deleted);
+				return skill ? [{ description: skill.description }] : [];
+			}),
+		),
+	);
+	const greeting = botGreeting(group.objective);
+	const sendExample = (text: string): void => {
+		const key = `group:${groupId}` as const;
+		composers.edit(key, { text });
+		void composers
+			.send(key, (attempt) =>
+				api["groups.send"]({
+					groupId,
+					requestId: attempt.requestId,
+					text: attempt.text,
+					...(attempt.recipientIds.length ? { recipientIds: attempt.recipientIds } : {}),
+				}).catch((error) => {
+					report(error);
+					throw error;
+				}),
+			)
+			.then((sent) => {
+				if (sent) window.dispatchEvent(new CustomEvent("openbot:sent", { detail: key }));
+			});
+	};
+	return (
+		<div className="group-intro empty-conversation">
+			<AvatarStack bots={members} size={64} />
+			<p className="empty-title">{group.name}</p>
+			<p>{greeting || t("Send a task to Core, or @ a Bot to assign it directly")}</p>
+			{examples.length > 0 && (
+				<div className="example-list">
+					{examples.map((example) => (
+						<button key={example} type="button" onClick={() => sendExample(example)}>
+							{example}
+						</button>
+					))}
+				</div>
+			)}
+		</div>
+	);
+}
 
 export function GroupRow({ group: g }: { group: Group }) {
 	const view = useStore((s) => s.view);
@@ -172,6 +229,13 @@ export function GroupView({ groupId,renderExecution }: { groupId: string;renderE
 	const name = (id: string) => bots.find((b) => b.botId === id)?.name ?? t("Deleted Bot");
 	const active = group.status === "active";
 	const canSend = active && group.memberIds.length >= 2 && !!core;
+	const pendingTasks = tasks.filter((task) => task.state === "pending");
+	const presence = conversationPresence({
+		approvals: pendingTasks.reduce((count, task) => count + (task.conversation?.approvals.length ?? 0), 0),
+		live: pendingTasks.some((task) => task.conversation?.live !== undefined || task.conversation?.run?.state === "running"),
+		pending: pendingTasks.length,
+		runState: pendingTasks.some((task) => !task.runId || task.conversation?.run?.state === "queued") ? "queued" : undefined,
+	});
 
 	return (
 		<ConversationShell
@@ -216,24 +280,14 @@ export function GroupView({ groupId,renderExecution }: { groupId: string;renderE
 						{t(active ? "{count} members" : "Dissolved", { count: group.memberIds.length })}
 						{group.leadBotId ? ` · ${t("Lead")}: ${name(group.leadBotId)}` : ""}
 					</p>
+					<p className="conversation-status" role="status">{t(presenceLabel(presence))}</p>
 				</div>
 				<MarkReadButton conversationKey={`group:${groupId}`} cursor={snapshot.readCursor} />
 				<button className="icon-button details-toggle" aria-label={t("Conversation details")} onClick={() => setDetails(!details)}>
 					ⓘ
 				</button>
 			</header>
-   <HistoryTimeline conversationKey={`group:${groupId}`} activity={JSON.stringify(snapshot)} className="group-timeline" empty={<div className="group-intro">
-						<span className="group-symbol" aria-hidden>
-							◈
-						</span>
-						<h2>{t("A shared place to work")}</h2>
-						<p>{group.objective || t("Send a task to Core, or @ a Bot to assign it directly")}</p>
-						<div className="group-members">
-							{group.memberIds.map((id) => (
-								<span key={id}>{name(id)}</span>
-							))}
-						</div>
-					</div>} renderRow={row=>{if(row.content.kind!=="group")return null;const post=row.content.post;return (<article
+   <HistoryTimeline conversationKey={`group:${groupId}`} activity={JSON.stringify(snapshot)} className="group-timeline" empty={<GroupEmpty groupId={groupId} />} renderRow={row=>{if(row.content.kind!=="group")return null;const post=row.content.post;return (<article
 							data-message-id={post.postId}
 							className={`group-post ${post.kind && post.kind !== "result" ? "handoff-event" : ""} ${post.senderId === "user" ? "from-user" : ""}`}
 							key={post.postId}

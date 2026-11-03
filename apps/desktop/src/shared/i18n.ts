@@ -951,6 +951,25 @@ export const chinese: Readonly<Record<string, string>> = {
 	"Create a Bot": "创建 Bot",
 	"Bot name": "Bot 名称",
 	"Working": "正在处理",
+	"Idle": "空闲",
+	"Allow once applies only to this request.": "允许一次只适用于这一次请求。",
+	"Bot details": "Bot 详情",
+	"Group details": "群组详情",
+	"Resize Bot details": "调整 Bot 详情宽度",
+	"Avatar motif": "头像样式",
+	"Leaf": "叶子",
+	"Glasses": "眼镜",
+	"Cap": "帽子",
+	"read {count} page": "读取 {count} 页",
+	"read {count} pages": "读取 {count} 页",
+	"wrote {count} file": "写入 {count} 个文件",
+	"wrote {count} files": "写入 {count} 个文件",
+	"ran {count} command": "运行 {count} 条命令",
+	"ran {count} commands": "运行 {count} 条命令",
+	"searched {count}": "搜索 {count} 次",
+	"ran {count} steps": "执行 {count} 步",
+	"{count} failed": "{count} 项失败",
+	"{count} s": "{count} 秒",
 	"Retrying after an error:": "出错后正在重试：",
 	"background ·": "后台 ·",
 	"Approval request": "授权请求",
@@ -1170,4 +1189,9 @@ export const chinese: Readonly<Record<string, string>> = {
 export function translate(language: Language, message: string, values: Readonly<Record<string, string | number>> = {}): string {
  const template = language === "zh-CN" ? chinese[message] ?? message : message;
  return template.replace(/\{(\w+)\}/g, (match, key: string) => Object.hasOwn(values, key) ? String(values[key]) : match);
+}
+
+/** Reduced-motion working label. Distinct from the "Working" activity preview, which stays "正在处理". */
+export function reducedMotionWorking(language: Language): string {
+	return language === "zh-CN" ? "工作中" : "Working";
 }

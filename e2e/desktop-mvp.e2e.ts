@@ -59,7 +59,7 @@ describe("Desktop MVP", () => {
 			{ text: "Wrote **two notes**:\n\n```sh\ncat notes/a.md notes/b.md\n```" },
 		);
 		await h.send("Write two notes");
-		const steps = page.locator(".steps-row", { hasText: "Ran 3 steps" });
+		const steps = page.locator(".steps-row", { hasText: "read 1 page · wrote 2 files" });
 		await steps.waitFor();
 		await page.locator(".transcript").getByText("Wrote two notes:").waitFor();
 		expect(await page.locator(".messages > .tool-card").count()).toBe(0);

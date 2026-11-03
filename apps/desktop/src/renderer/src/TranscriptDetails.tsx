@@ -7,17 +7,17 @@ import type { TranscriptItem } from "@openbot/protocol";
 import { useState, type ReactNode } from "react";
 import { report, useStore } from "./store";
 
-/** Consecutive successful tool calls, collapsed; expanding shows each call's own row. */
-export function StepsRow({ count, children,forceOpen=false,onExpanded }: { readonly count: number; readonly children: ReactNode|(()=>ReactNode);forceOpen?:boolean;onExpanded?:(open:boolean)=>void }) {
- const [expanded,setExpanded]=useState(forceOpen);
+/** Consecutive successful tool calls, collapsed to one gray line; expanding shows each call's own row. */
+export function StepsRow({ count, summary, children, forceOpen = false, onExpanded }: { readonly count: number; readonly summary?: string; readonly children: ReactNode | (() => ReactNode); forceOpen?: boolean; onExpanded?: (open: boolean) => void }) {
+	const [expanded, setExpanded] = useState(forceOpen);
 	return (
 		<li className="steps-row">
-			<details open={forceOpen||expanded} onToggle={e=>{setExpanded(e.currentTarget.open);onExpanded?.(e.currentTarget.open);}}>
+			<details open={forceOpen || expanded} onToggle={(e) => { setExpanded(e.currentTarget.open); onExpanded?.(e.currentTarget.open); }}>
 				<summary>
 					<span className="tool-status" aria-hidden />
-					<span className="tool-verb">{t("Ran {count} steps", {count})}</span>
+					<span className="tool-verb step-summary">{summary || t("Ran {count} steps", { count })}</span>
 				</summary>
-				<ol className="steps-list">{(forceOpen||expanded)&&(typeof children==="function"?children():children)}</ol>
+				<ol className="steps-list">{(forceOpen || expanded) && (typeof children === "function" ? children() : children)}</ol>
 			</details>
 		</li>
 	);

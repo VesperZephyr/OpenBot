@@ -158,7 +158,7 @@ function createWindow(): BrowserWindow {
 		title: "OpenBot",
 		titleBarStyle: "hiddenInset",
 		trafficLightPosition: { x: 16, y: 16 },
-		backgroundColor: "#ffffff",
+		backgroundColor: "#e8eaee",
 		show: false,
 		focusable: !backgroundTest,
 		webPreferences: {

@@ -67,7 +67,7 @@ it("designs readable chat, profile, menus, focus and Settings in both appearance
             const style = getComputedStyle(message);
             return { fontSize: style.fontSize, marginLeft: style.marginLeft, fontFamily: style.fontFamily };
         });
-        expect(legacy).toMatchObject({ fontSize: "15px", marginLeft: "35px" });
+        expect(legacy).toMatchObject({ fontSize: "14px", lineHeight: "22px", marginLeft: "35px" });
         expect(legacy!.fontFamily.toLowerCase()).not.toContain("boardui");
         await h.shot(`${prefix}-chat`);
         await button("•••").click();

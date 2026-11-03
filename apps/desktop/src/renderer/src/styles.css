@@ -1,45 +1,46 @@
-/* A quiet conversation canvas; activity and permissions carry the signal colors. */
+/* Neutral canvas. Blue is reserved for primary actions, toggles and send. */
 :root {
  color-scheme: light;
+ --app: #e8eaee;
  --bg: #ffffff;
- --sidebar: #f4f2f7;
+ --sidebar: #ffffff;
  --surface: #ffffff;
- --surface-raised: #f6f3f9;
- --border: #e5dfed;
- --text: #30283f;
- --muted: #6d6479;
- --accent: #644689;
+ --surface-raised: #f3f4f6;
+ --border: #e5e7eb;
+ --text: #1c1d21;
+ --muted: #5c6370;
+ --accent: #1d4ed8;
  --accent-ink: #ffffff;
- --signal: #865a27;
- --unread: #695093;
- --attention: #b03845;
- --user: #eee7f6;
+ --signal: #5c6370;
+ --unread: #1d4ed8;
+ --attention: #b42318;
+ --user: #f3f4f6;
  --danger-ink: #ffffff;
- --star: #897541;
- --quote-bg: #eff0e3;
- --quote-ink: #474d34;
- --quote-border: #a9b480;
- --note-bg: #e8dff5;
- --note-ink: #644689;
- --artifact-bg: #f5e7d7;
- --artifact-ink: #795334;
- --composer-border: #d7cce4;
- --overlay: #18122466;
- --shadow: 0 18px 60px #16102424;
- --composer-shadow: 0 3px 18px #30283f06;
- --sidebar-text: #30283f;
- --sidebar-muted: #71677d;
+ --star: #1c1d21;
+ --quote-bg: #f4f5f7;
+ --quote-ink: #1c1d21;
+ --quote-border: #9aa3af;
+ --note-bg: #f4f5f7;
+ --note-ink: #1c1d21;
+ --artifact-bg: #f4f5f7;
+ --artifact-ink: #1c1d21;
+ --composer-border: #e5e7eb;
+ --overlay: #1c1d2166;
+ --shadow: 0 10px 30px rgb(28 29 33 / 8%);
+ --composer-shadow: 0 8px 24px rgb(28 29 33 / 6%);
+ --sidebar-text: #1c1d21;
+ --sidebar-muted: #5c6370;
  --sidebar-surface: #ffffff;
- --sidebar-hover: #eae5f1;
- --sidebar-border: #ded7e6;
- --sidebar-selected-border: #d6c9e4;
- --sidebar-accent: #644689;
- --badge: #644689;
+ --sidebar-hover: #f3f4f6;
+ --sidebar-border: transparent;
+ --sidebar-selected-border: transparent;
+ --sidebar-accent: #1d4ed8;
+ --badge: #1c1d21;
  --badge-ink: #ffffff;
- --sidebar-signal: #865a27;
- --sidebar-attention: #b03845;
- --ready: #607737;
- --brand-dot: #89985f;
+ --sidebar-signal: #5c6370;
+ --sidebar-attention: #b42318;
+ --ready: #3f6212;
+ --brand-dot: #1d4ed8;
 
  --radius: 12px;
  --font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
@@ -49,50 +50,51 @@
  font-size: 14px;
  line-height: 1.6;
  color: var(--text);
- background: var(--sidebar);
+ background: var(--app);
  -webkit-font-smoothing: antialiased;
 }
 :root[data-theme="dark"] {
  color-scheme: dark;
- --bg: #19181e;
- --sidebar: #141218;
- --surface: #232129;
- --surface-raised: #2d2a35;
- --border: #3c3746;
- --text: #eeeaf3;
- --muted: #b0a8bc;
- --accent: #bfa4e5;
- --accent-ink: #21162f;
- --unread: #d0b4f0;
- --signal: #e7b777;
- --attention: #f39eab;
- --danger-ink: #30181e;
- --user: #353040;
- --star: #d8ce92;
- --quote-bg: #2a3025;
- --quote-ink: #d9e2c4;
- --quote-border: #889669;
- --note-bg: #342b43;
- --note-ink: #d0b4f0;
- --artifact-bg: #352d26;
- --artifact-ink: #dfbd93;
- --composer-border: #50475d;
- --overlay: #09070db3;
- --shadow: 0 20px 64px #00000066;
- --composer-shadow: 0 3px 18px #0000001f;
- --sidebar-text: #eeeaf3;
- --sidebar-muted: #afa6bd;
- --sidebar-surface: #24202d;
- --sidebar-hover: #24202d;
- --sidebar-border: #332c3f;
- --sidebar-selected-border: #51415f;
- --sidebar-accent: #d0b4f0;
- --badge: #c4a7e7;
- --badge-ink: #21162f;
- --sidebar-signal: #e9bf81;
- --sidebar-attention: #ffadba;
- --ready: #c3d497;
- --brand-dot: #d8dfad;
+ --app: #101114;
+ --bg: #1c1d22;
+ --sidebar: #1c1d22;
+ --surface: #1c1d22;
+ --surface-raised: #2a2c33;
+ --border: #3a3d46;
+ --text: #f4f5f7;
+ --muted: #c0c4cc;
+ --accent: #1d4ed8;
+ --accent-ink: #ffffff;
+ --signal: #c0c4cc;
+ --unread: #93c5fd;
+ --attention: #fecdd3;
+ --danger-ink: #3f1218;
+ --user: #2a2c33;
+ --star: #f4f5f7;
+ --quote-bg: #2a2c33;
+ --quote-ink: #f4f5f7;
+ --quote-border: #9aa3af;
+ --note-bg: #2a2c33;
+ --note-ink: #f4f5f7;
+ --artifact-bg: #2a2c33;
+ --artifact-ink: #f4f5f7;
+ --composer-border: #3a3d46;
+ --overlay: #000000b3;
+ --shadow: 0 12px 32px rgb(0 0 0 / 35%);
+ --composer-shadow: 0 8px 24px rgb(0 0 0 / 28%);
+ --sidebar-text: #f4f5f7;
+ --sidebar-muted: #c0c4cc;
+ --sidebar-surface: #1c1d22;
+ --sidebar-hover: #2a2c33;
+ --sidebar-border: transparent;
+ --sidebar-selected-border: transparent;
+ --sidebar-accent: #93c5fd;
+ --badge: #f4f5f7;
+ --badge-ink: #101114;
+ --sidebar-signal: #c0c4cc;
+ --sidebar-attention: #fecdd3;
+ --ready: #d9f99d;
+ --brand-dot: #93c5fd;
 }
 
 * {
@@ -110,6 +112,7 @@ select,
 textarea {
 	font: inherit;
 	color: inherit;
+	line-height: 20px;
 }
 
 button {
@@ -155,8 +158,9 @@ code {
 
 .app {
 	display: block;
-	padding: 8px 12px 8px 0;
+	padding: 12px;
 	height: 100vh;
+	background: var(--app);
 }
 
 /* Sidebar */
