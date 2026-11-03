@@ -124,17 +124,54 @@ it("pins slash-selected versions across draft reload, queue, deletion and restar
 	await h.page().getByText("Pinned method retained.", { exact: true }).waitFor();
 	const user = (await snapshot(second)).items.filter((i: any) => i.kind === "user").at(-1);
 	expect(user.skills).toEqual([{ name: ref.name, revision: 1, sha256: ref.sha256 }]);
-	const contrast = await h.page().locator(".message-user .skill-chip").last().evaluate((element) => {
-		const style = getComputedStyle(element);
-		const luminance = (color: string) => {
-			const channels = color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map((n) => {
-				const value = n / 255;
-				return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-			});
-			return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+	const chip = h.page().locator(".message-user .skill-chip").last();
+	await chip.waitFor();
+	// Computed colors are not always rgb(n, n, n): a transparent chip serializes as
+	// `transparent` or `rgb(none none none / none)`, which has no digits. Measure the
+	// painted pair, compositing a transparent fill over the bubble behind it.
+	const contrast = await chip.evaluate((element) => {
+		const parsed = (raw: string) => {
+			const value = raw.trim().toLowerCase();
+			if (!value || value === "transparent" || (value.includes("none") && !/\d/.test(value))) return { r: 0, g: 0, b: 0, a: 0 };
+			const hex = /^#([0-9a-f]{3,8})$/.exec(value);
+			if (hex) {
+				const body = hex[1]!.length === 3 ? [...hex[1]!].map((c) => c + c).join("") : hex[1]!;
+				const r = parseInt(body.slice(0, 2), 16), g = parseInt(body.slice(2, 4), 16), b = parseInt(body.slice(4, 6), 16);
+				const a = body.length >= 8 ? parseInt(body.slice(6, 8), 16) / 255 : 1;
+				return { r, g, b, a };
+			}
+			const nums = value.match(/[\d.]+/g)?.map(Number);
+			if (!nums || nums.length < 3) return null;
+			const scale = value.startsWith("color(") && nums.slice(0, 3).every((n) => n <= 1) ? 255 : 1;
+			const alpha = nums.length > 3 ? (nums[3]! > 1 ? nums[3]! / 255 : nums[3]!) : 1;
+			return { r: nums[0]! * scale, g: nums[1]! * scale, b: nums[2]! * scale, a: alpha };
 		};
-		const foreground = luminance(style.color), background = luminance(style.backgroundColor);
-		return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+		const paint = (node: Element): { r: number; g: number; b: number; a: number } => {
+			const start = parsed(getComputedStyle(node).backgroundColor);
+			if (!start) throw new Error(`Unparseable background: ${getComputedStyle(node).backgroundColor}`);
+			let layer: { r: number; g: number; b: number; a: number } = start;
+			let parent = node.parentElement;
+			while (layer.a < 1 && parent) {
+				const under = parsed(getComputedStyle(parent).backgroundColor);
+				if (!under) throw new Error(`Unparseable background: ${getComputedStyle(parent).backgroundColor}`);
+				const above = layer.a;
+				const cover = above + under.a * (1 - above);
+				const mix = (front: number, back: number): number => (cover === 0 ? 0 : (front * above + back * under.a * (1 - above)) / cover);
+				layer = { r: mix(layer.r, under.r), g: mix(layer.g, under.g), b: mix(layer.b, under.b), a: cover };
+				parent = parent.parentElement;
+			}
+			return layer;
+		};
+		const luminance = (color: { r: number; g: number; b: number }) =>
+			[color.r, color.g, color.b]
+				.map((n) => n / 255)
+				.map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+				.reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i]!, 0);
+		const foreground = parsed(getComputedStyle(element).color);
+		if (!foreground) throw new Error(`Unparseable color: ${getComputedStyle(element).color}`);
+		const background = paint(element);
+		const a = luminance(foreground), b = luminance(background);
+		return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
 	});
 	expect(contrast).toBeGreaterThanOrEqual(4.5);
 	await h.shot("05-attached-skill-en");
