@@ -1,7 +1,7 @@
 # D12a: BoardUI Foundation and Settings/Chooser Pilot
 
-Status: ready
-Branch: unclaimed; use `task/d12a-boardui-foundation`
+Status: in progress
+Branch: task/d12a-boardui-foundation
 Depends on: [D12's selected direction](d12-boardui-refactor.md); existing D7–D10 desktop behavior
 Architecture: existing renderer boundary and theme ownership; no Host Runtime, protocol or persistence changes
 Baseline: product `f45a707`; D12 design `53a24ff`; dependency/source review on 2026-11-02
@@ -19,7 +19,7 @@ In:
 - Renderer-only Tailwind integration, semantic style adapter and the selected source files below.
 - General Settings' Language select and Appearance choices; the existing New conversation chooser, including **Create new Bot**, **Create group** and **Import template**.
 - The minimal shared Button, Select, RadioCard and OpenBot Dialog interfaces required by those surfaces. Extend the existing icon abstraction only for needed slots/glyphs.
-- Explicit coexistence between React Aria and legacy dialog focus handling; scoped CSS exclusions for the pilot, source/license records and bundled notices.
+- Explicit coexistence between React Aria and legacy dialog focus handling; cascade layers for the pilot, source/license records and bundled notices.
 - Mechanical enforcement of renderer UI import boundaries and focused regression coverage, followed by full checks.
 
 Out:
@@ -46,7 +46,7 @@ Import only these seven source files, retaining relative structure below `apps/d
 | `utils/cx.ts` | `db35ea5afa8b2e0fd51319bc49288c4df7c98ec53440b43903636a32e3319d9d` |
 | `utils/use-dismiss-on-outside-press.ts` | `01c70c3b25018e9c8d1d6d84ca67facb9392b5d4baf1c7207bbcfe13d4b33699` |
 
-The LICENSE hash is `7a28c78354f8f88d8773f72bf37fb9c037817f8abd2fa5a63694d6c946a5ce80`. Add a machine-readable import record with upstream URL/SHA, each original path/hash, destination, license and adaptation identifiers. Keep a short adjacent adaptation note describing reasons, not a prose copy of component APIs. Preserve copyright/provenance notices. Future imports are outside this task.
+The LICENSE hash is `7a28c78354f8f88d8773f72bf37fb9c037817f8abd2fa5a63694d6c946a5ce80`. Record the upstream URL and SHA, each original path and hash, and the adaptation reason in `apps/desktop/src/renderer/src/ui/boardui/README.md`. A separate machine-readable import file is not required for this delivery. Preserve copyright/provenance notices. Future imports are outside this task.
 
 The fixed free snapshot has no standalone base Modal. Build OpenBot's small controlled Dialog from `ModalOverlay`, `Modal`, `Dialog` and `Heading` in React Aria Components; do not pull in the application Settings Modal or fetch a newer registry item. This is part of the selected free-component-plus-owned-composition direction.
 
@@ -90,7 +90,7 @@ OpenBot's existing root font size is 14px. Upstream rem-based typography and spa
 
 Keep [D7's theme roles](../design/d7-themes.md) and `appearance.tsx` as owners. Use `@theme inline` aliases to the existing CSS variables for primary/secondary text, default/hover/selected surfaces, borders and focus. Use `--muted` or `--accent` for essential control outlines that need 3:1 contrast; the subtle existing `--border` remains suitable for decorative separators, not a substitute for an identifiable input boundary. The selected radio uses OpenBot's accent and its contrasting indicator ink, not an imported blue ramp. Map the font to the existing system font. Use only the tiny shadow/token subset needed by these controls. No duplicate `.dark` state, theme provider or appearance storage key is allowed.
 
-Mark each migrated surface and each portalled menu/dialog with `data-openbot-ui`. Exclude these elements/descendants from conflicting legacy element rules (`button`, `input`, hover/disabled/focus rules and similar affected selectors), preserving existing selectors' specificity outside the pilot. Prefixing utilities alone does not solve unlayered legacy rules overriding layered CSS. Add a scoped base inside the marker for the form-control, border-style, margin and box-sizing defaults that the new controls require without Preflight. Keep the marker on portals: a parent marker inside Settings does not cover a portal under `body`.
+Declare cascade layers in the order `legacy`, `theme`, `ob-base`, `ob-utilities`. Put every existing renderer stylesheet, including vendored reader CSS, in `@layer legacy` without changing its relative order. A scan of those sheets found `!important` only on `.reader-open-file`, reduced motion inside `.conversation-shell` and `.sidebar`, and two avatar size overrides. Those selectors do not target the pilot, and keeping them in the same layer preserves their current wins. Do not add `[data-openbot-ui]` exclusions to legacy element rules. Mark each migrated surface and each portalled menu/dialog with `data-openbot-ui` so the scoped base and portal resets apply. Add that scoped base in `ob-base` for the form-control, border-style, margin and box-sizing defaults the new controls need without Preflight. Utilities in `ob-utilities` then override the base. A parent marker inside Settings does not cover a portal under `body`.
 
 Do not wrap the whole application in the new scope, reorder all legacy styles, use `all: unset`, or fix leakage with accumulating `!important`. Existing chat, approval, Markdown, PDF and reader styles stay outside the marker. Reduced-motion styles inside the marker disable transitions/transforms without hiding selected, loading or focus state.
 
@@ -117,7 +117,7 @@ Extend `scripts/check-boundaries.mjs` with this renderer UI import rule and test
 - Preserve current outside-click behavior: the modal is not backdrop-dismissable. Escape during IME composition does not dismiss it. Standard Escape closes the chooser once, without reaching underlying controls.
 - Choosing Bot/group closes the chooser and opens the existing editor with its current initial focus. Do not briefly restore focus to the page after the editor takes focus. Cancel returns to the original conversation and its draft, with focus on New; successful submission retains existing destination focus. Preserve existing search clearing on these two actions.
 - Import template still calls the existing picker/review flow once. A cancelled native picker returns to New without creating anything; a valid selection enters the existing import review; invalid data keeps the existing error handling. Preserve review's nested preview and cancellation behavior. The modal refactor must not hide this third action.
-- Mark the React Aria-owned dialog with `data-focus-owner="react-aria"`. The legacy focus manager must neither initialize/restore focus for it nor handle keys while it is the active modal owner. Legacy destination dialogs keep their existing manager after the chooser unmounts. Do not merely remove every dialog from the legacy selector or allow it to act on an underlying dialog.
+- Mark the React Aria-owned dialog with `data-focus-owner="react-aria"`. The legacy focus manager looks at the topmost visible dialog. If that dialog has `data-focus-owner`, the manager does not initialize focus, restore focus, or handle keys, including for any legacy dialog underneath it. This is what keeps a closing chooser from fighting a legacy editor that mounts in the same turn. When the topmost dialog has no focus owner, the manager keeps its previous rule: the last non-details dialog, or the details dialog when it is the only one. Legacy destination dialogs keep that manager after the chooser unmounts.
 - Retain standard dialog roles used by `readers/HtmlReader.tsx`'s modal observer. An open native HTML/web reader must hide while the chooser or its legacy destination owns interaction, then resume with the same tab, page state, zoom and chat draft. No new reader API is needed.
 
 ## 4. Implementation steps
@@ -149,8 +149,8 @@ Every row is required. Test names in quotes describe scenarios to add or extend 
 
 ### Capture matrix and geometry
 
-- Capture Settings Appearance, the **open** Language popup and New conversation for English/light, English/dark, Chinese/light and Chinese/dark at 1280 × 800 and the 880 × 560 minimum BrowserWindow size. Record actual viewport dimensions. This is 24 principal captures, which may be produced within existing suites.
-- At 900 × 650, verify the same surfaces have no horizontal document overflow, all chooser actions are visible or reachable by internal vertical scrolling, and the language popup stays within the viewport. Capture the compact Chinese case in both themes.
+- Capture Settings Appearance, the **open** Language popup and New conversation for English/light, English/dark, Chinese/light and Chinese/dark at 1280 × 800 and the 880 × 560 minimum BrowserWindow size. Record actual viewport dimensions. This is 24 principal captures, which may be produced within existing suites. Do not add a 900 × 650 screenshot matrix in this stage.
+- At 900 × 650, verify the same surfaces with DOM geometry rather than pixel diffs: no horizontal document overflow, all chooser actions visible or reachable by internal vertical scrolling, and the language popup inside the viewport.
 - Capture keyboard focus and reduced-motion examples. Assert translated labels are not clipped, whole-card radio clicks work, Close has a ≥32 × 32-pixel hit area and the language trigger has at least 36px height. Do not require a particular decorative shadow.
 - Capture legacy conversation with formatted Markdown/code, a pending approval and chat with reader in both themes. Reuse the established suites for their underlying data; preserve request/approval behavior, history bounds and safe rendering assertions.
 - Keep screenshots/logs under `e2e/.run/`, outside Git. Link their paths and outcomes in the acceptance record. Automated accessibility assertions do not claim a completed VoiceOver audit; native signing, permissions and owner installation remain outside this task.
@@ -163,7 +163,10 @@ Revert this task's code/dependency changes if the pilot cannot coexist reliably.
 
 ## Open questions
 
-None blocking readiness. Source revision, direct dependencies, imported files, pilot controls and ownership decisions are fixed above. Full Electron behavior and visual acceptance are implementation checks, not unresolved design choices.
+- 2026-11-02: CSS isolation uses `@layer legacy` before `ob-base` and `ob-utilities`, with markers kept for the scoped base and portals. The legacy `!important` rules are scoped and stay in that one layer. Pending confirmation from Yan; if layering proves unsafe in Electron, fall back to selector exclusions.
+- 2026-11-02: The legacy focus manager handles a dialog only when it is the topmost visible dialog and it has no `data-focus-owner`. An owned chooser therefore blocks Escape and focus handling for a legacy editor mounted underneath. Pending confirmation from Yan.
+- 2026-11-02: Screenshot captures are 1280 × 800 and 880 × 560. The 900 × 650 check stays a DOM geometry assertion. Pending confirmation from Yan.
+- 2026-11-02: The import record is `ui/boardui/README.md` (source SHA, original hashes, adaptation reasons). A machine-readable record is deferred because no acceptance check requires one. Pending confirmation from Yan.
 
 ## Design-time verification — 2026-11-02
 
@@ -174,3 +177,9 @@ None blocking readiness. Source revision, direct dependencies, imported files, p
 - This was a static/type/build probe with a minimal icon stub, not a rendered Electron pilot. It did not test the production icon adapter, focus, native-reader overlays, application CSS coexistence or full workspace dependency graph. A1–A12 remain unexecuted implementation acceptance. The implementation branch must generate and validate the real workspace lockfile and notices.
 
 Documentation validation checks local references, index navigation and whitespace. No product suite is required merely to publish this ready spec.
+
+## Implementation evidence — 2026-11-02
+
+- Local `pnpm run check:quick` passed after `pnpm run build:pi` (lint, boundaries, typecheck). New unit tests for boundaries, focus selection, prefixed `cx`, and license copy passed. Unrelated local-executor and login-shell failures on this Linux agent are outside the pilot.
+- Desktop `electron-vite build` succeeded. Renderer JS `index` is 2,286.90 kB and renderer CSS is 108.3 kB. Main and preload bundles do not import the new UI libraries. Copied notices include BoardUI `ui-licenses/boardui/LICENSE`, `react-aria-components@1.17.0`, `react-aria@3.48.0`, and `tailwind-merge@3.6.0`. Tailwind and its Vite plugin stay build-only.
+- A headless Chrome comparison of the legacy stylesheets plain versus wrapped in `@layer legacy` found no computed-style difference for button, reader open, appearance card, markdown, approval, or the `pulse` animation. Full Electron screenshot and e2e acceptance still belong to the macOS CI run; this agent cannot compile the macOS keychain helper.

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { type AppHarness, createBot, launchApp } from "./harness.ts";
+import { chooseSettingsLanguage } from "./pilot-ui.ts";
 import type { BotSummary, MemoryState } from "../packages/protocol/src/index.ts";
 let h: AppHarness;
 let bot: BotSummary;
@@ -105,7 +106,7 @@ it("duplicates settings with empty memory and keeps source memory after restart"
 it("offers Chinese memory controls, preserves source text, and rejects oversized UTF-8 drafts", async () => {
 	const page = h.page();
 	await page.getByRole("button", { name: /^Settings/ }).click();
-	await page.getByLabel("Language", { exact: true }).selectOption("zh-CN");
+	await chooseSettingsLanguage(page, "zh-CN");
 	await page.getByRole("button", { name: /Cedar/, exact: false }).filter({ hasNotText: "copy" }).first().click();
 	await edit(true, true);
 	const input = page.getByRole("textbox", { name: "记忆", exact: true });

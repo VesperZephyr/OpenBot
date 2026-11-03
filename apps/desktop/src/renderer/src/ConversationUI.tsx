@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { activeLegacyDialog, legacyOpenerAction } from "./dialog-focus";
 import { t } from "./i18n";
 
 export function ConversationShell({
@@ -20,33 +21,75 @@ export function ConversationShell({
 	);
 }
 
-/** Modal editors are stacked; only the last visible modal handles focus and Escape. */
+function focusFirst(dialog: HTMLElement) {
+	dialog
+		.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex="0"]')
+		?.focus();
+}
+
+/** Modal editors are stacked; only the topmost legacy modal handles focus and Escape. */
 export function useDialogFocus() {
 	useEffect(() => {
 		const openers = new Map<HTMLElement, HTMLElement | null>();
+		let deferredOpener: HTMLElement | null = null;
 		const dialogs = () =>
-			[...document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]')].filter((e) => e.getClientRects().length > 0);
+			[...document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]')].filter((element) => element.getClientRects().length > 0);
+		const active = () =>
+			activeLegacyDialog(
+				dialogs().map((element) => ({
+					element,
+					focusOwner: element.getAttribute("data-focus-owner"),
+					details: element.classList.contains("conversation-details"),
+				})),
+			)?.element;
 		const scan = () => {
+			const current = active();
+			const editorOpen = document.querySelector(".dialog-backdrop") !== null;
 			for (const [dialog, opener] of openers)
 				if (!dialog.isConnected) {
-					if (opener?.isConnected) opener.focus();
 					openers.delete(dialog);
+					const action = legacyOpenerAction(current !== undefined, editorOpen);
+					if (action === "defer") deferredOpener = opener;
+					else if (action === "restore" && opener?.isConnected) opener.focus();
 				}
-			for (const dialog of dialogs())
-				if (!openers.has(dialog)) {
-					openers.set(dialog, document.activeElement as HTMLElement);
-					if (!dialog.contains(document.activeElement))
-						dialog
-							.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), [tabindex="0"]')
-							?.focus();
-				}
+			if (!editorOpen && current === undefined && deferredOpener?.isConnected) {
+				deferredOpener.focus();
+				deferredOpener = null;
+			}
+			if (current && !openers.has(current)) {
+				openers.set(current, document.activeElement instanceof HTMLElement ? document.activeElement : null);
+				if (!current.contains(document.activeElement)) focusFirst(current);
+			}
 		};
-		const observer = new MutationObserver(scan);
+		let correctFrame = 0;
+		const scheduleCorrect = () => {
+			cancelAnimationFrame(correctFrame);
+			correctFrame = requestAnimationFrame(() => {
+				correctFrame = requestAnimationFrame(() => {
+					correctFrame = 0;
+					const current = active();
+					if (current && !current.contains(document.activeElement)) focusFirst(current);
+				});
+			});
+		};
+		const touchesDialog = (node: Node) =>
+			node instanceof HTMLElement &&
+			(node.matches('[role="dialog"], [role="alertdialog"], .dialog-backdrop') ||
+				node.querySelector('[role="dialog"], [role="alertdialog"], .dialog-backdrop') !== null);
+		let tracked: HTMLElement | undefined;
+		const observed = (records: MutationRecord[]) => {
+			if (![...records].some((record) => [...record.addedNodes, ...record.removedNodes].some(touchesDialog))) return;
+			scan();
+			const current = active();
+			if (current === tracked) return;
+			tracked = current;
+			if (current) scheduleCorrect();
+		};
+		const observer = new MutationObserver(observed);
 		observer.observe(document.body, { childList: true, subtree: true });
 		scan();
 		const key = (event: KeyboardEvent) => {
-			const visible = dialogs();
-			const dialog = visible.filter((el) => !el.classList.contains("conversation-details")).at(-1) ?? visible.at(-1);
+			const dialog = active();
 			if (!dialog) return;
 			if (event.key === "Tab") {
 				const items = [
@@ -75,6 +118,7 @@ export function useDialogFocus() {
 		};
 		document.addEventListener("keydown", key, true);
 		return () => {
+			cancelAnimationFrame(correctFrame);
 			observer.disconnect();
 			document.removeEventListener("keydown", key, true);
 		};

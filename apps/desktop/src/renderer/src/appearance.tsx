@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { t } from "./i18n";
 import { report } from "./store";
+import { AppearanceChoices } from "./ui/appearance-choices";
 
 type Appearance = "light" | "dark" | "system";
 const key = "openbot.appearance";
@@ -27,17 +28,11 @@ export function AppearanceSelect() {
 		apply();
 	};
 	return (
-		<fieldset className="appearance-setting">
-			<legend>{t("Appearance")}</legend>
-			<div className="appearance-choices">
-				{([ ["light", "Light"], ["dark", "Dark"], ["system", "System"] ] as const).map(([mode, label]) => (
-					<label className="appearance-choice" key={mode}>
-						<input type="radio" name="appearance" value={mode} checked={value === mode} onChange={() => choose(mode)} />
-						<span className={`appearance-preview preview-${mode}`} aria-hidden="true"><i /><span><b /><b /><em /></span></span>
-						<span className="appearance-label">{t(label)}<span className="appearance-check" aria-hidden="true">✓</span></span>
-					</label>
-				))}
-			</div>
-		</fieldset>
+		<AppearanceChoices
+			legend={t("Appearance")}
+			value={value}
+			onChange={choose}
+			options={([ ["light", "Light"], ["dark", "Dark"], ["system", "System"] ] as const).map(([mode, label]) => ({ value: mode, label: t(label) }))}
+		/>
 	);
 }

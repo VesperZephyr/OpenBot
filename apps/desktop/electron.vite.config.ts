@@ -1,7 +1,9 @@
 import { readerNotices } from "./scripts/reader-notices.mjs";
+import { legacyLayer } from "./scripts/legacy-layer.ts";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 
 export default defineConfig({
@@ -23,10 +25,13 @@ export default defineConfig({
 	renderer: {
 		root: resolve(__dirname, "src/renderer"),
 		plugins: [
+			legacyLayer(),
+			tailwindcss(),
 			react(),
 			viteStaticCopy({
 				targets: [
                     ...readerNotices(resolve(__dirname,"node_modules")),
+					{ src: resolve(__dirname, "src/renderer/src/ui/boardui/LICENSE"), dest: "ui-licenses/boardui", rename: { stripBase: true } },
 					...["cmaps", "standard_fonts", "wasm", "iccs"].map((directory) => ({
 						src: resolve(__dirname, `node_modules/pdfjs-dist/${directory}/*`),
 						dest: `pdfjs/${directory}`,

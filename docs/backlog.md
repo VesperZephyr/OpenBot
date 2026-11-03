@@ -6,6 +6,7 @@ This is the active delivery queue, not a release history. Task status, contracts
 
 | Work | Next action / dependency |
 | --- | --- |
+| [D12a: BoardUI foundation and Settings/chooser pilot](tasks/d12a-boardui-foundation.md) | Review the implementation on `task/d12a-boardui-foundation`; the spec owns the pilot contract and acceptance |
 | [I10: Prebuilt E2E runtime](tasks/i10-e2e-runtime-prebuild.md) | Review [PR #87](https://github.com/VesperZephyr/OpenBot/pull/87) and the spec's measured adoption evidence; shutdown and cache optimizations remain deferred |
 | [B11e: Bot routines and generated-file Library](tasks/b11e-bot-routines-library.md) | Complete the review/verification tracked in [PR #69](https://github.com/VesperZephyr/OpenBot/pull/69); the spec owns findings and evidence |
 | [B13e: Bot templates](tasks/b13e-bot-templates.md) | Owner review and merge of the implementation candidate; acceptance is linked from the spec |

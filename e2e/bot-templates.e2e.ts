@@ -287,10 +287,14 @@ it("rejects guest-frame and extra-key IPC and expires a native picker across Hos
 it("cancels without mutation, expires navigation selections, and renders narrow Chinese dark review", async () => {
 	const before = (await h.api("bots.list")).length;
 	await pick(path, true);
+	const requests = h.model.requests.length;
 	await h.page().getByRole("button", { name: "New", exact: true }).click();
 	await h.page().getByRole("button", { name: "Import template", exact: true }).click();
 	await poll(() => dialog().count()).toBe(0);
 	expect((await h.api("bots.list")).length).toBe(before);
+	expect(h.model.requests.length).toBe(requests);
+	await h.nextFrame();
+	expect(await h.page().getByRole("button", { name: "New", exact: true }).evaluate((element) => element === document.activeElement)).toBe(true);
 	await h.app().evaluate(({ dialog }) => {
 		dialog.showOpenDialog = () =>
 			new Promise((resolve) => {

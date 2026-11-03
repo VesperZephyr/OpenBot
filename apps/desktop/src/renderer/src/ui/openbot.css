@@ -1,0 +1,118 @@
+@import "tailwindcss/theme.css" layer(theme) prefix(ob);
+@import "tailwindcss/utilities.css" layer(ob-utilities) prefix(ob) source(none);
+@source "./";
+
+@theme inline {
+	--font-sans: var(--font);
+	--font-panel: var(--font-display);
+	--spacing: 4px;
+	--radius-lg: 8px;
+	--radius-2lg: 10px;
+	--radius-2xl: 16px;
+	--color-text-primary: var(--text);
+	--color-text-secondary: var(--muted);
+	--color-surface: var(--surface);
+	--color-surface-raised: var(--surface-raised);
+	--color-muted: var(--muted);
+	--color-accent: var(--accent);
+	--color-accent-ink: var(--accent-ink);
+	--color-overlay: var(--overlay);
+	--shadow-xs: 0 1px 2px rgb(22 16 36 / 8%);
+	--shadow-dropdown: 0 18px 50px rgb(22 16 36 / 16%);
+	--shadow-dialog: var(--shadow);
+}
+
+@utility text-body-medium {
+	font-size: 14px;
+	line-height: 20px;
+	font-weight: 500;
+}
+@utility text-body-regular {
+	font-size: 14px;
+	line-height: 20px;
+	font-weight: 400;
+}
+@utility text-body-2-medium {
+	font-size: 13px;
+	line-height: 18px;
+	font-weight: 500;
+}
+@utility text-caption-1-semibold {
+	font-size: 12px;
+	line-height: 16px;
+	font-weight: 600;
+}
+
+@layer ob-base {
+	[data-openbot-ui] {
+		color: var(--text);
+		font-family: var(--font);
+		font-size: 14px;
+		line-height: 20px;
+	}
+	[data-openbot-ui] :where(*, *::before, *::after) {
+		box-sizing: border-box;
+		border-style: solid;
+		border-width: 0;
+	}
+	[data-openbot-ui] :where(button, input, select, textarea) {
+		font: inherit;
+		color: inherit;
+		margin: 0;
+		padding: 0;
+		background: transparent;
+		border-radius: 0;
+		border-color: transparent;
+		filter: none;
+		appearance: none;
+	}
+	[data-openbot-ui] :where(button) {
+		cursor: pointer;
+	}
+	[data-openbot-ui] :where(button:hover, button:disabled) {
+		filter: none;
+	}
+	[data-openbot-ui] :where(h1, h2, h3, p, small) {
+		margin: 0;
+		font-size: inherit;
+		font-weight: inherit;
+	}
+}
+
+@layer ob-utilities {
+	/* The hidden wrapper around the radio is a span with inline 1px clipping.
+	   Layered rules lose to those inline styles, so the label receives the hit.
+	   !important stretches that wrapper and the input across the card. */
+	[data-openbot-ui] .appearance-choice > span:first-child,
+	[data-openbot-ui] .appearance-choice > span:first-child input {
+		position: absolute !important;
+		inset: 0 !important;
+		z-index: 1 !important;
+		width: 100% !important;
+		height: 100% !important;
+		margin: 0 !important;
+		padding: 0 !important;
+		overflow: visible !important;
+		clip: auto !important;
+		clip-path: none !important;
+		white-space: normal !important;
+		opacity: 0 !important;
+		pointer-events: auto !important;
+		cursor: pointer;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		[data-openbot-ui],
+		[data-openbot-ui] :where(*) {
+			transition: none;
+			animation: none;
+			scroll-behavior: auto;
+		}
+		[data-openbot-ui][data-entering],
+		[data-openbot-ui][data-exiting],
+		[data-openbot-ui] :where([data-entering], [data-exiting]) {
+			opacity: 1;
+			transform: none;
+			filter: none;
+		}
+	}
+}

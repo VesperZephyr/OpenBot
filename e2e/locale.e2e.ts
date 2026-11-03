@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { type AppHarness, launchApp } from "./harness.ts";
+import { chooseSettingsLanguage } from "./pilot-ui.ts";
 let h: AppHarness;
 beforeAll(async () => { h = await launchApp("locale", { firstLaunch: true }); }, 90_000);
 afterAll(async () => { await h?.close(); });
@@ -32,7 +33,34 @@ it("defaults to English, supports Chinese onboarding and persists language acros
  await page.getByRole("textbox", { name: "发送消息给 OpenBot" }).waitFor();
  expect(await page.locator("html").getAttribute("lang")).toBe("zh-CN");
  await page.getByRole("button", { name: /^设置/ }).click();
- await page.getByLabel("语言", { exact: true }).selectOption("en");
+ const updatesBefore = await page.evaluate(() => {
+  const calls = (window as any).openbotCalls;
+  const original = calls["settings.update"];
+  let writes = 0;
+  calls["settings.update"] = (params: object) => {
+   writes += 1;
+   return original(params);
+  };
+  (window as any).__languageWrites = () => writes;
+  return writes;
+ });
+ const scroller = page.locator(".settings-content");
+ await scroller.evaluate((element) => { element.scrollTop = 240; });
+ const scrollBefore = await scroller.evaluate((element) => element.scrollTop);
+ await page.locator("#settings-language").getByRole("button", { name: /语言/ }).click();
+ await page.getByRole("listbox").waitFor();
+ await page.keyboard.press("Escape");
+ await page.getByRole("listbox").waitFor({ state: "hidden" });
+ expect(await page.evaluate(() => (window as any).__languageWrites())).toBe(updatesBefore);
+ expect(await scroller.evaluate((element) => element.scrollTop)).toBe(scrollBefore);
+ await page.locator("#settings-language").getByRole("button", { name: /语言/ }).click();
+ await page.getByRole("listbox").waitFor();
+ await page.locator("#settings-language").getByRole("button", { name: /语言/ }).click();
+ await page.getByRole("listbox").waitFor({ state: "hidden" });
+ await page.locator("#settings-language").getByRole("button", { name: /语言/ }).click();
+ await page.getByRole("listbox").waitFor();
+ await page.keyboard.press("e");
+ await page.keyboard.press("Enter");
  await page.getByRole("heading", { name: "Settings", exact: true }).waitFor();
  await h.shot("04-settings-en");
 });
@@ -76,7 +104,7 @@ it("preserves user names, instructions and memory while switching languages", as
  await page.getByRole("heading", { name: "设置", exact: true }).waitFor();
  await h.shot("05-settings-zh-small");
  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
- await page.getByLabel("语言", { exact: true }).selectOption("en");
+ await chooseSettingsLanguage(page, "en");
  await page.getByRole("button", { name: /OpenBot Personal assistant/ }).click();
  await page.getByRole("textbox", { name: "Message OpenBot" }).waitFor();
  await h.shot("06-conversation-en-small");

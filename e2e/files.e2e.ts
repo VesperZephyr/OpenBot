@@ -221,6 +221,25 @@ it("renders HTML resources and linked pages in an isolated embedded browser", as
 	await poll(() =>
 		h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible()),
 	).toBe(true);
+	const composer = h.page().getByRole("textbox", { name: /^Message / });
+	await composer.fill("Keep the reader draft");
+	await dialog().getByRole("button", { name: "Zoom in", exact: true }).click();
+	await dialog().getByRole("button", { name: "Reset zoom", exact: true }).getByText("110%", { exact: true }).waitFor();
+	await h.page().getByRole("button", { name: "New", exact: true }).click();
+	await h.page().getByRole("dialog", { name: "New conversation" }).getByRole("button", { name: /^Create new Bot/ }).click();
+	const editor = h.page().locator(".dialog-backdrop").filter({ has: h.page().getByRole("heading", { name: "Create a Bot", exact: true }) });
+	await editor.waitFor();
+	await poll(() =>
+		h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible()),
+	).toBe(false);
+	await editor.getByRole("button", { name: "Cancel", exact: true }).click();
+	await poll(() =>
+		h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.contentView.children.at(-1)!.getVisible()),
+	).toBe(true);
+	expect(await composer.inputValue()).toBe("Keep the reader draft");
+	expect(await dialog().getByRole("button", { name: "Reset zoom", exact: true }).textContent()).toContain("110%");
+	expect(await (await nativePage()).getByRole("button", { name: "Reviewed 1", exact: true }).count()).toBe(1);
+	await composer.fill("");
 	await h.page().getByRole("button", { name: "Conversation details", exact: true }).click();
 	const profile = h.page().getByRole("dialog", { name: "Conversation details", exact: true });
 	await profile.waitFor();
