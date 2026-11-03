@@ -131,11 +131,21 @@ function HistoryView({
 		setFollowing(anchor.current.following);
 		if (anchor.current.following) setUnseen(false);
 	};
+	const followPosition = (): TimelinePosition =>
+		anchor.current.following ? { kind: "latest" } : anchor.current.id ? { kind: "around", rowId: anchor.current.id } : { kind: "latest" };
+	// The first restore can take long enough, under load, for a settled answer to land before `initialized` is set.
+	// Dropping that refresh leaves the tail unmounted: the row is indexed, but the virtualizer never measures it.
+	const noteInitialized = () => {
+		initialized.current = true;
+		if (!refreshWanted.current || busy.current) return;
+		refreshWanted.current = false;
+		void load(followPosition());
+	};
 	const restore = () => {
 		const el = ref.current;
 		if (!el) return;
 		if (!rows.length) {
-			initialized.current = true;
+			noteInitialized();
 			return;
 		}
 		const version = ++restoration.current;
@@ -167,7 +177,7 @@ function HistoryView({
 			requestAnimationFrame(() => {
 				if (version !== restoration.current) return;
 				restoring.current = false;
-				initialized.current = true;
+				noteInitialized();
 			});
 		});
 	};
@@ -199,17 +209,7 @@ function HistoryView({
 				busy.current = false;
 				if (refreshWanted.current && alive.current) {
 					refreshWanted.current = false;
-					timer.current = setTimeout(
-						() =>
-							void load(
-								anchor.current.following
-									? { kind: "latest" }
-									: anchor.current.id
-										? { kind: "around", rowId: anchor.current.id }
-										: { kind: "latest" },
-							),
-						0,
-					);
+					timer.current = setTimeout(() => void load(followPosition()), 0);
 				}
 			}
 		}
@@ -218,7 +218,7 @@ function HistoryView({
 		virtual.cancelScroll();
 		restoration.current++;
 		restoring.current = false;
-		initialized.current = true;
+		noteInitialized();
 	};
 	const latest = () => {
 		useStore.setState({ searchTarget: undefined });
@@ -246,7 +246,10 @@ function HistoryView({
 		);
 	}, [target?.nonce]);
 	useEffect(() => {
-		if (!initialized.current) return;
+		if (!initialized.current) {
+			refreshWanted.current = true;
+			return;
+		}
 		const id = setTimeout(() => {
 			if (!anchor.current.following) setUnseen(true);
 			if (busy.current) {

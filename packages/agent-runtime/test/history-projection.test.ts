@@ -14,6 +14,54 @@ import { scriptedModels } from "../src/testing.ts";
 const expectIndexState = (readState: () => string, state: "ready" | "unavailable") =>
 	expect.poll(readState, { timeout: 10000 }).toBe(state);
 
+it("rejects another conversation's cursor while that history is still building", async () => {
+	const { vi } = await import("vitest");
+	const { HistoryClient } = await import("../src/history-client.ts");
+	const { HistoryStore } = await import("../src/history-store.ts");
+	const { BotRuntime } = await import("../src/index.ts");
+	const root = await mkdtemp(join(tmpdir(), "openbot-history-foreign-cursor-"));
+	const release = Promise.withResolvers<void>();
+	const open = HistoryClient.open;
+	const held = vi.spyOn(HistoryClient, "open").mockImplementation(async (...args) => {
+		await release.promise;
+		return open(...args);
+	});
+	const mint = new HistoryStore(join(root, "mint.sqlite"), "source");
+	const key = "bot:alpha" as const;
+	mint.apply({
+		partition: JSON.stringify([key, null]),
+		key,
+		checkpoint: "1",
+		ready: true,
+		rows: [0, 1].map((ordinal) => ({
+			id: String(ordinal),
+			ordinal,
+			source: ordinal,
+			hash: String(ordinal),
+			content: { kind: "direct" as const, item: { kind: "assistant" as const, id: String(ordinal), parts: [{ type: "text" as const, text: "minted" }] } },
+		})),
+		messages: [],
+	});
+	const page = mint.window({ conversationKey: key, position: { kind: "latest" }, limit: 1 });
+	if (page.status !== "ready" || !page.window.before) throw Error("Expected a cursor");
+	let runtime: Awaited<ReturnType<typeof BotRuntime.open>> | undefined;
+	try {
+		runtime = await BotRuntime.open({ databasePath: join(root, "db.sqlite"), models: scriptedModels().models });
+		await runtime.createBot({ botId: "alpha", name: "Alpha", createdAt: 0, model: { provider: "faux", modelId: "faux-1" } });
+		await runtime.createBot({ botId: "beta", name: "Beta", createdAt: 0, model: { provider: "faux", modelId: "faux-1" } });
+		await expect(
+			runtime.historyWindow({ conversationKey: "bot:beta", position: { kind: "cursor", cursor: page.window.before } }),
+		).rejects.toThrow("History changed. Reload this location.");
+		expect(await runtime.historyWindow({ conversationKey: "bot:beta", position: { kind: "latest" } })).toEqual({ status: "building" });
+	} finally {
+		release.resolve();
+		mint.close();
+		held.mockRestore();
+		await runtime?.close();
+		await rm(root, { recursive: true, force: true });
+	}
+}, 15000);
+
 it("settles model work while the history worker is still starting, then indexes the answer", async () => {
 	const { vi } = await import("vitest");
 	const { HistoryClient } = await import("../src/history-client.ts");
