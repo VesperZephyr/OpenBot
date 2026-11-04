@@ -1,7 +1,7 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import type { ModelRef, ModelSummary } from "@openbot/protocol";
 import { t } from "./i18n";
-import { useStore } from "./store";
+import { api, useStore } from "./store";
 
 export function ModelSelect(props: {
 	readonly value: ModelRef | undefined;
@@ -10,6 +10,18 @@ export function ModelSelect(props: {
 }) {
 	const models = useStore((state) => state.models);
 	const settings = useStore((state) => state.settings);
+	useEffect(() => {
+		if (models.length > 0) return;
+		let active = true;
+		void api["models.list"]({})
+			.then((list) => {
+				if (active && list.length > 0) useStore.setState({ models: list });
+			})
+			.catch(() => undefined);
+		return () => {
+			active = false;
+		};
+	}, [models.length]);
 	const configured = settings?.providers.filter((provider) => provider.configured).map((provider) => provider.providerId) ?? [];
 	const groups = useMemo(() => {
 		const byProvider = new Map<string, ModelSummary[]>();

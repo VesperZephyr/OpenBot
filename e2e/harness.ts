@@ -227,9 +227,9 @@ export function createBot(harness: AppHarness, name: string): Promise<void> {
 async function createBotUnprofiled(harness: AppHarness, name: string): Promise<void> {
 	const page = harness.page();
 	await page.getByRole("button", { name: /^Settings/ }).click();
-	await page.locator(".settings-group select").first().selectOption("scripted/scripted");
+	await page.locator("#settings-models select").selectOption("scripted/scripted");
 	await page.waitForFunction(
-		() => (document.querySelector(".settings-group select") as HTMLSelectElement | null)?.value === "scripted/scripted",
+		() => (document.querySelector("#settings-models select") as HTMLSelectElement | null)?.value === "scripted/scripted",
 	);
 	await page.getByRole("button", { name: /^New/ }).click();
 	await page.getByRole("button", { name: /^Create new Bot/ }).click();
