@@ -115,7 +115,7 @@ export function App() {
 		<div className="app">
             <WorkspaceLayout
 				sidebar={<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />}
-				inspector={wide && view.kind === "bot" ? <BotIdentity botId={view.botId} profileOpen={editorBotId === view.botId} /> : wide && view.kind === "group" ? <GroupIdentity groupId={view.groupId} /> : undefined}
+				inspector={wide && view.kind === "bot" ? <BotIdentity key={view.botId} botId={view.botId} profileOpen={editorBotId === view.botId} /> : wide && view.kind === "group" ? <GroupIdentity key={view.groupId} groupId={view.groupId} /> : undefined}
 			>
 			<main className="main">
 				<RestoreNotice />
