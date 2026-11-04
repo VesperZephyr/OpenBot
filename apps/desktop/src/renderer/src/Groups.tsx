@@ -1,7 +1,7 @@
 import { HistoryTimeline } from "./HistoryTimeline";
 import { LiveReply } from "./LiveReply";
 import { Avatar, AvatarStack, GroupAvatar } from "./Avatar";
-import { conversationPresence, presenceLabel } from "./conversation-status";
+import { conversationPresence, headerStatusLabel } from "./conversation-status";
 import { botGreeting, conversationExamples } from "./examples";
 import { composers } from "./useComposer";
 import { BackgroundTask } from "./BackgroundTask";
@@ -329,8 +329,8 @@ export function GroupView({ groupId,renderExecution }: { groupId: string;renderE
 							{group.leadBotId ? ` · ${t("Lead")}: ${name(group.leadBotId)}` : ""}
 						</span>
 						<span className="conversation-meta-sep" aria-hidden="true">·</span>
-						{presence === "working" && <span className="status-dot" aria-hidden="true" />}
-						<span className="conversation-status" role="status">{t(presenceLabel(presence))}</span>
+						{presence !== "idle" && <span className="status-dot" aria-hidden="true" />}
+						<span className="conversation-status" role="status">{t(headerStatusLabel(presence))}</span>
 					</p>
 				</div>
 				<GroupMenu groupId={groupId} cursor={snapshot.readCursor} />
@@ -404,17 +404,15 @@ export function GroupView({ groupId,renderExecution }: { groupId: string;renderE
 											<span>{name(task.botId)}</span>
 											<span>
 												{t(
-													task.conversation?.approvals.length
-														? "Needs approval"
-														: task.state === "pending"
-															? !task.runId || task.conversation?.run?.state === "queued"
-																? "Queued"
-																: "Working"
-															: task.state === "completed"
-																? "Completed"
-																: task.state === "cancelled"
-																	? "Task cancelled"
-																	: "Task failed",
+													task.state === "pending"
+														? !task.runId || task.conversation?.run?.state === "queued"
+															? "Queued"
+															: "Working"
+														: task.state === "completed"
+															? "Completed"
+															: task.state === "cancelled"
+																? "Task cancelled"
+																: "Task failed",
 												)}
 											</span>
 											{task.state === "pending" && task.runId && (

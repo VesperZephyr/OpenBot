@@ -156,20 +156,21 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 						<button type="button" onClick={() => setConfirming(false)}>
 							{t("Keep editing")}
 						</button>
-						<button type="button" className="primary" onClick={onClose}>
+						<button type="button" onClick={onClose}>
 							{t("Discard")}
 						</button>
 					</div>
 				</div>
-			) : null}
-			<div className="identity-actions">
-				<button type="button" onClick={requestClose}>
-					{t("Cancel")}
-				</button>
-				<button type="submit" className="primary" disabled={saving || !name.trim()}>
-					{t("Save")}
-				</button>
-			</div>
+			) : (
+				<div className="identity-actions">
+					<button type="button" onClick={requestClose}>
+						{t("Cancel")}
+					</button>
+					<button type="submit" className="primary" disabled={saving || !name.trim()}>
+						{t("Save")}
+					</button>
+				</div>
+			)}
 		</form>
 	);
 }

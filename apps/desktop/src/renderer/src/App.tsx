@@ -56,7 +56,8 @@ import { ModelSetup } from "./ModelSetup";
 import { Onboarding } from "./Onboarding";
 import { transcriptRows } from "./steps";
 import { MessageTime, RevealButton, StepsRow } from "./TranscriptDetails";
-import { conversationPresence, presenceLabel } from "./conversation-status";
+import { conversationPresence, headerStatusLabel } from "./conversation-status";
+import { displayToolOutput } from "./tool-output";
 import { botGreeting, conversationExamples } from "./examples";
 import { composers } from "./useComposer";
 import { api, connect, createBot, openBot, refreshBots, refreshSettings, report, errorMessage, sendMessage, useStore } from "./store";
@@ -448,7 +449,7 @@ function Conversation({ botId, editing, onEditing }: { readonly botId: string; r
 			}
 		>
 			<header className="conversation-header">
-				<Avatar bot={bot} size={29} working={presence === "working"} />
+				<Avatar bot={bot} size={29} working={presence !== "idle"} />
 				<div className="conversation-title">
 					<div className="conversation-name"><span title={bot.name}>{bot.name}</span>{bot.kind === "core" && <PersonalStar />}</div>
 					<p className="conversation-meta">
@@ -458,8 +459,8 @@ function Conversation({ botId, editing, onEditing }: { readonly botId: string; r
 								<span className="conversation-meta-sep" aria-hidden="true">·</span>
 							</>
 						) : null}
-						{presence === "working" && <span className="status-dot" aria-hidden="true" />}
-						<span className="conversation-status" role="status">{t(presenceLabel(presence))}</span>
+						{presence !== "idle" && <span className="status-dot" aria-hidden="true" />}
+						<span className="conversation-status" role="status">{t(headerStatusLabel(presence))}</span>
 					</p>
 				</div>
 				<button className="details-toggle" aria-label={t("Conversation details")} onClick={() => setEditing(!editing)}>
@@ -749,16 +750,7 @@ function ToolCard({
 	readonly childApprovals?: readonly PendingApproval[];
 }) {
 	const args = (item.args ?? {}) as Record<string, unknown>;
-	let output = item.output;
-	if (item.tool === "codemode" && item.execution?.error) output = t(item.execution.error);
-	if (item.tool.startsWith("app_") && output) {
-		try {
-			const result = JSON.parse(output);
-			if (result.ok === false && typeof result.error?.message === "string") output = t(result.error.message);
-		} catch {
-			/* Interrupted tools may not have a complete result envelope. */
-		}
-	}
+	const output = displayToolOutput(item.tool, item.output, item.execution?.error, (text) => t(text));
 	const managedName = useStore(
 		(state) =>
 			state.bots.find((bot) => bot.botId === args.botId)?.name ?? state.groups.find((group) => group.groupId === args.groupId)?.name,
@@ -780,9 +772,13 @@ function ToolCard({
 			"",
 	);
 	const waiting = approval !== undefined || childApprovals.length > 0;
-	const failureLabel=item.failureReason?{approval_expired:"Approval expired",permission_revoked:"Permission revoked",approval_denied:"Approval denied"}[item.failureReason]:undefined;
- const label = failureLabel?t(failureLabel):waiting
-		? t("Waiting for approval")
+	const failureLabel = item.failureReason
+		? { approval_expired: "Approval expired", permission_revoked: "Permission revoked", approval_denied: "Denied" }[item.failureReason]
+		: undefined;
+	const label = failureLabel
+		? t(failureLabel)
+		: waiting
+		? t(running)
 		: item.status === "running" || item.status === "pending"
 			? t(running)
 			: item.status === "failed"

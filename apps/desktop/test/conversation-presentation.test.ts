@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { conversationPresence } from "../src/renderer/src/conversation-status";
+import { conversationPresence, headerStatusLabel } from "../src/renderer/src/conversation-status";
 import { botGreeting, conversationExamples } from "../src/renderer/src/examples";
 import { activityWorkingLabel } from "../src/shared/i18n";
 
@@ -9,6 +9,9 @@ describe("conversation presentation", () => {
 		expect(conversationPresence({ approvals: 0, live: true, pending: 0, runState: "running" })).toBe("working");
 		expect(conversationPresence({ approvals: 1, live: true, pending: 1, runState: "running" })).toBe("awaiting_approval");
 		expect(conversationPresence({ approvals: 0, live: false, pending: 1, runState: "queued" })).toBe("working");
+		expect(headerStatusLabel("idle")).toBe("Idle");
+		expect(headerStatusLabel("working")).toBe("Working");
+		expect(headerStatusLabel("awaiting_approval")).toBe("Working");
 	});
 
 	it("takes at most three examples from instructions and skills, and hides when there are none", () => {

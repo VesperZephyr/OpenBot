@@ -208,6 +208,8 @@ it("renders a Chinese approval at minimum window size and denies it without crea
 	await h.shot("07-chinese-approval-minimum");
 	await deny.click();
 	await h.page().getByText("Preview declined.", { exact: true }).waitFor();
+	expect(await h.page().getByText("Do not retry it", { exact: false }).count()).toBe(0);
+	expect(await h.page().locator(".tool-output").last().textContent()).toBe(translate("zh-CN", "Denied"));
 	await idle();
 	expect(await roster()).toHaveLength(1);
 });
