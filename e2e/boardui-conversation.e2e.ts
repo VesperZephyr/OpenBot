@@ -249,8 +249,10 @@ it("captures the review states in light and dark", async () => {
 	await appearance("Light");
 	await card.getByRole("button", { name: "Deny", exact: true }).click();
 	await card.waitFor({ state: "hidden" });
-	expect(await h.page().locator(".tool-verb").last().textContent()).toBe("Denied");
-	expect(await h.page().locator(".tool-output").last().textContent()).toBe("Denied");
+	await h.page().getByText("The command was not run.", { exact: true }).waitFor();
+	const denied = h.page().locator(".tool-card", { hasText: "echo review" });
+	expect(await denied.locator(".tool-verb").textContent()).toBe("Denied");
+	expect(await denied.locator(".tool-output").textContent()).toBe("Denied");
 	expect(await h.page().getByText("Do not retry it", { exact: false }).count()).toBe(0);
 
 	const beforeModel = await atlas();
