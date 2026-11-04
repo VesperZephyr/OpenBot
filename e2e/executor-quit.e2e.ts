@@ -50,16 +50,21 @@ it("desktop quit leaves no detached executor process behind", async () => {
 	let h: AppHarness | undefined;
 	try {
 		h = await launchApp("executor-quit");
-		const hostPid = Number((await readFile(join(h.dataDirectory, "host.lock"), "utf8")).trim());
+		const lock = join(h.dataDirectory, "host.lock");
+		// The sidebar can paint before the Host has created its lock and executor.
+		await expect.poll(async () => readFile(lock, "utf8").catch(() => ""), { timeout: 20_000 }).toMatch(/^\d+\n?$/);
+		const hostPid = Number((await readFile(lock, "utf8")).trim());
 		expect(alive(hostPid)).toBe(true);
-		const descendants = await descendantPids(hostPid);
-		expect(descendants.length).toBeGreaterThan(0);
+		let descendants: number[] = [];
+		await expect.poll(async () => {
+			descendants = await descendantPids(hostPid);
+			return descendants.length;
+		}, { timeout: 20_000 }).toBeGreaterThan(0);
 		await h.close();
 		h = undefined;
 		await expect.poll(() => alive(hostPid)).toBe(false);
 		await expect.poll(() => descendants.every((pid) => !alive(pid))).toBe(true);
 		expect(await descendantPids(hostPid)).toEqual([]);
-		void closed;
 	} finally {
 		await h?.close();
 	}
