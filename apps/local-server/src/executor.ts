@@ -8,15 +8,30 @@ import { randomUUID } from "node:crypto";
  * correlates invocations with results. Implements Tool Router's `ExecutorTransport`.
  */
 import type { ArtifactOperation, ArtifactOperationResult } from "@openbot/protocol";
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import type { ExecutorMessage, ExecutorRequest, ToolInvocation, ToolOutcome } from "@openbot/protocol";
 import type { ExecutorTransport } from "@openbot/tool-router";
 
-type Pending = { readonly resolve: (outcome: ToolOutcome) => void; readonly onProgress: (output: string) => void };
+const START_TIMEOUT_MS = 20_000;
+const STOP_TIMEOUT_MS = 5_000;
+/** Foreground commands yield at 60s and task_output waits at most 60s; this only bounds a lost executor reply. */
+const INVOKE_TIMEOUT_MS = 120_000;
+const INVOKE_TIMEOUT_OUTPUT = "The local executor timed out before reporting a result; the action may have partly run";
+
+type Pending = {
+	readonly resolve: (outcome: ToolOutcome) => void;
+	readonly onProgress: (output: string) => void;
+	readonly timer: ReturnType<typeof setTimeout>;
+};
 type StatusReply = Extract<ExecutorMessage, { kind: "tool.status" }>;
+type TrackedGroup = { readonly pgid: number; readonly started: string | undefined };
 
 export class ExecutorProcess implements ExecutorTransport {
 	readonly #entry: string;
+	readonly #node: string;
+	readonly #startTimeoutMs: number;
+	readonly #stopTimeoutMs: number;
+	readonly #invokeTimeoutMs: number;
  readonly #connectorWaiters=new Map<string,{resolve:(value:ConnectorConnection)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
  readonly #connectorChanged:(id:string)=>void;
 	readonly #env: NodeJS.ProcessEnv;
@@ -44,11 +59,19 @@ export class ExecutorProcess implements ExecutorTransport {
 		workspace: string;
 		dataDirectory: string;
 		env: NodeJS.ProcessEnv;
+		node?: string;
+		startTimeoutMs?: number;
+		stopTimeoutMs?: number;
+		invokeTimeoutMs?: number;
 		assertAllowed?: () => void;
   admit?:(invocation:ToolInvocation,signal:AbortSignal,send:()=>void)=>Promise<void>;
  connectorChanged?:(id:string)=>void;
 	}) {
 		this.#entry = options.entry;
+		this.#node = options.node ?? process.execPath;
+		this.#startTimeoutMs = options.startTimeoutMs ?? START_TIMEOUT_MS;
+		this.#stopTimeoutMs = options.stopTimeoutMs ?? STOP_TIMEOUT_MS;
+		this.#invokeTimeoutMs = options.invokeTimeoutMs ?? INVOKE_TIMEOUT_MS;
   this.#admit=options.admit??(async(_invocation,_signal,send)=>send());
  this.#connectorChanged=options.connectorChanged??(()=>{});
 		this.#assertAllowed = options.assertAllowed ?? (() => {});
@@ -79,14 +102,30 @@ export class ExecutorProcess implements ExecutorTransport {
 		const child = this.#child;
 		if (child === undefined || !child.connected) return { status: "failed", output: "The local executor is not running" };
 		const { promise, resolve } = Promise.withResolvers<ToolOutcome>();
-  const cancel = (): void => this.#send({ kind: "tool.cancel", invocationId: invocation.invocationId });
-  try {
-   await this.#admit(invocation,signal,()=>{
-    signal.throwIfAborted();this.#assertAllowed();
-    this.#pending.set(invocation.invocationId,{resolve,onProgress});
-    signal.addEventListener("abort",cancel,{once:true});
-    this.#send({kind:"tool.invoke",invocation});
-   });
+		let settled = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const finish = (outcome: ToolOutcome): void => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			this.#pending.delete(invocation.invocationId);
+			resolve(outcome);
+		};
+		const cancel = (): void => this.#send({ kind: "tool.cancel", invocationId: invocation.invocationId });
+		try {
+			await this.#admit(invocation, signal, () => {
+				signal.throwIfAborted();
+				this.#assertAllowed();
+				const pendingTimer = setTimeout(() => {
+					// Drop the waiter before cancel so a late result cannot replace the timeout outcome.
+					finish({ status: "unknown", output: INVOKE_TIMEOUT_OUTPUT });
+					cancel();
+				}, this.#invokeTimeoutMs);
+				timer = pendingTimer;
+				this.#pending.set(invocation.invocationId, { resolve: finish, onProgress, timer: pendingTimer });
+				signal.addEventListener("abort", cancel, { once: true });
+				this.#send({ kind: "tool.invoke", invocation });
+			});
 			return await promise;
 		} finally {
 			signal.removeEventListener("abort", cancel);
@@ -188,22 +227,62 @@ export class ExecutorProcess implements ExecutorTransport {
 
 	async stop(): Promise<void> {
 		const child = this.#child;
-		if (child === undefined || child.exitCode !== null) return;
+		if (child === undefined) return;
+		await this.#stopChild(child);
+	}
+
+	/** Stop this child and every process group it still leads, including groups that outlive the leader. */
+	async #stopChild(child: ChildProcess): Promise<void> {
+		const pid = child.pid;
+		if (child.exitCode !== null || child.signalCode !== null || pid === undefined) return;
+		const groups = descendantGroups(pid);
 		const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+		const kill = (): void => {
+			signalGroups(mergeGroups(groups, descendantGroups(pid)));
+			try {
+				child.kill("SIGKILL");
+			} catch {
+				// The process has already exited.
+			}
+		};
 		if (child.connected) child.disconnect();
-		const timer = setTimeout(() => child.kill("SIGKILL"), 5_000);
-		await exited;
-		clearTimeout(timer);
+		const timer = setTimeout(kill, this.#stopTimeoutMs);
+		try {
+			await exited;
+		} finally {
+			clearTimeout(timer);
+			kill();
+		}
 	}
 
 	#start(): Promise<void> {
 		if (this.#ready !== undefined && this.#child?.connected === true) return this.#ready;
-		const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", this.#entry], {
+		const child = spawn(this.#node, ["--disable-warning=ExperimentalWarning", this.#entry], {
 			stdio: ["ignore", "inherit", "inherit", "ipc"],
 			env: this.#env,
+			// Lead a new process group so stop can signal it without signaling the Host.
+			detached: true,
 		});
 		this.#child = child;
 		const { promise, resolve, reject } = Promise.withResolvers<void>();
+		let settled = false;
+		let readyTimer: ReturnType<typeof setTimeout> | undefined;
+		const fail = (error: Error): void => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(readyTimer);
+			reject(error);
+		};
+		readyTimer = setTimeout(() => {
+			fail(new Error("The local executor did not become ready in time"));
+			void this.#stopChild(child);
+		}, this.#startTimeoutMs);
+		// Spawn and later IPC failures are delivered here. After the handshake, exit settles the work.
+		child.on("error", (error: NodeJS.ErrnoException) => {
+			if (settled) return;
+			fail(new Error(`Could not start the local executor: ${error.message}`));
+			void this.#stopChild(child);
+		});
 		child.on("message", (message: ExecutorMessage) => {
 			if (this.#child !== child) return;
 			if(message.kind==="policy.synced"||message.kind==="execution.quiesced"){
@@ -244,16 +323,24 @@ export class ExecutorProcess implements ExecutorTransport {
 					return;
 				}
 				case "executor.hello":
-					if (message.targetId !== this.#targetId) reject(new Error(`Executor bound to ${message.targetId}, expected ${this.#targetId}`));
-					else resolve();
+					if (message.targetId !== this.#targetId) {
+						fail(new Error(`Executor bound to ${message.targetId}, expected ${this.#targetId}`));
+						void this.#stopChild(child);
+					} else if (!settled) {
+						settled = true;
+						clearTimeout(readyTimer);
+						resolve();
+					}
 					return;
 				case "tool.progress":
 					this.#pending.get(message.invocationId)?.onProgress(message.output);
 					return;
 				case "tool.result": {
 					const pending = this.#pending.get(message.invocationId);
+					if (!pending) return;
+					clearTimeout(pending.timer);
 					this.#pending.delete(message.invocationId);
-					pending?.resolve(message.outcome);
+					pending.resolve(message.outcome);
 					return;
 				}
 				case "tool.status": {
@@ -280,9 +367,10 @@ export class ExecutorProcess implements ExecutorTransport {
 				clearTimeout(waiting.timer);
 				waiting.reject(new Error("Executor stopped before quiescence was confirmed"));
 			}
-			reject(new Error(`The local executor exited (${signal ?? code})`));
+			fail(new Error(`The local executor exited (${signal ?? code})`));
 			// An invocation the executor accepted but did not answer may have had an effect.
 			for (const [invocationId, pending] of this.#pending) {
+				clearTimeout(pending.timer);
 				this.#pending.delete(invocationId);
 				pending.resolve({
 					status: "unknown",
@@ -300,5 +388,78 @@ export class ExecutorProcess implements ExecutorTransport {
 
 	#send(message: ExecutorRequest): void {
 		if (this.#child?.connected === true) this.#child.send(message);
+	}
+}
+
+function listProcessRows(): { pid: number; ppid: number; pgid: number }[] {
+	try {
+		const text = execFileSync("ps", ["-ax", "-o", "pid=,ppid=,pgid="], { encoding: "utf8" });
+		return text.trim().split("\n").flatMap((line) => {
+			const parts = line.trim().split(/\s+/).map(Number);
+			const pid = parts[0];
+			const ppid = parts[1];
+			const pgid = parts[2];
+			if (pid === undefined || ppid === undefined || pgid === undefined || !Number.isInteger(pid) || !Number.isInteger(ppid) || !Number.isInteger(pgid) || pid <= 0) return [];
+			return [{ pid, ppid, pgid }];
+		});
+	} catch {
+		return [];
+	}
+}
+
+function processStart(pid: number): string | undefined {
+	try {
+		const started = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8" }).trim();
+		return started === "" ? undefined : started;
+	} catch {
+		return undefined;
+	}
+}
+
+/** Process groups of `rootPid` and its descendants, excluding this process's own group. */
+function descendantGroups(rootPid: number): TrackedGroup[] {
+	const rows = listProcessRows();
+	const own = rows.find((row) => row.pid === process.pid)?.pgid;
+	const children = new Map<number, number[]>();
+	for (const row of rows) {
+		const list = children.get(row.ppid) ?? [];
+		list.push(row.pid);
+		children.set(row.ppid, list);
+	}
+	const seen = new Set<number>();
+	const descendants = new Set<number>();
+	const stack = [rootPid];
+	while (stack.length > 0) {
+		const pid = stack.pop();
+		if (pid === undefined || seen.has(pid)) continue;
+		seen.add(pid);
+		descendants.add(pid);
+		for (const child of children.get(pid) ?? []) stack.push(child);
+	}
+	const groups = new Set<number>();
+	for (const row of rows) {
+		if (!descendants.has(row.pid) || row.pgid <= 1 || row.pgid === own) continue;
+		groups.add(row.pgid);
+	}
+	return [...groups].map((pgid) => ({ pgid, started: processStart(pgid) }));
+}
+
+function mergeGroups(left: readonly TrackedGroup[], right: readonly TrackedGroup[]): TrackedGroup[] {
+	const byId = new Map<number, TrackedGroup>();
+	for (const group of left) byId.set(group.pgid, group);
+	for (const group of right) if (!byId.has(group.pgid)) byId.set(group.pgid, group);
+	return [...byId.values()];
+}
+
+function signalGroups(groups: readonly TrackedGroup[]): void {
+	for (const group of groups) {
+		const started = processStart(group.pgid);
+		// A different start time means this pid now belongs to someone else.
+		if (started !== undefined && started !== group.started) continue;
+		try {
+			process.kill(-group.pgid, "SIGKILL");
+		} catch {
+			// The group is already gone.
+		}
 	}
 }
