@@ -59,7 +59,7 @@ export function App() {
 	const selectSettings = (kind: SettingsDestination): void => {
 		if (kind === "routines") {
 			closeSettings();
-			useStore.setState({ view: { kind: "routines" } });
+			if (useStore.getState().view.kind !== "routines") useStore.setState({ view: { kind: "routines" } });
 			return;
 		}
 		if (useStore.getState().view.kind === "routines") useStore.setState({ view: lastChat.current });

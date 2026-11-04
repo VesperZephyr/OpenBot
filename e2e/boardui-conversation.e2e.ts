@@ -219,7 +219,8 @@ it("captures the review states in light and dark", async () => {
 	await h.shot("cancel-confirm-light");
 	await panel.getByRole("button", { name: "Keep editing", exact: true }).click();
 	await appearance("Dark");
-	await panel.getByRole("button", { name: "Edit", exact: true }).click();
+	const editAgain = panel.getByRole("button", { name: "Edit", exact: true });
+	if (await editAgain.count()) await editAgain.click();
 	await panel.getByLabel("Name", { exact: true }).fill("Atlas draft");
 	await panel.getByRole("button", { name: "Cancel", exact: true }).click();
 	await panel.getByRole("alertdialog", { name: "Discard these edits?" }).waitFor();

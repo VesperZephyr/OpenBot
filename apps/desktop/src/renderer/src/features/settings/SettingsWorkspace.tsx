@@ -83,7 +83,20 @@ function Settings() {
 	const [providerId, setProviderId] = useState("openai");
 	const [apiKey, setApiKey] = useState("");
 
-	if (settings === undefined) return <CredentialStorage />;
+	if (settings === undefined) {
+		return (
+			<section className="settings" aria-label={t("Settings")}>
+				<header className="settings-heading">
+					<h1>{t("Settings")}</h1>
+				</header>
+				<div className="settings-group" id="settings-models">
+					<h2>{t("Default model")}</h2>
+					<ModelSelect value={undefined} emptyLabel="Choose a model" onChange={() => undefined} />
+				</div>
+				<CredentialStorage />
+			</section>
+		);
+	}
 	const configured = settings.providers.filter((provider) => provider.configured);
 
 	const saveKey = async (event: FormEvent): Promise<void> => {
