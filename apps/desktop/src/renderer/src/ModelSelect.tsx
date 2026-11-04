@@ -10,11 +10,11 @@ export function ModelSelect(props: {
 }) {
 	const models = useStore((state) => state.models);
 	const settings = useStore((state) => state.settings);
-	const configured = new Set(settings?.providers.filter((p) => p.configured).map((p) => p.providerId));
+	const configured = settings?.providers.filter((provider) => provider.configured).map((provider) => provider.providerId) ?? [];
 	const groups = useMemo(() => {
 		const byProvider = new Map<string, ModelSummary[]>();
 		for (const model of models) {
-			if (!configured.has(model.provider)) continue;
+			if (configured.length > 0 && !configured.includes(model.provider)) continue;
 			byProvider.set(model.provider, [...(byProvider.get(model.provider) ?? []), model]);
 		}
 		return [...byProvider];

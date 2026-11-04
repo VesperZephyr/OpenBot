@@ -76,27 +76,30 @@ export function SettingsWorkspace({
 }
 
 function Settings() {
+	const stored = useStore((state) => state.settings);
+	const [fallback, setFallback] = useState(stored);
 	useEffect(() => {
+		let active = true;
+		void api["settings.get"]({})
+			.then((value) => {
+				if (active) setFallback(value);
+			})
+			.catch(report);
+		void api["models.list"]({})
+			.then((models) => {
+				if (active) useStore.setState({ models });
+			})
+			.catch(report);
 		void refreshSettings().catch(report);
+		return () => {
+			active = false;
+		};
 	}, []);
-	const settings = useStore((state) => state.settings);
+	const settings = stored ?? fallback;
 	const [providerId, setProviderId] = useState("openai");
 	const [apiKey, setApiKey] = useState("");
 
-	if (settings === undefined) {
-		return (
-			<section className="settings" aria-label={t("Settings")}>
-				<header className="settings-heading">
-					<h1>{t("Settings")}</h1>
-				</header>
-				<div className="settings-group" id="settings-models">
-					<h2>{t("Default model")}</h2>
-					<ModelSelect value={undefined} emptyLabel="Choose a model" onChange={() => undefined} />
-				</div>
-				<CredentialStorage />
-			</section>
-		);
-	}
+	if (settings === undefined) return <CredentialStorage />;
 	const configured = settings.providers.filter((provider) => provider.configured);
 
 	const saveKey = async (event: FormEvent): Promise<void> => {
