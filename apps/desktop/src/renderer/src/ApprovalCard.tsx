@@ -48,13 +48,6 @@ function summaryAction(record: SettledApproval): string {
 	return line;
 }
 
-export function InlineApprovalRecord({ conversationId, callId }: { readonly conversationId: string | undefined; readonly callId: string }) {
-	const records = useSyncExternalStore(subscribeApprovalRecords, approvalRecordSnapshot, approvalRecordSnapshot);
-	const record = records.find((item) => item.conversationId === conversationId && item.callId === callId);
-	if (!record) return null;
-	return <ApprovalRecord record={record} />;
-}
-
 export function ApprovalRecord({ record }: { readonly record: SettledApproval }) {
 	const [open, setOpen] = useState(false);
 	useStore((state) => state.settings?.language);

@@ -48,7 +48,7 @@ import { WebSearchSettings } from "./WebSearchSettings";
 import { ProfileMemory } from "./ProfileMemory";
 import { Divider, RetryButton, retryTarget, Thinking } from "./TranscriptExtras";
 import { PendingMessages, StopButton, StoppedNote } from "./runs";
-import { ApprovalCard, InlineApprovalRecord, SettledApprovals } from "./ApprovalCard";
+import { ApprovalCard, SettledApprovals } from "./ApprovalCard";
 import { GroupView, GroupRow, GroupEditor } from "./Groups";
 import { CommandSettings, FolderSettings } from "./PolicySettings";
 import { ConfirmDeleteBot, DeleteBotItem, DuplicateBotItem } from "./BotLifecycle";
@@ -578,7 +578,7 @@ function HistoryTranscript({
 				const active = item.kind === "tool" && item.status === "pending" ? snapshot.live?.tools?.find(tool => tool.callId === item.id) : undefined;
 				const displayed = active && item.kind === "tool" ? { ...item, status: "running" as const, ...(active.output ? { output: active.output } : {}) } : item;
 				return (
-					<Transcript snapshot={{ ...snapshot, items: [displayed] }} historyOnly inlineApprovals {...(retry ? { retryOverride: retry } : {})} />
+					<Transcript snapshot={{ ...snapshot, items: [displayed] }} historyOnly {...(retry ? { retryOverride: retry } : {})} />
 				);
 			}}
 		>
@@ -589,14 +589,11 @@ function HistoryTranscript({
 						row.content.item.runId === run.runId && row.content.item.category === "interrupted");
 				const retry = snapshot.messageMode && !snapshot.channelId && !snapshot.live && snapshot.retry?.outcomeId &&
 					!rows.some(row => row.id === snapshot.retry!.outcomeId) ? snapshot.retry : undefined;
-				const placed = new Set(rows.flatMap((row) => {
-					if (row.content.kind !== "direct" || row.content.item.kind !== "tool") return [];
-					return [row.content.item.id, ...(row.content.item.execution?.children.map((child) => child.callId) ?? [])];
-				}));
+				const userAt = latestUserAt(snapshot.items);
 				return <>
 					<Transcript snapshot={{ ...snapshot, items: missingInterruption
 						? [{ kind: "outcome", id: `run-outcome:${run.runId}`, runId: run.runId, category: "interrupted" }]
-						: [] }} placedCallIds={placed} />
+						: [] }} {...(userAt === undefined ? {} : { latestUserAt: userAt })} />
 					{retry && <ol className="messages"><OutcomeRow item={{ id: retry.outcomeId!, category: "failed" }} retry={{ botId: snapshot.botId, ...retry }} /></ol>}
 				</>;
 			}}
@@ -610,18 +607,15 @@ function latestUserAt(items: readonly TranscriptItem[]): number | undefined {
 	return latest;
 }
 
-function Transcript({ snapshot,historyOnly=false,inlineApprovals=false,placedCallIds,retryOverride }: { readonly snapshot: ConversationSnapshot;historyOnly?:boolean;inlineApprovals?:boolean;placedCallIds?:ReadonlySet<string>;retryOverride?:ReturnType<typeof retryTarget> }) {
+function Transcript({ snapshot,historyOnly=false,latestUserAt:userAt,retryOverride }: { readonly snapshot: ConversationSnapshot;historyOnly?:boolean;latestUserAt?:number;retryOverride?:ReturnType<typeof retryTarget> }) {
 	const approvals = new Map(snapshot.approvals.map((approval) => [approval.callId, approval]));
-	const showApproval = inlineApprovals || !historyOnly;
-	const userAt = latestUserAt(snapshot.items);
 	const retry = retryOverride??(snapshot.channelId ? undefined : retryTarget(snapshot.items, snapshot.live !== undefined));
 	const item = (entry: TranscriptItem) =>
 		entry.kind === "tool" ? (
 			<ToolCard
 				key={entry.id}
-    showApprovals={showApproval}
+    showApprovals={!historyOnly}
 				item={entry}
-				{...(snapshot.conversationId ? { conversationId: snapshot.conversationId } : {})}
 				background={snapshot.backgroundTasks?.find(record=>record.taskId===entry.taskId)}
 				approval={approvals.get(entry.id)}
 				childApprovals={entry.execution?.children.flatMap((c) => (approvals.get(c.callId) ? [approvals.get(c.callId)!] : [])) ?? []}
@@ -654,8 +648,8 @@ function Transcript({ snapshot,historyOnly=false,inlineApprovals=false,placedCal
 				),
 			)}
 			{!historyOnly&&<PendingMessages snapshot={snapshot} />}
- {!historyOnly&&<SettledApprovals conversationId={snapshot.conversationId} pending={snapshot.approvals.map((approval) => approval.approvalId)} {...(placedCallIds ? { skipCallIds: placedCallIds } : {})} runActive={snapshot.run !== undefined && snapshot.run.state !== "completed" && snapshot.run.state !== "failed" && snapshot.run.state !== "cancelled"} {...(userAt === undefined ? {} : { latestUserAt: userAt })} listItem />}
- {!historyOnly&&snapshot.approvals.filter((approval) => !placedCallIds?.has(approval.callId)).map(approval=><li key={approval.approvalId} className="approval-slot"><ApprovalCard approval={approval}/></li>)}
+ {!historyOnly&&<SettledApprovals conversationId={snapshot.conversationId} pending={snapshot.approvals.map((approval) => approval.approvalId)} runActive={snapshot.run !== undefined && snapshot.run.state !== "completed" && snapshot.run.state !== "failed" && snapshot.run.state !== "cancelled"} {...(userAt === undefined ? {} : { latestUserAt: userAt })} listItem />}
+ {!historyOnly&&snapshot.approvals.map(approval=><li key={approval.approvalId} className="approval-slot"><ApprovalCard approval={approval}/></li>)}
  {!historyOnly&&!snapshot.channelId?.startsWith("routine_")&&!snapshot.messageMode&&snapshot.run?.state==="needs_attention"&&<InterruptedRun key={snapshot.run.runId} run={snapshot.run}/>}
             {!historyOnly&&(snapshot.live || snapshot.run?.state === "running" || snapshot.run?.state === "queued") && (
                 <li className="message message-assistant is-live"><LiveReply snapshot={snapshot} /></li>
@@ -746,12 +740,10 @@ function ToolCard({
 	background,
 	approval,
 	childApprovals = [],
-	conversationId,
  showApprovals=true,
 }: {
  readonly showApprovals?:boolean;
 	readonly item: Extract<TranscriptItem, { kind: "tool" }>;
-	readonly conversationId?: string;
 	readonly background?:import("@openbot/protocol").BackgroundRecord|undefined;
 	readonly approval: PendingApproval | undefined;
 	readonly childApprovals?: readonly PendingApproval[];
@@ -831,12 +823,8 @@ function ToolCard({
 			{item.routineProposal && item.status === "succeeded" && <RoutineProposalCard proposal={item.routineProposal} />}
 			{item.artifact && item.status === "succeeded" && <ArtifactCard artifact={item.artifact} />}
 			{showApprovals&&approval !== undefined && <ApprovalCard approval={approval} />}
-			{showApprovals&&approval === undefined && <InlineApprovalRecord conversationId={conversationId} callId={item.id} />}
 			{showApprovals&&childApprovals.map((child) => (
 				<ApprovalCard key={child.approvalId} approval={child} />
-			))}
-			{showApprovals&&item.execution?.children.filter((child) => !childApprovals.some((approval) => approval.callId === child.callId)).map((child) => (
-				<InlineApprovalRecord key={child.callId} conversationId={conversationId} callId={child.callId} />
 			))}
 		</li>
 	);

@@ -203,7 +203,7 @@ it("renders a Chinese approval at minimum window size and denies it without crea
 	await box.press("Enter");
 	await h.page().locator(".approval").waitFor();
 	expect(await h.page().locator(".approval-reason").textContent()).not.toBe("Review this Bot change");
-	const deny = h.page().getByRole("button", { name: translate("zh-CN", "Deny"), exact: true });
+	const deny = h.page().locator(".approval").getByRole("button", { name: translate("zh-CN", "Deny"), exact: true });
 	await deny.scrollIntoViewIfNeeded();
 	await h.shot("07-chinese-approval-minimum");
 	await deny.click();
