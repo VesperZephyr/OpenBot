@@ -146,14 +146,15 @@ describe("connection", () => {
 		await page.getByRole("button", { name: "Connect", exact: true }).click();
 		const alert = page.getByRole("alert");
 		await alert.waitFor();
-		expect(await alert.innerText()).not.toContain(CANARY);
-		expect(await alert.innerText()).not.toContain("invalid api key");
+		const errorText = await alert.innerText();
+		expect(errorText).not.toContain(CANARY);
+		expect(errorText).not.toContain("invalid api key");
 		expect(await input.inputValue()).toBe(CANARY);
 		expect(await page.getByText("Key saved · not tested").count()).toBe(0);
 		await page.getByRole("button", { name: "Check key" }).click();
 		await expect.poll(() => input.evaluate((node) => document.activeElement === node)).toBe(true);
 		expect(await input.inputValue()).toBe("");
-		await leaks(app, logs, app.model.requests.slice(requestMark), await alert.innerText());
+		await leaks(app, logs, app.model.requests.slice(requestMark), errorText);
 	});
 
 	it("focuses the model list when trying another model", async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ArtifactRef, AvatarChange, BotTemplateV1 } from "@openbot/protocol";
 import { AvatarEditor } from "../../AvatarEditor";
 import { beginTemplateReview } from "../../BotTemplates";
@@ -55,6 +55,9 @@ export function Onboarding() {
 	useEffect(() => {
 		heading.current?.focus();
 	}, [step]);
+	useLayoutEffect(() => {
+		if (showModels) modelSelect.current?.focus();
+	}, [showModels]);
 	useEffect(() => {
 		if (named.current || !core) return;
 		named.current = true;
@@ -203,10 +206,10 @@ export function Onboarding() {
 					<div className="onboarding-model-row">
 						<span>{configured ? t("Key saved · not tested") : t("API key")}</span>
 						<span>{t("Model")}: {selected?.name ?? selectedModel}</span>
-						<button type="button" onClick={() => { setShowModels(true); requestAnimationFrame(() => modelSelect.current?.focus()); }}>{t("Change model")}</button>
+						<button type="button" onClick={() => setShowModels(true)}>{t("Change model")}</button>
 					</div>
 					{showModels && <label className="field"><span>{t("Model")}</span>
-						<select ref={modelSelect} value={selectedModel} disabled={busy} onChange={(event) => { setModelId(event.target.value); setConnectError(""); }}>
+						<select ref={modelSelect} aria-label={t("Model")} value={selectedModel} disabled={busy} onChange={(event) => { setModelId(event.target.value); setConnectError(""); }}>
 							{available.map((model) => <option key={model.modelId} value={model.modelId}>{model.name}</option>)}
 						</select>
 					</label>}
@@ -218,7 +221,7 @@ export function Onboarding() {
 					<p>{t(connectError)}</p>
 					<div className="onboarding-recovery">
 						<button type="button" onClick={() => { setKey(""); setConnectError(""); keyInput.current?.focus(); }}>{t("Check key")}</button>
-						<button type="button" onClick={() => { setShowModels(true); setConnectError(""); requestAnimationFrame(() => modelSelect.current?.focus()); }}>{t("Try another model")}</button>
+						<button type="button" onClick={() => { setShowModels(true); setConnectError(""); }}>{t("Try another model")}</button>
 						<button type="button" onClick={() => { setModelFormMounted(true); setSetupSource("custom"); setSetupKey((value) => value + 1); setAdvanced(true); setConnectError(""); }}>{t("Use custom or local")}</button>
 					</div>
 				</div>}
