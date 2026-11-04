@@ -523,7 +523,7 @@
 .message-assistant .markdown h1, .message-assistant .markdown h2 { font:500 25px/1.35 var(--font-display); letter-spacing:-.75px; }
 .compose-area .composer { background:var(--surface); }
 .compose-area .send { background:var(--accent); color:var(--accent-ink); width:36px; height:36px; }
-.conversation-details.profile-details { position:fixed; inset:50% auto auto 50%; transform:translate(-50%,-50%); width:min(660px,calc(100vw - 48px)); max-height:calc(100vh - 64px); padding:26px; border:1px solid var(--border); border-radius:18px; background:var(--bg); box-shadow:var(--shadow); }
+.conversation-details.profile-details { position:fixed; inset:50% auto auto 50%; transform:translate(-50%,-50%); width:min(660px,calc(100vw - 48px)); max-height:calc(100vh - 64px); padding:24px; border:1px solid var(--border); border-radius:16px; background:var(--bg); box-shadow:var(--shadow); }
 .profile-details .profile { background:transparent; }
 .profile-details .profile-grid { grid-template-columns:1fr; gap:14px; }
 .profile-details .profile-tabs { margin-bottom:8px; gap:16px; }
@@ -575,9 +575,9 @@
 .details-toggle { display:flex; align-items:center; gap:7px; padding:7px 10px; border:0; background:transparent; color:var(--muted); font-size:12px; border-radius:9px; }
 .details-toggle .interface-icon { width:14px; height:14px; }
 .message-assistant > .markdown, .message-assistant > .thinking, .message-assistant > .artifact-card { margin-left:35px; }
-.message-user { font-size:14px; line-height:1.65; }
+.message-user { font-size:14px; line-height:20px; }
 .message .markdown p { margin:0 0 13px; }
-.message .markdown blockquote { background:var(--quote-bg); color:var(--quote-ink); border-left:3px solid var(--quote-border); border-radius:4px 12px 12px 4px; padding:13px 17px; margin:18px 0 19px; font-size:13px; }
+.message .markdown blockquote { background:var(--quote-bg); color:var(--quote-ink); border-left:3px solid var(--quote-border); border-radius:8px 12px 12px 8px; padding:12px 16px; margin:16px 0 20px; font-size:14px; }
 .compose-tool { display:inline-flex; align-items:center; gap:5px; border:0; background:transparent; padding:4px 5px; border-radius:8px; font-size:11px; color:var(--muted); }
 .compose-tool .interface-icon { width:17px; height:17px; }
 .composer-spacer { flex:1; }

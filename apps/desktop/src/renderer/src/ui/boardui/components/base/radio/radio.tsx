@@ -20,7 +20,7 @@ export function RadioDot({ selected = false, focusVisible = false, className }: 
 				className,
 			)}
 		>
-			<span className={cx("ob:size-1.5 ob:rounded-full ob:bg-accent-ink", selected ? "ob:scale-100 ob:opacity-100" : "ob:scale-0 ob:opacity-0")} />
+			<span className={cx("ob:size-2 ob:rounded-full ob:bg-accent-ink", selected ? "ob:scale-100 ob:opacity-100" : "ob:scale-0 ob:opacity-0")} />
 		</span>
 	);
 }

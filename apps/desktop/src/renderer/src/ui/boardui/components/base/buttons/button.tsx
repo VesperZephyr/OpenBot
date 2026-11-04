@@ -19,8 +19,8 @@ const styles = sortCx({
 		"ob:disabled:cursor-not-allowed ob:disabled:opacity-45",
 	].join(" "),
 	size: {
-		medium: "ob:min-h-9 ob:rounded-2lg ob:px-2 ob:text-body-medium",
-		choice: "ob:h-auto ob:min-h-9 ob:w-full ob:flex-col ob:items-start ob:whitespace-normal ob:rounded-lg ob:px-3.5 ob:py-3 ob:text-start",
+		medium: "ob:min-h-9 ob:rounded-md ob:px-2 ob:text-body-medium",
+		choice: "ob:h-auto ob:min-h-9 ob:w-full ob:flex-col ob:items-start ob:whitespace-normal ob:rounded-md ob:px-4 ob:py-3 ob:text-start",
 	},
 	iconOnly: "ob:size-9 ob:min-h-8 ob:min-w-8 ob:shrink-0 ob:p-0",
 	neutral: [

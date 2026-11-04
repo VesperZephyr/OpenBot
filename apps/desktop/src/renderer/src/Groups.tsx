@@ -15,7 +15,7 @@ import { refreshGroupSnapshot, api, refreshGroups, report, useStore } from "./st
 import { t } from "./i18n";
 import { Markdown } from "./markdown";
 import { routineScheduleLabel } from "./Routines";
-import { ApprovalCard } from "./ApprovalCard";
+import { ApprovalCard, SettledApprovals } from "./ApprovalCard";
 import "./groups.css";
 
 function GroupEmpty({ groupId }: { readonly groupId: string }) {
@@ -433,6 +433,7 @@ export function GroupView({ groupId,renderExecution }: { groupId: string;renderE
 							{task.conversation?.approvals.map((a) => (
 								<ApprovalCard key={a.approvalId} approval={a} />
 							))}
+							<SettledApprovals botId={task.botId} {...(task.conversation?.conversationId ? { conversationId: task.conversation.conversationId } : {})} pending={task.conversation?.approvals.map((a) => a.approvalId) ?? []} />
 						</div>
 					))}
 			</HistoryTimeline>

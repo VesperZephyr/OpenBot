@@ -17,7 +17,7 @@ import {
 } from "./store";
 import { ChatComposer } from "./ChatComposer";
 import { ConversationShell } from "./ConversationUI";
-import { ApprovalCard } from "./ApprovalCard";
+import { ApprovalCard, SettledApprovals } from "./ApprovalCard";
 import { ArtifactCard } from "./ArtifactCard";
 import { t } from "./i18n";
 import { composers } from "./useComposer";
@@ -345,6 +345,7 @@ export function LocalTasks({
           {task.approvals.map((a) => (
             <TaskApproval key={a.approvalId} approval={a} task={task} />
           ))}
+          <SettledApprovals botId={task.botId} pending={task.approvals.map((a) => a.approvalId)} />
           {renderHistory(
             {
               botId: task.botId,

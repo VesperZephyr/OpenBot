@@ -988,6 +988,13 @@ export const chinese: Readonly<Record<string, string>> = {
 	"Approval request": "授权请求",
 	"Deny": "拒绝",
 	"Allow once": "允许一次",
+	"Allowed once: {action} · {time}": "已允许一次：{action} · {time}",
+	"Always allowed: {action} · {time}": "已始终允许：{action} · {time}",
+	"Denied: {action} · {time}": "已拒绝：{action} · {time}",
+	"Approval record": "审批记录",
+	"The local runtime failed to start": "本地运行环境启动失败",
+	"The local runtime did not become ready in time": "本地运行环境没有及时就绪",
+	"The operation timed out. The result is unknown and may have partly run.": "操作超时，结果未知，可能已部分执行",
 	"Edit profile": "编辑资料",
 	"New topic": "新话题",
 	"Profile": "资料",
@@ -1199,8 +1206,21 @@ export const chinese: Readonly<Record<string, string>> = {
 	"Reload the profile before changing role skills": "修改角色技能前请重新加载资料",
 };
 
+const executorCopy: ReadonlyArray<readonly [RegExp, string]> = [
+	[/^Could not start the local executor\b/, "The local runtime failed to start"],
+	[/^The local executor did not become ready in time\b/, "The local runtime did not become ready in time"],
+	[/^The local executor timed out before reporting a result\b/, "The operation timed out. The result is unknown and may have partly run."],
+];
+
+/** User-facing wording for executor failures. Technical detail stays in the Host log. */
+export function presentError(message: string): string {
+	for (const [pattern, friendly] of executorCopy) if (pattern.test(message)) return friendly;
+	return message;
+}
+
 export function translate(language: Language, message: string, values: Readonly<Record<string, string | number>> = {}): string {
- const template = language === "zh-CN" ? chinese[message] ?? message : message;
+ const text = presentError(message);
+ const template = language === "zh-CN" ? chinese[text] ?? text : text;
  return template.replace(/\{(\w+)\}/g, (match, key: string) => Object.hasOwn(values, key) ? String(values[key]) : match);
 }
 

@@ -12,6 +12,26 @@ async function theme(name: string) {
     await contrast(".settings-navigation [aria-current]", ".settings-navigation [aria-current]");
     await button("Back to chat").click();
 }
+async function accentTextContrast() {
+    const value = await h.page().evaluate(() => {
+        const style = getComputedStyle(document.documentElement);
+        const fg = style.getPropertyValue("--accent-text").trim();
+        const bg = style.getPropertyValue("--surface").trim();
+        function hex(color: string) {
+            const match = /^#([0-9a-f]{6})$/i.exec(color);
+            if (!match?.[1]) throw new Error(`Expected hex color, got ${color}`);
+            const n = Number.parseInt(match[1], 16);
+            return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+        }
+        function luminance(color: { r: number; g: number; b: number }) {
+            return [color.r, color.g, color.b].map((channel) => channel / 255).map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)).reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index]!, 0);
+        }
+        const a = luminance(hex(fg));
+        const b = luminance(hex(bg));
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    });
+    expect(value, "--accent-text on --surface").toBeGreaterThanOrEqual(4.5);
+}
 async function contrast(foreground: string, background: string, pseudo?: string) {
     const value = await h.page().evaluate(({foreground,background,pseudo}) => {
         const fg = getComputedStyle(document.querySelector(foreground)!,pseudo).color;
@@ -58,6 +78,7 @@ afterAll(async () => { await h?.close(); });
 it("designs readable chat, profile, menus, focus and Settings in both appearances", async () => {
     for (const name of ["Light","Dark"]) {
         await theme(name);
+        await accentTextContrast();
         const prefix = name.toLowerCase();
         const input = h.page().getByRole("textbox", {name:"Message Atlas"});
         await input.fill("Let’s start with the outline.");
@@ -103,6 +124,7 @@ it("designs readable chat, profile, menus, focus and Settings in both appearance
 it("keeps approval decisions readable and operable in both appearances", async () => {
     for (const name of ["Light","Dark"]) {
         await theme(name);
+        await accentTextContrast();
         h.model.script({tool:"local_exec",args:{command:"echo theme-preview",description:"Create a local draft"}},{text:`${name} decision received.`});
         await h.send("Prepare a draft in the workspace.");
         const approval = h.page().getByRole("group",{name:"Approval request"});
@@ -178,6 +200,17 @@ it("captures the settings pilot and checks compact geometry", async () => {
     const trigger = h.page().locator("#settings-language").getByRole("button", { name: /语言/ });
     await trigger.focus();
     expect(await trigger.evaluate((element) => getComputedStyle(element).transitionDuration === "0s" || getComputedStyle(element).animationName === "none")).toBe(true);
+    const reducedMotion = await h.page().evaluate(() => {
+        const probe = document.createElement("div");
+        probe.className = "message-user";
+        document.body.appendChild(probe);
+        const duration = getComputedStyle(probe).transitionDuration;
+        const token = getComputedStyle(document.documentElement).getPropertyValue("--motion-message").trim();
+        probe.remove();
+        return { duration, token };
+    });
+    expect(reducedMotion.token).toBe("0ms");
+    expect(reducedMotion.duration.split(",").every((part) => Number.parseFloat(part) === 0)).toBe(true);
     await h.shot("boardui-reduced-motion-focus");
     const resources = await h.page().evaluate(() => performance.getEntriesByType("resource").map((entry) => entry.name));
     const remote = [...seen, ...resources].filter((url) => /boardui|fonts\.gstatic|fonts\.googleapis|fonts\.cdn/i.test(url));

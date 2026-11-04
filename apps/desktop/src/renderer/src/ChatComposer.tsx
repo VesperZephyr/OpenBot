@@ -26,6 +26,11 @@ export function ChatComposer({
 	const { draft, attempt } = useComposer(conversationKey);
 	const run = useStore(s => conversationKey.startsWith("bot:") ? s.conversations[conversationKey.slice(4)]?.run : undefined);
 	const paused = useStore(s => s.lifecycle?.blocked ?? false);
+	const approvalPending = useStore((state) => {
+		if (conversationKey.startsWith("bot:")) return (state.conversations[conversationKey.slice(4)]?.approvals.length ?? 0) > 0;
+		if (!conversationKey.startsWith("group:")) return false;
+		return state.groupSnapshots[conversationKey.slice(6)]?.tasks.some((task) => (task.conversation?.approvals.length ?? 0) > 0) ?? false;
+	});
 	const working = run?.state === "running";
 	const activeRun = working || run?.state === "queued";
 	const hasContent = !!draft.text.trim() || !!draft.attachments?.length || !!draft.skills?.length;
@@ -315,7 +320,7 @@ export function ChatComposer({
 								type="button"
 								aria-label={t("Send")}
 								title={t(working ? "Send follow-up" : "Send")}
-								className="primary send"
+								className={approvalPending ? "send" : "primary send"}
 								disabled={sendDisabled || (!draft.text.trim() && !draft.attachments?.length && !draft.skills?.length) || !!attempt || !!stale || attaching}
 								onClick={() => void send()}
 							>

@@ -14,7 +14,7 @@
 .bot-identity,
 .file-workspace {
 	border: 0;
-	border-radius: 22px;
+	border-radius: 16px;
 	background: var(--bg);
 	box-shadow: var(--shadow);
 }
@@ -66,8 +66,8 @@
 }
 .identity-name {
 	margin: 0 0 4px;
-	font-size: 18px;
-	line-height: 24px;
+	font-size: 20px;
+	line-height: 28px;
 	text-align: center;
 }
 .identity-label,
@@ -101,24 +101,24 @@
 	margin: 0 auto 8px;
 	border: 0;
 	background: transparent;
-	color: var(--accent);
+	color: var(--accent-text);
 	font-size: 12px;
-	line-height: 20px;
+	line-height: 16px;
 }
 .identity-motifs {
 	display: flex;
 	justify-content: center;
-	gap: 6px;
+	gap: 8px;
 	margin: 8px 0 12px;
 }
 .identity-motifs button[aria-pressed="true"] {
 	border-color: var(--accent);
-	color: var(--accent);
+	color: var(--accent-text);
 }
 .identity-alert {
 	margin: 0 0 8px;
-	color: var(--attention);
-	font-size: 13px;
+	color: var(--danger);
+	font-size: 12px;
 	line-height: 20px;
 }
 .identity-confirm {
@@ -142,7 +142,7 @@
 .identity-field textarea {
 	width: 100%;
 	padding: 8px 10px;
-	border-radius: 10px;
+	border-radius: 12px;
 	border: 0;
 	background: var(--surface-raised);
 	line-height: 20px;
@@ -164,7 +164,7 @@
 .identity-field p {
 	margin: 0;
 	padding: 8px 10px;
-	border-radius: 10px;
+	border-radius: 12px;
 	background: var(--surface-raised);
 	font-size: 14px;
 	line-height: 20px;
@@ -197,7 +197,7 @@
 .conversation-meta {
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	gap: 8px;
 	margin: 2px 0 0;
 	min-width: 0;
 	color: var(--muted);
@@ -214,24 +214,27 @@
 .conversation-status {
 	display: inline-flex;
 	align-items: center;
-	gap: 6px;
+	gap: 8px;
 	margin: 0;
 	font-size: 12px;
 	line-height: 20px;
 	color: var(--muted);
 }
 .status-dot {
-	width: 6px;
-	height: 6px;
+	width: 8px;
+	height: 8px;
 	border-radius: 50%;
-	background: currentColor;
+	background: var(--ready);
 	flex: none;
+}
+.status-dot.is-danger {
+	background: var(--danger);
 }
 .sidebar .sidebar-brand {
 	flex: 1;
 	min-width: 0;
 	padding: 0;
-	font-size: 15px;
+	font-size: 16px;
 	line-height: 20px;
 	font-weight: 600;
 	letter-spacing: 0;
@@ -246,7 +249,7 @@
 	display: inline-flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 6px;
+	gap: 8px;
 	max-width: min(100%, 460px);
 	min-width: 0;
 	color: var(--muted);
@@ -264,7 +267,7 @@
 .composer-model button {
 	border: 0;
 	background: transparent;
-	color: var(--accent);
+	color: var(--accent-text);
 	font-size: 12px;
 	line-height: 20px;
 	padding: 0;
@@ -285,22 +288,84 @@
 }
 .steps-row .step-summary {
 	color: var(--muted);
-	font-size: 13px;
+	font-size: 14px;
 	line-height: 20px;
 	font-weight: 400;
 }
 .approval {
 	margin: 8px 0;
-	padding: 14px 16px;
+	padding: 16px;
 	border: 0;
 	border-radius: 12px;
 	background: var(--surface-raised);
 }
+.choice-kicker,
+.choice-meta,
 .approval-scope {
-	margin: 0 0 10px;
 	color: var(--muted);
 	font-size: 12px;
+	line-height: 16px;
+}
+.choice-question,
+.approval-reason {
+	font-size: 14px;
 	line-height: 20px;
+	font-weight: 600;
+}
+.choice-options .approval-actions,
+.approval .approval-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 8px;
+}
+.approval .always-allow {
+	flex: 1 0 100%;
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+.approval.choice-card:has(.always-allow) > .choice-options > .approval-actions > .primary {
+	background: var(--surface);
+	color: var(--text);
+	border-color: var(--border);
+	font-weight: 500;
+}
+.always-allow .choice-question {
+	font-size: 14px;
+	line-height: 20px;
+	font-weight: 500;
+}
+.approval-record {
+	margin: 8px 0;
+	padding: 8px 12px;
+	border-radius: 12px;
+	background: var(--surface-raised);
+}
+.approval-record-toggle {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	border: 0;
+	background: transparent;
+	padding: 4px 0;
+	text-align: left;
+	color: var(--muted);
+	font-size: 12px;
+	line-height: 16px;
+}
+.compose-area .send:not(.primary) {
+	background: var(--surface);
+	color: var(--text);
+	border-color: var(--border);
+}
+.approval-scope {
+	margin: 0 0 8px;
+	color: var(--muted);
+	font-size: 12px;
+	line-height: 16px;
 }
 .empty-conversation {
 	display: flex;
@@ -315,7 +380,7 @@
 .empty-conversation h2,
 .empty-conversation .empty-title {
 	margin: 0;
-	font-size: 22px;
+	font-size: 20px;
 	line-height: 28px;
 	font-weight: 600;
 	color: var(--text);

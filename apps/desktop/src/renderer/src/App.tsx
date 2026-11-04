@@ -30,6 +30,7 @@ import { ConversationShell, DetailsPanel, useDialogFocus } from "./ConversationU
 import { MarkReadItem, RosterPreview, recentTime } from "./RosterPreview";
 import { ManagementHistory } from "./BotManagement";
 import { t } from "./i18n";
+import { presentError } from "../../shared/i18n";
 import type {
 	BotSummary,
 	PendingApproval,
@@ -47,7 +48,7 @@ import { WebSearchSettings } from "./WebSearchSettings";
 import { ProfileMemory } from "./ProfileMemory";
 import { Divider, RetryButton, retryTarget, Thinking } from "./TranscriptExtras";
 import { PendingMessages, StopButton, StoppedNote } from "./runs";
-import { ApprovalCard } from "./ApprovalCard";
+import { ApprovalCard, SettledApprovals } from "./ApprovalCard";
 import { GroupView, GroupRow, GroupEditor } from "./Groups";
 import { CommandSettings, FolderSettings } from "./PolicySettings";
 import { ConfirmDeleteBot, DeleteBotItem, DuplicateBotItem } from "./BotLifecycle";
@@ -331,7 +332,7 @@ function BotRow({ bot, selected }: { readonly bot: BotSummary; readonly selected
 			onClick={() => void openBot(bot.botId).catch(report)}
 			aria-current={selected ? "page" : undefined}
 		>
-			<Avatar bot={bot} />
+			<Avatar bot={bot} working={bot.activity === "working"} />
 			<RosterPreview conversationKey={`bot:${bot.botId}`} name={bot.name} core={bot.kind === "core"} fallback={bot.role} activity={label} />
 		</button>
 	);
@@ -447,7 +448,7 @@ function Conversation({ botId, editing, onEditing }: { readonly botId: string; r
 			}
 		>
 			<header className="conversation-header">
-				<Avatar bot={bot} size={29} />
+				<Avatar bot={bot} size={29} working={presence === "working"} />
 				<div className="conversation-title">
 					<div className="conversation-name"><span title={bot.name}>{bot.name}</span>{bot.kind === "core" && <PersonalStar />}</div>
 					<p className="conversation-meta">
@@ -640,6 +641,7 @@ function Transcript({ snapshot,historyOnly=false,retryOverride }: { readonly sna
 				),
 			)}
 			{!historyOnly&&<PendingMessages snapshot={snapshot} />}
+ {!historyOnly&&<SettledApprovals botId={snapshot.botId} {...(snapshot.conversationId ? { conversationId: snapshot.conversationId } : {})} pending={snapshot.approvals.map((approval) => approval.approvalId)} />}
  {!historyOnly&&snapshot.approvals.map(approval=><li key={approval.approvalId} className="approval-slot"><ApprovalCard approval={approval}/></li>)}
  {!historyOnly&&!snapshot.channelId?.startsWith("routine_")&&!snapshot.messageMode&&snapshot.run?.state==="needs_attention"&&<InterruptedRun key={snapshot.run.runId} run={snapshot.run}/>}
             {!historyOnly&&(snapshot.live || snapshot.run?.state === "running" || snapshot.run?.state === "queued") && (
@@ -670,7 +672,7 @@ function Message(props: {
 			{item.kind === "user" && item.error && <p className="message-error">{t(item.error)}</p>}
 			{item.kind === "assistant" && item.error !== undefined && (
 				<div className="message-error">
-					{item.error}
+					{presentError(item.error) === item.error ? item.error : t(presentError(item.error))}
 					{retry !== undefined && (
 						<RetryButton botId={retry.botId} text={retry.text} {...(retry.skills?{skills:retry.skills}:{})} {...(retry.artifactIds ? { artifactIds: retry.artifactIds } : {})} />
 					)}
@@ -740,7 +742,7 @@ function ToolCard({
 	readonly childApprovals?: readonly PendingApproval[];
 }) {
 	const args = (item.args ?? {}) as Record<string, unknown>;
-	let output = item.output;
+	let output = typeof item.output === "string" && presentError(item.output) !== item.output ? t(presentError(item.output)) : item.output;
 	if (item.tool === "codemode" && item.execution?.error) output = t(item.execution.error);
 	if (item.tool.startsWith("app_") && output) {
 		try {

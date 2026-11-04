@@ -64,7 +64,7 @@
 }
 .reader-controls button[aria-pressed="true"] {
 	background: var(--surface-raised);
-	color: var(--accent);
+	color: var(--accent-text);
 }
 .reader-controls .reader-zoom {
 	font-size: 12px;
@@ -178,7 +178,7 @@
 }
 .file-entries > button.is-selected {
 	background: var(--surface);
-	color: var(--accent);
+	color: var(--accent-text);
 }
 .file-browser p {
 	font-size: 12px;
@@ -303,7 +303,7 @@
 	margin: 0.35em 0;
 }
 .reading-prose a {
-	color: var(--accent);
+	color: var(--accent-text);
 	text-underline-offset: 3px;
 }
 .reading-prose blockquote {
@@ -416,7 +416,7 @@
 	padding-left: 10px;
 }
 .reader-outline button:hover {
-	color: var(--accent);
+	color: var(--accent-text);
 	background: transparent;
 }
 .reader-image-placeholder {
@@ -565,7 +565,7 @@
 	cursor: pointer;
 }
 .artifact-card .artifact-name:hover {
-	color: var(--accent);
+	color: var(--accent-text);
 	text-decoration: underline;
 	text-underline-offset: 3px;
 }
