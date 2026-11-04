@@ -76,31 +76,13 @@ export function SettingsWorkspace({
 }
 
 function Settings() {
-	const stored = useStore((state) => state.settings);
-	const [fallback, setFallback] = useState(stored);
+	const settings = useStore((state) => state.settings);
 	useEffect(() => {
-		let active = true;
-		void api["settings.get"]({})
-			.then((value) => {
-				if (active) setFallback(value);
-			})
-			.catch(report);
-		void api["models.list"]({})
-			.then((models) => {
-				if (active) useStore.setState({ models });
-			})
-			.catch(report);
 		void refreshSettings().catch(report);
-		return () => {
-			active = false;
-		};
 	}, []);
-	const settings = stored ?? fallback;
 	const [providerId, setProviderId] = useState("openai");
 	const [apiKey, setApiKey] = useState("");
-
-	if (settings === undefined) return <CredentialStorage />;
-	const configured = settings.providers.filter((provider) => provider.configured);
+	const configured = settings?.providers.filter((provider) => provider.configured) ?? [];
 
 	const saveKey = async (event: FormEvent): Promise<void> => {
 		event.preventDefault();
@@ -140,7 +122,7 @@ function Settings() {
 				<h2>{t("Default model")}</h2>
 				<p className="muted">{t("Bots without a model of their own use this one.")}</p>
 				<ModelSelect
-					value={settings.defaultModel}
+					value={settings?.defaultModel}
 					emptyLabel={configured.length === 0 ? "Add an API key below first" : "Choose a model"}
 					onChange={(model) =>
 						void api["settings.update"]({ defaultModel: model ?? null })
@@ -150,7 +132,8 @@ function Settings() {
 				/>
 				<button type="button" onClick={() => useStore.setState({ onboarding: true })}>{t("Open the setup wizard again")}</button>
 			</div>
-
+			{settings ? (
+			<>
 			<div className="settings-group" id="settings-language">
 				<LanguageField
 					label={t("Language")}
@@ -259,6 +242,10 @@ function Settings() {
 					)}
 				</p>
 			</div>
+			</>
+			) : (
+				<CredentialStorage />
+			)}
 		</section>
 	);
 }
