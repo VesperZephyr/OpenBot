@@ -53,7 +53,7 @@ import { GroupView, GroupRow, GroupEditor } from "./Groups";
 import { CommandSettings, FolderSettings } from "./PolicySettings";
 import { ConfirmDeleteBot, DeleteBotItem, DuplicateBotItem } from "./BotLifecycle";
 import { ModelSetup } from "./ModelSetup";
-import { Onboarding } from "./Onboarding";
+import { Onboarding } from "./features/onboarding/Onboarding";
 import { transcriptRows } from "./steps";
 import { MessageTime, RevealButton, StepsRow } from "./TranscriptDetails";
 import { conversationPresence, headerStatusLabel } from "./conversation-status";
@@ -117,7 +117,7 @@ export function App() {
 		<div className="app">
             <WorkspaceLayout
 				sidebar={<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />}
-				inspector={wide && view.kind === "bot" ? <BotIdentity key={view.botId} botId={view.botId} profileOpen={editorBotId === view.botId} /> : wide && view.kind === "group" ? <GroupIdentity key={view.groupId} groupId={view.groupId} /> : undefined}
+				inspector={onboarding === true ? undefined : wide && view.kind === "bot" ? <BotIdentity key={view.botId} botId={view.botId} profileOpen={editorBotId === view.botId} /> : wide && view.kind === "group" ? <GroupIdentity key={view.groupId} groupId={view.groupId} /> : undefined}
 			>
 			<main className="main">
 				<RestoreNotice />
@@ -230,10 +230,11 @@ function Sidebar({ onNew, query, onQuery, searchOpen, onSearchOpen }: { onNew: (
 			`${bot.name} ${bot.role}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
 	);
 	const selected = view.kind === "bot" ? view.botId : undefined;
+	const onboarding = useStore((state) => state.onboarding);
 
 	return (
 		<nav className="sidebar" aria-label={t("Bots")}>
-			<div className="sidebar-titlebar" />
+			<div className="sidebar-titlebar">{onboarding === true ? <span className="sidebar-product">OpenBot</span> : null}</div>
             <div className="sidebar-toolbar">
                 <span className="sidebar-brand">OpenBot</span>
                 <button className="icon-button" aria-label={t("Search conversations")} title={t("Search conversations")} aria-expanded={searchOpen} onClick={() => { onSearchOpen(!searchOpen); if (searchOpen) { onQuery(""); setUnreadOnly(false); } }}><InterfaceIcon name="search" /></button>
@@ -1261,6 +1262,7 @@ function Settings() {
 							.catch(report)
 					}
 				/>
+				<button type="button" onClick={() => useStore.setState({ onboarding: true })}>{t("Open the setup wizard again")}</button>
 			</div>
 
 			<div className="settings-group" id="settings-language">
@@ -1269,7 +1271,7 @@ function Settings() {
 					caption={t("Changes the app interface. Your conversations and Bot instructions stay as written.")}
 					value={settings.language ?? "en"}
 					onChange={(language) => {
-						void api["settings.update"]({ language }).then(refreshSettings).catch(report);
+						void api["settings.update"]({ language, languageChosen: true }).then(refreshSettings).catch(report);
 					}}
 				/>
 			</div>

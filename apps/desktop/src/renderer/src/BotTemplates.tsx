@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 import type {
+	BotTemplateV1,
 	ImportChoices,
 	ImportResult,
 	ModelChoice,
@@ -15,7 +16,13 @@ import { t } from "./i18n";
 import "./bot-templates.css";
 export const PENDING_TEMPLATE = "openbot.pending-template-import.v1";
 type Loaded = { review: TemplateReview; filename?: string } | { error: string } | null;
-type Action = { mode: "import" | "export"; botId?: string; load: Promise<Loaded>; restoreFocus: HTMLElement | null };
+type Action = {
+	mode: "import" | "export";
+	botId?: string;
+	load: Promise<Loaded>;
+	restoreFocus: HTMLElement | null;
+	onResult?: (outcome: "imported" | "cancelled", botId?: string) => void;
+};
 export const useTemplateState = create<{ action: Action | null; profileBotId: string | null }>(() => ({
 	action: null,
 	profileBotId: null,
@@ -30,6 +37,29 @@ async function readSelection(): Promise<Loaded> {
 		return { error: errorMessage(error) };
 	}
 }
+/** Open the existing import review for a template object. Inspect runs before the dialog offers import. */
+export function beginTemplateReview(
+	template: BotTemplateV1,
+	restoreFocus: HTMLElement | null,
+	onResult?: (outcome: "imported" | "cancelled", botId?: string) => void,
+): void {
+	if (useTemplateState.getState().action) return;
+	useTemplateState.setState({
+		action: {
+			mode: "import",
+			restoreFocus,
+			...(onResult ? { onResult } : {}),
+			load: (async () => {
+				try {
+					return { review: await api["bots.templates.inspect"]({ template }) };
+				} catch (error) {
+					return { error: errorMessage(error) };
+				}
+			})(),
+		},
+	});
+}
+
 export function beginTemplateImport(): void {
 	if (!useTemplateState.getState().action)
 		useTemplateState.setState({
@@ -118,7 +148,14 @@ function TemplateDialog({ action }: { action: Action }) {
 	useEffect(() => {
 		if (!busy && !root.current?.contains(document.activeElement)) root.current?.focus();
 	}, [busy]);
-	const close = () => useTemplateState.setState({ action: null });
+	const settled = useRef(false);
+	const close = () => {
+		if (!settled.current) {
+			settled.current = true;
+			action.onResult?.("cancelled");
+		}
+		useTemplateState.setState({ action: null });
+	};
 	const apply = (loaded: Loaded) => {
 		if (!loaded) {
 			close();
@@ -170,6 +207,8 @@ function TemplateDialog({ action }: { action: Action }) {
 		}
 		await openBot(result.botId);
 		useTemplateState.setState({ profileBotId: result.botId });
+		settled.current = true;
+		action.onResult?.("imported", result.botId);
 		close();
 	};
 	const checkResult = async () => {

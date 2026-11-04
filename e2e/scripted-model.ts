@@ -31,6 +31,11 @@ export class ScriptedModel {
 		this.#turns.push(...turns);
 	}
 
+	/** Drop unused turns so a later case does not inherit this one. Recorded requests stay. */
+	clear(): void {
+		this.#turns.length = 0;
+	}
+
 	async start(): Promise<string> {
 		this.#server = createServer((request, response) => {
 			let body = "";

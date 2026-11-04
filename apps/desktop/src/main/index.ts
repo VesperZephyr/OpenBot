@@ -21,6 +21,8 @@ import { desktopTestMode } from "./test-mode";
 import { ignoreDetachedConsole, watchForOrphaning } from "./process-guards";
 
 ignoreDetachedConsole([process.stdout, process.stderr]);
+const e2eLocale = process.env.OPENBOT_E2E_LOCALE;
+if (!app.isPackaged && (e2eLocale === "en" || e2eLocale === "zh-CN")) app.commandLine.appendSwitch("lang", e2eLocale);
 
 /** electron-vite's renderer dev server; every other run (built, packaged, e2e) serves the renderer over `app://`. */
 const devServerUrl = app.isPackaged ? undefined : process.env.ELECTRON_RENDERER_URL;

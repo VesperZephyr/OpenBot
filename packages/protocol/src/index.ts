@@ -515,6 +515,8 @@ export type ProviderSummary = {
 export type RedactedSettings = {
 	readonly setupComplete?: boolean;
 	readonly language?: "en" | "zh-CN";
+	/** The user picked a language. Absent or false means the wizard may still follow the system locale. */
+	readonly languageChosen?: boolean;
 	readonly defaultModel?: ModelRef;
 	readonly providers: readonly ProviderSummary[];
 	readonly dataDirectory: string;
@@ -659,7 +661,7 @@ export type HostMethods = {
 	"usage.get": { params: { readonly botId: BotId; readonly limit?: number }; result: BotUsage };
 	"settings.get": { params: Record<string, never>; result: RedactedSettings };
 	"settings.update": {
-		params: { readonly defaultModel?: ModelRef | null; readonly setupComplete?: boolean; readonly language?: "en" | "zh-CN" };
+		params: { readonly defaultModel?: ModelRef | null; readonly setupComplete?: boolean; readonly language?: "en" | "zh-CN"; readonly languageChosen?: boolean };
 		result: RedactedSettings;
 	};
 	"models.list": { params: Record<string, never>; result: readonly ModelSummary[] };
@@ -706,9 +708,10 @@ export type HostMethods = {
 	 */
 	"grants.add": { params: { readonly path: string; readonly access: GrantAccess }; result: readonly FolderGrant[] };
 	/**
-	 * Declare an OpenAI- or Anthropic-compatible provider in the model configuration file, merged with the entries
-	 * already there; an entry with the same ID is replaced. Never carries a key: store it with `credentials.set` under
-	 * the same ID.
+	 * Declare an OpenAI- or Anthropic-compatible provider in the model configuration file. An existing ID is refused.
+	 * `verify: true` tests a temporary provider first and does not touch the shared model table. `secret` is sent only
+	 * with `verify`; it is not stored until the test succeeds, and then only in the Keychain. A failed test writes
+	 * nothing. There is no remove method.
 	 */
 	"models.addProvider": {
 		params: {
@@ -717,11 +720,16 @@ export type HostMethods = {
 			readonly baseUrl: string;
 			readonly api: ModelApi;
 			readonly modelIds: readonly string[];
+			readonly verify?: boolean;
+			readonly secret?: string;
 		};
 		result: RedactedSettings;
 	};
-	/** Send one tiny real request to the model. A failing endpoint or key is reported in the result, not thrown. */
-	"models.test": { params: ModelRef; result: { readonly ok: boolean; readonly error?: string } };
+	/**
+	 * Send one tiny real request to the model. A failing endpoint or key is reported in the result, not thrown.
+	 * `secret`, when present, is used only for this request and is not written to the Keychain.
+	 */
+	"models.test": { params: ModelRef & { readonly secret?: string }; result: { readonly ok: boolean; readonly error?: string } };
 	/**
 	 * Choose the one Bot whose `conversation.updated` events Desktop receives; `null` receives none. Replaces the
 	 * previous choice. `bots.changed` is always sent.

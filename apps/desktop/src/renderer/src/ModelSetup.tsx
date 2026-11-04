@@ -1,13 +1,13 @@
 import { t } from "./i18n";
 import { MODEL_APIS, type ModelApi, type ModelRef } from "@openbot/protocol";
 import { type FormEvent, useState } from "react";
-import { api, refreshSettings, useStore } from "./store";
+import { connectModel, errorMessage, useStore } from "./store";
 
 /** Shared setup path: catalog metadata never implies credentials or a successful connection. */
-export function ModelSetup({ onDone }: { readonly onDone?: () => void }) {
+export function ModelSetup({ onDone, initialSource = "builtin" }: { readonly onDone?: () => void; readonly initialSource?: "builtin" | "custom" }) {
 	const settings = useStore((state) => state.settings);
 	const models = useStore((state) => state.models);
-	const [source, setSource] = useState<"builtin" | "custom">("builtin");
+	const [source, setSource] = useState<"builtin" | "custom">(initialSource);
 	const [provider, setProvider] = useState("openai");
 	const [modelId, setModelId] = useState("");
 	const [key, setKey] = useState("");
@@ -31,26 +31,17 @@ export function ModelSetup({ onDone }: { readonly onDone?: () => void }) {
 		setBusy(true);
 		clearResult();
 		const secret = key.trim();
-		setKey("");
 		try {
-			let ref: ModelRef;
-			if (source === "custom") {
-				ref = { provider: customId, modelId: custom.modelId.trim() };
-				if (installed !== signature) {
-					await api["models.addProvider"]({ id: customId, name: custom.name.trim(), baseUrl: custom.baseUrl.trim(), api: custom.api, modelIds: [ref.modelId] });
-					setInstalled(signature);
-				}
-			} else ref = { provider: providerId, modelId: selectedId };
-			if (secret !== "") await api["credentials.set"]({ providerId: ref.provider, apiKey: secret });
-			await refreshSettings();
-			const tested = await api["models.test"](ref);
-			if (!tested.ok) { setResult({ ok: false, message: tested.error ?? "Connection failed. Check your model settings." }); return; }
-			await api["settings.update"]({ defaultModel: ref });
-			await refreshSettings();
+			const ref: ModelRef = source === "custom" ? { provider: customId, modelId: custom.modelId.trim() } : { provider: providerId, modelId: selectedId };
+			if (source === "custom" && installed !== signature) {
+				await connectModel(ref, secret, { id: customId, name: custom.name.trim(), baseUrl: custom.baseUrl.trim(), api: custom.api });
+				setInstalled(signature);
+			} else await connectModel(ref, secret);
+			setKey("");
 			setResult({ ok: true, message: "Connection tested. This is now your default model." });
 			onDone?.();
 		} catch (error) {
-			setResult({ ok: false, message: error instanceof Error ? error.message : "Could not save model settings." });
+			setResult({ ok: false, message: errorMessage(error) || "Could not save model settings." });
 		} finally { setBusy(false); }
 	};
 	return <form className="model-setup" aria-label={t("Model setup")} onSubmit={submit}>

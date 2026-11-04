@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	avatarMotif,
 	defaultAvatar,
@@ -16,12 +16,14 @@ export function AvatarEditor({
 	value,
 	onChange,
 	disabled,
+	autoGenerate = false,
 }: {
 	bot: BotProfile;
 	role: string;
 	value: AvatarChange | undefined;
 	onChange: (value: AvatarChange) => void;
 	disabled: boolean;
+	autoGenerate?: boolean;
 }) {
 	const [options, setOptions] = useState<GeneratedAvatar[]>([]),
 		[error, setError] = useState(""),
@@ -34,7 +36,8 @@ export function AvatarEditor({
 		},
 		[],
 	);
-	const generate = () => {
+	const opened = useRef(false);
+	const generate = useCallback(() => {
 		const base =
 			((bot.avatar?.kind === "generated" ? bot.avatar.seed : defaultAvatar(bot.botId).seed) + ++round.current * 37) >>>
 			0;
@@ -46,7 +49,12 @@ export function AvatarEditor({
 				motif: avatarMotif(role),
 			})),
 		);
-	};
+	}, [bot, role]);
+	useEffect(() => {
+		if (!autoGenerate || opened.current) return;
+		opened.current = true;
+		generate();
+	}, [autoGenerate, generate]);
 	const upload = async () => {
 		const id = ++generation.current;
 		setLoading(true);

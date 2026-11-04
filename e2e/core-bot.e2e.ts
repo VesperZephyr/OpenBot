@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { type AppHarness, launchApp } from "./harness.ts";
 let h: AppHarness;
-beforeAll(async () => { h = await launchApp("core-bot", { firstLaunch: true }); }, 90_000);
+beforeAll(async () => { h = await launchApp("core-bot", { firstLaunch: true, locale: "en" }); }, 90_000);
 afterAll(async () => { await h?.close(); });
 
 it("starts with only the Core, permits setup later, and protects its identity", async () => {
 	const page = h.page();
-	await page.getByRole("heading", { name: "Meet OpenBot" }).waitFor();
+	await page.getByRole("heading", { name: "Welcome to OpenBot" }).waitFor();
 	await expect.poll(() => page.locator(".bot-row").count()).toBe(1);
 	expect(await page.getByRole("button", { name: /Atlas|Forge|Quill/ }).count()).toBe(0);
 	await h.shot("01-only-core");
