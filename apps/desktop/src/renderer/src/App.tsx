@@ -2,65 +2,48 @@ import { LocalTasks } from "./LocalTasks";
 import "./local-tasks.css";
 import { BotTemplateDialog, ExportTemplateItem, beginTemplateImport, useTemplateState } from "./BotTemplates";
 import { HistoryTimeline } from "./HistoryTimeline";
-import { BackupSettings, RestoreNotice } from "./BackupSettings";
+import { RestoreNotice } from "./BackupSettings";
 import { WorkspaceLayout } from "./WorkspaceLayout";
 import { openFiles } from "./reader-store";
-import { AppearanceSelect } from "./appearance";
-import { LanguageField } from "./ui/language-field";
 import { NewConversationDialog } from "./ui/new-conversation-dialog";
 import { InterfaceIcon } from "./InterfaceIcon";
 import { Avatar, AvatarStack, PersonalStar } from "./Avatar";
 import { BotIdentity, GroupIdentity } from "./BotIdentity";
-import { AvatarEditor } from "./AvatarEditor";
-import type { AvatarChange } from "@openbot/protocol";
-import { RoleSkills } from "./RoleSkills";
-import { BotRoutines, BotLibrary, RoutineProposalCard } from "./BotResources";
-import {RoutinesPanel} from "./Routines";
-import { CredentialStorage } from "./CredentialStorage";
-import {ConnectorsPanel} from "./Connectors";
+import { RoutineProposalCard } from "./BotResources";
 import { BackgroundTask } from "./BackgroundTask";
-import { SkillLibrary } from "./Skills";
-import { UsagePanel } from "./UsagePanel";
 import { ArtifactCard } from "./ArtifactCard";
 import {LifecycleControls,InterruptedRun} from "./Lifecycle";
 import { appManagementCapability, legacyManagementName, type AppExecution } from "@openbot/protocol";
 import { ConversationSearch } from "./ConversationSearch";
 import { ChatComposer } from "./ChatComposer";
-import { ConversationShell, DetailsPanel, useDialogFocus } from "./ConversationUI";
+import { ConversationShell, useDialogFocus } from "./ConversationUI";
 import { MarkReadItem, RosterPreview, recentTime } from "./RosterPreview";
-import { ManagementHistory } from "./BotManagement";
 import { t } from "./i18n";
 import { presentError } from "../../shared/i18n";
 import type {
 	BotSummary,
 	PendingApproval,
 	ConversationSnapshot,
-	ModelRef,
-	ModelSummary,
-	ThinkingLevel,
-	SkillRef,
 	TranscriptItem,
 } from "@openbot/protocol";
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { LiveReply, ActivityIndicator } from "./LiveReply";
 import { Markdown } from "./markdown";
-import { WebSearchSettings } from "./WebSearchSettings";
-import { ProfileMemory } from "./ProfileMemory";
 import { Divider, RetryButton, retryTarget, Thinking } from "./TranscriptExtras";
 import { PendingMessages, StopButton, StoppedNote } from "./runs";
-import { ApprovalCard, SettledApprovals } from "./ApprovalCard";
+import { ApprovalCard, TranscriptApprovals } from "./ApprovalCard";
 import { GroupView, GroupRow, GroupEditor } from "./Groups";
-import { CommandSettings, FolderSettings } from "./PolicySettings";
 import { ConfirmDeleteBot, DeleteBotItem, DuplicateBotItem } from "./BotLifecycle";
-import { ModelSetup } from "./ModelSetup";
 import { Onboarding } from "./features/onboarding/Onboarding";
+import { ProfileDetails } from "./features/details/ProfileDetails";
+import { SettingsWorkspace } from "./features/settings/SettingsWorkspace";
 import { transcriptRows } from "./steps";
 import { MessageTime, RevealButton, StepsRow } from "./TranscriptDetails";
 import { conversationPresence, headerStatusLabel } from "./conversation-status";
 import { displayToolOutput } from "./tool-output";
 import { botGreeting, conversationExamples } from "./examples";
 import { composers } from "./useComposer";
-import { api, connect, createBot, openBot, refreshBots, refreshSettings, report, errorMessage, sendMessage, useStore } from "./store";
+import { api, connect, createBot, openBot, refreshBots, report, sendMessage, useStore } from "./store";
 
 export function App() {
 	useDialogFocus();
@@ -133,30 +116,11 @@ export function App() {
 						{view.kind === "tasks" && <LocalTasks key={view.taskId??view.draftId??`list:${view.archived}:${view.cursor}`} view={view} renderHistory={(snapshot,taskId)=><HistoryTranscript snapshot={snapshot} taskId={taskId}/>}/>}
                         {view.kind === "bot" && <Conversation key={view.botId} botId={view.botId} editing={editorBotId === view.botId} onEditing={setEditorBotId} />}
 						{["settings", "skills", "connectors", "routines"].includes(view.kind) && (
-							<div className="settings-workspace">
-								<nav className="settings-navigation" aria-label={t("Settings navigation")}>
-									<button className="back-to-chat" aria-label={t("Back to chat")} onClick={() => useStore.setState({ view: lastChat.current })}>
-										← {t("Back to chat")}
-									</button>
-									<p className="settings-nav-title">{t("Settings")}</p>
-									{([
-										["settings", "General", "settings"],
-										["skills", "Skills", "skills"],
-										["connectors", "Connect apps", "apps"],
-										["routines", "Routines", "routines"],
-									] as const).map(([kind, label, icon]) => (
-										<button key={kind} aria-current={view.kind === kind ? "page" : undefined} onClick={() => useStore.setState({ view: { kind } })}>
-											<InterfaceIcon name={icon} />{t(label)}
-										</button>
-									))}
-								</nav>
-								<div className="settings-content">
-									{view.kind === "settings" && <Settings />}
-									{view.kind === "skills" && <SkillLibrary />}
-									{view.kind === "connectors" && <ConnectorsPanel />}
-									{view.kind === "routines" && <RoutinesPanel key={view.proposal?.requestId ?? view.routineId ?? view.botId ?? view.groupId ?? "all"} renderTranscript={(snapshot,occurrenceId) => <HistoryTranscript snapshot={snapshot} occurrenceId={occurrenceId} />} />}
-								</div>
-							</div>
+							<SettingsWorkspace
+								view={view as Extract<typeof view, { kind: "settings" | "skills" | "connectors" | "routines" }>}
+								onBack={() => useStore.setState({ view: lastChat.current })}
+								renderTranscript={(snapshot, occurrenceId) => <HistoryTranscript snapshot={snapshot} occurrenceId={occurrenceId} />}
+							/>
 						)}
 						{view.kind === "group" && <GroupView key={view.groupId} groupId={view.groupId} renderExecution={(botId,deliveryId)=><HistoryTranscript snapshot={{botId,channelId:view.groupId,items:[],approvals:[]}} conversationKey={`group:${view.groupId}`} deliveryId={deliveryId}/>}/>}
 						{view.kind === "home" && <Home onNew={() => setCreating(true)} />}
@@ -441,13 +405,7 @@ function Conversation({ botId, editing, onEditing }: { readonly botId: string; r
 		<ConversationShell
 			className={`conversation ${snapshot === undefined || (!count && !running) ? "is-empty" : ""}`}
 			label={t("Conversation with {name}", { name: bot.name })}
-			details={
-				editing && (
-					<DetailsPanel modal heading={<span className="bot-profile-heading"><Avatar bot={bot} size={32} />{bot.name}</span>} title={t("Conversation details")} onClose={() => setEditing(false)}>
-						<EditProfile bot={bot} onClose={() => setEditing(false)} />
-					</DetailsPanel>
-				)
-			}
+			details={editing && <ProfileDetails bot={bot} onClose={() => setEditing(false)} />}
 		>
 			<header className="conversation-header">
 				<Avatar bot={bot} size={29} working={presence !== "idle"} />
@@ -650,8 +608,7 @@ function Transcript({ snapshot,historyOnly=false,latestUserAt:userAt,retryOverri
 				),
 			)}
 			{!historyOnly&&<PendingMessages snapshot={snapshot} />}
- {!historyOnly&&<SettledApprovals conversationId={snapshot.conversationId} pending={snapshot.approvals.map((approval) => approval.approvalId)} runActive={snapshot.run !== undefined && snapshot.run.state !== "completed" && snapshot.run.state !== "failed" && snapshot.run.state !== "cancelled"} {...(userAt === undefined ? {} : { latestUserAt: userAt })} listItem />}
- {!historyOnly&&snapshot.approvals.map(approval=><li key={approval.approvalId} className="approval-slot"><ApprovalCard approval={approval}/></li>)}
+			<TranscriptApprovals snapshot={snapshot} historyOnly={historyOnly} {...(userAt === undefined ? {} : { latestUserAt: userAt })} />
  {!historyOnly&&!snapshot.channelId?.startsWith("routine_")&&!snapshot.messageMode&&snapshot.run?.state==="needs_attention"&&<InterruptedRun key={snapshot.run.runId} run={snapshot.run}/>}
             {!historyOnly&&(snapshot.live || snapshot.run?.state === "running" || snapshot.run?.state === "queued") && (
                 <li className="message message-assistant is-live"><LiveReply snapshot={snapshot} /></li>
@@ -966,416 +923,6 @@ function BotMenu({ bot, onEdit, readCursor }: { readonly bot: BotSummary; readon
 	);
 }
 
-function EditProfile({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
-	const [tab, setTab] = useState<"profile" | "memory" | "routines" | "library">("profile");
-	return (
-		<div className="profile">
-			{bot.kind==="core"&&<button onClick={()=>{onClose();useStore.setState({view:{kind:"tasks",botId:bot.botId}});}}>{t("Tasks")}</button>}
-            <div className="profile-tabs" role="tablist">
-				<button type="button" role="tab" aria-selected={tab === "profile"} onClick={() => setTab("profile")}>
-					{t("Profile")}
-				</button>
-				<button type="button" role="tab" aria-selected={tab === "memory"} onClick={() => setTab("memory")}>
-					{t("Memory")}
-				</button>
-				<button type="button" role="tab" aria-selected={tab === "routines"} onClick={() => setTab("routines")}>{t("Routines")}</button>
-				<button type="button" role="tab" aria-selected={tab === "library"} onClick={() => setTab("library")}>{t("Library")}</button>
-			</div>
-			{tab === "routines" && <BotRoutines botId={bot.botId} onClose={onClose} />}
-			{tab === "library" && <BotLibrary botId={bot.botId} onClose={onClose} />}
-			<div hidden={tab !== "profile"}>
-				<ProfileForm bot={bot} onClose={onClose} />
-				<UsagePanel botId={bot.botId} onNavigate={onClose} />
-			</div>
-			<div hidden={tab !== "memory"}>
-				<ProfileMemory botId={bot.botId} onClose={onClose} />
-			</div>
-		</div>
-	);
-}
-
-const THINKING_LABEL: Record<ThinkingLevel, string> = { off: "Off", low: "Low", medium: "Medium", high: "High" };
-
-function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
-	const [revision, setRevision] = useState(bot.revision);
-	const [avatar, setAvatar] = useState<AvatarChange>();
-	const [profileBase, setProfileBase] = useState(bot);
-	const [defaultSkills, setDefaultSkills] = useState<readonly SkillRef[]>(bot.defaultSkills ?? []);
-	const [saveError, setSaveError] = useState("");
-	const [saving, setSaving] = useState(false);
-	const [name, setName] = useState(bot.name);
-	const [role, setRole] = useState(bot.role);
-	const [instructions, setInstructions] = useState(bot.instructions);
-	const [model, setModel] = useState<ModelRef | undefined>(bot.model);
-	const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>(bot.thinkingLevel ?? "off");
-	const models = useStore((state) => state.models);
-	const defaultModel = useStore((state) => state.settings?.defaultModel);
-	const effective = model ?? defaultModel;
-	const reasoning = models.some(
-		(candidate) =>
-			candidate.reasoning && candidate.provider === effective?.provider && candidate.modelId === effective.modelId,
-	);
-	const save = async (event: FormEvent): Promise<void> => {
-		event.preventDefault();
-		if (saving || !name.trim()) return;
-		setSaving(true);
-		try {
-			await api["bots.update"]({
-				botId: bot.botId,
-				expectedRevision: revision,
-				...(avatar ? { avatar } : {}),
-				defaultSkills,
-				name: name.trim() || bot.name,
-				role,
-				instructions,
-				model: model ?? null,
-				...(reasoning ? { thinkingLevel } : {}),
-			});
-			await refreshBots();
-			onClose();
-		} catch (error) {
-			setSaveError(errorMessage(error));
-		} finally {
-			setSaving(false);
-		}
-	};
-	return (
-		<form className="profile-form" onSubmit={save}>
-			<div className="profile-layout">
-				<AvatarEditor bot={profileBase} role={role} value={avatar} onChange={setAvatar} disabled={saving} />
-				<div className="profile-fields">
-					{saveError && (
-						<div role="alert">
-							{t(saveError)}{" "}
-							<button
-								type="button"
-								disabled={saving}
-								onClick={() =>
-									void api["bots.list"]({})
-										.then((bots) => {
-											const fresh = bots.find((item) => item.botId === bot.botId);
-											if (!fresh) return;
-											setRevision(fresh.revision);
-											setAvatar(undefined);
-											setProfileBase(fresh);
-											setDefaultSkills(fresh.defaultSkills ?? []);
-											setName(fresh.name);
-											setRole(fresh.role);
-											setInstructions(fresh.instructions);
-											setModel(fresh.model);
-											setThinkingLevel(fresh.thinkingLevel ?? "off");
-											setSaveError("");
-										})
-										.catch(report)
-								}
-							>
-								{t("Reload profile")}
-							</button>
-						</div>
-					)}
-					<div className="profile-grid">
-						<label className="field">
-							<span>{t("Name")}</span>
-							<input required maxLength={200} value={name} onChange={(event) => setName(event.target.value)} />
-						</label>
-						<label className="field">
-							<span>{t("Label")}</span>
-							<input
-								maxLength={200}
-								value={role}
-								placeholder={t("Research")}
-								onChange={(event) => setRole(event.target.value)}
-							/>
-						</label>
-					</div>
-					<label className="field">
-						<span>{t("Prompt")}</span>
-						<textarea
-							rows={4}
-							aria-label={t("Prompt")}
-							value={instructions}
-							placeholder={t("Own the weekly account review. Never send external messages without approval.")}
-							onChange={(event) => setInstructions(event.target.value)}
-						/>
-					</label>
-					<details className="profile-advanced">
-						<summary>{t("Model and skills")}</summary>
-						<p className="field-hint">
-							{t(
-								"Prompt defines this Bot's role and behavior. Saved changes apply to the next model request; a reply already in progress uses its existing context.",
-							)}
-						</p>
-						<div className="memory-meta">
-							{t("Revision")} {revision}
-						</div>
-						<div className="profile-grid">
-							<label className="field">
-								<span>{t("Model")}</span>
-								<ModelSelect value={model} onChange={setModel} emptyLabel={t("Use the default model")} />
-							</label>
-							{reasoning && (
-								<label className="field">
-									<span>{t("Thinking")}</span>
-									<select
-										value={thinkingLevel}
-										onChange={(event) => setThinkingLevel(event.target.value as ThinkingLevel)}
-									>
-										{(Object.keys(THINKING_LABEL) as ThinkingLevel[]).map((level) => (
-											<option key={level} value={level}>
-												{t(THINKING_LABEL[level])}
-											</option>
-										))}
-									</select>
-								</label>
-							)}
-						</div>
-						<RoleSkills value={defaultSkills} onChange={setDefaultSkills} disabled={saving} />
-					</details>
-					{bot.kind === "core" && (
-						<p className="profile-protection">
-							<PersonalStar /> {t("Your personal assistant. Change its name and avatar; it cannot be deleted.")}
-						</p>
-					)}
-				</div>
-			</div>
-			<div className="dialog-actions">
-				<button type="button" onClick={onClose}>
-					{t("Cancel")}
-				</button>
-				<button type="submit" className="primary" disabled={saving || !name.trim()}>
-					{t("Save profile")}
-				</button>
-			</div>
-		</form>
-	);
-}
-
-function ModelSelect(props: {
-	readonly value: ModelRef | undefined;
-	readonly onChange: (model: ModelRef | undefined) => void;
-	readonly emptyLabel: string;
-}) {
-	const models = useStore((state) => state.models);
-	const settings = useStore((state) => state.settings);
-	const configured = new Set(settings?.providers.filter((p) => p.configured).map((p) => p.providerId));
-	const groups = useMemo(() => {
-		const byProvider = new Map<string, ModelSummary[]>();
-		for (const model of models) {
-			if (!configured.has(model.provider)) continue;
-			byProvider.set(model.provider, [...(byProvider.get(model.provider) ?? []), model]);
-		}
-		return [...byProvider];
-	}, [models, settings]);
-	const selected = props.value === undefined ? "" : `${props.value.provider}/${props.value.modelId}`;
-
-	return (
-		<select
-			value={selected}
-			onChange={(event) => {
-				const separator = event.target.value.indexOf("/");
-				props.onChange(
-					separator < 0
-						? undefined
-						: { provider: event.target.value.slice(0, separator), modelId: event.target.value.slice(separator + 1) },
-				);
-			}}
-		>
-			<option value="">{t(props.emptyLabel)}</option>
-			{/* Keep a stored model selectable even when its provider key was removed. */}
-			{props.value !== undefined && !groups.some(([, list]) => list.some((m) => `${m.provider}/${m.modelId}` === selected)) && (
-				<option value={selected}>
-					{selected}
-					{t(" · Unavailable")}
-				</option>
-			)}
-			{groups.map(([provider, list]) => (
-				<optgroup
-					key={provider}
-					label={`${provider} · ${t(list[0]?.source === "custom" ? "Custom" : "Built-in")}${list[0]?.overridden ? t(" · Local override") : ""}`}
-				>
-					{list.map((model) => (
-						<option key={model.modelId} value={`${model.provider}/${model.modelId}`}>
-							{model.name}
-						</option>
-					))}
-				</optgroup>
-			))}
-		</select>
-	);
-}
-
-function Settings() {
-	useEffect(() => {
-		void refreshSettings().catch(report);
-	}, []);
-	const settings = useStore((state) => state.settings);
-	const [providerId, setProviderId] = useState("openai");
-	const [apiKey, setApiKey] = useState("");
-
-	if (settings === undefined) return <CredentialStorage />;
-	const configured = settings.providers.filter((provider) => provider.configured);
-
-	const saveKey = async (event: FormEvent): Promise<void> => {
-		event.preventDefault();
-		const key = apiKey;
-		// Clear the field immediately: the key must not linger in renderer state.
-		setApiKey("");
-		try {
-			await api["credentials.set"]({ providerId, apiKey: key });
-			await refreshSettings();
-		} catch (error) {
-			report(error);
-		}
-	};
-
-	return (
-		<section className="settings" aria-label={t("Settings")}>
-			<header className="settings-heading">
-				<span className="eyebrow">{t("MAKE IT YOURS")}</span>
-				<h1>{t("Settings")}</h1>
-				<p className="muted">{t("Your models, preferences and permissions. On your Mac.")}</p>
-			</header>
-			<AppearanceSelect />
-            <LifecycleControls />
-			<nav className="settings-jump" aria-label={t("Settings sections")}>
-				{[
-					["models", "Models"],
-					["language", "Language"],
-					["permissions", "Permissions"],
-					["data", "Data"],
-				].map(([id, label]) => (
-					<button type="button" key={id} onClick={() => document.getElementById(`settings-${id}`)?.scrollIntoView({ block: "start" })}>
-						{t(label!)}
-					</button>
-				))}
-			</nav>
-
-			<div className="settings-group" id="settings-models">
-				<h2>{t("Default model")}</h2>
-				<p className="muted">{t("Bots without a model of their own use this one.")}</p>
-				<ModelSelect
-					value={settings.defaultModel}
-					emptyLabel={configured.length === 0 ? "Add an API key below first" : "Choose a model"}
-					onChange={(model) =>
-						void api["settings.update"]({ defaultModel: model ?? null })
-							.then(refreshSettings)
-							.catch(report)
-					}
-				/>
-				<button type="button" onClick={() => useStore.setState({ onboarding: true })}>{t("Open the setup wizard again")}</button>
-			</div>
-
-			<div className="settings-group" id="settings-language">
-				<LanguageField
-					label={t("Language")}
-					caption={t("Changes the app interface. Your conversations and Bot instructions stay as written.")}
-					value={settings.language ?? "en"}
-					onChange={(language) => {
-						void api["settings.update"]({ language, languageChosen: true }).then(refreshSettings).catch(report);
-					}}
-				/>
-			</div>
-			<div className="settings-group">
-				<h2>{t("Connect a model")}</h2>
-				<ModelSetup />
-			</div>
-
-			<div className="settings-group">
-				<h2>{t("Provider credentials")}</h2>
-				<p className="muted">{t("Keys are stored in the macOS Keychain and never shown again.")}</p>
-				<form className="key-form" onSubmit={saveKey}>
-					<select value={providerId} onChange={(event) => setProviderId(event.target.value)} aria-label={t("Provider")}>
-						{settings.providers.map((provider) => (
-							<option key={provider.providerId} value={provider.providerId}>
-								{provider.name}
-							</option>
-						))}
-					</select>
-					<input
-						type="password"
-						autoComplete="off"
-						value={apiKey}
-						placeholder={t("API key")}
-						onChange={(event) => setApiKey(event.target.value)}
-						aria-label={t("API key")}
-					/>
-					<button type="submit" className="primary" disabled={apiKey.trim() === ""}>
-						{t("Save key")}
-					</button>
-				</form>
-				<ul className="provider-list">
-					{configured.length === 0 && <li className="muted">{t("No provider keys yet.")}</li>}
-					{configured.map((provider) => (
-						<li key={provider.providerId}>
-							<span>{provider.name}</span>
-							<span className="muted">
-								{t(provider.keyStored ? "Key stored" : "Key from models.json")}
-								{provider.source === "config" && " · models.json"}
-							</span>
-							{provider.keyStored && (
-								<button
-									type="button"
-									onClick={() => void api["credentials.delete"]({ providerId: provider.providerId }).then(refreshSettings).catch(report)}
-								>
-									{t("Remove")}
-								</button>
-							)}
-						</li>
-					))}
-				</ul>
-			</div>
-			<CredentialStorage />
-			<BackupSettings />
-			<WebSearchSettings />
-			<div id="settings-permissions">
-				<CommandSettings />
-			</div>
-			<FolderSettings workspace={settings.workspace} />
-
-			<div className="settings-group">
-				<h2>{t("Your own providers")}</h2>
-				<p className="muted">
-					{t("Add OpenAI- or Anthropic-compatible endpoints in ")}
-					<code>{settings.modelConfig.path}</code>
-					{t(". Changes apply when you open Settings or choose a model.")}
-				</p>
-				{settings.providers.some((provider) => provider.source === "config" && !provider.configured) && (
-					<p className="muted">
-						{t("Without a key:")}{" "}
-						{settings.providers
-							.filter((provider) => provider.source === "config" && !provider.configured)
-							.map((provider) => provider.name)
-							.join(", ")}
-						{t(". Save one above or fix its ")}
-						<code>apiKey</code>.
-					</p>
-				)}
-				{settings.modelConfig.errors.length > 0 && (
-					<ul className="config-errors" aria-label={t("Configuration problems")}>
-						{settings.modelConfig.errors.map((error) => (
-							<li key={error}>{error}</li>
-						))}
-					</ul>
-				)}
-				<button type="button" onClick={() => void refreshSettings().catch(report)}>
-					{t("Reload")}
-				</button>
-			</div>
-
-			<ManagementHistory />
-			<div className="settings-group" id="settings-data">
-				<h2>{t("Data")}</h2>
-				<p className="muted">
-					{t("Conversations, Bot memory and operation logs are stored on this Mac in ")}
-					<code>{settings.dataDirectory}</code>
-					{t(
-						". No automatic analytics or log uploads. Your selected model and search providers receive task-relevant input when you use them.",
-					)}
-				</p>
-			</div>
-		</section>
-	);
-}
 
 function OutcomeRow({
 	item,

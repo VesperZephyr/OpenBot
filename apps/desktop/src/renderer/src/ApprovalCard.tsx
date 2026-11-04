@@ -1,7 +1,7 @@
 import { SkillReview } from "./Skills";
 import { validSkillOperation, type SkillChange } from "@openbot/protocol";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { legacyManagementName, type ApprovalDecision, type PendingApproval } from "@openbot/protocol";
+import { legacyManagementName, type ApprovalDecision, type ConversationSnapshot, type PendingApproval } from "@openbot/protocol";
 import { api, report, useStore } from "./store";
 import { t } from "./i18n";
 import { AlwaysAllow } from "./AlwaysAllow";
@@ -111,6 +111,36 @@ export function SettledApprovals({
 					<ApprovalRecord key={record.approvalId} record={record} />
 				),
 			)}
+		</>
+	);
+}
+
+export function TranscriptApprovals({
+	snapshot,
+	historyOnly = false,
+	latestUserAt: userAt,
+}: {
+	readonly snapshot: ConversationSnapshot;
+	readonly historyOnly?: boolean;
+	readonly latestUserAt?: number;
+}) {
+	if (historyOnly) return null;
+	const runActive =
+		snapshot.run !== undefined && snapshot.run.state !== "completed" && snapshot.run.state !== "failed" && snapshot.run.state !== "cancelled";
+	return (
+		<>
+			<SettledApprovals
+				conversationId={snapshot.conversationId}
+				pending={snapshot.approvals.map((approval) => approval.approvalId)}
+				runActive={runActive}
+				{...(userAt === undefined ? {} : { latestUserAt: userAt })}
+				listItem
+			/>
+			{snapshot.approvals.map((approval) => (
+				<li key={approval.approvalId} className="approval-slot">
+					<ApprovalCard approval={approval} />
+				</li>
+			))}
 		</>
 	);
 }
