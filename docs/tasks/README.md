@@ -106,6 +106,7 @@ Candidate revision, acceptance checks and outcomes, and remaining limits; or lin
 - [D12: Free BoardUI components and an OpenBot chat interface](d12-boardui-refactor.md)
 - [D12a: BoardUI foundation and Settings/chooser pilot](d12a-boardui-foundation.md)
 - [D12b: BoardUI conversation](d12b-boardui-conversation.md)
+- [D12c: BoardUI conversation polish](d12c-boardui-polish.md)
 
 ## Collaboration and application capabilities
 

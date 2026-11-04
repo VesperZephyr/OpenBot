@@ -589,13 +589,11 @@
  .pdf-reader { padding-left: 12px; padding-right: 12px; }
 }
 @container chat (max-width: 460px) {
- .chat-panel .welcome-character { display: none; }
  .chat-panel .empty-conversation h2 { font-size: 30px; }
  .chat-panel .conversation.is-empty .compose-area { margin-bottom: 24px; }
 }
 @container chat (max-width: 460px) {
- .chat-panel .conversation-header .mark-read, .chat-panel .conversation-header .details-toggle { font-size: 0; padding: 6px; }
- .chat-panel .conversation-header .mark-read::after { content: "✓"; font-size: 15px; }
+ .chat-panel .conversation-header .details-toggle { font-size: 0; padding: 6px; }
  .chat-panel .conversation-header .details-toggle svg { width: 16px; height: 16px; }
  .chat-panel .conversation-header .conversation-title { min-width: 70px; }
 }

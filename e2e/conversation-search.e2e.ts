@@ -78,6 +78,7 @@ it("combines unread filtering with group/private history and preserves selected 
 	await search().fill("群内星图");await poll(()=>results().count()).toBe(1);
 	await results().click();await poll(()=>h.page().locator(".search-target").textContent()).toContain("群内星图");
 	await box().fill("群聊草稿");
+	await h.page().getByRole("button", { name: "•••" }).click();
 	await h.page().getByRole("button",{name:"Mark as read",exact:true}).click();
 	await poll(()=>results().count()).toBe(0);
 	await h.page().getByRole("group",{name:"Conversation filter"}).getByRole("button",{name:"All",exact:true}).click();

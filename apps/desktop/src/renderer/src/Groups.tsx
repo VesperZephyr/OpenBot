@@ -8,7 +8,7 @@ import { BackgroundTask } from "./BackgroundTask";
 import { ArtifactCard } from "./ArtifactCard";
 import { ChatComposer } from "./ChatComposer";
 import { ConversationShell, DetailsPanel } from "./ConversationUI";
-import { MarkReadButton, RosterPreview } from "./RosterPreview";
+import { MarkReadItem, RosterPreview } from "./RosterPreview";
 import { useEffect, useRef, useState } from "react";
 import type { Group } from "@openbot/protocol";
 import { refreshGroupSnapshot, api, refreshGroups, report, useStore } from "./store";
@@ -66,6 +66,32 @@ function GroupEmpty({ groupId }: { readonly groupId: string }) {
 							{example}
 						</button>
 					))}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function GroupMenu({ groupId, cursor }: { readonly groupId: string; readonly cursor: number | undefined }) {
+	const [open, setOpen] = useState(false);
+	const menu = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (!open) return;
+		menu.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+		const close = (event: PointerEvent) => {
+			if (!menu.current?.contains(event.target as Node)) setOpen(false);
+		};
+		document.addEventListener("pointerdown", close);
+		return () => document.removeEventListener("pointerdown", close);
+	}, [open]);
+	return (
+		<div className="menu" ref={menu}>
+			<button type="button" className="icon-button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+				•••
+			</button>
+			{open && (
+				<div className="menu-popover" role="menu">
+					<MarkReadItem conversationKey={`group:${groupId}`} cursor={cursor} onDone={() => setOpen(false)} />
 				</div>
 			)}
 		</div>
@@ -276,13 +302,17 @@ export function GroupView({ groupId,renderExecution }: { groupId: string;renderE
                 <GroupAvatar memberIds={group.memberIds} />
 				<div className="conversation-title">
 					<h1>{group.name}</h1>
-					<p className="muted">
-						{t(active ? "{count} members" : "Dissolved", { count: group.memberIds.length })}
-						{group.leadBotId ? ` · ${t("Lead")}: ${name(group.leadBotId)}` : ""}
+					<p className="conversation-meta">
+						<span>
+							{t(active ? "{count} members" : "Dissolved", { count: group.memberIds.length })}
+							{group.leadBotId ? ` · ${t("Lead")}: ${name(group.leadBotId)}` : ""}
+						</span>
+						<span className="conversation-meta-sep" aria-hidden="true">·</span>
+						{presence === "working" && <span className="status-dot" aria-hidden="true" />}
+						<span className="conversation-status" role="status">{t(presenceLabel(presence))}</span>
 					</p>
-					<p className="conversation-status" role="status">{t(presenceLabel(presence))}</p>
 				</div>
-				<MarkReadButton conversationKey={`group:${groupId}`} cursor={snapshot.readCursor} />
+				<GroupMenu groupId={groupId} cursor={snapshot.readCursor} />
 				<button className="icon-button details-toggle" aria-label={t("Conversation details")} onClick={() => setDetails(!details)}>
 					ⓘ
 				</button>

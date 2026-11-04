@@ -44,7 +44,11 @@ beforeAll(async () => {
     await h.page().getByText("A little clarity for today",{exact:true}).waitFor();
     await h.page().locator(".sidebar").getByText("Working",{exact:true}).waitFor({state:"hidden"});
     const markRead = button("Mark as read");
-    if (await markRead.isVisible()) await markRead.click();
+    if (!(await markRead.isVisible())) {
+        const more = h.page().getByRole("button", { name: "•••" });
+        if (await more.isVisible()) await more.click();
+    }
+    if (await button("Mark as read").isVisible()) await button("Mark as read").click();
 },60000);
 afterAll(async () => { await h?.close(); });
 

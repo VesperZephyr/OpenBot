@@ -937,6 +937,8 @@ export const chinese: Readonly<Record<string, string>> = {
  "The model request failed. Check the endpoint, protocol and model ID.": "模型请求失败，请检查服务地址、协议和模型 ID。",
 	"Always allow": "始终允许",
 	"Cancel": "取消",
+	"Edit": "编辑",
+	"Save": "保存",
 	"Dismiss": "关闭",
 	"Bots": "Bot",
 	"New": "新建",

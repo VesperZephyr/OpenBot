@@ -6,11 +6,25 @@ import {
 	type AvatarUpload,
 	type GeneratedAvatar,
 } from "@openbot/protocol";
-import { AVATAR_PALETTES, generatedAvatarAppearance } from "./avatar-appearance";
 import { api, useStore } from "./store";
 import { t } from "./i18n";
 
-export { generatedAvatarAppearance } from "./avatar-appearance";
+const AVATAR_PALETTES = [
+	["#b794f6", "#3b2760", "#f6e27a"],
+	["#5cbf86", "#1a4332", "#f3c56a"],
+	["#f0a15a", "#6a341f", "#d7c0f2"],
+	["#6aade8", "#1d3550", "#e6e07a"],
+	["#f09ab8", "#6a3044", "#c9e09a"],
+	["#d0d25a", "#3c461c", "#dcc6ee"],
+] as const;
+
+/** V1 color slot. `seed % 6` is the stable mapping; paint may change, this index may not. */
+export function avatarColorIndex(seed: number): number {
+	return (seed >>> 0) % 6;
+}
+function avatarShape(seed: number): 0 | 1 | 2 {
+	return (Math.floor((seed >>> 0) / 6) % 3) as 0 | 1 | 2;
+}
 
 const images = new Map<string, Promise<string | undefined>>();
 function imageFor(botId: string, sha256: string): Promise<string | undefined> {
@@ -83,11 +97,12 @@ export function PersonalStar() {
 	);
 }
 
-/** V1 geometry. Color index and shape come from generatedAvatarAppearance; only the paint is richer. */
+/** V1 geometry. Only saturation, solid fill and a light highlight change. */
 function Character({ recipe }: { recipe: GeneratedAvatar }) {
-	const { colorIndex, shape } = generatedAvatarAppearance(recipe);
-	const [body, ink, accent] = AVATAR_PALETTES[colorIndex]!;
 	const n = recipe.seed >>> 0;
+	const colorIndex = avatarColorIndex(n);
+	const shape = avatarShape(n);
+	const [body, ink, accent] = AVATAR_PALETTES[colorIndex]!;
 	const bodyShape =
 		shape === 0 ? (
 			<path d="M37 31C56 10 99 12 117 35c16 22 18 59 2 83-13 21-40 27-62 20-28-8-39-34-36-61 1-19 6-35 16-46Z" />
@@ -98,7 +113,6 @@ function Character({ recipe }: { recipe: GeneratedAvatar }) {
 		);
 	return (
 		<svg viewBox="0 0 150 165" fill="none" aria-hidden="true">
-			<ellipse cx="76" cy="154" rx="34" ry="7" fill={ink} opacity="0.18" />
 			<g fill={body} stroke={ink} strokeWidth="2.4">
 				{bodyShape}
 			</g>

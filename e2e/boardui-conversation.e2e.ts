@@ -4,6 +4,19 @@ import { type AppHarness, launchApp } from "./harness.ts";
 let h: AppHarness;
 const poll = (fn: () => Promise<unknown>) => expect.poll(fn, { timeout: 15000 });
 
+function opaqueDarkShadow(shadow: string): boolean {
+	if (!shadow || shadow === "none") return false;
+	const layers = shadow.match(/(?:rgba?|hsla?|color)\([^)]+\)/g) ?? [];
+	if (!layers.length) return false;
+	return layers.some((layer) => {
+		const parts = layer.match(/[\d.]+/g)?.map(Number) ?? [];
+		const alpha = layer.startsWith("rgb") && parts.length < 4 ? 1 : (parts.at(-1) ?? 1);
+		const channels = parts.slice(0, 3);
+		const dark = channels.length >= 3 && channels.every((channel) => channel <= 40);
+		return alpha >= 1 && dark;
+	});
+}
+
 beforeAll(async () => {
 	h = await launchApp("boardui-conversation");
 	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" }, language: "en" });
@@ -38,6 +51,8 @@ it("shows the empty conversation, detail panel and themes", async () => {
 	await h.shot("02-detail-light");
 	await appearance("Dark");
 	await h.page().locator(".conversation-status").getByText("Idle", { exact: true }).waitFor();
+	const shadow = await h.page().locator(".identity-avatar .avatar").first().evaluate((element) => getComputedStyle(element).boxShadow);
+	expect(opaqueDarkShadow(shadow)).toBe(false);
 	await h.shot("03-empty-dark");
 	await h.shot("04-detail-dark");
 	await h.api("settings.update", { language: "zh-CN" });
@@ -46,6 +61,11 @@ it("shows the empty conversation, detail panel and themes", async () => {
 	await appearance("浅色");
 	await h.shot("06-empty-zh-light");
 	await h.api("settings.update", { language: "en" });
+	const panel = h.page().locator(".bot-identity");
+	await panel.getByRole("button", { name: "Edit", exact: true }).click();
+	await panel.getByRole("button", { name: "Save", exact: true }).waitFor();
+	await panel.getByRole("button", { name: "Cancel", exact: true }).click();
+	await panel.getByRole("button", { name: "Edit", exact: true }).waitFor();
 	h.model.script({ text: "Today's notes are in three short points." });
 	await empty.getByRole("button", { name: "Summarize the notes from today", exact: true }).click();
 	await h.page().getByText("Today's notes are in three short points.", { exact: true }).waitFor();
@@ -61,7 +81,8 @@ it("shows a textual working indicator when motion is reduced", async () => {
 	await h.send("Keep going");
 	await h.page().getByRole("button", { name: "Stop", exact: true }).waitFor();
 	await poll(() => h.page().locator(".conversation-status").textContent()).toBe("Working");
-	await h.page().locator(".activity-reduced", { hasText: "Working" }).waitFor();
+	await h.page().locator(".activity-text", { hasText: "Working" }).waitFor();
+	expect(await h.page().locator(".activity-working").count()).toBe(0);
 	await h.shot("09-working-reduced-motion");
 	await h.page().getByRole("button", { name: "Stop", exact: true }).click();
 	await h.page().getByRole("button", { name: "Stop", exact: true }).waitFor({ state: "hidden" });

@@ -25,7 +25,7 @@ describe("conversation presentation", () => {
 		expect(botGreeting("")).toBe("");
 	});
 
-	it("uses Working and 工作中 for the reduced-motion indicator", () => {
+	it("uses Working and 工作中 for the working label", () => {
 		expect(reducedMotionWorking("en")).toBe("Working");
 		expect(reducedMotionWorking("zh-CN")).toBe("工作中");
 	});

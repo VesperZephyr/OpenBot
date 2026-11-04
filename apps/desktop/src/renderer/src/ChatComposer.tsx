@@ -2,7 +2,7 @@ import { ActivityIndicator } from "./LiveReply";
 import { InterfaceIcon } from "./InterfaceIcon";
 import { ArtifactCard } from "./ArtifactCard";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { api, report, sendMessage, useStore } from "./store";
+import { api, refreshBots, report, sendMessage, useStore } from "./store";
 import { t } from "./i18n";
 import { composers, useComposer } from "./useComposer";
 import type { ConversationKey, SendAttempt } from "./composers";
@@ -309,6 +309,7 @@ export function ChatComposer({
 								</button>
 							)}
 							{!members&&!pinned&&<button type="button" className="compose-tool" aria-label={t("Attach a skill")} aria-expanded={skillShowing} onClick={()=>{setSkillPicker(!skillShowing);setSkillDismissed(skillShowing?draft.text:undefined);input.current?.focus();}}><InterfaceIcon name="skills" /><span>{t("Skills")}</span></button>}
+							<ComposerModel conversationKey={conversationKey} selectable={!members && !pinned && !readOnly} />
  <span className="composer-spacer" />{controls}
 							{(!activeRun || hasContent) && <button
 								type="button"
@@ -335,5 +336,44 @@ export function ChatComposer({
 						)}
 					</span>
 		</div>
+	);
+}
+
+function ComposerModel({ conversationKey, selectable }: { readonly conversationKey: ConversationKey; readonly selectable: boolean }) {
+	const botId = conversationKey.startsWith("bot:") ? conversationKey.slice(4) : undefined;
+	const bot = useStore((state) => (botId ? state.bots.find((candidate) => candidate.botId === botId) : undefined));
+	const settings = useStore((state) => state.settings);
+	const models = useStore((state) => state.models);
+	const configured = new Set(settings?.providers.filter((provider) => provider.configured).map((provider) => provider.providerId));
+	const selected = bot?.model ? `${bot.model.provider}/${bot.model.modelId}` : "";
+	const effective = bot?.model ?? settings?.defaultModel;
+	const effectiveName =
+		models.find((model) => model.provider === effective?.provider && model.modelId === effective?.modelId)?.name ??
+		(effective ? `${effective.provider}/${effective.modelId}` : t("Use the default model"));
+	if (!selectable || !bot) return <span className="composer-model">{t("Model")} · {effectiveName}</span>;
+	return (
+		<label className="composer-model">
+			<span>{t("Model")}</span>
+			<select
+				aria-label={t("Model")}
+				value={selected}
+				onChange={(event) => {
+					const separator = event.target.value.indexOf("/");
+					const model = separator < 0 ? null : { provider: event.target.value.slice(0, separator), modelId: event.target.value.slice(separator + 1) };
+					void api["bots.update"]({ botId: bot.botId, expectedRevision: bot.revision, model })
+						.then(() => refreshBots())
+						.catch(report);
+				}}
+			>
+				<option value="">{effective && !bot.model ? effectiveName : t("Use the default model")}</option>
+				{models
+					.filter((model) => configured.has(model.provider))
+					.map((model) => (
+						<option key={`${model.provider}/${model.modelId}`} value={`${model.provider}/${model.modelId}`}>
+							{model.name}
+						</option>
+					))}
+			</select>
+		</label>
 	);
 }

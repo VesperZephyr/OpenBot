@@ -53,8 +53,8 @@ export function RosterPreview({
 				)}
 			</span>
 			<span className="roster-preview-line">
-				{activity && <span className={`activity activity-${activity.toLowerCase().replaceAll(" ", "_")}`} aria-hidden />}
-				{activity === "Working" && <span className="activity-reduced">{reducedMotionWorking(language === "zh-CN" ? "zh-CN" : "en")}</span>}
+				{activity && activity !== "Working" && <span className={`activity activity-${activity.toLowerCase().replaceAll(" ", "_")}`} aria-hidden />}
+				{activity === "Working" && <span className="activity-text">{reducedMotionWorking(language === "zh-CN" ? "zh-CN" : "en")}</span>}
 				<span className="bot-row-role" title={preview}>
 					{preview}
 				</span>
@@ -72,11 +72,23 @@ export function RosterPreview({
 		</span>
 	);
 }
-export function MarkReadButton({ conversationKey, cursor }: { conversationKey: ConversationKey; cursor?: number | undefined }) {
+export function MarkReadItem({ conversationKey, cursor, onDone }: { conversationKey: ConversationKey; cursor: number | undefined; onDone?: () => void }) {
 	const unread = useStore((s) => s.summaries[conversationKey]?.unreadCount ?? 0);
-	return unread > 0 ? (
-		<button className="mark-read" disabled={cursor === 0} onClick={() => void (async()=>{const result=await api["conversations.window"]({conversationKey,position:{kind:"latest"}});if(result.status==="ready"&&result.window.readCursor!==undefined)await markRead(conversationKey,result.window.readCursor);})().catch(report)}>
+	if (unread <= 0) return null;
+	return (
+		<button
+			type="button"
+			role="menuitem"
+			disabled={cursor === 0}
+			onClick={() => {
+				onDone?.();
+				void (async () => {
+					const result = await api["conversations.window"]({ conversationKey, position: { kind: "latest" } });
+					if (result.status === "ready" && result.window.readCursor !== undefined) await markRead(conversationKey, result.window.readCursor);
+				})().catch(report);
+			}}
+		>
 			{t("Mark as read")}
 		</button>
-	) : null;
+	);
 }

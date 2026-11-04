@@ -99,6 +99,7 @@ it("keeps group/public and private read cursors independent, including delayed a
 	);
 	await groupRow().click();
 	await poll(async () => groupRow().locator(".bot-row-role").textContent()).toBe("Alpha: 群聊结论已经核对。");
+	await h.page().getByRole("button", { name: "•••" }).click();
 	await h.page().getByRole("button", { name: "Mark as read", exact: true }).click();
 	await poll(async () => (await summary(`group:${groupId}`)).unreadCount).toBe(0);
 	await h.relaunch();
@@ -167,6 +168,7 @@ it("renders Chinese previews, dissolved history and deleted senders in a small d
 	await poll(async () => groupRow().locator(".bot-row-role").textContent()).toBe("已删除的 Bot: 中文预览与未读状态。");
 	const g = (await h.api("groups.list")).find((g: any) => g.groupId === groupId);
 	await h.api("groups.change", { requestId: "dissolve", groupId, action: "dissolve", expectedRevision: g.revision });
+	await h.page().getByRole("button", { name: "•••" }).click();
 	await h.page().getByRole("button", { name: "标记已读", exact: true }).click();
 	await poll(async () => (await summary(`group:${groupId}`)).unreadCount).toBe(0);
 	await h.shot("03-dissolved-preview-zh-small");

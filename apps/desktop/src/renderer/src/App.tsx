@@ -27,7 +27,7 @@ import { appManagementCapability, legacyManagementName, type AppExecution } from
 import { ConversationSearch } from "./ConversationSearch";
 import { ChatComposer } from "./ChatComposer";
 import { ConversationShell, DetailsPanel, useDialogFocus } from "./ConversationUI";
-import { MarkReadButton, RosterPreview, recentTime } from "./RosterPreview";
+import { MarkReadItem, RosterPreview, recentTime } from "./RosterPreview";
 import { ManagementHistory } from "./BotManagement";
 import { t } from "./i18n";
 import type {
@@ -115,7 +115,7 @@ export function App() {
 		<div className="app">
             <WorkspaceLayout
 				sidebar={<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />}
-				inspector={wide && view.kind === "bot" ? <BotIdentity botId={view.botId} editing={editorBotId === view.botId} /> : wide && view.kind === "group" ? <GroupIdentity groupId={view.groupId} /> : undefined}
+				inspector={wide && view.kind === "bot" ? <BotIdentity botId={view.botId} profileOpen={editorBotId === view.botId} /> : wide && view.kind === "group" ? <GroupIdentity groupId={view.groupId} /> : undefined}
 			>
 			<main className="main">
 				<RestoreNotice />
@@ -233,6 +233,7 @@ function Sidebar({ onNew, query, onQuery, searchOpen, onSearchOpen }: { onNew: (
 		<nav className="sidebar" aria-label={t("Bots")}>
 			<div className="sidebar-titlebar" />
             <div className="sidebar-toolbar">
+                <span className="sidebar-brand">OpenBot</span>
                 <button className="icon-button" aria-label={t("Search conversations")} title={t("Search conversations")} aria-expanded={searchOpen} onClick={() => { onSearchOpen(!searchOpen); if (searchOpen) { onQuery(""); setUnreadOnly(false); } }}><InterfaceIcon name="search" /></button>
                 <button className="icon-button new-button" aria-label={t("New")} title={t("New")} onClick={onNew}><InterfaceIcon name="plus" /></button>
             </div>
@@ -449,14 +450,17 @@ function Conversation({ botId, editing, onEditing }: { readonly botId: string; r
 				<Avatar bot={bot} size={29} />
 				<div className="conversation-title">
 					<div className="conversation-name"><span title={bot.name}>{bot.name}</span>{bot.kind === "core" && <PersonalStar />}</div>
-					<div className="conversation-role">{bot.role || t("No label")}</div>
-					<p className="conversation-status" role="status">{t(presenceLabel(presence))}</p>
+					<p className="conversation-meta">
+						<span className="conversation-role">{bot.role || t("No label")}</span>
+						<span className="conversation-meta-sep" aria-hidden="true">·</span>
+						{presence === "working" && <span className="status-dot" aria-hidden="true" />}
+						<span className="conversation-status" role="status">{t(presenceLabel(presence))}</span>
+					</p>
 				</div>
-				<MarkReadButton conversationKey={`bot:${botId}`} cursor={snapshot?.readCursor} />
 				<button className="details-toggle" aria-label={t("Conversation details")} onClick={() => setEditing(!editing)}>
 					<InterfaceIcon name="info" /><span>{t("Details")}</span>
 				</button>
-				<BotMenu bot={bot} onEdit={() => setEditing(true)} />
+				<BotMenu bot={bot} readCursor={snapshot?.readCursor} onEdit={() => setEditing(true)} />
 			</header>
    {snapshot?<HistoryTranscript snapshot={snapshot} empty={<EmptyConversation bot={bot}/>} />:<ActivityIndicator label="Loading conversation"/>}
 			<ChatComposer
@@ -867,7 +871,7 @@ function CodeObject({ object }: { readonly object: NonNullable<AppExecution["chi
 	);
 }
 
-function BotMenu({ bot, onEdit }: { readonly bot: BotSummary; readonly onEdit: () => void }) {
+function BotMenu({ bot, onEdit, readCursor }: { readonly bot: BotSummary; readonly onEdit: () => void; readonly readCursor: number | undefined }) {
 	const [open, setOpen] = useState(false);
 	const [deleting, setDeleting] = useState(false);
 	const menu = useRef<HTMLDivElement>(null);
@@ -928,6 +932,7 @@ function BotMenu({ bot, onEdit }: { readonly bot: BotSummary; readonly onEdit: (
 					<button type="button" role="menuitem" onClick={() => (setOpen(false), onEdit())}>
 						{t("Edit profile")}
 					</button>
+					<MarkReadItem conversationKey={`bot:${bot.botId}`} cursor={readCursor} onDone={() => setOpen(false)} />
 					{bot.kind !== "core" && (
 						<>
 							<button type="button" role="menuitem" onClick={() => void update({ pinned: !bot.pinned })}>
