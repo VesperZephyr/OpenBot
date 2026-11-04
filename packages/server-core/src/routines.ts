@@ -311,7 +311,7 @@ export class Routines {
 						const previous = s.routines[id];
 						if (!previous || previous.deleted) fail("Routine is unavailable");
 						if (previous.revision !== input.expectedRevision)
-							throw new ProtocolError("request_conflict", "Routine changed; refresh before saving");
+							throw new ProtocolError("request_conflict", "Routine changed; refresh before saving", { currentRevision: previous.revision });
 						const nameOnly = input.action === "update" && nameOnlyRoutineChange(previous, input.fields);
 						r = {
 							...previous,

@@ -73,13 +73,27 @@ export type ProtocolErrorCode =
 	| "host_unavailable"
 	| "internal";
 
+/** Optional facts a caller can use without parsing the message. `currentRevision` is the stored revision that rejected a stale write. */
+export type ProtocolErrorDetails = {
+	readonly currentRevision?: number;
+};
+
+/** The error object on a failed Host response. */
+export type HostError = {
+	readonly code: ProtocolErrorCode;
+	readonly message: string;
+	readonly details?: ProtocolErrorDetails;
+};
+
 export class ProtocolError extends Error {
 	readonly code: ProtocolErrorCode;
+	readonly details?: ProtocolErrorDetails;
 
-	constructor(code: ProtocolErrorCode, message: string) {
+	constructor(code: ProtocolErrorCode, message: string, details?: ProtocolErrorDetails) {
 		super(message);
 		this.name = "ProtocolError";
 		this.code = code;
+		if (details !== undefined) this.details = details;
 	}
 }
 
@@ -498,6 +512,15 @@ export type ApprovalRecord = PendingApproval & {
 	readonly decidedAt?: number;
 };
 
+/** A user allow or deny, readable after the Host restarts. `allow_once` and `always_allow` are both `allow`. */
+export type ApprovalDecisionLog = {
+	readonly approvalId: string;
+	readonly decision: "allow" | "deny";
+	readonly at: number;
+	readonly tool: string;
+	readonly conversationId: string;
+};
+
 export type ProviderSummary = {
 	readonly providerId: string;
 	readonly name: string;
@@ -658,6 +681,7 @@ export type HostMethods = {
 	};
 	"runs.cancel": { params: { readonly runId: RunId }; result: { readonly state: RunRecord["state"] } };
 	"approvals.decide": { params: { readonly approvalId: string; readonly decision: ApprovalDecision }; result: null };
+	"approvals.list": { params: { readonly conversationId: string }; result: readonly ApprovalDecisionLog[] };
 	"usage.get": { params: { readonly botId: BotId; readonly limit?: number }; result: BotUsage };
 	"settings.get": { params: Record<string, never>; result: RedactedSettings };
 	"settings.update": {
@@ -785,6 +809,7 @@ export const HOST_METHODS = [
 	"messages.submit",
 	"runs.cancel",
 	"approvals.decide",
+	"approvals.list",
 	"usage.get",
 	"settings.get",
 	"settings.update",
@@ -870,7 +895,7 @@ export type ResponseEnvelope<M extends HostMethod = HostMethod> =
 			readonly kind: "response";
 			readonly messageId: string;
 			readonly ok: false;
-			readonly error: { readonly code: ProtocolErrorCode; readonly message: string };
+			readonly error: HostError;
 	  };
 
 /** Ordered event; a gap in `seq` or a new `streamId` requires fresh snapshots. */

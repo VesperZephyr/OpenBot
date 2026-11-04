@@ -23,10 +23,10 @@ describe("ApprovalBook", () => {
 	let runtime: BotRuntime | undefined;
 
 	/** A Host start on the same database: a fresh runtime and a fresh book over its store. */
-	const restart = async (): Promise<ApprovalBook> => {
+	const restart = async (now: () => number = Date.now): Promise<ApprovalBook> => {
 		await runtime?.close();
 		runtime = await BotRuntime.open({ databasePath: join(directory, "db.sqlite"), models: scriptedModels().models });
-		const book = new ApprovalBook(() => {});
+		const book = new ApprovalBook(() => {}, now);
 		await book.start(runtime.approvals());
 		return book;
 	};
@@ -57,6 +57,82 @@ describe("ApprovalBook", () => {
 		expect(await second.decide(approval.approvalId, "allow_once")).toBe(true);
 		expect(await rerun).toBe("allow_once");
 		expect(second.forBot("bot")).toEqual([]);
+	});
+
+	it("reads allow and deny records after a restart", async () => {
+		const allow = { ...approval, conversationId: "session-a", approvalId: "approval:session-a:call_1", callId: "call_1" };
+		const deny = {
+			...approval,
+			conversationId: "session-b",
+			approvalId: "approval:session-b:call_2",
+			callId: "call_2",
+			tool: "local_write",
+		};
+		const first = await restart();
+		const waitingAllow = first.request(allow, live());
+		const waitingDeny = first.request(deny, live());
+		await expect.poll(() => first.forBot("bot").length).toBe(2);
+		await first.decide(allow.approvalId, "allow_once");
+		await first.decide(deny.approvalId, "deny");
+		await waitingAllow;
+		await waitingDeny;
+
+		const second = await restart();
+		expect(await second.decisions("session-a")).toMatchObject([
+			{ approvalId: allow.approvalId, decision: "allow", tool: "local_exec", conversationId: "session-a" },
+		]);
+		expect(await second.decisions("session-b")).toMatchObject([
+			{ approvalId: deny.approvalId, decision: "deny", tool: "local_write", conversationId: "session-b" },
+		]);
+		expect(second.forBot("bot")).toEqual([]);
+	});
+
+	it("returns only the requested conversation, newest 32", async () => {
+		let clock = 5_000;
+		const first = await restart(() => clock);
+		const settle = async (item: PendingApproval, decision: "allow_once" | "deny") => {
+			const waiting = first.request(item, live());
+			await expect.poll(() => first.forBot("bot").some((row) => row.approvalId === item.approvalId)).toBe(true);
+			clock += 1;
+			await first.decide(item.approvalId, decision);
+			await waiting;
+		};
+		for (let i = 0; i < 33; i++) {
+			await settle(
+				{
+					...approval,
+					conversationId: "session-a",
+					approvalId: `approval:session-a:call_${i}`,
+					callId: `call_${i}`,
+					createdAt: clock,
+				},
+				i % 2 === 0 ? "allow_once" : "deny",
+			);
+		}
+		await settle(
+			{ ...approval, approvalId: "approval:session-a:bare", callId: "bare", createdAt: clock },
+			"allow_once",
+		);
+		await settle(
+			{
+				...approval,
+				conversationId: "session-b",
+				approvalId: "approval:session-b:other",
+				callId: "other",
+				tool: "local_write",
+				createdAt: clock,
+			},
+			"deny",
+		);
+
+		const second = await restart(() => clock);
+		const page = await second.decisions("session-a");
+		expect(page).toHaveLength(32);
+		expect(page.every((row) => row.conversationId === "session-a")).toBe(true);
+		expect(page.map((row) => row.approvalId)).toEqual(Array.from({ length: 32 }, (_, n) => `approval:session-a:call_${32 - n}`));
+		expect(await second.decisions("session-b")).toMatchObject([
+			{ approvalId: "approval:session-b:other", decision: "deny", conversationId: "session-b" },
+		]);
 	});
 
 	it("decision survives a new book on the same store", async () => {

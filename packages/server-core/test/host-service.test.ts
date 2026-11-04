@@ -164,6 +164,16 @@ describe("HostService", () => {
 		await rm(directory, { recursive: true, force: true });
 	});
 
+	it("returns the stored profile revision when an update conflicts", async () => {
+		const bot = await service.handle("bots.create", { requestId: "rev", name: "Rev" });
+		await service.handle("bots.update", { botId: bot.botId, expectedRevision: 1, role: "First" });
+		await expect(service.handle("bots.update", { botId: bot.botId, expectedRevision: 1, role: "Stale" })).rejects.toMatchObject({
+			code: "request_conflict",
+			details: { currentRevision: 2 },
+		});
+		expect((await runtime.getBot(bot.botId))?.role).toBe("First");
+	});
+
 	it("requires owner profile revisions and rejects unavailable role skills without changing the Bot", async () => {
 		const bot = await service.handle("bots.create", { requestId: "roles", name: "Analyst" });
 		const ref = { name: "report", revision: 1, sha256: "a".repeat(64) };

@@ -219,6 +219,7 @@ export function localTaskStore(
           throw new ProtocolError(
             "request_conflict",
             "Task changed. Refresh before trying again.",
+            previous === undefined ? undefined : { currentRevision: previous.commandRevision },
           );
         if (command.operation === "submit" && previous) {
           const operations = Object.values(

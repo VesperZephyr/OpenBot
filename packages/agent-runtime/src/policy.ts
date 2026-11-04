@@ -113,7 +113,7 @@ export function policyStore(harness: Harness, context: Context): PolicyStore {
 			return false;
 		}
 		if (Object.keys(doc.requests ?? {}).length >= 4096) throw new ProtocolError("invalid_request", "Policy request history is full");
-		if ((doc.revision ?? 0) !== expected) throw new ProtocolError("request_conflict", "Policy changed. Reload before saving your draft.");
+		if ((doc.revision ?? 0) !== expected) throw new ProtocolError("request_conflict", "Policy changed. Reload before saving your draft.", { currentRevision: doc.revision ?? 0 });
 		return true;
 	};
 	return {
@@ -129,7 +129,7 @@ export function policyStore(harness: Harness, context: Context): PolicyStore {
 		remember: (operation) =>
 			harness.commit(async (tx) => {
 				const doc = await tx.doc(PolicyDoc);
-				if ((doc.revision ?? 0) !== operation.revision) throw new ProtocolError("request_conflict", "Permission changed before dispatch");
+				if ((doc.revision ?? 0) !== operation.revision) throw new ProtocolError("request_conflict", "Permission changed before dispatch", { currentRevision: doc.revision ?? 0 });
 				doc.operations ??= {};
 				const ops = doc.operations;
 				if (!ops[operation.id] && Object.keys(ops).length >= 4096)

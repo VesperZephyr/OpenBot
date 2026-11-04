@@ -20,7 +20,9 @@ import {
 
 const copy = <T>(value: T): StoredMemory<T> => JSON.parse(JSON.stringify(value)) as StoredMemory<T>;
 const digest = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex");
-const conflict = (): never => { throw new ProtocolError("request_conflict", "Memory changed. Reload before saving your draft."); };
+const conflict = (currentRevision: number): never => {
+	throw new ProtocolError("request_conflict", "Memory changed. Reload before saving your draft.", { currentRevision });
+};
 
 function commitNotes(doc: MemoryDocument, state: MemoryState, notes: readonly MemoryNote[], source: MemoryProvenance, scope: MemoryScope, restoredFrom?: number): void {
 	checkNotes(notes, scope === "shared" ? SHARED_MEMORY_LIMIT_BYTES : MEMORY_LIMIT_BYTES);
@@ -59,7 +61,7 @@ export class MemoryBook {
 			}
 			const doc = botId === undefined ? await tx.doc(SharedMemoryDoc) : await tx.doc(MemoryDoc, botId, null);
 			const state = memoryState(doc);
-			if (state.revision !== expectedRevision) conflict();
+			if (state.revision !== expectedRevision) conflict(state.revision);
 			let restoredNotes: readonly MemoryNote[] | undefined;
 			if (restoreRevision !== undefined) {
 				const previous = state.history.find(item => item.revision === restoreRevision);
@@ -95,7 +97,7 @@ export class MemoryBook {
 				run.state !== "running" || run.interruption || String(bot.conversationId) !== call.conversationId)
 				throw new ProtocolError("invalid_request", "Memory learning requires an active direct user request");
 			const doc = await tx.doc(MemoryDoc, botId, null), state = memoryState(doc);
-			if (state.revision !== edit.expectedRevision) conflict();
+			if (state.revision !== edit.expectedRevision) conflict(state.revision);
 			const source: MemoryProvenance = {
 				kind: "model", at: Date.now(), botId, runId: run.runId, conversationId: call.conversationId, invocationId,
 				requestIds: run.inputs.map(input => input.requestId).slice(-8),
@@ -123,7 +125,7 @@ export class MemoryBook {
 				return result();
 			}
 			const doc = scope === "bot" ? localDoc : sharedDoc, state = memoryState(doc);
-			if (state.revision !== input.expectedRevision) conflict();
+			if (state.revision !== input.expectedRevision) conflict(state.revision);
 			const source: MemoryProvenance = { kind: "user", at: Date.now(), botId };
 			let notes = [...state.notes];
 			if (action === "add") {
@@ -150,7 +152,7 @@ export class MemoryBook {
 					if (action === "share" || action === "unshare") {
 						if ((action === "share") !== (scope === "bot")) throw new ProtocolError("invalid_request", "Memory scope changed. Reload the note.");
 						const otherDoc = scope === "bot" ? sharedDoc : localDoc, other = memoryState(otherDoc);
-						if (other.revision !== input.otherRevision) conflict();
+						if (other.revision !== input.otherRevision) conflict(other.revision);
 						const existing = other.notes.find(n => n.key === note.key);
 						if (existing?.status === "active") throw new ProtocolError("request_conflict", "The destination already has this memory topic. Review it before sharing.");
 						const moved = { ...note, id: existing?.id ?? note.id, protected: true, changed: source };

@@ -13,6 +13,7 @@ import {
 	type AlwaysAllowOption,
 	type AlwaysAllowScope,
 	type ApprovalDecision,
+	type ApprovalDecisionLog,
 	type ApprovalRecord,
 	type BotId,
 	type CommandRule,
@@ -228,6 +229,21 @@ export class ApprovalBook {
  revokeRun(runId:string):Promise<void>{return this.#serial(async()=>{
   for(const entry of this.#entries.values())if(entry.record.binding?.runId===runId && ["pending","allowed"].includes(entry.record.state))await this.#terminal(entry,"withdrawn");
  });}
+	async decisions(conversationId: string): Promise<readonly ApprovalDecisionLog[]> {
+		const entries: ApprovalDecisionLog[] = [];
+		for (const record of await this.#requireStore().decided()) {
+			if (record.conversationId !== conversationId || record.decidedAt === undefined || record.decision === undefined) continue;
+			entries.push({
+				approvalId: record.approvalId,
+				decision: record.decision === "deny" ? "deny" : "allow",
+				at: record.decidedAt,
+				tool: record.tool,
+				conversationId: record.conversationId,
+			});
+		}
+		entries.sort((a, b) => b.at - a.at || b.approvalId.localeCompare(a.approvalId));
+		return entries.slice(0, 32);
+	}
 	forBot(botId: BotId, conversationId?: string): PendingApproval[] {
 		return [...this.#entries.values()]
 			.filter(

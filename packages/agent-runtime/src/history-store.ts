@@ -338,7 +338,7 @@ export class HistoryStore {
 		const data = this.resolveDetail(key, token);
 		const row = this.displayRow(data.partition, data.id);
 		if (!row) throw new ProtocolError("not_found", "Message is unavailable");
-		if (row.revision !== data.revision) throw new ProtocolError("request_conflict", "History changed. Reload this location.");
+		if (row.revision !== data.revision) throw new ProtocolError("request_conflict", "History changed. Reload this location.", { currentRevision: row.revision });
 		const chunk = this.db
 			.prepare("SELECT text FROM details WHERE partition=? AND id=? AND revision=? AND part=?")
 			.get(data.partition, data.id, data.revision, part) as { text: string } | undefined;
@@ -377,11 +377,15 @@ export class HistoryStore {
 	}
 	window(input: WindowInput): WindowResult {
 		const partition = historyPartition(input);
-		if (input.position.kind === "cursor" && cursorNamesOtherPartition(input.position.cursor, partition))
-			throw new ProtocolError("request_conflict", "History changed. Reload this location.");
 		const state = this.db.prepare("SELECT revision,incoming,ready FROM display_state WHERE partition=?").get(partition) as
 			| { revision: number; incoming: number; ready: number }
 			| undefined;
+		if (input.position.kind === "cursor" && cursorNamesOtherPartition(input.position.cursor, partition))
+			throw new ProtocolError(
+				"request_conflict",
+				"History changed. Reload this location.",
+				state === undefined ? undefined : { currentRevision: state.revision },
+			);
 		if (!state?.ready) return { status: "building" };
 		const limit = input.limit ?? 100;
 		if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new ProtocolError("invalid_request", "Invalid history limit");
@@ -410,7 +414,7 @@ export class HistoryStore {
 				boundary = c.boundary;
 				direction = c.direction;
 			} catch {
-				throw new ProtocolError("request_conflict", "History changed. Reload this location.");
+				throw new ProtocolError("request_conflict", "History changed. Reload this location.", { currentRevision: state.revision });
 			}
 		}
 		const read = (op: string, order: string, n: number, edge?: number) =>
