@@ -289,22 +289,9 @@ code {
 	background: var(--attention);
 }
 
-/* Waiting for a free slot: amber outline, not yet breathing. */
+/* Waiting for a free slot: a static outline. Working is named in text, not a breathing color. */
 .activity-queued {
 	border: 1.5px solid var(--signal);
-}
-
-/* The signature: a Bot that is working breathes in amber. */
-.activity-working {
-	background: var(--signal);
-	box-shadow: 0 0 0 0 color-mix(in srgb, var(--signal) 60%, transparent);
-	animation: breathe 1.6s ease-in-out infinite;
-}
-
-@keyframes breathe {
-	50% {
-		box-shadow: 0 0 0 5px color-mix(in srgb, var(--signal) 0%, transparent);
-	}
 }
 
 .sidebar-footer {
@@ -989,7 +976,6 @@ textarea {
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.activity-working,
 	.tool-status,
 	.thinking::after {
 		animation: none;
@@ -1003,7 +989,15 @@ textarea {
 	border-top: 1px solid var(--surface-raised);
 }
 .always-allow > button {
-	width: 100%;
+	width: auto;
+	border: 0;
+	background: transparent;
+	padding: 0;
+	color: var(--text);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+	font-size: 13px;
+	line-height: 20px;
 }
 .always-allow p {
 	margin: 0 0 8px;

@@ -472,14 +472,8 @@
 	color: var(--badge-ink);
 	line-height: 15px;
 }
-.conversation-header .mark-read {
-	flex-shrink: 0;
-	font-size: 12px;
-	padding: 5px 8px;
+.conversation-header .details-toggle {
 	margin-left: auto;
-}
-.conversation-header .mark-read + .details-toggle {
-	margin-left: 0;
 }
 .bot-row .bot-row-name {
 	display: flex;
@@ -602,15 +596,9 @@
 .conversation.is-empty .compose-area { margin-bottom:clamp(24px,14vh,150px); }
 .empty-conversation { display:flex; align-items:center; justify-content:space-between; gap:28px; width:100%; max-width:810px; padding:0; text-align:left; }
 .empty-conversation .welcome-copy { flex:1; min-width:0; }
-.empty-conversation .greeting-label { display:flex; align-items:center; gap:7px; font-size:12px; margin-bottom:15px; }
-.greeting-label .interface-icon { width:15px; height:15px; }
 .empty-conversation h2 { font:500 clamp(30px,3.6vw,46px)/1.15 var(--font-display); letter-spacing:-1.6px; margin:0 0 17px; }
 .empty-conversation h2 em { color:var(--unread); font-style:normal; }
 .empty-conversation p { font-size:14px; line-height:1.75; max-width:390px; margin-bottom:0; }
-.welcome-character { width:180px; height:204px; display:grid; place-items:center; position:relative; flex-shrink:0; }
-.welcome-character .avatar { transform:rotate(-6deg); }
-.welcome-note { position:absolute; top:0; right:-4px; transform:rotate(8deg); border-radius:11px 11px 11px 2px; color:var(--note-ink); background:var(--note-bg); padding:8px 11px; font-size:11px; z-index:1; }
-@media(max-width:760px) { .welcome-character { width:125px; } .welcome-character .avatar { width:120px!important; height:120px!important; } .welcome-note { font-size:9px; } }
 @media(max-width:530px) { .profile-details .profile-layout { grid-template-columns:1fr; } .avatar-editor { display:grid; grid-template-columns:90px 1fr; gap:8px 14px; } .avatar-stage { grid-row:span 3; } .avatar-stage .avatar { width:82px!important; height:90px!important; } .avatar-candidates { grid-column:1/-1; grid-template-columns:repeat(6,1fr); } .avatar-editor small,.avatar-editor p { grid-column:1/-1; } }
 
 /* D7: management lives inside Settings; the conversation stays the primary surface. */

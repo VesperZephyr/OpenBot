@@ -46,4 +46,6 @@ Out:
 
 ## Open questions
 
+- 2026-11-04: The working indicator's breathing color is superseded by [D12c](d12c-boardui-polish.md). Working stays text. Avatars stay version 1.
+
 - 2026-11-03: The persistent detail card is the stage-2 layout requested for this task. The full profile dialog remains the editor for memory, routines and library. Revisit if a narrow window must keep the card open beside the reader.

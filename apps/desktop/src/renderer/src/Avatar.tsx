@@ -6,11 +6,20 @@ import {
 	type AvatarUpload,
 	type GeneratedAvatar,
 } from "@openbot/protocol";
-import { AVATAR_PALETTES, generatedAvatarAppearance } from "./avatar-appearance";
+import { avatarColorIndex, avatarShape } from "./avatar-appearance";
 import { api, useStore } from "./store";
 import { t } from "./i18n";
 
-export { generatedAvatarAppearance } from "./avatar-appearance";
+const AVATAR_PALETTES = [
+	["#b794f6", "#3b2760", "#f6e27a"],
+	["#5cbf86", "#1a4332", "#f3c56a"],
+	["#f0a15a", "#6a341f", "#d7c0f2"],
+	["#6aade8", "#1d3550", "#e6e07a"],
+	["#f09ab8", "#6a3044", "#c9e09a"],
+	["#d0d25a", "#3c461c", "#dcc6ee"],
+] as const;
+
+export { avatarColorIndex, avatarShape } from "./avatar-appearance";
 
 const images = new Map<string, Promise<string | undefined>>();
 function imageFor(botId: string, sha256: string): Promise<string | undefined> {
@@ -32,10 +41,13 @@ export function Avatar({
 	bot,
 	size = 34,
 	value,
+	ground = size >= 96,
 }: {
 	bot: Pick<BotProfile, "botId" | "avatar">;
 	size?: number;
 	value?: BotAvatar | AvatarUpload;
+	/** Large previews only. Sidebar and message avatars stay flat. */
+	ground?: boolean;
 }) {
 	const selected = value ?? bot.avatar ?? defaultAvatar(bot.botId);
 	const sha256 = selected.kind === "image" ? selected.sha256 : undefined;
@@ -62,7 +74,7 @@ export function Avatar({
 			{url && broken !== url ? (
 				<img src={url} alt="" draggable={false} onError={() => setBroken(url)} />
 			) : (
-				<Character recipe={selected.kind === "generated" ? selected : defaultAvatar(bot.botId)} />
+				<Character recipe={selected.kind === "generated" ? selected : defaultAvatar(bot.botId)} ground={ground} />
 			)}
 		</span>
 	);
@@ -83,11 +95,12 @@ export function PersonalStar() {
 	);
 }
 
-/** V1 geometry. Color index and shape come from generatedAvatarAppearance; only the paint is richer. */
-function Character({ recipe }: { recipe: GeneratedAvatar }) {
-	const { colorIndex, shape } = generatedAvatarAppearance(recipe);
-	const [body, ink, accent] = AVATAR_PALETTES[colorIndex]!;
+/** V1 geometry. Only saturation, solid fill and a light highlight change. */
+function Character({ recipe, ground }: { recipe: GeneratedAvatar; ground: boolean }) {
 	const n = recipe.seed >>> 0;
+	const colorIndex = avatarColorIndex(n);
+	const shape = avatarShape(n);
+	const [body, ink, accent] = AVATAR_PALETTES[colorIndex]!;
 	const bodyShape =
 		shape === 0 ? (
 			<path d="M37 31C56 10 99 12 117 35c16 22 18 59 2 83-13 21-40 27-62 20-28-8-39-34-36-61 1-19 6-35 16-46Z" />
@@ -97,8 +110,8 @@ function Character({ recipe }: { recipe: GeneratedAvatar }) {
 			<path d="M26 59 38 25l31 10c12-3 23-3 34 0l22-9 3 40c10 35-5 70-39 76-34 6-66-9-68-44-1-15 1-29 5-39Z" />
 		);
 	return (
-		<svg viewBox="0 0 150 165" fill="none" aria-hidden="true">
-			<ellipse cx="76" cy="154" rx="34" ry="7" fill={ink} opacity="0.18" />
+		<svg viewBox="0 0 150 165" fill="none" aria-hidden="true" style={{ ["--avatar-ink" as string]: ink }}>
+			{ground && <ellipse className="avatar-ground" cx="76" cy="154" rx="34" ry="7" />}
 			<g fill={body} stroke={ink} strokeWidth="2.4">
 				{bodyShape}
 			</g>

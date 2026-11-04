@@ -937,6 +937,19 @@ export const chinese: Readonly<Record<string, string>> = {
  "The model request failed. Check the endpoint, protocol and model ID.": "模型请求失败，请检查服务地址、协议和模型 ID。",
 	"Always allow": "始终允许",
 	"Cancel": "取消",
+	"Edit": "编辑",
+	"Save": "保存",
+	"More actions": "更多操作",
+	"Default ({name})": "默认（{name}）",
+	"Model unavailable": "模型不可用",
+	"Model settings": "模型设置",
+	"This Bot uses this model from now on.": "此 Bot 之后都使用该模型",
+	"Show more": "展开",
+	"Show less": "收起",
+	"Discard these edits?": "放弃这些修改？",
+	"Discard": "放弃",
+	"Keep editing": "继续编辑",
+	"Close this editor and open it again.": "请关闭后重新打开。",
 	"Dismiss": "关闭",
 	"Bots": "Bot",
 	"New": "新建",
@@ -1191,7 +1204,7 @@ export function translate(language: Language, message: string, values: Readonly<
  return template.replace(/\{(\w+)\}/g, (match, key: string) => Object.hasOwn(values, key) ? String(values[key]) : match);
 }
 
-/** Reduced-motion working label. Distinct from the "Working" activity preview, which stays "正在处理". */
-export function reducedMotionWorking(language: Language): string {
+/** Always-visible roster label. Distinct from the "Working" preview, which stays "正在处理". */
+export function activityWorkingLabel(language: Language): string {
 	return language === "zh-CN" ? "工作中" : "Working";
 }

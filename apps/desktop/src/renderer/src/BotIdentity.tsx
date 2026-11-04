@@ -1,72 +1,176 @@
-import { useState } from "react";
-import { defaultAvatar, type AvatarChange, type GeneratedAvatar } from "@openbot/protocol";
+import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
+import { defaultAvatar, type AvatarChange, type BotAvatar, type BotSummary, type GeneratedAvatar } from "@openbot/protocol";
 import { Avatar, AvatarStack } from "./Avatar";
 import { AvatarEditor } from "./AvatarEditor";
 import { t } from "./i18n";
-import { api, refreshBots, report, useStore } from "./store";
+import { api, errorMessage, refreshBots, report, useStore } from "./store";
 
 const MOTIFS = ["leaf", "glasses", "cap"] as const;
+const MOTIF_LABEL: Record<(typeof MOTIFS)[number], string> = { leaf: "Leaf", glasses: "Glasses", cap: "Cap" };
 
-/** Wide-layout Bot card: identity fields plus the existing avatar editor. */
-export function BotIdentity({ botId, editing }: { readonly botId: string; readonly editing: boolean }) {
+/** Wide-layout Bot card. The intro is read-only until Edit opens the form. */
+export function BotIdentity({ botId, profileOpen }: { readonly botId: string; readonly profileOpen: boolean }) {
 	const bot = useStore((state) => state.bots.find((candidate) => candidate.botId === botId));
-	const [pending, setPending] = useState<AvatarChange>();
-	const [saving, setSaving] = useState(false);
+	const [form, setForm] = useState(false);
+	const [expanded, setExpanded] = useState(false);
+	useEffect(() => {
+		if (profileOpen) setForm(false);
+	}, [profileOpen]);
 	if (!bot) return null;
-	const generated: GeneratedAvatar =
-		pending?.kind === "generated"
-			? pending
-			: bot.avatar?.kind === "generated"
-				? bot.avatar
-				: defaultAvatar(bot.botId);
-	const save = async (change: AvatarChange): Promise<void> => {
-		if (saving) return;
-		setPending(change);
+	return (
+		<aside className="bot-identity" aria-label={t("Bot details")}>
+			{form && !profileOpen ? (
+				<IdentityForm bot={bot} onClose={() => setForm(false)} />
+			) : (
+				<>
+					<div className="identity-avatar">
+						<Avatar bot={bot} size={132} />
+					</div>
+					<p className="identity-name">{bot.name}</p>
+					{bot.role ? <p className="identity-label">{bot.role}</p> : null}
+					{bot.instructions ? (
+						<div className="identity-prompt">
+							<p className="identity-kicker">{t("Prompt")}</p>
+							<p className={`identity-bio${expanded ? " is-open" : ""}`}>{bot.instructions}</p>
+							<button type="button" className="identity-expand" onClick={() => setExpanded((open) => !open)}>
+								{t(expanded ? "Show less" : "Show more")}
+							</button>
+						</div>
+					) : null}
+					<button type="button" onClick={() => setForm(true)}>
+						{t("Edit")}
+					</button>
+				</>
+			)}
+		</aside>
+	);
+}
+
+function sameGenerated(change: AvatarChange | undefined, current: BotAvatar | undefined): boolean {
+	if (!change) return true;
+	if (change.kind !== "generated" || current?.kind !== "generated") return false;
+	return current.seed === change.seed && current.motif === change.motif && current.version === change.version;
+}
+
+function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
+	const [baseline] = useState({
+		name: bot.name,
+		role: bot.role,
+		instructions: bot.instructions,
+		revision: bot.revision,
+		avatar: bot.avatar,
+	});
+	const [name, setName] = useState(baseline.name);
+	const [role, setRole] = useState(baseline.role);
+	const [instructions, setInstructions] = useState(baseline.instructions);
+	const [avatar, setAvatar] = useState<AvatarChange>();
+	const [saving, setSaving] = useState(false);
+	const [confirming, setConfirming] = useState(false);
+	const [error, setError] = useState("");
+	const generated =
+		avatar?.kind === "generated"
+			? avatar
+			: avatar
+				? undefined
+				: baseline.avatar?.kind === "generated"
+					? baseline.avatar
+					: baseline.avatar
+						? undefined
+						: defaultAvatar(bot.botId);
+	const seed =
+		avatar?.kind === "generated"
+			? avatar.seed
+			: baseline.avatar?.kind === "generated"
+				? baseline.avatar.seed
+				: defaultAvatar(bot.botId).seed;
+	const dirty = name !== baseline.name || role !== baseline.role || instructions !== baseline.instructions || !sameGenerated(avatar, baseline.avatar);
+	const requestClose = (): void => {
+		if (dirty) setConfirming(true);
+		else onClose();
+	};
+	const onKeyDown = (event: KeyboardEvent): void => {
+		if (event.key !== "Escape") return;
+		event.preventDefault();
+		event.stopPropagation();
+		if (confirming) onClose();
+		else requestClose();
+	};
+	const chooseMotif = (motif: GeneratedAvatar["motif"]): void => {
+		setAvatar({ kind: "generated", version: 1, seed, motif });
+	};
+	const save = async (event: FormEvent): Promise<void> => {
+		event.preventDefault();
+		if (saving || !name.trim()) return;
 		setSaving(true);
+		setError("");
 		try {
-			const current = useStore.getState().bots.find((candidate) => candidate.botId === bot.botId) ?? bot;
-			await api["bots.update"]({ botId: bot.botId, expectedRevision: current.revision, avatar: change });
+			await api["bots.update"]({
+				botId: bot.botId,
+				expectedRevision: baseline.revision,
+				name: name.trim(),
+				role,
+				instructions,
+				...(avatar ? { avatar } : {}),
+			});
 			await refreshBots();
-			setPending(undefined);
-		} catch (error) {
-			report(error);
-		} finally {
+			onClose();
+		} catch (caught) {
+			const message = errorMessage(caught);
+			const conflict = message.includes("Profile changed");
+			setError(conflict ? `${t(message)} ${t("Close this editor and open it again.")}` : t(message));
+			report(caught);
 			setSaving(false);
 		}
 	};
 	return (
-		<aside className="bot-identity" aria-label={t("Bot details")}>
-			<div className="identity-avatar">
-				<Avatar bot={bot} size={132} {...(pending ? { value: pending } : {})} />
+		<form className="identity-form" onSubmit={(event) => void save(event)} onKeyDown={onKeyDown}>
+			<AvatarEditor bot={bot} role={role} value={avatar} onChange={setAvatar} disabled={saving} />
+			<div className="identity-motifs" role="group" aria-label={t("Avatar motif")}>
+				{MOTIFS.map((motif) => (
+					<button key={motif} type="button" aria-pressed={generated?.motif === motif} disabled={saving} onClick={() => chooseMotif(motif)}>
+						{t(MOTIF_LABEL[motif])}
+					</button>
+				))}
 			</div>
-			<IdentityField label={t("Name")} value={bot.name} />
-			<IdentityField label={t("Label")} value={bot.role || t("No label")} />
-			{bot.instructions ? <IdentityField label={t("Prompt")} value={bot.instructions} /> : null}
-			{!editing && (
-				<>
-					<div className="identity-motifs" role="group" aria-label={t("Avatar motif")}>
-						{MOTIFS.map((motif) => (
-							<button
-								key={motif}
-								type="button"
-								aria-pressed={generated.motif === motif && (pending?.kind !== "upload")}
-								disabled={saving}
-								onClick={() => void save({ kind: "generated", version: 1, seed: generated.seed, motif })}
-							>
-								{t(motif === "leaf" ? "Leaf" : motif === "glasses" ? "Glasses" : "Cap")}
-							</button>
-						))}
+			<label className="identity-field">
+				<span>{t("Name")}</span>
+				<input required maxLength={200} value={name} onChange={(event) => setName(event.target.value)} />
+			</label>
+			<label className="identity-field">
+				<span>{t("Label")}</span>
+				<input maxLength={200} value={role} onChange={(event) => setRole(event.target.value)} />
+			</label>
+			<label className="identity-field">
+				<span>{t("Prompt")}</span>
+				<textarea rows={4} value={instructions} onChange={(event) => setInstructions(event.target.value)} />
+			</label>
+			{error ? (
+				<p className="identity-alert" role="alert">
+					{error}
+				</p>
+			) : null}
+			{confirming ? (
+				<div className="identity-confirm" role="alertdialog" aria-label={t("Discard these edits?")}>
+					<p>{t("Discard these edits?")}</p>
+					<div className="identity-actions">
+						<button type="button" onClick={() => setConfirming(false)}>
+							{t("Keep editing")}
+						</button>
+						<button type="button" className="primary" onClick={onClose}>
+							{t("Discard")}
+						</button>
 					</div>
-					<AvatarEditor
-						bot={pending?.kind === "generated" ? { ...bot, avatar: pending } : bot}
-						role={bot.role}
-						value={pending}
-						onChange={(change) => void save(change)}
-						disabled={saving}
-					/>
-				</>
-			)}
-		</aside>
+				</div>
+			) : null}
+			<div className="identity-actions">
+				<button type="button" onClick={requestClose}>
+					{t("Cancel")}
+				</button>
+				<button type="submit" className="primary" disabled={saving || !name.trim()}>
+					{t("Save")}
+				</button>
+			</div>
+		</form>
 	);
 }
 
@@ -81,18 +185,9 @@ export function GroupIdentity({ groupId }: { readonly groupId: string }) {
 			<div className="identity-avatar">
 				<AvatarStack bots={members} size={64} />
 			</div>
-			<IdentityField label={t("Name")} value={group.name} />
-			<IdentityField label={t("Label")} value={t("{count} members", { count: group.memberIds.length })} />
-			{group.objective ? <IdentityField label={t("Prompt")} value={group.objective} /> : null}
+			<p className="identity-name">{group.name}</p>
+			<p className="identity-label">{t("{count} members", { count: group.memberIds.length })}</p>
+			{group.objective ? <p className="identity-bio">{group.objective}</p> : null}
 		</aside>
-	);
-}
-
-function IdentityField({ label, value }: { readonly label: string; readonly value: string }) {
-	return (
-		<div className="identity-field">
-			<span>{label}</span>
-			<p>{value}</p>
-		</div>
 	);
 }
