@@ -29,6 +29,7 @@ it("does not save A's open profile draft onto B", async () => {
 		await row("Ada").click();
 		await page.getByRole("textbox", { name: "Message Ada" }).waitFor();
 		const panel = page.locator("aside.bot-identity");
+		await page.getByRole("button", { name: "View details", exact: true }).click();
 		await panel.getByRole("button", { name: "Edit", exact: true }).click();
 		await panel.locator("form.identity-form input").first().fill("Ada renamed");
 		await row("Bee").click();

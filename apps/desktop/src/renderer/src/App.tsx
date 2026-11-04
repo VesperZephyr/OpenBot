@@ -36,14 +36,15 @@ import { GroupView, GroupRow, GroupEditor } from "./Groups";
 import { ConfirmDeleteBot, DeleteBotItem, DuplicateBotItem } from "./BotLifecycle";
 import { Onboarding } from "./features/onboarding/Onboarding";
 import { ProfileDetails } from "./features/details/ProfileDetails";
-import { SettingsWorkspace } from "./features/settings/SettingsWorkspace";
+import { toggleDetails, useDetailsOpen } from "./features/details/details-open";
+import { SettingsWorkspace, type SettingsDestination } from "./features/settings/SettingsWorkspace";
 import { transcriptRows } from "./steps";
 import { MessageTime, RevealButton, StepsRow } from "./TranscriptDetails";
 import { conversationPresence, headerStatusLabel } from "./conversation-status";
 import { displayToolOutput } from "./tool-output";
 import { botGreeting, conversationExamples } from "./examples";
 import { composers } from "./useComposer";
-import { api, connect, createBot, openBot, refreshBots, report, sendMessage, useStore } from "./store";
+import { api, closeSettings, connect, createBot, openBot, openSettings, refreshBots, report, sendMessage, useStore } from "./store";
 
 export function App() {
 	useDialogFocus();
@@ -55,9 +56,20 @@ export function App() {
 	const view = useStore((state) => state.view);
 	const lastChat = useRef(view);
 	if (["bot", "group", "home", "tasks"].includes(view.kind)) lastChat.current = view;
+	const selectSettings = (kind: SettingsDestination): void => {
+		if (kind === "routines") {
+			closeSettings();
+			useStore.setState({ view: { kind: "routines" } });
+			return;
+		}
+		if (useStore.getState().view.kind === "routines") useStore.setState({ view: lastChat.current });
+		openSettings(kind);
+	};
 	const notice = useStore((state) => state.notice);
 	const onboarding = useStore((state) => state.onboarding);
 	const wide = useWideLayout();
+	const detailsOpen = useDetailsOpen();
+	const settingsOverlay = useStore((state) => state.settingsOverlay);
 	const [editorBotId, setEditorBotId] = useState<string>();
 	const [creating, setCreating] = useState(false);
 	const [newMenu, setNewMenu] = useState(false);
@@ -82,7 +94,11 @@ export function App() {
 				setNewMenu(true);
 			} else if (event.key === ",") {
 				event.preventDefault();
-				useStore.setState({ view: { kind: "settings" } });
+				if (useStore.getState().settingsOverlay) closeSettings();
+				else openSettings();
+			} else if (event.shiftKey && event.key.toLowerCase() === "i") {
+				event.preventDefault();
+				if (useStore.getState().view.kind === "bot") toggleDetails();
 			} else if (/^[1-9]$/.test(event.key)) {
                 const entry = chatEntries(useStore.getState())[Number(event.key) - 1];
                 if (entry) {
@@ -100,7 +116,7 @@ export function App() {
 		<div className="app">
             <WorkspaceLayout
 				sidebar={<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />}
-				inspector={onboarding === true ? undefined : wide && view.kind === "bot" ? <BotIdentity key={view.botId} botId={view.botId} profileOpen={editorBotId === view.botId} /> : wide && view.kind === "group" ? <GroupIdentity key={view.groupId} groupId={view.groupId} /> : undefined}
+				inspector={onboarding === true ? undefined : wide && view.kind === "bot" && detailsOpen ? <BotIdentity key={view.botId} botId={view.botId} profileOpen={editorBotId === view.botId} /> : wide && view.kind === "group" ? <GroupIdentity key={view.groupId} groupId={view.groupId} /> : undefined}
 			>
 			<main className="main">
 				<RestoreNotice />
@@ -115,10 +131,11 @@ export function App() {
 					<>
 						{view.kind === "tasks" && <LocalTasks key={view.taskId??view.draftId??`list:${view.archived}:${view.cursor}`} view={view} renderHistory={(snapshot,taskId)=><HistoryTranscript snapshot={snapshot} taskId={taskId}/>}/>}
                         {view.kind === "bot" && <Conversation key={view.botId} botId={view.botId} editing={editorBotId === view.botId} onEditing={setEditorBotId} />}
-						{["settings", "skills", "connectors", "routines"].includes(view.kind) && (
+						{view.kind === "routines" && (
 							<SettingsWorkspace
-								view={view as Extract<typeof view, { kind: "settings" | "skills" | "connectors" | "routines" }>}
+								view={view}
 								onBack={() => useStore.setState({ view: lastChat.current })}
+								onSelect={selectSettings}
 								renderTranscript={(snapshot, occurrenceId) => <HistoryTranscript snapshot={snapshot} occurrenceId={occurrenceId} />}
 							/>
 						)}
@@ -156,6 +173,20 @@ export function App() {
 			/>
 			{creatingGroup && <GroupEditor onClose={() => setCreatingGroup(false)} />}
 			{creating && <NewBotDialog onClose={() => setCreating(false)} />}
+			{settingsOverlay && (
+				<>
+					<div className="settings-scrim" onClick={() => closeSettings()} />
+					<div className="settings-overlay" role="dialog" aria-modal="true" aria-label={t("Settings")}>
+						<SettingsWorkspace
+							view={{ kind: settingsOverlay }}
+							dialog
+							onBack={() => closeSettings()}
+							onSelect={selectSettings}
+							renderTranscript={(snapshot, occurrenceId) => <HistoryTranscript snapshot={snapshot} occurrenceId={occurrenceId} />}
+						/>
+					</div>
+				</>
+			)}
 			{notice !== undefined && (
 				<div className="toast" role="status">
 					<span>{t(presentError(notice))}</span>
@@ -184,6 +215,7 @@ function Sidebar({ onNew, query, onQuery, searchOpen, onSearchOpen }: { onNew: (
 	const [unreadOnly, setUnreadOnly] = useState(false);
 	const eligible = (key: string) => !unreadOnly || (summaries[key]?.unreadCount ?? 0) > 0;
 	const view = useStore((state) => state.view);
+	const settingsOverlay = useStore((state) => state.settingsOverlay);
 	const showHidden = useStore((state) => state.showHidden);
     const visible = chatEntries({bots, groups, summaries}).filter(entry => eligible(entry.key) &&
         (entry.kind === "bot" ? `${entry.bot.name} ${entry.bot.role}` : `${entry.group.name} ${entry.group.objective}`).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
@@ -270,13 +302,13 @@ function Sidebar({ onNew, query, onQuery, searchOpen, onSearchOpen }: { onNew: (
 				<button
 					type="button"
 					aria-label={t("Settings")} title={t("Settings")}
-					className={`settings-icon icon-button ${["settings", "skills", "connectors", "routines"].includes(view.kind) ? "is-selected" : ""}`}
-					onClick={() => useStore.setState({ view: { kind: "settings" } })}
+					className={`settings-icon icon-button ${settingsOverlay || view.kind === "routines" ? "is-selected" : ""}`}
+					onClick={() => (settingsOverlay ? closeSettings() : openSettings())}
 				>
 					<InterfaceIcon name="settings" />
 				</button>
 			</div>
-			{!["settings", "skills", "connectors", "routines"].includes(view.kind) && <LifecycleControls contextual />}
+			{view.kind !== "routines" && !settingsOverlay && <LifecycleControls contextual />}
 		</nav>
 	);
 }
@@ -379,6 +411,9 @@ function NewBotDialog({ onClose }: { onClose: () => void }) {
 }
 
 function Conversation({ botId, editing, onEditing }: { readonly botId: string; readonly editing: boolean; readonly onEditing: (botId: string | undefined) => void }) {
+	const detailsOpen = useDetailsOpen();
+	const nameButton = useRef<HTMLButtonElement>(null);
+	const detailsWereOpen = useRef(detailsOpen);
 	const bot = useStore((state) => state.bots.find((candidate) => candidate.botId === botId));
 	const snapshot = useStore((state) => state.conversations[botId]);
 	const setEditing = (open: boolean): void => onEditing(open ? botId : undefined);
@@ -390,6 +425,10 @@ function Conversation({ botId, editing, onEditing }: { readonly botId: string; r
 		}
 	}, [importedProfile, botId, onEditing]);
 	useEffect(() => () => onEditing(undefined), [onEditing]);
+	useEffect(() => {
+		if (detailsWereOpen.current && !detailsOpen) nameButton.current?.focus();
+		detailsWereOpen.current = detailsOpen;
+	}, [detailsOpen]);
  const count=useStore(state=>state.summaries[`bot:${botId}`]?.latest!==undefined);
 
 	if (bot === undefined) return null;
@@ -410,7 +449,13 @@ function Conversation({ botId, editing, onEditing }: { readonly botId: string; r
 			<header className="conversation-header">
 				<Avatar bot={bot} size={29} working={presence !== "idle"} />
 				<div className="conversation-title">
-					<div className="conversation-name"><span title={bot.name}>{bot.name}</span>{bot.kind === "core" && <PersonalStar />}</div>
+					<div className="conversation-name">
+						<button ref={nameButton} type="button" className="conversation-name-button" aria-expanded={detailsOpen} aria-label={t("View details")} onClick={() => toggleDetails()}>
+							<span title={bot.name}>{bot.name}</span>
+							<InterfaceIcon name="chevronDown" />
+						</button>
+						{bot.kind === "core" && <PersonalStar />}
+					</div>
 					<p className="conversation-meta">
 						{bot.role ? (
 							<>
@@ -483,7 +528,7 @@ function EmptyConversation({ bot }: { readonly bot: BotSummary }) {
 				</div>
 			)}
 			{!hasModel && (
-				<button type="button" onClick={() => useStore.setState({ view: { kind: "settings" } })}>
+				<button type="button" onClick={() => openSettings()}>
 					{t("Connect a model")}
 				</button>
 			)}

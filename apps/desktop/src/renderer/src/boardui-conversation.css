@@ -38,9 +38,44 @@
 	background: color-mix(in srgb, var(--text) 28%, transparent);
 }
 .bot-identity {
+	position: relative;
 	height: 100%;
 	overflow: auto;
 	padding: 22px 18px 28px;
+}
+.identity-toolbar {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+}
+.identity-toolbar button {
+	border: 0;
+	background: transparent;
+	color: var(--muted);
+	padding: 4px 8px;
+	border-radius: 8px;
+}
+.identity-chip {
+	display: inline-block;
+	padding: 2px 8px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	font-size: 12px;
+	line-height: 16px;
+}
+.identity-fact {
+	margin: 0 0 8px;
+	text-align: center;
+	font-size: 14px;
+	line-height: 20px;
+}
+@media (prefers-reduced-motion: no-preference) {
+	.identity-panel {
+		animation: details-in var(--motion-panel) ease-out;
+	}
+}
+@keyframes details-in {
+	from { transform: translateX(16px); }
 }
 .identity-avatar {
 	display: flex;

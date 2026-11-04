@@ -1,7 +1,9 @@
-import { useEffect, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { defaultAvatar, type AvatarChange, type BotAvatar, type BotSummary, type GeneratedAvatar } from "@openbot/protocol";
 import { Avatar, AvatarStack } from "./Avatar";
 import { AvatarEditor } from "./AvatarEditor";
+import { InterfaceIcon } from "./InterfaceIcon";
+import { setDetailsOpen } from "./features/details/details-open";
 import { t } from "./i18n";
 import { api, errorMessage, refreshBots, report, useStore } from "./store";
 
@@ -16,30 +18,62 @@ export function BotIdentity({ botId, profileOpen }: { readonly botId: string; re
 	useEffect(() => {
 		if (profileOpen) setForm(false);
 	}, [profileOpen]);
+	const models = useStore((state) => state.models);
+	const defaultModel = useStore((state) => state.settings?.defaultModel);
+	const skills = useStore((state) => state.skills);
+	const closeRef = useRef<HTMLButtonElement>(null);
+	useEffect(() => {
+		closeRef.current?.focus();
+	}, []);
 	if (!bot) return null;
+	const effective = bot.model ?? defaultModel;
+	const modelName =
+		models.find((model) => model.provider === effective?.provider && model.modelId === effective.modelId)?.name ??
+		(effective ? `${effective.provider} / ${effective.modelId}` : t("Use the default model"));
+	const skillNames = (bot.defaultSkills ?? []).flatMap((ref) => {
+		const skill = skills?.find((item) => item.name === ref.name && item.available && !item.deleted);
+		return skill ? [skill.name] : [];
+	});
 	return (
 		<aside className="bot-identity" aria-label={t("Bot details")}>
 			{form && !profileOpen ? (
 				<IdentityForm bot={bot} onClose={() => setForm(false)} />
 			) : (
 				<>
+					<div className="identity-toolbar">
+						<button type="button" onClick={() => setForm(true)}>
+							{t("Edit")}
+						</button>
+						<button ref={closeRef} type="button" aria-label={t("Close details")} onClick={() => setDetailsOpen(false)}>
+							<InterfaceIcon name="close" />
+						</button>
+					</div>
 					<div className="identity-avatar">
-						<Avatar bot={bot} size={132} />
+						<Avatar bot={bot} size={96} />
 					</div>
 					<p className="identity-name">{bot.name}</p>
-					{bot.role ? <p className="identity-label">{bot.role}</p> : null}
+					{bot.role ? (
+						<p className="identity-label">
+							<span className="identity-chip">{bot.role}</span>
+						</p>
+					) : null}
 					{bot.instructions ? (
 						<div className="identity-prompt">
 							<p className="identity-kicker">{t("Prompt")}</p>
 							<p className={`identity-bio${expanded ? " is-open" : ""}`}>{bot.instructions}</p>
-							<button type="button" className="identity-expand" onClick={() => setExpanded((open) => !open)}>
+							<button type="button" className="identity-expand" onClick={() => setExpanded((value) => !value)}>
 								{t(expanded ? "Show less" : "Show more")}
 							</button>
 						</div>
 					) : null}
-					<button type="button" onClick={() => setForm(true)}>
-						{t("Edit")}
-					</button>
+					<p className="identity-kicker">{t("Model")}</p>
+					<p className="identity-fact">{modelName}</p>
+					{skillNames.length > 0 ? (
+						<>
+							<p className="identity-kicker">{t("Skills")}</p>
+							<p className="identity-fact">{skillNames.join(" · ")}</p>
+						</>
+					) : null}
 				</>
 			)}
 		</aside>

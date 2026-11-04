@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import { type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect, useState } from "react";
 import type { ConversationSnapshot } from "@openbot/protocol";
 import { BackupSettings } from "../../BackupSettings";
 import { AppearanceSelect } from "../../appearance";
@@ -17,31 +17,47 @@ import { t } from "../../i18n";
 import { api, refreshSettings, report, useStore, type View } from "../../store";
 import { ModelSelect } from "../../ModelSelect";
 
+const SETTINGS_PAGES = [
+	["settings", "General", "settings"],
+	["skills", "Skills", "skills"],
+	["connectors", "Connect apps", "apps"],
+	["routines", "Routines", "routines"],
+] as const;
+
+export type SettingsDestination = (typeof SETTINGS_PAGES)[number][0];
+
 export function SettingsWorkspace({
 	view,
 	onBack,
+	onSelect,
+	dialog = false,
 	renderTranscript,
 }: {
 	readonly view: Extract<View, { kind: "settings" | "skills" | "connectors" | "routines" }>;
 	readonly onBack: () => void;
+	readonly onSelect: (kind: SettingsDestination) => void;
+	readonly dialog?: boolean;
 	readonly renderTranscript: (snapshot: ConversationSnapshot, occurrenceId: string) => ReactNode;
 }) {
+	const movePage = (event: ReactKeyboardEvent<HTMLElement>): void => {
+		if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+		const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(.back-to-chat)")];
+		const index = items.indexOf(document.activeElement as HTMLButtonElement);
+		if (index < 0) return;
+		event.preventDefault();
+		const next = items[(index + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length];
+		next?.focus();
+		next?.click();
+	};
 	return (
 		<div className="settings-workspace">
-			<nav className="settings-navigation" aria-label={t("Settings navigation")}>
-				<button className="back-to-chat" aria-label={t("Back to chat")} onClick={onBack}>
+			<nav className="settings-navigation" aria-label={t("Settings navigation")} onKeyDown={movePage}>
+				<button className="back-to-chat" aria-label={t("Back to chat")} onClick={onBack} {...(dialog ? { "data-dialog-close": "" } : {})}>
 					← {t("Back to chat")}
 				</button>
 				<p className="settings-nav-title">{t("Settings")}</p>
-				{(
-					[
-						["settings", "General", "settings"],
-						["skills", "Skills", "skills"],
-						["connectors", "Connect apps", "apps"],
-						["routines", "Routines", "routines"],
-					] as const
-				).map(([kind, label, icon]) => (
-					<button key={kind} aria-current={view.kind === kind ? "page" : undefined} onClick={() => useStore.setState({ view: { kind } })}>
+				{SETTINGS_PAGES.map(([kind, label, icon]) => (
+					<button key={kind} aria-current={view.kind === kind ? "page" : undefined} onClick={() => onSelect(kind)}>
 						<InterfaceIcon name={icon} />{t(label)}
 					</button>
 				))}
@@ -88,7 +104,6 @@ function Settings() {
 	return (
 		<section className="settings" aria-label={t("Settings")}>
 			<header className="settings-heading">
-				<span className="eyebrow">{t("MAKE IT YOURS")}</span>
 				<h1>{t("Settings")}</h1>
 				<p className="muted">{t("Your models, preferences and permissions. On your Mac.")}</p>
 			</header>

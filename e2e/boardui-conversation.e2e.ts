@@ -47,6 +47,7 @@ it("shows the empty conversation, detail panel and themes", async () => {
 	const empty = h.page().locator(".empty-conversation");
 	await empty.getByRole("heading", { name: "Atlas", exact: true }).waitFor();
 	await empty.getByRole("button", { name: "Summarize the notes from today", exact: true }).waitFor();
+	await h.page().getByRole("button", { name: "View details", exact: true }).click();
 	await h.page().locator(".bot-identity").getByText("Research", { exact: true }).waitFor();
 	await h.page().locator(".identity-kicker").getByText("Prompt", { exact: true }).waitFor();
 	expect(await h.page().locator(".identity-avatar .avatar-ground").count()).toBe(1);

@@ -54,6 +54,7 @@ type State = {
 	settings: RedactedSettings | undefined;
 	models: readonly ModelSummary[];
 	view: View;
+	settingsOverlay: "settings" | "skills" | "connectors" | undefined;
 	showHidden: boolean;
 	notice: string | undefined;
 	/** First-launch setup: `undefined` until the first roster and settings arrive, then decided once. */
@@ -81,6 +82,7 @@ export const useStore = create<State>(() => ({
 	settings: undefined,
 	models: [],
 	view: restoredTaskView() ?? { kind: "home" },
+	settingsOverlay: undefined,
 	showHidden: false,
 	notice: undefined,
 	onboarding: undefined,
@@ -207,6 +209,16 @@ export async function markRead(conversationKey: ConversationKey, through: number
 	await api["conversations.markRead"]({ conversationKey, through });
 	await refreshSummaries();
 }
+export type SettingsPage = "settings" | "skills" | "connectors";
+
+export function openSettings(page: SettingsPage = "settings"): void {
+	useStore.setState({ settingsOverlay: page });
+}
+
+export function closeSettings(): void {
+	useStore.setState({ settingsOverlay: undefined });
+}
+
 export async function openBot(botId: string, searchTarget?: SearchTarget): Promise<void> {
 	useStore.setState({ view: { kind: "bot", botId }, searchTarget });
 	await conversationRead.request();

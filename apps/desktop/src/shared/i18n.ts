@@ -767,6 +767,7 @@ export const chinese: Readonly<Record<string, string>> = {
  "Search conversations": "搜索会话",
  "Conversation details": "会话详情",
  "Close details": "关闭详情",
+ "View details": "查看详情",
  "Close": "关闭",
  "Ordinary messages go to Core. Choose @ recipients to assign work directly. Private chats stay separate.": "普通消息交给 Core 协调；选择 @ 成员可直接派活。私聊保持独立。",
  "Send a task to Core, or @ a Bot to assign it directly": "给 Core 发任务，或 @ 某个 Bot 直接派活",
