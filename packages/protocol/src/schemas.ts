@@ -181,7 +181,7 @@ export const HOST_PARAM_SCHEMAS = {
 		approvalId: Id,
 		decision: Type.Union([Type.Enum(["allow_once", "deny"]), strict({ kind: Type.Literal("always_allow"), scope: AlwaysAllowScope })]),
 	}),
-	"approvals.list": NoParams,
+	"approvals.list": strict({ conversationId: Id }),
 	"usage.get": strict({ botId: Id, limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })) }),
 	"settings.get": NoParams,
 	"settings.update": strict({

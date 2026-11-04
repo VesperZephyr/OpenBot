@@ -376,7 +376,7 @@ export class HostService {
 				return this.#runs.submit(botId, requestId, text, {...(artifactIds?{artifactIds}:{}),...(skills?{skills}:{})});
 			},
 			"runs.cancel": async ({ runId }) => ({ state: await this.#runs.cancel(runId) }),
-			"approvals.list": () => this.#approvals.decisions(),
+			"approvals.list": ({ conversationId }) => this.#approvals.decisions(conversationId),
 			"approvals.decide": async ({ approvalId, decision }) => {
 				if (!(await this.authority.change(()=>this.#approvals.decide(approvalId, decision)))) {
 					throw new ProtocolError("not_found", "This request was already answered or its task ended");

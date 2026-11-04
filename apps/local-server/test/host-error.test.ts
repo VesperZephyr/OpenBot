@@ -9,7 +9,6 @@ describe("hostError", () => {
 			code: "invalid_request",
 			message: "Message is empty",
 		});
-		expect(hostError(new ProtocolError("auth_failed", "Key rejected"))).toEqual({ code: "auth_failed", message: "Key rejected" });
 		expect(
 			hostError(new ProtocolError("request_conflict", "Profile changed. Reload before saving your draft.", { currentRevision: 4 })),
 		).toEqual({

@@ -67,7 +67,6 @@ export type ProtocolErrorCode =
 	| "target_unsupported"
 	| "target_mismatch"
 	| "request_conflict"
-	| "auth_failed"
 	| "not_found"
 	| "invalid_request"
 	| "unknown_method"
@@ -682,7 +681,7 @@ export type HostMethods = {
 	};
 	"runs.cancel": { params: { readonly runId: RunId }; result: { readonly state: RunRecord["state"] } };
 	"approvals.decide": { params: { readonly approvalId: string; readonly decision: ApprovalDecision }; result: null };
-	"approvals.list": { params: Record<string, never>; result: readonly ApprovalDecisionLog[] };
+	"approvals.list": { params: { readonly conversationId: string }; result: readonly ApprovalDecisionLog[] };
 	"usage.get": { params: { readonly botId: BotId; readonly limit?: number }; result: BotUsage };
 	"settings.get": { params: Record<string, never>; result: RedactedSettings };
 	"settings.update": {
