@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
+import { translate } from "../apps/desktop/src/shared/i18n.ts";
 import { launchApp, type AppHarness } from "./harness.ts";
 let h: AppHarness, core: string;
 const snapshot = () => h.api("conversations.snapshot", { botId: core });
@@ -89,7 +90,7 @@ it("shows partial completion after denial and prevents a caught failure from pro
 	);
 	await approve();
 	await h.page().locator(".approval").waitFor();
-	await h.page().getByRole("button", { name: "拒绝", exact: true }).click();
+	await h.page().getByRole("button", { name: translate("zh-CN", "Deny"), exact: true }).click();
 	await idle();
 	expect((await h.api("bots.list")).map((b: any) => b.name)).toEqual(["OpenBot", "Kept helper"]);
 	expect((await snapshot()).approvals).toHaveLength(0);

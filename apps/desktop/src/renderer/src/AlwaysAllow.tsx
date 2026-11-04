@@ -10,10 +10,14 @@ import { ChoiceCard } from "./ui/ChoiceCard";
  */
 export function AlwaysAllow({
 	approval,
+	disabled = false,
+	pending = false,
 	onAllowed,
 	onFailed,
 }: {
 	readonly approval: PendingApproval;
+	readonly disabled?: boolean;
+	readonly pending?: boolean;
 	readonly onAllowed?: () => void;
 	readonly onFailed?: () => void;
 }) {
@@ -26,8 +30,8 @@ export function AlwaysAllow({
 
 	if (!open) {
 		return (
-			<button type="button" onClick={() => setOpen(true)}>
-				{t("Always allow")}
+			<button type="button" className="always-allow-link" disabled={disabled} onClick={() => setOpen(true)}>
+				{pending ? t("Loading") : t("Always allow")}
 			</button>
 		);
 	}
@@ -45,19 +49,28 @@ export function AlwaysAllow({
 					<div className="always-allow-options" role="radiogroup" aria-label={t(folder ? "Folder" : "Rule")}>
 						{options.map((candidate, index) => (
 							<label key={candidate.label} className="always-allow-option">
-								<input type="radio" name={`always-${approval.approvalId}`} checked={index === chosen} onChange={() => setChosen(index)} />
+								<input
+									type="radio"
+									name={`always-${approval.approvalId}`}
+									checked={index === chosen}
+									disabled={disabled || pending}
+									onChange={() => setChosen(index)}
+								/>
 								<code>{candidate.label}</code>
 							</label>
 						))}
 					</div>
 					<div className="approval-actions">
-						<button type="button" onClick={() => setOpen(false)}>
+						<button type="button" disabled={disabled || pending} onClick={() => setOpen(false)}>
 							{t("Cancel")}
 						</button>
 						<button
 							type="button"
 							className="primary"
+							disabled={disabled || pending}
+							aria-busy={pending}
 							onClick={() => {
+								if (disabled || pending) return;
 								onAllowed?.();
 								void api["approvals.decide"]({
 									approvalId: approval.approvalId,
@@ -68,7 +81,7 @@ export function AlwaysAllow({
 								});
 							}}
 						>
-							{t(folder ? "Grant and allow" : "Save rule and allow")}
+							{pending ? t("Loading") : t(folder ? "Grant and allow" : "Save rule and allow")}
 						</button>
 					</div>
 				</>

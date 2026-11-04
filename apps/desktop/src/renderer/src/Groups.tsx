@@ -433,7 +433,11 @@ export function GroupView({ groupId,renderExecution }: { groupId: string;renderE
 							{task.conversation?.approvals.map((a) => (
 								<ApprovalCard key={a.approvalId} approval={a} />
 							))}
-							<SettledApprovals botId={task.botId} {...(task.conversation?.conversationId ? { conversationId: task.conversation.conversationId } : {})} pending={task.conversation?.approvals.map((a) => a.approvalId) ?? []} />
+							<SettledApprovals
+								conversationId={task.conversation?.conversationId}
+								pending={task.conversation?.approvals.map((a) => a.approvalId) ?? []}
+								runActive={task.state === "pending" || task.conversation?.run?.state === "running" || task.conversation?.run?.state === "queued"}
+							/>
 						</div>
 					))}
 			</HistoryTimeline>

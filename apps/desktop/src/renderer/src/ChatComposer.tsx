@@ -4,6 +4,7 @@ import { ArtifactCard } from "./ArtifactCard";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { api, refreshBots, report, sendMessage, useStore } from "./store";
 import { t } from "./i18n";
+import { hasPendingApproval } from "./composer-approval";
 import { composers, useComposer } from "./useComposer";
 import type { ConversationKey, SendAttempt } from "./composers";
 
@@ -26,11 +27,7 @@ export function ChatComposer({
 	const { draft, attempt } = useComposer(conversationKey);
 	const run = useStore(s => conversationKey.startsWith("bot:") ? s.conversations[conversationKey.slice(4)]?.run : undefined);
 	const paused = useStore(s => s.lifecycle?.blocked ?? false);
-	const approvalPending = useStore((state) => {
-		if (conversationKey.startsWith("bot:")) return (state.conversations[conversationKey.slice(4)]?.approvals.length ?? 0) > 0;
-		if (!conversationKey.startsWith("group:")) return false;
-		return state.groupSnapshots[conversationKey.slice(6)]?.tasks.some((task) => (task.conversation?.approvals.length ?? 0) > 0) ?? false;
-	});
+	const approvalPending = useStore((state) => hasPendingApproval(conversationKey, state));
 	const working = run?.state === "running";
 	const activeRun = working || run?.state === "queued";
 	const hasContent = !!draft.text.trim() || !!draft.attachments?.length || !!draft.skills?.length;

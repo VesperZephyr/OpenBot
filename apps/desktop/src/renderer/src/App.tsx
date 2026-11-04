@@ -48,7 +48,7 @@ import { WebSearchSettings } from "./WebSearchSettings";
 import { ProfileMemory } from "./ProfileMemory";
 import { Divider, RetryButton, retryTarget, Thinking } from "./TranscriptExtras";
 import { PendingMessages, StopButton, StoppedNote } from "./runs";
-import { ApprovalCard, SettledApprovals } from "./ApprovalCard";
+import { ApprovalCard, InlineApprovalRecord, SettledApprovals } from "./ApprovalCard";
 import { GroupView, GroupRow, GroupEditor } from "./Groups";
 import { CommandSettings, FolderSettings } from "./PolicySettings";
 import { ConfirmDeleteBot, DeleteBotItem, DuplicateBotItem } from "./BotLifecycle";
@@ -193,7 +193,7 @@ export function App() {
 			{creating && <NewBotDialog onClose={() => setCreating(false)} />}
 			{notice !== undefined && (
 				<div className="toast" role="status">
-					<span>{t(notice)}</span>
+					<span>{t(presentError(notice))}</span>
 					<button type="button" className="toast-close" onClick={() => useStore.setState({ notice: undefined })}>
 						{t("Dismiss")}
 					</button>
@@ -578,7 +578,7 @@ function HistoryTranscript({
 				const active = item.kind === "tool" && item.status === "pending" ? snapshot.live?.tools?.find(tool => tool.callId === item.id) : undefined;
 				const displayed = active && item.kind === "tool" ? { ...item, status: "running" as const, ...(active.output ? { output: active.output } : {}) } : item;
 				return (
-					<Transcript snapshot={{ ...snapshot, items: [displayed] }} historyOnly {...(retry ? { retryOverride: retry } : {})} />
+					<Transcript snapshot={{ ...snapshot, items: [displayed] }} historyOnly inlineApprovals {...(retry ? { retryOverride: retry } : {})} />
 				);
 			}}
 		>
@@ -589,10 +589,14 @@ function HistoryTranscript({
 						row.content.item.runId === run.runId && row.content.item.category === "interrupted");
 				const retry = snapshot.messageMode && !snapshot.channelId && !snapshot.live && snapshot.retry?.outcomeId &&
 					!rows.some(row => row.id === snapshot.retry!.outcomeId) ? snapshot.retry : undefined;
+				const placed = new Set(rows.flatMap((row) => {
+					if (row.content.kind !== "direct" || row.content.item.kind !== "tool") return [];
+					return [row.content.item.id, ...(row.content.item.execution?.children.map((child) => child.callId) ?? [])];
+				}));
 				return <>
 					<Transcript snapshot={{ ...snapshot, items: missingInterruption
 						? [{ kind: "outcome", id: `run-outcome:${run.runId}`, runId: run.runId, category: "interrupted" }]
-						: [] }} />
+						: [] }} placedCallIds={placed} />
 					{retry && <ol className="messages"><OutcomeRow item={{ id: retry.outcomeId!, category: "failed" }} retry={{ botId: snapshot.botId, ...retry }} /></ol>}
 				</>;
 			}}
@@ -600,15 +604,24 @@ function HistoryTranscript({
 	);
 }
 
-function Transcript({ snapshot,historyOnly=false,retryOverride }: { readonly snapshot: ConversationSnapshot;historyOnly?:boolean;retryOverride?:ReturnType<typeof retryTarget> }) {
+function latestUserAt(items: readonly TranscriptItem[]): number | undefined {
+	let latest: number | undefined;
+	for (const item of items) if (item.kind === "user" && item.at !== undefined && (latest === undefined || item.at > latest)) latest = item.at;
+	return latest;
+}
+
+function Transcript({ snapshot,historyOnly=false,inlineApprovals=false,placedCallIds,retryOverride }: { readonly snapshot: ConversationSnapshot;historyOnly?:boolean;inlineApprovals?:boolean;placedCallIds?:ReadonlySet<string>;retryOverride?:ReturnType<typeof retryTarget> }) {
 	const approvals = new Map(snapshot.approvals.map((approval) => [approval.callId, approval]));
+	const showApproval = inlineApprovals || !historyOnly;
+	const userAt = latestUserAt(snapshot.items);
 	const retry = retryOverride??(snapshot.channelId ? undefined : retryTarget(snapshot.items, snapshot.live !== undefined));
 	const item = (entry: TranscriptItem) =>
 		entry.kind === "tool" ? (
 			<ToolCard
 				key={entry.id}
-    showApprovals={!historyOnly}
+    showApprovals={showApproval}
 				item={entry}
+				{...(snapshot.conversationId ? { conversationId: snapshot.conversationId } : {})}
 				background={snapshot.backgroundTasks?.find(record=>record.taskId===entry.taskId)}
 				approval={approvals.get(entry.id)}
 				childApprovals={entry.execution?.children.flatMap((c) => (approvals.get(c.callId) ? [approvals.get(c.callId)!] : [])) ?? []}
@@ -641,8 +654,8 @@ function Transcript({ snapshot,historyOnly=false,retryOverride }: { readonly sna
 				),
 			)}
 			{!historyOnly&&<PendingMessages snapshot={snapshot} />}
- {!historyOnly&&<SettledApprovals botId={snapshot.botId} {...(snapshot.conversationId ? { conversationId: snapshot.conversationId } : {})} pending={snapshot.approvals.map((approval) => approval.approvalId)} />}
- {!historyOnly&&snapshot.approvals.map(approval=><li key={approval.approvalId} className="approval-slot"><ApprovalCard approval={approval}/></li>)}
+ {!historyOnly&&<SettledApprovals conversationId={snapshot.conversationId} pending={snapshot.approvals.map((approval) => approval.approvalId)} {...(placedCallIds ? { skipCallIds: placedCallIds } : {})} runActive={snapshot.run !== undefined && snapshot.run.state !== "completed" && snapshot.run.state !== "failed" && snapshot.run.state !== "cancelled"} {...(userAt === undefined ? {} : { latestUserAt: userAt })} listItem />}
+ {!historyOnly&&snapshot.approvals.filter((approval) => !placedCallIds?.has(approval.callId)).map(approval=><li key={approval.approvalId} className="approval-slot"><ApprovalCard approval={approval}/></li>)}
  {!historyOnly&&!snapshot.channelId?.startsWith("routine_")&&!snapshot.messageMode&&snapshot.run?.state==="needs_attention"&&<InterruptedRun key={snapshot.run.runId} run={snapshot.run}/>}
             {!historyOnly&&(snapshot.live || snapshot.run?.state === "running" || snapshot.run?.state === "queued") && (
                 <li className="message message-assistant is-live"><LiveReply snapshot={snapshot} /></li>
@@ -672,7 +685,7 @@ function Message(props: {
 			{item.kind === "user" && item.error && <p className="message-error">{t(item.error)}</p>}
 			{item.kind === "assistant" && item.error !== undefined && (
 				<div className="message-error">
-					{presentError(item.error) === item.error ? item.error : t(presentError(item.error))}
+					{item.error}
 					{retry !== undefined && (
 						<RetryButton botId={retry.botId} text={retry.text} {...(retry.skills?{skills:retry.skills}:{})} {...(retry.artifactIds ? { artifactIds: retry.artifactIds } : {})} />
 					)}
@@ -733,16 +746,18 @@ function ToolCard({
 	background,
 	approval,
 	childApprovals = [],
+	conversationId,
  showApprovals=true,
 }: {
  readonly showApprovals?:boolean;
 	readonly item: Extract<TranscriptItem, { kind: "tool" }>;
+	readonly conversationId?: string;
 	readonly background?:import("@openbot/protocol").BackgroundRecord|undefined;
 	readonly approval: PendingApproval | undefined;
 	readonly childApprovals?: readonly PendingApproval[];
 }) {
 	const args = (item.args ?? {}) as Record<string, unknown>;
-	let output = typeof item.output === "string" && presentError(item.output) !== item.output ? t(presentError(item.output)) : item.output;
+	let output = item.output;
 	if (item.tool === "codemode" && item.execution?.error) output = t(item.execution.error);
 	if (item.tool.startsWith("app_") && output) {
 		try {
@@ -816,8 +831,12 @@ function ToolCard({
 			{item.routineProposal && item.status === "succeeded" && <RoutineProposalCard proposal={item.routineProposal} />}
 			{item.artifact && item.status === "succeeded" && <ArtifactCard artifact={item.artifact} />}
 			{showApprovals&&approval !== undefined && <ApprovalCard approval={approval} />}
+			{showApprovals&&approval === undefined && <InlineApprovalRecord conversationId={conversationId} callId={item.id} />}
 			{showApprovals&&childApprovals.map((child) => (
 				<ApprovalCard key={child.approvalId} approval={child} />
+			))}
+			{showApprovals&&item.execution?.children.filter((child) => !childApprovals.some((approval) => approval.callId === child.callId)).map((child) => (
+				<InlineApprovalRecord key={child.callId} conversationId={conversationId} callId={child.callId} />
 			))}
 		</li>
 	);

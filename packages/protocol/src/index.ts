@@ -1,4 +1,5 @@
 export * from "./local-tasks.ts";
+export * from "./executor-errors.ts";
 export * from "./memory-read.ts";
 import { MEMORY_READ_SCHEMA, MEMORY_SEARCH_SCHEMA } from "./memory-read.ts";
 export type { ActivityLabel, ExecutionObservation } from "./activity.ts";

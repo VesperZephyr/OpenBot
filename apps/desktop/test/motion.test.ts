@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { EXECUTOR_ERROR } from "@openbot/protocol";
 import { chinese, presentError, translate } from "../src/shared/i18n";
 import { breatheMs, motionDuration, motionMs, motionRules } from "../src/renderer/src/ui/motion";
 
@@ -63,17 +64,16 @@ describe("motion tokens", () => {
 		expect(Object.values(chinese).join("\n")).not.toContain("全部放行");
 	});
 
-	it("shows executor failures in everyday language", () => {
-		expect(presentError("Could not start the local executor: ENOENT")).toBe("The local runtime failed to start");
-		expect(presentError("The local executor did not become ready in time")).toBe("The local runtime did not become ready in time");
-		expect(presentError("The local executor timed out before reporting a result; the action may have partly run")).toBe(
-			"The operation timed out. The result is unknown and may have partly run.",
+	it("maps shared executor error codes to everyday language", () => {
+		expect(presentError(`${EXECUTOR_ERROR.startFailed}: ENOENT`)).toBe("The local runtime failed to start");
+		expect(presentError(EXECUTOR_ERROR.readyTimeout)).toBe("The local runtime did not become ready in time");
+		expect(presentError(`${EXECUTOR_ERROR.invokeTimeout}: still running`)).toBe(
+			"The operation timed out. The result is unknown and may have partly run. Check the result before retrying.",
 		);
-		expect(translate("zh-CN", "Could not start the local executor: EACCES")).toBe("本地运行环境启动失败");
-		expect(translate("zh-CN", "The local executor did not become ready in time")).toBe("本地运行环境没有及时就绪");
-		expect(translate("zh-CN", "The local executor timed out before reporting a result; the action may have partly run")).toBe(
-			"操作超时，结果未知，可能已部分执行",
-		);
+		expect(translate("zh-CN", presentError(EXECUTOR_ERROR.startFailed))).toBe("本地运行环境启动失败");
+		expect(translate("zh-CN", presentError(EXECUTOR_ERROR.readyTimeout))).toBe("本地运行环境没有及时就绪");
+		expect(translate("zh-CN", presentError(EXECUTOR_ERROR.invokeTimeout))).toBe("操作超时，结果未知，可能已部分执行。请先确认结果，再决定是否重试。");
+		expect(presentError("Could not start the local executor: ENOENT")).toBe("Could not start the local executor: ENOENT");
 		expect(translate("en", "Keep this unrelated error")).toBe("Keep this unrelated error");
 	});
 });

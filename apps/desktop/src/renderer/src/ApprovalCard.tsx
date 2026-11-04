@@ -8,39 +8,17 @@ import { AlwaysAllow } from "./AlwaysAllow";
 import { ManagementPreview } from "./BotManagement";
 import { GroupPreview } from "./GroupPreview";
 import { ChoiceCard } from "./ui/ChoiceCard";
-
-type DecisionKind = "allow_once" | "deny" | "always_allow";
-
-type SettledApproval = {
-	readonly approvalId: string;
-	readonly botId: string;
-	readonly conversationId?: string;
-	readonly decision: DecisionKind;
-	readonly action: string;
-	readonly detail: string;
-	readonly at: number;
-};
-
-let settledList: readonly SettledApproval[] = [];
-const listeners = new Set<() => void>();
-
-function publish(next: readonly SettledApproval[]) {
-	settledList = next;
-	for (const listener of listeners) listener();
-}
-
-function rememberApproval(record: SettledApproval) {
-	publish([...settledList.filter((item) => item.approvalId !== record.approvalId), record]);
-}
-
-function forgetApproval(approvalId: string) {
-	publish(settledList.filter((item) => item.approvalId !== approvalId));
-}
-
-function subscribe(listener: () => void) {
-	listeners.add(listener);
-	return () => listeners.delete(listener);
-}
+import {
+	approvalChoices,
+	approvalRecordSnapshot,
+	forgetApproval,
+	rememberApproval,
+	retireApprovalRecords,
+	settledApprovals,
+	subscribeApprovalRecords,
+	type ApprovalPress,
+	type SettledApproval,
+} from "./approval-records";
 
 function clock(at: number): string {
 	const language = useStore.getState().settings?.language === "zh-CN" ? "zh-CN" : "en-GB";
@@ -59,60 +37,98 @@ function detailOf(approval: PendingApproval): string {
 	return JSON.stringify(approval.args, null, 2);
 }
 
-function recordCopy(decision: DecisionKind): "Allowed once: {action} · {time}" | "Always allowed: {action} · {time}" | "Denied: {action} · {time}" {
+function recordCopy(decision: ApprovalPress): "Allowed once: {action} · {time}" | "Set to always allow: {action} · {time}" | "Denied: {action} · {time}" {
 	if (decision === "deny") return "Denied: {action} · {time}";
-	if (decision === "always_allow") return "Always allowed: {action} · {time}";
+	if (decision === "always_allow") return "Set to always allow: {action} · {time}";
 	return "Allowed once: {action} · {time}";
 }
 
-function ApprovalRecord({ record }: { readonly record: SettledApproval }) {
+function summaryAction(record: SettledApproval): string {
+	const line = record.action.split("\n")[0] ?? record.action;
+	return line;
+}
+
+export function InlineApprovalRecord({ conversationId, callId }: { readonly conversationId: string | undefined; readonly callId: string }) {
+	const records = useSyncExternalStore(subscribeApprovalRecords, approvalRecordSnapshot, approvalRecordSnapshot);
+	const record = records.find((item) => item.conversationId === conversationId && item.callId === callId);
+	if (!record) return null;
+	return <ApprovalRecord record={record} />;
+}
+
+export function ApprovalRecord({ record }: { readonly record: SettledApproval }) {
 	const [open, setOpen] = useState(false);
 	useStore((state) => state.settings?.language);
 	return (
 		<div className="approval-record" role="group" aria-label={t("Approval record")}>
 			<button type="button" className="approval-record-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
 				<span className={`status-dot ${record.decision === "deny" ? "is-danger" : "is-ready"}`} aria-hidden="true" />
-				<span>{t(recordCopy(record.decision), { action: record.action, time: clock(record.at) })}</span>
+				<span className="approval-record-summary">{t(recordCopy(record.decision), { action: summaryAction(record), time: clock(record.at) })}</span>
 			</button>
 			{open ? <pre className="approval-args">{record.detail}</pre> : null}
 		</div>
 	);
 }
 
-export function SettledApprovals({
-	botId,
-	pending,
+export function ApprovalRecordLifetime({
 	conversationId,
+	runActive,
+	latestUserAt,
 }: {
-	readonly botId: string;
-	readonly pending: readonly string[];
-	readonly conversationId?: string;
+	readonly conversationId: string | undefined;
+	readonly runActive: boolean;
+	readonly latestUserAt?: number;
 }) {
-	const records = useSyncExternalStore(subscribe, () => settledList, () => settledList);
-	const pendingIds = new Set(pending);
-	const visible = records.filter(
-		(record) =>
-			record.botId === botId &&
-			!pendingIds.has(record.approvalId) &&
-			(conversationId === undefined || record.conversationId === undefined || record.conversationId === conversationId),
-	);
+	useEffect(() => {
+		retireApprovalRecords({ conversationId, runActive, ...(latestUserAt === undefined ? {} : { latestUserAt }) });
+	}, [conversationId, runActive, latestUserAt]);
+	return null;
+}
+
+export function SettledApprovals({
+	conversationId,
+	pending,
+	skipCallIds,
+	runActive,
+	latestUserAt,
+	listItem = false,
+}: {
+	readonly conversationId: string | undefined;
+	readonly pending: readonly string[];
+	readonly skipCallIds?: ReadonlySet<string>;
+	readonly runActive?: boolean;
+	readonly latestUserAt?: number;
+	readonly listItem?: boolean;
+}) {
+	const records = useSyncExternalStore(subscribeApprovalRecords, approvalRecordSnapshot, approvalRecordSnapshot);
+	useEffect(() => {
+		if (runActive === undefined) return;
+		retireApprovalRecords({ conversationId, runActive, ...(latestUserAt === undefined ? {} : { latestUserAt }) });
+	}, [conversationId, runActive, latestUserAt]);
+	const visible = settledApprovals(conversationId, pending).filter((record) => !skipCallIds?.has(record.callId));
+	void records;
 	if (visible.length === 0) return null;
 	return (
 		<>
-			{visible.map((record) => (
-				<li key={record.approvalId} className="approval-slot">
-					<ApprovalRecord record={record} />
-				</li>
-			))}
+			{visible.map((record) =>
+				listItem ? (
+					<li key={record.approvalId} className="approval-slot">
+						<ApprovalRecord record={record} />
+					</li>
+				) : (
+					<ApprovalRecord key={record.approvalId} record={record} />
+				),
+			)}
 		</>
 	);
 }
 
-function settle(approval: PendingApproval, decision: DecisionKind) {
+function settle(approval: PendingApproval, decision: ApprovalPress) {
+	if (!approval.conversationId) return;
 	rememberApproval({
 		approvalId: approval.approvalId,
 		botId: approval.botId,
-		...(approval.conversationId ? { conversationId: approval.conversationId } : {}),
+		conversationId: approval.conversationId,
+		callId: approval.callId,
 		decision,
 		action: actionOf(approval),
 		detail: detailOf(approval),
@@ -121,21 +137,22 @@ function settle(approval: PendingApproval, decision: DecisionKind) {
 }
 
 export function ApprovalCard({ approval }: { readonly approval: PendingApproval }) {
-	const [pending, setPending] = useState(false);
+	const [busy, setBusy] = useState<ApprovalPress | null>(null);
 	const [now, setNow] = useState(Date.now);
+	const choices = approvalChoices(busy);
 	useEffect(() => {
 		if (!approval.deadline) return;
 		const timer = setInterval(() => setNow(Date.now()), 1000);
 		return () => clearInterval(timer);
 	}, [approval.deadline]);
 	const expired = approval.deadline !== undefined && now >= approval.deadline;
-	const decide = (decision: ApprovalDecision, kind: DecisionKind): void => {
-		if (pending || expired) return;
-		setPending(true);
+	const decide = (decision: ApprovalDecision, kind: ApprovalPress): void => {
+		if (busy || expired) return;
+		setBusy(kind);
 		settle(approval, kind);
 		void api["approvals.decide"]({ approvalId: approval.approvalId, decision }).catch((error) => {
 			forgetApproval(approval.approvalId);
-			setPending(false);
+			setBusy(null);
 			report(error);
 		});
 	};
@@ -156,6 +173,7 @@ export function ApprovalCard({ approval }: { readonly approval: PendingApproval 
 		</pre>
 	);
 	const describedBy = skillChange || tool.startsWith("group_") || ["bot_create", "bot_update", "bot_delete"].includes(tool) ? scopeId : `${scopeId} ${argsId}`;
+	const label = (kind: ApprovalPress, text: string) => (choices[kind === "allow_once" ? "allow" : kind === "deny" ? "deny" : "always"].loading ? t("Loading") : text);
 	return (
 		<ChoiceCard
 			className="approval"
@@ -179,27 +197,39 @@ export function ApprovalCard({ approval }: { readonly approval: PendingApproval 
 			}
 			question={<span className="approval-reason">{t(approval.reason)}</span>}
 			options={
-				<div className="approval-actions">
-					<button
-						type="button"
-						disabled={pending || expired}
-						className="primary"
-						aria-describedby={describedBy}
-						onClick={() => decide("allow_once", "allow_once")}
-					>
-						{t("Allow once")}
-					</button>
+				<>
+					<div className="approval-actions">
+						<button
+							type="button"
+							disabled={choices.allow.disabled || expired}
+							className="primary"
+							aria-describedby={describedBy}
+							aria-busy={choices.allow.loading}
+							onClick={() => decide("allow_once", "allow_once")}
+						>
+							{label("allow_once", t("Allow once"))}
+						</button>
+						<button type="button" disabled={choices.deny.disabled || expired} aria-busy={choices.deny.loading} onClick={() => decide("deny", "deny")}>
+							{label("deny", t("Deny"))}
+						</button>
+					</div>
 					{!expired && (
 						<AlwaysAllow
 							approval={approval}
-							onAllowed={() => settle(approval, "always_allow")}
-							onFailed={() => forgetApproval(approval.approvalId)}
+							disabled={choices.always.disabled}
+							pending={choices.always.loading}
+							onAllowed={() => {
+								if (busy) return;
+								setBusy("always_allow");
+								settle(approval, "always_allow");
+							}}
+							onFailed={() => {
+								forgetApproval(approval.approvalId);
+								setBusy(null);
+							}}
 						/>
 					)}
-					<button type="button" disabled={pending || expired} onClick={() => decide("deny", "deny")}>
-						{t("Deny")}
-					</button>
-				</div>
+				</>
 			}
 		>
 			{preview}

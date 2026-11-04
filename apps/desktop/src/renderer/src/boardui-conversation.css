@@ -101,7 +101,7 @@
 	margin: 0 auto 8px;
 	border: 0;
 	background: transparent;
-	color: var(--accent-text);
+	color: var(--text);
 	font-size: 12px;
 	line-height: 16px;
 }
@@ -112,8 +112,8 @@
 	margin: 8px 0 12px;
 }
 .identity-motifs button[aria-pressed="true"] {
-	border-color: var(--accent);
-	color: var(--accent-text);
+	border-color: var(--text);
+	color: var(--text);
 }
 .identity-alert {
 	margin: 0 0 8px;
@@ -204,7 +204,6 @@
 	font-size: 12px;
 	line-height: 20px;
 }
-.conversation-meta .conversation-role,
 .conversation-meta > span:first-child {
 	min-width: 0;
 	overflow: hidden;
@@ -267,7 +266,7 @@
 .composer-model button {
 	border: 0;
 	background: transparent;
-	color: var(--accent-text);
+	color: var(--text);
 	font-size: 12px;
 	line-height: 20px;
 	padding: 0;
@@ -343,11 +342,28 @@
 	border-radius: 12px;
 	background: var(--surface-raised);
 }
+.approval > .choice-options {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 8px;
+}
+.always-allow-link {
+	border: 0;
+	background: transparent;
+	color: var(--text);
+	padding: 0;
+	font-size: 12px;
+	line-height: 16px;
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
 .approval-record-toggle {
 	display: flex;
 	align-items: center;
 	gap: 8px;
 	width: 100%;
+	min-width: 0;
 	border: 0;
 	background: transparent;
 	padding: 4px 0;
@@ -355,6 +371,12 @@
 	color: var(--muted);
 	font-size: 12px;
 	line-height: 16px;
+}
+.approval-record-summary {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 .compose-area .send:not(.primary) {
 	background: var(--surface);
