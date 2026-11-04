@@ -58,6 +58,7 @@ export const RENDERER_METHODS = [
 	"runs.cancel",
 	"background.stop",
 	"approvals.decide",
+	"approvals.list",
 	"usage.get",
 	"settings.get",
 	"settings.update",

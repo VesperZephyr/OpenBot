@@ -40,6 +40,43 @@ export function approvalRecordSnapshot(): readonly SettledApproval[] {
 	return settledList;
 }
 
+export type RemoteApproval = {
+	readonly approvalId: string;
+	readonly decision: "allow" | "deny";
+	readonly at: number;
+	readonly tool: string;
+	readonly conversationId: string;
+};
+
+/** Memory records win for the same id. Remote rows fill decisions that are no longer in memory. */
+export function mergeApprovalRecords(
+	conversationId: string | undefined,
+	memory: readonly SettledApproval[],
+	remote: readonly RemoteApproval[],
+	pending: readonly string[],
+): readonly SettledApproval[] {
+	if (!conversationId) return [];
+	const pendingIds = new Set(pending);
+	const byId = new Map<string, SettledApproval>();
+	for (const record of memory) {
+		if (record.conversationId === conversationId && !pendingIds.has(record.approvalId)) byId.set(record.approvalId, record);
+	}
+	for (const item of remote) {
+		if (item.conversationId !== conversationId || pendingIds.has(item.approvalId) || byId.has(item.approvalId)) continue;
+		byId.set(item.approvalId, {
+			approvalId: item.approvalId,
+			botId: "",
+			conversationId: item.conversationId,
+			callId: item.approvalId,
+			decision: item.decision === "deny" ? "deny" : "allow_once",
+			action: item.tool,
+			detail: item.tool,
+			at: item.at,
+		});
+	}
+	return [...byId.values()].sort((a, b) => a.at - b.at || a.approvalId.localeCompare(b.approvalId));
+}
+
 /** Records for one conversation. Missing id matches nothing, so a task view cannot show every bot's records. */
 export function settledApprovals(conversationId: string | undefined, pending: readonly string[]): readonly SettledApproval[] {
 	if (!conversationId) return [];

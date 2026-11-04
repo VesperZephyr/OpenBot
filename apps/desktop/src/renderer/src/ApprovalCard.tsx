@@ -1,7 +1,7 @@
 import { SkillReview } from "./Skills";
 import { validSkillOperation, type SkillChange } from "@openbot/protocol";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { legacyManagementName, type ApprovalDecision, type ConversationSnapshot, type PendingApproval } from "@openbot/protocol";
+import { legacyManagementName, type ApprovalDecision, type ApprovalDecisionLog, type ConversationSnapshot, type PendingApproval } from "@openbot/protocol";
 import { api, report, useStore } from "./store";
 import { t } from "./i18n";
 import { AlwaysAllow } from "./AlwaysAllow";
@@ -12,9 +12,9 @@ import {
 	approvalChoices,
 	approvalRecordSnapshot,
 	forgetApproval,
+	mergeApprovalRecords,
 	rememberApproval,
 	retireApprovalRecords,
-	settledApprovals,
 	subscribeApprovalRecords,
 	type ApprovalPress,
 	type SettledApproval,
@@ -93,12 +93,29 @@ export function SettledApprovals({
 	readonly listItem?: boolean;
 }) {
 	const records = useSyncExternalStore(subscribeApprovalRecords, approvalRecordSnapshot, approvalRecordSnapshot);
+	const [remote, setRemote] = useState<readonly ApprovalDecisionLog[]>([]);
+	useEffect(() => {
+		if (!conversationId) {
+			setRemote([]);
+			return;
+		}
+		let active = true;
+		void api["approvals.list"]({ conversationId })
+			.then((rows) => {
+				if (active) setRemote(rows);
+			})
+			.catch(() => {
+				if (active) setRemote([]);
+			});
+		return () => {
+			active = false;
+		};
+	}, [conversationId, records]);
 	useEffect(() => {
 		if (runActive === undefined) return;
 		retireApprovalRecords({ conversationId, runActive, ...(latestUserAt === undefined ? {} : { latestUserAt }) });
 	}, [conversationId, runActive, latestUserAt]);
-	const visible = settledApprovals(conversationId, pending).filter((record) => !skipCallIds?.has(record.callId));
-	void records;
+	const visible = mergeApprovalRecords(conversationId, records, remote, pending).filter((record) => !skipCallIds?.has(record.callId));
 	if (visible.length === 0) return null;
 	return (
 		<>
