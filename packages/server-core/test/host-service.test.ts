@@ -333,6 +333,27 @@ describe("HostService", () => {
 		expect(configFile.text).toContain("// comment");
 	});
 
+	it("drops a verified provider from memory and leaves the model file unchanged when the test fails", async () => {
+		const before = configFile.text;
+		const listed = (await service.handle("models.list", {})).map((model) => `${model.provider}/${model.modelId}`);
+		await service.handle("credentials.set", { providerId: "ephemeral", apiKey: "sk-test-CANARY-xxx" });
+		await expect(
+			service.handle("models.addProvider", {
+				id: "ephemeral",
+				name: "Ephemeral",
+				baseUrl: "http://127.0.0.1:1/v1",
+				api: "openai-completions",
+				modelIds: ["nope"],
+				verify: true,
+			}),
+		).rejects.toThrow(/Authentication failed|timed out|not found|rate limiting|model request failed|Connection failed/);
+		expect(configFile.text).toBe(before);
+		expect(JSON.stringify(configFile.text ?? "")).not.toContain("sk-test-CANARY-xxx");
+		expect(JSON.stringify(configFile.text ?? "")).not.toContain("ephemeral");
+		expect((await service.handle("models.list", {})).map((model) => `${model.provider}/${model.modelId}`)).toEqual(listed);
+		expect(JSON.stringify(audit)).not.toContain("sk-test-CANARY-xxx");
+	}, 40_000);
+
 	it("tests a model with a real request and reports failures as results", async () => {
 		expect(await service.handle("models.test", SCRIPTED_MODEL)).toEqual({ ok: true });
 		const unknown = await service.handle("models.test", { provider: "faux", modelId: "nope" });

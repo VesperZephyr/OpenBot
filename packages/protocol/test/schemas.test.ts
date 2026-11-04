@@ -68,6 +68,16 @@ describe("Host method parameter schemas", () => {
 				modelIds: ["m"],
 			}),
 		).toBeUndefined();
+		expect(
+			paramsError("models.addProvider", {
+				id: "local-llm",
+				name: "Local",
+				baseUrl: "http://127.0.0.1:1/v1",
+				api: "openai-completions",
+				modelIds: ["m"],
+				verify: true,
+			}),
+		).toBeUndefined();
 	});
 
 	it("reject wrong shapes, unknown fields, and values outside the contract, naming the field", () => {

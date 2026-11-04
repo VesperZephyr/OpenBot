@@ -708,7 +708,8 @@ export type HostMethods = {
 	/**
 	 * Declare an OpenAI- or Anthropic-compatible provider in the model configuration file, merged with the entries
 	 * already there; an entry with the same ID is replaced. Never carries a key: store it with `credentials.set` under
-	 * the same ID.
+	 * the same ID. `verify: true` registers the provider in memory and tests it before writing the file; a failed test
+	 * removes that in-memory provider and returns the error. There is no remove method.
 	 */
 	"models.addProvider": {
 		params: {
@@ -717,6 +718,7 @@ export type HostMethods = {
 			readonly baseUrl: string;
 			readonly api: ModelApi;
 			readonly modelIds: readonly string[];
+			readonly verify?: boolean;
 		};
 		result: RedactedSettings;
 	};

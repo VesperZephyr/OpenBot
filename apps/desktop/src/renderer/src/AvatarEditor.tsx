@@ -16,12 +16,14 @@ export function AvatarEditor({
 	value,
 	onChange,
 	disabled,
+	autoGenerate = false,
 }: {
 	bot: BotProfile;
 	role: string;
 	value: AvatarChange | undefined;
 	onChange: (value: AvatarChange) => void;
 	disabled: boolean;
+	autoGenerate?: boolean;
 }) {
 	const [options, setOptions] = useState<GeneratedAvatar[]>([]),
 		[error, setError] = useState(""),
@@ -34,6 +36,7 @@ export function AvatarEditor({
 		},
 		[],
 	);
+	const opened = useRef(false);
 	const generate = () => {
 		const base =
 			((bot.avatar?.kind === "generated" ? bot.avatar.seed : defaultAvatar(bot.botId).seed) + ++round.current * 37) >>>
@@ -47,6 +50,11 @@ export function AvatarEditor({
 			})),
 		);
 	};
+	useEffect(() => {
+		if (!autoGenerate || opened.current) return;
+		opened.current = true;
+		generate();
+	}, [autoGenerate]);
 	const upload = async () => {
 		const id = ++generation.current;
 		setLoading(true);

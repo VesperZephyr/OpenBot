@@ -12,7 +12,7 @@ import { type AppHarness, launchApp } from "./harness.ts";
 let h: AppHarness;
 
 beforeAll(async () => {
-	h = await launchApp("desktop-mvp", { firstLaunch: true });
+	h = await launchApp("desktop-mvp", { firstLaunch: true, locale: "en" });
 }, 90_000);
 
 afterAll(async () => {
@@ -22,9 +22,10 @@ afterAll(async () => {
 describe("Desktop MVP", () => {
 	it("sets up a custom OpenAI-compatible provider, tests it, and meets a first Bot", async () => {
 		const page = h.page();
-		await page.getByRole("heading", { name: "Meet OpenBot" }).waitFor();
+		await page.getByRole("heading", { name: "Welcome to OpenBot" }).waitFor();
 		await h.shot("01-onboarding");
-
+		await page.getByRole("button", { name: "Continue", exact: true }).click();
+		await page.getByRole("button", { name: "More providers or a custom or local model" }).click();
 		await page.getByRole("radio", { name: /^Custom provider/ }).click();
 		await page.getByLabel("Name").fill("Scripted");
 		await page.getByLabel("Base URL").fill(h.modelBaseUrl);
@@ -33,16 +34,17 @@ describe("Desktop MVP", () => {
 		// The test request consumes one scripted turn.
 		h.model.script({ text: "OK" });
 		await page.getByRole("button", { name: "Test and continue" }).click();
-		await page.getByRole("textbox", { name: "Message OpenBot" }).waitFor();
+		await page.getByRole("heading", { name: "Meet your first Bot" }).waitFor();
 		expect(h.model.requests).toHaveLength(1);
 
 		// The endpoint is in models.json, the key is not: it went to the Keychain under the provider ID.
 		const config = await readFile(join(h.run, "home", "models.json"), "utf8");
 		expect(JSON.parse(config).providers.scripted).toMatchObject({ baseUrl: h.modelBaseUrl, api: "openai-completions", models: [{ id: "scripted" }] });
 		expect(config).not.toContain("sk-e2e-key");
-		await h.shot("02-first-bot");
-
+		await page.getByRole("button", { name: "Looks good" }).click();
+		await page.getByRole("button", { name: "Start chatting" }).click();
 		await page.getByRole("textbox", { name: "Message OpenBot" }).waitFor();
+		await h.shot("02-first-bot");
 		h.model.script({ text: "Hello from OpenBot." });
 		await h.send("Hi");
 		// The suggested role's instructions reach the model.

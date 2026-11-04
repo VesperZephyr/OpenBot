@@ -53,7 +53,7 @@ import { GroupView, GroupRow, GroupEditor } from "./Groups";
 import { CommandSettings, FolderSettings } from "./PolicySettings";
 import { ConfirmDeleteBot, DeleteBotItem, DuplicateBotItem } from "./BotLifecycle";
 import { ModelSetup } from "./ModelSetup";
-import { Onboarding } from "./Onboarding";
+import { Onboarding } from "./features/onboarding/Onboarding";
 import { transcriptRows } from "./steps";
 import { MessageTime, RevealButton, StepsRow } from "./TranscriptDetails";
 import { conversationPresence, headerStatusLabel } from "./conversation-status";

@@ -39,6 +39,7 @@
 	"model-sources.e2e.ts": 4100,
 	"mvp-acceptance.e2e.ts": 5200,
 	"observation.e2e.ts": 16400,
+	"onboarding.e2e.ts": 180000,
 	"personal-design.e2e.ts": 19900,
 	"product-foundation.e2e.ts": 11200,
 	"prompt-reliability.e2e.ts": 5700,

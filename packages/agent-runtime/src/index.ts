@@ -1381,6 +1381,41 @@ export class BotRuntime {
 	 * Send one tiny real request to the model, with the same provider, endpoint, and credentials Bots use, and report
 	 * whether it answered. Failures (unknown model, missing key, HTTP errors, timeout) become `{ ok: false, error }`.
 	 */
+	/**
+	 * Register one custom provider in memory, or remove it when `input` is omitted. Does not read or write the
+	 * configuration file. `models.addProvider` with `verify` uses this so a failed test never lands on disk.
+	 */
+	holdProvider(
+		input: { readonly id: string; readonly name: string; readonly baseUrl: string; readonly api: string; readonly modelIds: readonly string[] } | undefined,
+		environment: ConfigEnvironment,
+		removeId?: string,
+	): void {
+		if (input === undefined) {
+			const id = removeId;
+			if (id === undefined) return;
+			const builtin = this.#builtins.get(id);
+			if (builtin !== undefined) this.#models.setProvider(this.taskModels.provider(builtin));
+			else this.#models.deleteProvider(id);
+			return;
+		}
+		const built = buildConfiguredProviders(
+			JSON.stringify({
+				providers: {
+					[input.id]: {
+						name: input.name,
+						baseUrl: input.baseUrl,
+						api: input.api,
+						models: input.modelIds.map((id) => ({ id })),
+					},
+				},
+			}),
+			{ environment, builtins: this.#builtins },
+		);
+		const created = built.providers.find((provider) => provider.id === input.id);
+		if (created === undefined) throw new ProtocolError("invalid_request", built.status.errors[0] ?? "Could not register the provider");
+		this.#models.setProvider(this.taskModels.provider(created));
+	}
+
 	async testModel(ref: ModelRef, timeoutMs = MODEL_TEST_TIMEOUT_MS): Promise<{ readonly ok: boolean; readonly error?: string }> {
 		const model = this.#models.getModel(ref.provider, ref.modelId);
 		if (model === undefined) return { ok: false, error: "Unknown model. Reload configuration or choose an available model." };

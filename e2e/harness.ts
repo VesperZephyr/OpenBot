@@ -58,6 +58,8 @@ export type HarnessOptions = {
 	 * onboarding.
 	 */
 	readonly firstLaunch?: boolean;
+	/** Pin the OS locale and Electron's `--lang` for this launch and every relaunch. */
+	readonly locale?: "en" | "zh-CN";
 };
 
 export async function launchApp(name: string, options: HarnessOptions = {}): Promise<AppHarness> {
@@ -91,7 +93,7 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 		const selectedRuntime = runtimeEnvironment(mode, join(repo, "apps/desktop/out/e2e-runtime"), overrides);
 		const started = performance.now();
 		app = await auditSpan("app.launch", name, () => electron.launch({
-			args: [join(repo, "apps/desktop"), ...(options.debugPort ? [`--remote-debugging-port=${options.debugPort}`] : [])],
+			args: [join(repo, "apps/desktop"), ...(options.locale ? [`--lang=${options.locale}`] : []), ...(options.debugPort ? [`--remote-debugging-port=${options.debugPort}`] : [])],
 			cwd: join(repo, "apps/desktop"),
 			env: {
 				...process.env,
@@ -104,6 +106,11 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 				...options.env,
 				...preparedEnvironment,
 				OPENBOT_E2E_MODE: process.env.OPENBOT_E2E_HEADED === "1" ? "headed" : "background",
+				...(options.locale === undefined ? {} : {
+					LANG: options.locale === "zh-CN" ? "zh_CN.UTF-8" : "en_US.UTF-8",
+					LC_ALL: options.locale === "zh-CN" ? "zh_CN.UTF-8" : "en_US.UTF-8",
+					OPENBOT_E2E_LOCALE: options.locale,
+				}),
 			},
 		}));
 		page = await auditSpan("app.firstWindow", name, () => app!.firstWindow());

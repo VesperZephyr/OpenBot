@@ -1,24 +1,27 @@
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type AppHarness, launchApp } from "./harness.ts";
 import { chooseSettingsLanguage } from "./pilot-ui.ts";
 let h: AppHarness;
-beforeAll(async () => { h = await launchApp("locale", { firstLaunch: true }); }, 90_000);
+beforeAll(async () => { h = await launchApp("locale", { firstLaunch: true, locale: "en" }); }, 90_000);
 afterAll(async () => { await h?.close(); });
 
 it("defaults to English, supports Chinese onboarding and persists language across restart", async () => {
  let page = h.page();
- await page.getByRole("heading", { name: "Meet OpenBot" }).waitFor();
+ await page.getByRole("heading", { name: "Welcome to OpenBot" }).waitFor();
  expect(await page.locator("html").getAttribute("lang")).toBe("en");
  await h.shot("01-onboarding-en");
- await page.getByLabel("Language", { exact: true }).selectOption("zh-CN");
- await page.getByRole("heading", { name: "认识 OpenBot" }).waitFor();
+ await page.getByRole("radio", { name: "简体中文", exact: true }).click();
+ await page.getByRole("heading", { name: "欢迎使用 OpenBot" }).waitFor();
+ await page.getByRole("button", { name: "继续", exact: true }).click();
+ await page.getByRole("button", { name: "更多服务商 / 自定义或本地模型" }).click();
  await page.getByRole("radio", { name: /自定义服务商/ }).click();
  await page.getByLabel("服务地址", { exact: true }).fill("http://localhost:11434/v1");
- await page.getByLabel("语言", { exact: true }).selectOption("en");
+ await page.evaluate(async () => { await (window as any).openbot.methods["settings.update"]({ language: "en" }); });
  await page.getByLabel("Base URL", { exact: true }).waitFor();
  expect(await page.getByLabel("Base URL", { exact: true }).inputValue()).toBe("http://localhost:11434/v1");
- await page.getByLabel("Language", { exact: true }).selectOption("zh-CN");
+ await page.evaluate(async () => { await (window as any).openbot.methods["settings.update"]({ language: "zh-CN" }); });
  await page.getByLabel("服务地址", { exact: true }).waitFor();
+ expect(await page.getByLabel("服务地址", { exact: true }).inputValue()).toBe("http://localhost:11434/v1");
  await h.shot("02-onboarding-zh");
  await page.getByRole("button", { name: "稍后设置" }).click();
  await page.getByRole("textbox", { name: "发送消息给 OpenBot" }).waitFor();
@@ -108,4 +111,44 @@ it("preserves user names, instructions and memory while switching languages", as
  await page.getByRole("button", { name: /OpenBot Personal assistant/ }).click();
  await page.getByRole("textbox", { name: "Message OpenBot" }).waitFor();
  await h.shot("06-conversation-en-small");
+});
+
+describe("Chinese locale", () => {
+	let zh: AppHarness;
+	beforeAll(async () => { zh = await launchApp("locale-zh", { firstLaunch: true, locale: "zh-CN" }); }, 90_000);
+	afterAll(async () => { await zh?.close(); });
+
+	it("opens the wizard in Chinese and keeps that language", async () => {
+		let page = zh.page();
+		const wizardText = () => page.locator(".onboarding-wizard").innerText();
+		await page.getByRole("heading", { name: "欢迎使用 OpenBot" }).waitFor();
+		expect(await page.locator("html").getAttribute("lang")).toBe("zh-CN");
+		expect(await wizardText()).not.toContain("Welcome to OpenBot");
+		expect(await wizardText()).toContain("你的个人 Bot 团队，运行在你的 Mac 上。");
+		await zh.shot("01-language-zh");
+		await page.getByRole("button", { name: "继续", exact: true }).click();
+		await page.getByRole("heading", { name: "连接一个模型" }).waitFor();
+		expect(await wizardText()).not.toContain("Connect one model");
+		expect(await wizardText()).toContain("获取 API Key");
+		await zh.shot("02-model-zh");
+		await page.getByRole("button", { name: "暂不连接" }).click();
+		await page.getByRole("heading", { name: "认识你的第一个 Bot" }).waitFor();
+		expect(await wizardText()).not.toContain("Meet your first Bot");
+		expect(await wizardText()).toContain("尚未连接模型，连接后 Bot 才能回复。");
+		await zh.shot("03-bot-zh");
+		await page.getByRole("button", { name: "就它了" }).click();
+		await page.getByRole("heading", { name: "你好，我是OpenBot" }).waitFor();
+		expect(await wizardText()).toContain("规划我的一周");
+		expect(await wizardText()).toContain("总结一个文件");
+		expect(await wizardText()).toContain("创建调研 Bot");
+		expect(await wizardText()).not.toContain("Start chatting");
+		await zh.shot("04-welcome-zh");
+		await page.getByRole("button", { name: "稍后设置" }).click();
+		await page.getByRole("textbox", { name: "发送消息给 OpenBot" }).waitFor();
+		await zh.relaunch();
+		page = zh.page();
+		await page.getByRole("textbox", { name: "发送消息给 OpenBot" }).waitFor();
+		expect(await page.locator("html").getAttribute("lang")).toBe("zh-CN");
+		expect(await page.getByRole("heading", { name: "欢迎使用 OpenBot" }).count()).toBe(0);
+	});
 });

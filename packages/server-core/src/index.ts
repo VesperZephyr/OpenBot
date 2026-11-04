@@ -439,7 +439,30 @@ export class HostService {
 						if (this.#runtime.listProviders().some(({ providerId }) => providerId === provider.id && !declared.has(providerId))) {
 							throw new ProtocolError("invalid_request", "This is a built-in provider; choose another ID");
 						}
-						await this.#modelConfig.write(mergeProvider(await this.#modelConfig.read(), provider));
+						const merged = mergeProvider(await this.#modelConfig.read(), provider);
+						if (provider.verify === true) {
+							const modelId = provider.modelIds.map((id) => id.trim()).find((id) => id !== "");
+							if (modelId === undefined) throw new ProtocolError("invalid_request", "Name at least one model ID");
+							const staged = {
+								id: provider.id,
+								name: provider.name.trim(),
+								baseUrl: provider.baseUrl.trim().replace(/\/+$/, ""),
+								api: provider.api,
+								modelIds: [modelId],
+							};
+							this.#runtime.holdProvider(staged, this.#modelConfig.environment);
+							const tested = await this.#runtime.testModel({ provider: provider.id, modelId });
+							if (!tested.ok) {
+								this.#runtime.holdProvider(undefined, this.#modelConfig.environment, provider.id);
+								throw new ProtocolError("invalid_request", tested.error ?? "Connection failed. Check your model settings.");
+							}
+						}
+						try {
+							await this.#modelConfig.write(merged);
+						} catch (error) {
+							if (provider.verify === true) this.#runtime.holdProvider(undefined, this.#modelConfig.environment, provider.id);
+							throw error;
+						}
 						return this.#settings();
 					});
 				this.#configWrites = next;

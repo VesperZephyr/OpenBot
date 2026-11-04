@@ -1,0 +1,246 @@
+.onboarding:has(.onboarding-wizard) {
+	align-items: center;
+	padding: 32px 24px;
+}
+
+.onboarding-wizard {
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+	width: min(760px, 100%);
+	padding: 32px;
+	border: none;
+	border-radius: 16px;
+	background: var(--surface);
+	box-shadow: var(--shadow);
+}
+
+.onboarding-top,
+.onboarding-actions,
+.onboarding-actions-end {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.onboarding-top,
+.onboarding-actions {
+	justify-content: space-between;
+}
+
+.onboarding-progress {
+	display: flex;
+	gap: 8px;
+	width: 128px;
+}
+
+.onboarding-progress span {
+	height: 4px;
+	flex: 1;
+	border-radius: 4px;
+	background: var(--border);
+}
+
+.onboarding-progress span[data-done="true"] {
+	background: var(--text);
+}
+
+.onboarding-wizard h1 {
+	margin: 0;
+	font-size: 20px;
+	line-height: 28px;
+	font-weight: 600;
+}
+
+.onboarding-wizard h1:focus {
+	outline: none;
+}
+
+.onboarding-wizard h1:focus-visible {
+	outline: 2px solid var(--unread);
+	outline-offset: 4px;
+}
+
+.onboarding-wizard .muted,
+.onboarding-note {
+	margin: 0;
+	color: var(--muted);
+	font-size: 14px;
+	line-height: 20px;
+}
+
+.onboarding-note {
+	font-size: 12px;
+	line-height: 16px;
+}
+
+.onboarding-languages [role="radiogroup"] {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 12px;
+}
+
+.onboarding-providers,
+.onboarding-examples {
+	display: grid;
+	gap: 12px;
+}
+
+.onboarding-providers {
+	grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+}
+
+.onboarding-provider-card {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 8px;
+	min-width: 0;
+	padding: 12px;
+	border-radius: 12px;
+	background: var(--surface-raised);
+}
+
+.onboarding-provider-card[data-selected="true"] {
+	background: var(--surface);
+	box-shadow: inset 0 0 0 1px var(--text);
+}
+
+.onboarding-provider {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 4px;
+	width: 100%;
+	padding: 0;
+	border: none;
+	background: transparent;
+	text-align: left;
+}
+
+.onboarding-provider span {
+	color: var(--muted);
+	font-size: 12px;
+	line-height: 16px;
+}
+
+.onboarding-wizard a {
+	color: var(--accent);
+	font-size: 12px;
+	line-height: 16px;
+}
+
+:root[data-theme="dark"] .onboarding-wizard a {
+	color: var(--unread);
+}
+
+.onboarding-key {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.onboarding-model-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	color: var(--muted);
+	font-size: 12px;
+	line-height: 16px;
+}
+
+.onboarding-model-row button,
+.onboarding-text-button,
+.onboarding-recovery button {
+	padding: 4px 8px;
+	border: none;
+	background: transparent;
+	color: var(--text);
+	font-size: 12px;
+	line-height: 16px;
+}
+
+.onboarding-failure {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 12px 16px;
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--attention) 12%, var(--surface));
+	color: var(--attention);
+}
+
+.onboarding-recovery {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.onboarding-recovery button {
+	border-radius: 8px;
+	background: var(--surface);
+	color: var(--text);
+}
+
+.onboarding-status {
+	margin: 0;
+	color: var(--text);
+}
+
+.onboarding-bot {
+	display: grid;
+	grid-template-columns: 160px minmax(0, 1fr);
+	gap: 24px;
+	align-items: start;
+}
+
+.onboarding-fields {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.onboarding-examples {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.onboarding-example {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 8px;
+	min-width: 0;
+	padding: 16px;
+	border-radius: 12px;
+	background: var(--surface-raised);
+}
+
+.onboarding-example h2 {
+	margin: 0;
+	font-size: 14px;
+	line-height: 20px;
+	font-weight: 600;
+}
+
+.onboarding-example p {
+	margin: 0;
+	color: var(--muted);
+	font-size: 12px;
+	line-height: 16px;
+}
+
+.onboarding-banner {
+	padding: 12px 16px;
+	border-radius: 12px;
+	background: var(--surface-raised);
+}
+
+@media (max-width: 720px) {
+	.onboarding-bot,
+	.onboarding-examples,
+	.onboarding-languages [role="radiogroup"] {
+		grid-template-columns: 1fr;
+	}
+}

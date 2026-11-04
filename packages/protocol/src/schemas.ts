@@ -229,6 +229,7 @@ export const HOST_PARAM_SCHEMAS = {
 		baseUrl: Type.String({ minLength: 1, maxLength: 2048 }),
 		api: Type.Enum(MODEL_APIS),
 		modelIds: Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { minItems: 1, maxItems: 50 }),
+		verify: Type.Optional(Type.Boolean()),
 	}),
 	"models.test": ModelRef,
 	"conversations.subscribe": strict({ botId: Type.Union([Id, Type.Null()]) }),

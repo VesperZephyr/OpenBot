@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 import type {
+	BotTemplateV1,
 	ImportChoices,
 	ImportResult,
 	ModelChoice,
@@ -30,6 +31,24 @@ async function readSelection(): Promise<Loaded> {
 		return { error: errorMessage(error) };
 	}
 }
+/** Open the existing import review for a template object. Inspect runs before the dialog offers import. */
+export function beginTemplateReview(template: BotTemplateV1): void {
+	if (useTemplateState.getState().action) return;
+	useTemplateState.setState({
+		action: {
+			mode: "import",
+			restoreFocus: document.querySelector<HTMLElement>(".onboarding-wizard h1"),
+			load: (async () => {
+				try {
+					return { review: await api["bots.templates.inspect"]({ template }) };
+				} catch (error) {
+					return { error: errorMessage(error) };
+				}
+			})(),
+		},
+	});
+}
+
 export function beginTemplateImport(): void {
 	if (!useTemplateState.getState().action)
 		useTemplateState.setState({
