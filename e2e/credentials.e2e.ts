@@ -83,6 +83,7 @@ it("reports denied native access without changing Keychain state or exposing a v
 		.page()
 		.getByRole("button", { name: /^Settings/ })
 		.click();
+	await h.page().getByRole("heading", { name: "Settings", exact: true }).waitFor();
 	await h
 		.page()
 		.getByText("Keychain access is unavailable. Unlock your Keychain or re-enter affected credentials.", { exact: true })
