@@ -42,7 +42,9 @@ beforeAll(async () => {
     h.model.script({text:"## A little clarity for today\n\nWe can keep this simple. I’ve organized your notes into three next steps.\n\n> Start with the one thing that would make today feel easier.\n\n1. Review the outline together.\n2. Turn the strongest idea into a draft.\n3. Leave room to change direction.\n\nYour files stay on this Mac. You can ask me to adjust the plan at any point."});
     await h.send("Help me turn these ideas into a clear plan.");
     await h.page().getByText("A little clarity for today",{exact:true}).waitFor();
-    await h.page().locator(".sidebar").getByText("Working",{exact:true}).waitFor({state:"hidden"});
+    const atlas = h.page().locator(".sidebar .bot-row").filter({ has: h.page().locator(".roster-name", { hasText: "Atlas" }) });
+    await atlas.locator(".activity-text").getByText("Working", { exact: true }).waitFor({ state: "hidden" });
+    await atlas.locator(".bot-row-role").getByText("Working", { exact: true }).waitFor({ state: "hidden" });
     const markRead = button("Mark as read");
     if (!(await markRead.isVisible())) {
         const more = h.page().getByRole("button", { name: "•••" });
