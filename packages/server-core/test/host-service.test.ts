@@ -491,6 +491,62 @@ describe("HostService", () => {
 		}
 	}, 20_000);
 
+	it("puts the previous key back when the provider file cannot be saved", async () => {
+		const canary = "sk-test-CANARY-xxx";
+		const endpoint = await chatEndpoint();
+		const write = configFile.write.bind(configFile);
+		configFile.write = async () => {
+			throw new Error("disk full");
+		};
+		try {
+			await service.handle("credentials.set", { providerId: "fresh", apiKey: "old-key" });
+			await expect(
+				service.handle("models.addProvider", {
+					id: "fresh",
+					name: "Fresh",
+					baseUrl: endpoint.url,
+					api: "openai-completions",
+					modelIds: ["fresh-model"],
+					verify: true,
+					secret: canary,
+				}),
+			).rejects.toThrow(/disk full/);
+			expect(await secrets.getApiKey("fresh")).toBe("old-key");
+			expect(configFile.text ?? "").not.toContain(canary);
+			expect(JSON.stringify(audit)).not.toContain(canary);
+			await service.handle("credentials.delete", { providerId: "fresh" });
+			await expect(
+				service.handle("models.addProvider", {
+					id: "fresh",
+					name: "Fresh",
+					baseUrl: endpoint.url,
+					api: "openai-completions",
+					modelIds: ["fresh-model"],
+					verify: true,
+					secret: canary,
+				}),
+			).rejects.toThrow(/disk full/);
+			expect(await secrets.getApiKey("fresh")).toBeUndefined();
+			expect(configFile.text ?? "").not.toContain("fresh");
+			expect(endpoint.authorizations.filter((value) => value === `Bearer ${canary}`).length).toBeGreaterThan(0);
+			await expect(
+				service.handle("models.addProvider", {
+					id: "faux",
+					name: "Faux",
+					baseUrl: endpoint.url,
+					api: "openai-completions",
+					modelIds: ["faux-1"],
+					verify: true,
+					secret: canary,
+				}),
+			).rejects.toThrow("built-in provider");
+			expect(endpoint.authorizations.filter((value) => value === `Bearer ${canary}`).length).toBe(2);
+		} finally {
+			configFile.write = write;
+			await endpoint.close();
+		}
+	}, 20_000);
+
 	it("tests a model with a real request and reports failures as results", async () => {
 		expect(await service.handle("models.test", SCRIPTED_MODEL)).toEqual({ ok: true });
 		const unknown = await service.handle("models.test", { provider: "faux", modelId: "nope" });

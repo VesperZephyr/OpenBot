@@ -435,6 +435,8 @@ export class HostService {
 					throw new ProtocolError("invalid_request", "Send a key only when verifying a provider");
 				}
 				if (provider.verify === true) {
+					await this.#reloadModelConfig();
+					if (this.#isBuiltinProviderId(provider.id)) throw new ProtocolError("invalid_request", "This is a built-in provider; choose another ID");
 					const modelId = provider.modelIds.map((id) => id.trim()).find((id) => id !== "");
 					if (modelId === undefined) throw new ProtocolError("invalid_request", "Name at least one model ID");
 					const tested = await this.#runtime.testProvider(
@@ -452,15 +454,20 @@ export class HostService {
 				}
 				const next = this.#configWrites.catch(() => {}).then(async () => {
 					await this.#reloadModelConfig();
-					const declared = new Set(this.#configStatus.providers.filter((entry) => !entry.overlay).map((entry) => entry.providerId));
-					if (this.#runtime.listProviders().some(({ providerId }) => providerId === provider.id && !declared.has(providerId))) {
-						throw new ProtocolError("invalid_request", "This is a built-in provider; choose another ID");
-					}
+					if (this.#isBuiltinProviderId(provider.id)) throw new ProtocolError("invalid_request", "This is a built-in provider; choose another ID");
 					const merged = mergeProvider(await this.#modelConfig.read(), provider);
-					if (provider.verify === true && provider.secret !== undefined && provider.secret.trim() !== "") {
-						await this.#secrets.setApiKey(provider.id, provider.secret.trim());
+					const secret = provider.verify === true && provider.secret !== undefined && provider.secret.trim() !== "" ? provider.secret.trim() : undefined;
+					const previousKey = secret === undefined ? undefined : await this.#secrets.getApiKey(provider.id);
+					if (secret !== undefined) await this.#secrets.setApiKey(provider.id, secret);
+					try {
+						await this.#modelConfig.write(merged);
+					} catch (error) {
+						if (secret !== undefined) {
+							if (previousKey === undefined) await this.#secrets.deleteApiKey(provider.id);
+							else await this.#secrets.setApiKey(provider.id, previousKey);
+						}
+						throw error;
 					}
-					await this.#modelConfig.write(merged);
 					return this.#settings();
 				});
 				this.#configWrites = next;
@@ -796,6 +803,12 @@ export class HostService {
 			workspace: this.#workspace,
 			webSearch: { provider: "tavily", configured: stored.has(TAVILY_PROVIDER_ID) },
 		};
+	}
+
+	/** A built-in id that the file does not declare. Overlays are edits of a built-in, so they stay allowed. */
+	#isBuiltinProviderId(id: string): boolean {
+		const declared = new Set(this.#configStatus.providers.filter((entry) => !entry.overlay).map((entry) => entry.providerId));
+		return this.#runtime.listProviders().some(({ providerId }) => providerId === id && !declared.has(providerId));
 	}
 
 	/** Re-read the model configuration so edits apply without restarting; cheap enough to run on every settings read. */

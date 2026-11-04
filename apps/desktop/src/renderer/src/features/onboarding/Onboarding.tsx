@@ -9,7 +9,7 @@ import { RadioGroup } from "../../ui/boardui/components/base/radio/radio";
 import { RadioCard } from "../../ui/boardui/components/base/radio/radio-card";
 import { api, connectModel, errorMessage, openBot, refreshBots, refreshSettings, report, useStore } from "../../store";
 import researchTemplate from "./research-bot.json" with { type: "json" };
-import { FILE_PROMPT, RECOMMENDED_PROVIDERS, WEEK_PROMPT, systemLanguage } from "./recommended";
+import { FILE_PROMPT, RECOMMENDED_PROVIDERS, WEEK_PROMPT, recommendedModelId, systemLanguage } from "./recommended";
 import { PROVIDER_KEY_URLS } from "./provider-links";
 import "./onboarding.css";
 
@@ -66,7 +66,7 @@ export function Onboarding() {
 	const recommended = RECOMMENDED_PROVIDERS.filter((provider) => models.some((model) => model.provider === provider.id));
 	const selectedId = recommended.some((provider) => provider.id === providerId) ? providerId : recommended[0]?.id ?? "";
 	const available = models.filter((model) => model.provider === selectedId);
-	const selectedModel = available.some((model) => model.modelId === modelId) ? modelId : available[0]?.modelId ?? "";
+	const selectedModel = available.some((model) => model.modelId === modelId) ? modelId : recommendedModelId(selectedId, available.map((model) => model.modelId));
 	const selected = available.find((model) => model.modelId === selectedModel);
 	const configured = settings?.providers.find((provider) => provider.providerId === selectedId)?.configured === true;
 	const hasModel = settings?.defaultModel !== undefined;
@@ -174,7 +174,7 @@ export function Onboarding() {
 			<div className="onboarding-progress" role="progressbar" aria-valuemin={1} aria-valuemax={STEPS} aria-valuenow={step + 1} aria-label={t("Setup progress")}>
 				{titles.map((_, index) => <span key={index} data-done={index <= step ? "true" : "false"} />)}
 			</div>
-			{step < 3 ? <button type="button" className="onboarding-text-button" onClick={() => void finish()}>{t("Set up later")}</button> : <span />}
+			{step === 0 || step === 2 ? <button type="button" className="onboarding-text-button" onClick={() => void finish()}>{t("Set up later")}</button> : <span />}
 		</div>
 		<h1 ref={heading} tabIndex={-1}>{title}</h1>
 		{step === 0 && <>
@@ -204,7 +204,7 @@ export function Onboarding() {
 				</div>
 				{selectedId !== "" && <div className="onboarding-key">
 					<div className="onboarding-model-row">
-						<span>{configured ? t("Key saved · not tested") : t("API key")}</span>
+						{configured ? <span>{t("Key saved · not tested")}</span> : null}
 						<span>{t("Model")}: {selected?.name ?? selectedModel}</span>
 						<button type="button" onClick={() => setShowModels(true)}>{t("Change model")}</button>
 					</div>
@@ -254,34 +254,33 @@ export function Onboarding() {
 			<p className="muted">{t("Opens in the composer. Nothing runs until you send it.")}</p>
 			{hasModel && <p className="onboarding-status" role="status">{t("Connected · {model} is your default", { model: settings?.defaultModel ? models.find((model) => model.provider === settings.defaultModel?.provider && model.modelId === settings.defaultModel?.modelId)?.name ?? settings.defaultModel.modelId : connected })}</p>}
 			<div className="onboarding-examples">
-				<article className="onboarding-example">
+				<button type="button" className="onboarding-example" disabled={busy} onClick={() => void (hasModel ? prefill(t(WEEK_PROMPT)) : Promise.resolve(setStep(1)))}>
 					<h2>{t("Plan my week")}</h2>
-					<p>{t("Turn daily tasks into a short plan.")}</p>
-					<button type="button" disabled={busy} onClick={() => void (hasModel ? prefill(t(WEEK_PROMPT)) : Promise.resolve(setStep(1)))}>{t(hasModel ? "Put in chat" : "Connect a model first")}</button>
-				</article>
-				<article className="onboarding-example">
+					<p>{t("Turn this week's to-dos into a short plan.")}</p>
+					{!hasModel && <p>{t("Available after you connect a model · Connect")}</p>}
+				</button>
+				<button type="button" className="onboarding-example" disabled={busy} onClick={() => void (hasModel ? (async () => {
+					setBusy(true);
+					setWelcomeError("");
+					try {
+						const result = await window.openbot.attachFiles();
+						if (result.errors[0]) setWelcomeError(result.errors[0]);
+						if (result.attachments.length === 0) return;
+						await prefill(t(FILE_PROMPT), result.attachments);
+					} catch (error) {
+						setWelcomeError(errorMessage(error));
+					} finally {
+						if (alive.current) setBusy(false);
+					}
+				})() : Promise.resolve(setStep(1)))}>
 					<h2>{t("Summarize a file")}</h2>
 					<p>{t("Choose a file and put it in the composer with the prompt. Summarizing starts when you send.")}</p>
-					<button type="button" disabled={busy} onClick={() => void (hasModel ? (async () => {
-						setBusy(true);
-						setWelcomeError("");
-						try {
-							const result = await window.openbot.attachFiles();
-							if (result.errors[0]) setWelcomeError(result.errors[0]);
-							if (result.attachments.length === 0) return;
-							await prefill(t(FILE_PROMPT), result.attachments);
-						} catch (error) {
-							setWelcomeError(errorMessage(error));
-						} finally {
-							if (alive.current) setBusy(false);
-						}
-					})() : Promise.resolve(setStep(1)))}>{t(hasModel ? "Choose file" : "Connect a model first")}</button>
-				</article>
-				<article className="onboarding-example">
+					{!hasModel && <p>{t("Available after you connect a model · Connect")}</p>}
+				</button>
+				<button type="button" className="onboarding-example" disabled={busy} onClick={() => beginTemplateReview(researchBot, heading.current, (outcome, botId) => { if (outcome === "imported" && botId) void finish(botId); })}>
 					<h2>{t("Create a research Bot")}</h2>
 					<p>{t("Built-in template. You review permissions before import.")}</p>
-					<button type="button" disabled={busy} onClick={() => hasModel ? beginTemplateReview(researchBot, heading.current, (outcome, botId) => { if (outcome === "imported" && botId) void finish(botId); }) : setStep(1)}>{t(hasModel ? "Review and create" : "Connect a model first")}</button>
-				</article>
+				</button>
 			</div>
 			{welcomeError && <p className="onboarding-failure" role="alert">{t(welcomeError)}</p>}
 		</>}

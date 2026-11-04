@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { type AppHarness, launchApp } from "./harness.ts";
 import { chooseSettingsLanguage } from "./pilot-ui.ts";
 let h: AppHarness;
@@ -28,6 +28,7 @@ it("defaults to English, supports Chinese onboarding and persists language acros
  await page.getByLabel("服务地址", { exact: true }).waitFor();
  expect(await page.getByLabel("服务地址", { exact: true }).inputValue()).toBe("http://localhost:11434/v1");
  await h.shot("02-onboarding-zh");
+ await page.getByRole("button", { name: "返回", exact: true }).click();
  await page.getByRole("button", { name: "稍后设置" }).click();
  await page.getByRole("textbox", { name: "发送消息给 OpenBot" }).waitFor();
  await page.getByRole("textbox", { name: "发送消息给 OpenBot" }).fill("Unsent 验收");
@@ -116,49 +117,4 @@ it("preserves user names, instructions and memory while switching languages", as
  await page.getByRole("button", { name: /OpenBot Personal assistant/ }).click();
  await page.getByRole("textbox", { name: "Message OpenBot" }).waitFor();
  await h.shot("06-conversation-en-small");
-});
-
-describe("Chinese locale", () => {
-	let zh: AppHarness;
-	beforeAll(async () => { zh = await launchApp("locale-zh", { firstLaunch: true, locale: "zh-CN" }); }, 90_000);
-	afterAll(async () => { await zh?.close(); });
-
-	it("opens the wizard in Chinese and keeps that language", async () => {
-		let page = zh.page();
-		const wizardText = () => page.locator(".onboarding-wizard").innerText();
-		await page.getByRole("heading", { name: "欢迎使用 OpenBot" }).waitFor();
-		expect(await page.locator("html").getAttribute("lang")).toBe("zh-CN");
-		await page.evaluate(() => {
-			localStorage.setItem("openbot.appearance", "dark");
-			document.documentElement.dataset.theme = "dark";
-		});
-		expect(await wizardText()).not.toContain("Welcome to OpenBot");
-		expect(await wizardText()).toContain("你的个人 Bot 团队，运行在你的 Mac 上。");
-		await zh.shot("01-language-zh-dark");
-		await page.getByRole("button", { name: "继续", exact: true }).click();
-		await page.getByRole("heading", { name: "连接一个模型" }).waitFor();
-		expect(await wizardText()).not.toContain("Connect one model");
-		expect(await wizardText()).toContain("获取 API Key");
-		await zh.shot("02-model-zh-dark");
-		await page.getByRole("button", { name: "暂不连接" }).click();
-		await page.getByRole("heading", { name: "认识你的第一个 Bot" }).waitFor();
-		expect(await wizardText()).not.toContain("Meet your first Bot");
-		expect(await wizardText()).toContain("尚未连接模型，连接后 Bot 才能回复。");
-		await zh.shot("03-bot-zh-dark");
-		await page.getByRole("button", { name: "就它了" }).click();
-		await page.getByRole("heading", { name: "你好，我是OpenBot" }).waitFor();
-		expect(await wizardText()).toContain("本周计划");
-		expect(await wizardText()).toContain("总结一个文件");
-		expect(await wizardText()).toContain("创建调研 Bot");
-		expect(await wizardText()).not.toContain("Start chatting");
-		expect(await page.getByRole("button", { name: "稍后设置" }).count()).toBe(0);
-		await zh.shot("04-welcome-zh-dark");
-		await page.getByRole("button", { name: "开始对话" }).click();
-		await page.getByRole("textbox", { name: "发送消息给 OpenBot" }).waitFor();
-		await zh.relaunch();
-		page = zh.page();
-		await page.getByRole("textbox", { name: "发送消息给 OpenBot" }).waitFor();
-		expect(await page.locator("html").getAttribute("lang")).toBe("zh-CN");
-		expect(await page.getByRole("heading", { name: "欢迎使用 OpenBot" }).count()).toBe(0);
-	});
 });

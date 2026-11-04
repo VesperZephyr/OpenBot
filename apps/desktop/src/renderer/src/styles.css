@@ -198,6 +198,19 @@ code {
 	-webkit-app-region: drag;
 }
 
+.sidebar-titlebar:has(.sidebar-product) {
+	height: auto;
+	min-height: 28px;
+}
+
+.sidebar-product {
+	display: block;
+	padding: 6px 12px 0;
+	font-size: 13px;
+	font-weight: 600;
+	line-height: 20px;
+}
+
 .new-button {
 	display: flex;
 	align-items: center;

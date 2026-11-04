@@ -7,6 +7,14 @@ export const RECOMMENDED_PROVIDERS = [
 	{ id: "openai", name: "OpenAI", blurb: "General use" },
 ] as const;
 
+export const MINIMAX_DEFAULT_MODEL = "MiniMax-M3";
+
+/** MiniMax opens on M3 when that catalog entry exists. Every other provider keeps the first listed model. */
+export function recommendedModelId(providerId: string, modelIds: readonly string[]): string {
+	if (providerId === "minimax" && modelIds.includes(MINIMAX_DEFAULT_MODEL)) return MINIMAX_DEFAULT_MODEL;
+	return modelIds[0] ?? "";
+}
+
 export const WEEK_PROMPT = "Help me plan this week. Ask if something important is missing, then give a short plan.";
 export const FILE_PROMPT = "Summarize the attached file. List the main points and anything unclear.";
 

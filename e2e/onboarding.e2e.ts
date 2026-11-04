@@ -32,7 +32,7 @@ async function leaks(app: AppHarness, logs: readonly string[], requests: unknown
 it("screenshots each step, hides set up later on the last step, and can reopen the wizard", async () => {
 	const h = await launchApp("onboarding-steps", { firstLaunch: true, locale: "en" });
 	try {
-		const page = h.page();
+		let page = h.page();
 		const keys = await settingsKeys(h);
 		await page.getByRole("heading", { name: "Welcome to OpenBot" }).waitFor();
 		for (const mode of ["light", "dark"] as const) {
@@ -42,6 +42,8 @@ it("screenshots each step, hides set up later on the last step, and can reopen t
 		await theme(h, "light");
 		await page.getByRole("button", { name: "Continue", exact: true }).click();
 		await page.getByRole("heading", { name: "Connect one model" }).waitFor();
+		expect(await page.getByRole("button", { name: "Set up later" }).count()).toBe(0);
+		expect(await page.getByRole("button", { name: "Continue without a model" }).count()).toBe(1);
 		for (const mode of ["light", "dark"] as const) {
 			await theme(h, mode);
 			await h.shot(`02-model-${mode}`);
@@ -77,10 +79,62 @@ it("screenshots each step, hides set up later on the last step, and can reopen t
 		await h.page().getByRole("textbox", { name: "Message OpenBot" }).waitFor();
 		expect(await h.page().getByRole("heading", { name: "Welcome to OpenBot" }).count()).toBe(0);
 		expect(await settingsKeys(h)).toEqual(keys);
+		page = h.page();
+		await page.getByRole("button", { name: /^Settings/ }).click();
+		await page.getByRole("button", { name: "Open the setup wizard again" }).click();
+		await page.locator(".onboarding-languages").getByText("简体中文", { exact: true }).click();
+		const wizardText = () => page.locator(".onboarding-wizard").innerText();
+		await page.getByRole("heading", { name: "欢迎使用 OpenBot" }).waitFor();
+		expect(await page.locator("html").getAttribute("lang")).toBe("zh-CN");
+		expect(await wizardText()).not.toContain("Welcome to OpenBot");
+		expect(await wizardText()).toContain("你的个人 Bot 团队，运行在你的 Mac 上。");
+		for (const mode of ["light", "dark"] as const) {
+			await theme(h, mode);
+			await h.shot(`01-language-zh-${mode}`);
+		}
+		await theme(h, "light");
+		await page.getByRole("button", { name: "继续", exact: true }).click();
+		await page.getByRole("heading", { name: "连接一个模型" }).waitFor();
+		expect(await wizardText()).not.toContain("Connect one model");
+		expect(await wizardText()).toContain("获取 API Key");
+		for (const mode of ["light", "dark"] as const) {
+			await theme(h, mode);
+			await h.shot(`02-model-zh-${mode}`);
+		}
+		await theme(h, "light");
+		await page.getByRole("button", { name: "暂不连接" }).click();
+		await page.getByRole("heading", { name: "认识你的第一个 Bot" }).waitFor();
+		expect(await wizardText()).not.toContain("Meet your first Bot");
+		expect(await wizardText()).toContain("尚未连接模型，连接后 Bot 才能回复。");
+		for (const mode of ["light", "dark"] as const) {
+			await theme(h, mode);
+			await h.shot(`03-bot-zh-${mode}`);
+		}
+		await theme(h, "light");
+		await page.getByRole("button", { name: "就它了" }).click();
+		await page.getByRole("heading", { name: "你好，我是OpenBot" }).waitFor();
+		expect(await wizardText()).toContain("本周计划");
+		expect(await wizardText()).toContain("总结一个文件");
+		expect(await wizardText()).toContain("创建调研 Bot");
+		expect(await wizardText()).toContain("连接模型后可用 · 去连接");
+		expect(await wizardText()).not.toContain("Start chatting");
+		expect(await page.getByRole("button", { name: "稍后设置" }).count()).toBe(0);
+		for (const mode of ["light", "dark"] as const) {
+			await theme(h, mode);
+			await h.shot(`04-welcome-zh-${mode}`);
+		}
+		await theme(h, "light");
+		await page.getByRole("button", { name: "开始对话" }).click();
+		await page.getByRole("textbox", { name: "发送消息给 OpenBot" }).waitFor();
+		await h.relaunch();
+		page = h.page();
+		await page.getByRole("textbox", { name: "发送消息给 OpenBot" }).waitFor();
+		expect(await page.locator("html").getAttribute("lang")).toBe("zh-CN");
+		expect(await page.getByRole("heading", { name: "欢迎使用 OpenBot" }).count()).toBe(0);
 	} finally {
 		await h.close();
 	}
-}, 120_000);
+}, 180_000);
 
 describe("connection", () => {
 	let app: AppHarness;
@@ -234,19 +288,21 @@ it("imports the built-in research template only after confirmation and then leav
 		await page.getByRole("button", { name: "Continue without a model" }).click();
 		await page.getByRole("button", { name: "Looks good" }).click();
 		await page.getByRole("heading", { name: "Hello, I'm OpenBot" }).waitFor();
+		const research = page.getByRole("button", { name: /Create a research Bot/ });
+		await research.waitFor();
+		expect(await research.isEnabled()).toBe(true);
 		const models = await app.api("models.list");
 		const openai = models.find((model: { provider: string }) => model.provider === "openai");
 		await app.api("settings.update", { defaultModel: { provider: "openai", modelId: openai.modelId } });
-		await page.getByRole("button", { name: "Review and create" }).waitFor();
 		const before = (await app.api("bots.list")).length;
-		await page.getByRole("button", { name: "Review and create" }).click();
+		await research.click();
 		const dialog = page.getByRole("dialog", { name: "Import template", exact: true });
 		await dialog.getByText("Research a question the user names.").waitFor();
 		await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
 		await dialog.waitFor({ state: "detached" });
 		await page.getByRole("heading", { name: "Hello, I'm OpenBot" }).waitFor();
 		expect(await app.api("bots.list")).toHaveLength(before);
-		await page.getByRole("button", { name: "Review and create" }).click();
+		await research.click();
 		await dialog.getByRole("button", { name: "Import Bot", exact: true }).click();
 		await page.getByRole("textbox", { name: "Message Research" }).waitFor();
 		expect(await page.getByRole("heading", { name: "Hello, I'm OpenBot" }).count()).toBe(0);

@@ -117,7 +117,7 @@ export function App() {
 		<div className="app">
             <WorkspaceLayout
 				sidebar={<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />}
-				inspector={wide && view.kind === "bot" ? <BotIdentity key={view.botId} botId={view.botId} profileOpen={editorBotId === view.botId} /> : wide && view.kind === "group" ? <GroupIdentity key={view.groupId} groupId={view.groupId} /> : undefined}
+				inspector={onboarding === true ? undefined : wide && view.kind === "bot" ? <BotIdentity key={view.botId} botId={view.botId} profileOpen={editorBotId === view.botId} /> : wide && view.kind === "group" ? <GroupIdentity key={view.groupId} groupId={view.groupId} /> : undefined}
 			>
 			<main className="main">
 				<RestoreNotice />
@@ -230,10 +230,11 @@ function Sidebar({ onNew, query, onQuery, searchOpen, onSearchOpen }: { onNew: (
 			`${bot.name} ${bot.role}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
 	);
 	const selected = view.kind === "bot" ? view.botId : undefined;
+	const onboarding = useStore((state) => state.onboarding);
 
 	return (
 		<nav className="sidebar" aria-label={t("Bots")}>
-			<div className="sidebar-titlebar" />
+			<div className="sidebar-titlebar">{onboarding === true ? <span className="sidebar-product">OpenBot</span> : null}</div>
             <div className="sidebar-toolbar">
                 <span className="sidebar-brand">OpenBot</span>
                 <button className="icon-button" aria-label={t("Search conversations")} title={t("Search conversations")} aria-expanded={searchOpen} onClick={() => { onSearchOpen(!searchOpen); if (searchOpen) { onQuery(""); setUnreadOnly(false); } }}><InterfaceIcon name="search" /></button>
