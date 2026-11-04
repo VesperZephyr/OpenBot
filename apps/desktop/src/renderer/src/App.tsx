@@ -122,7 +122,10 @@ export function App() {
                 if (entry) {
                     event.preventDefault();
                     if (entry.kind === "bot") void openBot(entry.bot.botId).catch(report);
-                    else useStore.setState({ view: { kind: "group", groupId: entry.group.groupId }, searchTarget: undefined });
+                    else {
+						closeSettings();
+						useStore.setState({ view: { kind: "group", groupId: entry.group.groupId }, searchTarget: undefined });
+					}
                 }
 			}
 		};

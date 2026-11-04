@@ -221,6 +221,7 @@ export function closeSettings(): void {
 }
 
 export async function openBot(botId: string, searchTarget?: SearchTarget): Promise<void> {
+	closeSettings();
 	const view = useStore.getState().view;
 	if (view.kind === "bot" && view.botId !== botId && !requestIdentityClose({ kind: "bot", botId })) {
 		setDetailsOpen(true);
