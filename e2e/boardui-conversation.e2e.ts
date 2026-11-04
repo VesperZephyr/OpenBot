@@ -109,6 +109,19 @@ it("saves a renamed Bot from the detail form", async () => {
 	await poll(async () => (await h.api("bots.list")).find((bot: { botId: string }) => bot.botId === atlasId).name).toBe("Atlas kept");
 });
 
+it("shows an external profile change without a conflict notice", async () => {
+	const panel = h.page().locator(".bot-identity");
+	await panel.getByRole("button", { name: "Edit", exact: true }).waitFor();
+	expect(await panel.locator(".identity-form").count()).toBe(0);
+	const current = (await h.api("bots.list")).find((bot: { botId: string; revision: number }) => bot.botId === atlasId);
+	await h.api("bots.update", { botId: atlasId, expectedRevision: current.revision, name: "Atlas synced", role: "Field notes" });
+	await panel.locator(".identity-name").getByText("Atlas synced", { exact: true }).waitFor();
+	await panel.getByText("Field notes", { exact: true }).waitFor();
+	await h.page().locator(".conversation-name").getByText("Atlas synced", { exact: true }).waitFor();
+	await h.page().locator(".conversation-role").getByText("Field notes", { exact: true }).waitFor();
+	expect(await h.page().getByText("Profile changed. Reload before saving your draft.").count()).toBe(0);
+});
+
 it("reports a revision conflict instead of overwriting the name", async () => {
 	const panel = h.page().locator(".bot-identity");
 	await panel.getByRole("button", { name: "Edit", exact: true }).click();
@@ -119,6 +132,11 @@ it("reports a revision conflict instead of overwriting the name", async () => {
 	await panel.locator(".identity-alert").getByText("Profile changed. Reload before saving your draft.").waitFor();
 	await panel.locator(".identity-alert").getByText("Close this editor and open it again.").waitFor();
 	expect((await h.api("bots.list")).find((bot: { botId: string }) => bot.botId === atlasId).name).toBe("Atlas remote");
+	await h.page().locator(".toast").getByRole("button", { name: "Dismiss", exact: true }).click();
+	await h.page().locator(".toast").waitFor({ state: "hidden" });
+	await panel.getByRole("button", { name: "Cancel", exact: true }).click();
+	await panel.getByRole("button", { name: "Discard", exact: true }).click();
+	await panel.getByRole("button", { name: "Edit", exact: true }).waitFor();
 });
 
 it("switches the composer model twice", async () => {
@@ -164,6 +182,7 @@ it("closes the detail form when the conversation editor opens", async () => {
 it("captures the review states in light and dark", async () => {
 	await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1280, 820));
 	await h.api("settings.update", { language: "en" });
+	expect(await h.page().getByText("Profile changed. Reload before saving your draft.").count()).toBe(0);
 	const panel = h.page().locator(".bot-identity");
 	const atlas = async () => (await h.api("bots.list")).find((bot: { botId: string; revision: number }) => bot.botId === atlasId);
 
