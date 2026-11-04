@@ -942,6 +942,7 @@ export const chinese: Readonly<Record<string, string>> = {
 	"More actions": "更多操作",
 	"Default ({name})": "默认（{name}）",
 	"Model unavailable": "模型不可用",
+	"Model settings": "模型设置",
 	"This Bot uses this model from now on.": "此 Bot 之后都使用该模型",
 	"Show more": "展开",
 	"Show less": "收起",

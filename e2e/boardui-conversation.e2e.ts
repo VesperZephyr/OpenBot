@@ -138,7 +138,7 @@ it("switches the composer model twice", async () => {
 	const revision = (await h.api("bots.list")).find((bot: { botId: string; revision: number }) => bot.botId === atlasId).revision;
 	await h.api("bots.update", { botId: atlasId, expectedRevision: revision, model: { provider: "missing", modelId: "nope" } });
 	await h.page().locator(".composer-model").getByText("Model unavailable", { exact: true }).waitFor();
-	await h.page().locator(".composer-model").getByRole("button", { name: "Settings", exact: true }).click();
+	await h.page().locator(".composer-model").getByRole("button", { name: "Model settings", exact: true }).click();
 	await h.page().getByRole("heading", { name: "Settings", exact: true }).waitFor();
 	await h.page().getByRole("button", { name: "Back to chat" }).click();
 	await h.page().getByRole("textbox", { name: /Message / }).waitFor();

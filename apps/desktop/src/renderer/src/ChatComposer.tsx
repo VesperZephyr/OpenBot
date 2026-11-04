@@ -359,7 +359,7 @@ function ComposerModel({ conversationKey, selectable }: { readonly conversationK
 			<span className="composer-model">
 				<span>{t("Model unavailable")}</span>
 				<button type="button" onClick={() => useStore.setState({ view: { kind: "settings" } })}>
-					{t("Settings")}
+					{t("Model settings")}
 				</button>
 			</span>
 		);
