@@ -13,11 +13,18 @@ export function ModelSelect(props: {
 	useEffect(() => {
 		if (models.length > 0) return;
 		let active = true;
-		void api["models.list"]({})
-			.then((list) => {
-				if (active && list.length > 0) useStore.setState({ models: list });
-			})
-			.catch(() => undefined);
+		const load = (): void => {
+			void api["models.list"]({})
+				.then((list) => {
+					if (!active) return;
+					if (list.length > 0) useStore.setState({ models: list });
+					else window.setTimeout(load, 400);
+				})
+				.catch(() => {
+					if (active) window.setTimeout(load, 400);
+				});
+		};
+		load();
 		return () => {
 			active = false;
 		};
