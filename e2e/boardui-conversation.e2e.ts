@@ -202,7 +202,8 @@ it("captures the review states in light and dark", async () => {
 	await panel.locator(".identity-bio.is-open").waitFor();
 	await h.shot("prompt-expanded-light");
 	await appearance("Dark");
-	await panel.getByRole("button", { name: "Show more", exact: true }).click();
+	const showMore = panel.getByRole("button", { name: "Show more", exact: true });
+	if (await showMore.count()) await showMore.click();
 	await panel.locator(".identity-bio.is-open").waitFor();
 	await h.shot("prompt-expanded-dark");
 	await appearance("Light");

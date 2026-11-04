@@ -77,6 +77,21 @@ export function App() {
 	const [query, setQuery] = useState("");
 	const [searchOpen, setSearchOpen] = useState(false);
 	useEffect(() => { if (searchOpen) document.querySelector<HTMLInputElement>(".conversation-search")?.focus(); }, [searchOpen]);
+	useEffect(() => {
+		if (onboarding === true && settingsOverlay) closeSettings();
+	}, [onboarding, settingsOverlay]);
+	useEffect(() => {
+		if (!settingsOverlay) return;
+		const onKey = (event: KeyboardEvent): void => {
+			if (event.key !== "Escape" || event.isComposing) return;
+			if (document.querySelector('[role="listbox"], [role="menu"]')) return;
+			event.preventDefault();
+			event.stopPropagation();
+			closeSettings();
+		};
+		document.addEventListener("keydown", onKey, true);
+		return () => document.removeEventListener("keydown", onKey, true);
+	}, [settingsOverlay]);
 
 	useEffect(() => connect(), []);
 
@@ -95,7 +110,10 @@ export function App() {
 			} else if (event.key === ",") {
 				event.preventDefault();
 				if (useStore.getState().settingsOverlay) closeSettings();
-				else openSettings();
+				else {
+					if (useStore.getState().view.kind === "routines") useStore.setState({ view: lastChat.current });
+					openSettings();
+				}
 			} else if (event.shiftKey && event.key.toLowerCase() === "i") {
 				event.preventDefault();
 				if (useStore.getState().view.kind === "bot") toggleDetails();
@@ -115,7 +133,13 @@ export function App() {
 	return (
 		<div className="app">
             <WorkspaceLayout
-				sidebar={<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} />}
+				sidebar={<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} onSettings={() => {
+					if (useStore.getState().settingsOverlay) closeSettings();
+					else {
+						if (useStore.getState().view.kind === "routines") useStore.setState({ view: lastChat.current });
+						openSettings();
+					}
+				}} />}
 				inspector={onboarding === true ? undefined : wide && view.kind === "bot" && detailsOpen ? <BotIdentity key={view.botId} botId={view.botId} profileOpen={editorBotId === view.botId} /> : wide && view.kind === "group" ? <GroupIdentity key={view.groupId} groupId={view.groupId} /> : undefined}
 			>
 			<main className="main">
@@ -141,6 +165,19 @@ export function App() {
 						)}
 						{view.kind === "group" && <GroupView key={view.groupId} groupId={view.groupId} renderExecution={(botId,deliveryId)=><HistoryTranscript snapshot={{botId,channelId:view.groupId,items:[],approvals:[]}} conversationKey={`group:${view.groupId}`} deliveryId={deliveryId}/>}/>}
 						{view.kind === "home" && <Home onNew={() => setCreating(true)} />}
+						{settingsOverlay && (
+							<>
+								<div className="settings-scrim" onClick={() => closeSettings()} />
+								<div className="settings-overlay" role="dialog" aria-modal="true" aria-label={t("Settings")}>
+									<SettingsWorkspace
+										view={{ kind: settingsOverlay }}
+										onBack={() => closeSettings()}
+										onSelect={selectSettings}
+										renderTranscript={(snapshot, occurrenceId) => <HistoryTranscript snapshot={snapshot} occurrenceId={occurrenceId} />}
+									/>
+								</div>
+							</>
+						)}
 					</>
 				)}
 			</main>
@@ -173,20 +210,6 @@ export function App() {
 			/>
 			{creatingGroup && <GroupEditor onClose={() => setCreatingGroup(false)} />}
 			{creating && <NewBotDialog onClose={() => setCreating(false)} />}
-			{settingsOverlay && (
-				<>
-					<div className="settings-scrim" onClick={() => closeSettings()} />
-					<div className="settings-overlay" role="dialog" aria-modal="true" aria-label={t("Settings")}>
-						<SettingsWorkspace
-							view={{ kind: settingsOverlay }}
-							dialog
-							onBack={() => closeSettings()}
-							onSelect={selectSettings}
-							renderTranscript={(snapshot, occurrenceId) => <HistoryTranscript snapshot={snapshot} occurrenceId={occurrenceId} />}
-						/>
-					</div>
-				</>
-			)}
 			{notice !== undefined && (
 				<div className="toast" role="status">
 					<span>{t(presentError(notice))}</span>
@@ -208,7 +231,7 @@ function chatEntries(state: Pick<ReturnType<typeof useStore.getState>, "bots" | 
     return entries.toSorted((a, b) => b.priority - a.priority || recentTime(b.key, state.summaries, b.at) - recentTime(a.key, state.summaries, a.at) || a.key.localeCompare(b.key));
 }
 
-function Sidebar({ onNew, query, onQuery, searchOpen, onSearchOpen }: { onNew: () => void; query: string; onQuery: (v: string) => void; searchOpen: boolean; onSearchOpen: (open: boolean) => void }) {
+function Sidebar({ onNew, query, onQuery, searchOpen, onSearchOpen, onSettings }: { onNew: () => void; query: string; onQuery: (v: string) => void; searchOpen: boolean; onSearchOpen: (open: boolean) => void; onSettings: () => void }) {
 	const bots = useStore((state) => state.bots);
 	const summaries = useStore((state) => state.summaries);
 	const groups = useStore(state => state.groups);
@@ -303,7 +326,7 @@ function Sidebar({ onNew, query, onQuery, searchOpen, onSearchOpen }: { onNew: (
 					type="button"
 					aria-label={t("Settings")} title={t("Settings")}
 					className={`settings-icon icon-button ${settingsOverlay || view.kind === "routines" ? "is-selected" : ""}`}
-					onClick={() => (settingsOverlay ? closeSettings() : openSettings())}
+					onClick={onSettings}
 				>
 					<InterfaceIcon name="settings" />
 				</button>

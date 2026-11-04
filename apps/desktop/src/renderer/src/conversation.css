@@ -604,8 +604,8 @@
 
 /* D7: management lives inside Settings; the conversation stays the primary surface. */
 .settings-workspace { display:flex; height:100%; min-height:0; }
-.settings-scrim { position:fixed; inset:0; z-index:21; background:var(--overlay); }
-.settings-overlay { position:fixed; z-index:22; left:50%; top:50%; transform:translate(-50%, -50%); width:min(880px, calc(100vw - 48px)); height:min(640px, calc(100vh - 48px)); border-radius:16px; background:var(--bg); box-shadow:var(--shadow); overflow:hidden; }
+.settings-scrim { position:absolute; inset:0; z-index:21; background:var(--overlay); }
+.settings-overlay { position:absolute; z-index:22; left:50%; top:50%; transform:translate(-50%, -50%); width:min(880px, calc(100% - 32px)); height:min(640px, calc(100% - 32px)); border-radius:16px; background:var(--bg); box-shadow:var(--shadow); overflow:hidden; }
 .settings-overlay .settings-workspace { height:100%; }
 .settings-heading h1 { font-size:20px; line-height:28px; font-weight:600; }
 .settings-navigation { width:176px; flex-shrink:0; border-right:1px solid var(--border); padding:28px 14px; display:flex; flex-direction:column; gap:5px; }

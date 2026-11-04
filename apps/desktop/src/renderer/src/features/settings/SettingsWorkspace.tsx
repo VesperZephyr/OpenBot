@@ -30,13 +30,11 @@ export function SettingsWorkspace({
 	view,
 	onBack,
 	onSelect,
-	dialog = false,
 	renderTranscript,
 }: {
 	readonly view: Extract<View, { kind: "settings" | "skills" | "connectors" | "routines" }>;
 	readonly onBack: () => void;
 	readonly onSelect: (kind: SettingsDestination) => void;
-	readonly dialog?: boolean;
 	readonly renderTranscript: (snapshot: ConversationSnapshot, occurrenceId: string) => ReactNode;
 }) {
 	const movePage = (event: ReactKeyboardEvent<HTMLElement>): void => {
@@ -52,7 +50,7 @@ export function SettingsWorkspace({
 	return (
 		<div className="settings-workspace">
 			<nav className="settings-navigation" aria-label={t("Settings navigation")} onKeyDown={movePage}>
-				<button className="back-to-chat" aria-label={t("Back to chat")} onClick={onBack} {...(dialog ? { "data-dialog-close": "" } : {})}>
+				<button className="back-to-chat" aria-label={t("Back to chat")} onClick={onBack}>
 					← {t("Back to chat")}
 				</button>
 				<p className="settings-nav-title">{t("Settings")}</p>

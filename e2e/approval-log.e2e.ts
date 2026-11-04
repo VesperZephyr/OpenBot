@@ -23,14 +23,16 @@ it("keeps an allowed action in that conversation after restart", async () => {
 		await card.getByRole("button", { name: "Allow once", exact: true }).click();
 		await page.getByText("The note is kept.", { exact: true }).waitFor();
 		await h.relaunch();
-		await row("Ada").click();
-		await page.getByRole("textbox", { name: "Message Ada" }).waitFor();
-		const record = page.getByRole("group", { name: "Approval record" });
+		const reopened = h.page();
+		const again = (name: string) => reopened.locator(".bot-row").filter({ has: reopened.getByText(name, { exact: true }) });
+		await again("Ada").click();
+		await reopened.getByRole("textbox", { name: "Message Ada" }).waitFor();
+		const record = reopened.getByRole("group", { name: "Approval record" });
 		await record.waitFor();
 		expect(await record.innerText()).toContain("Allowed once");
-		await row("Bee").click();
-		await page.getByRole("textbox", { name: "Message Bee" }).waitFor();
-		expect(await page.getByRole("group", { name: "Approval record" }).count()).toBe(0);
+		await again("Bee").click();
+		await reopened.getByRole("textbox", { name: "Message Bee" }).waitFor();
+		expect(await reopened.getByRole("group", { name: "Approval record" }).count()).toBe(0);
 	} finally {
 		await h?.close();
 	}
