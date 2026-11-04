@@ -7,6 +7,7 @@ import { t } from "../../i18n";
 import { ModelSetup } from "../../ModelSetup";
 import { RadioGroup } from "../../ui/boardui/components/base/radio/radio";
 import { RadioCard } from "../../ui/boardui/components/base/radio/radio-card";
+import { readHostError } from "../../../../shared/api";
 import { api, connectModel, errorMessage, openBot, refreshBots, refreshSettings, report, useStore } from "../../store";
 import researchTemplate from "./research-bot.json" with { type: "json" };
 import { FILE_PROMPT, RECOMMENDED_PROVIDERS, WEEK_PROMPT, recommendedModelId, systemLanguage } from "./recommended";
@@ -144,8 +145,9 @@ export function Onboarding() {
 			await refreshBots();
 			setStep(3);
 		} catch (error) {
-			const message = errorMessage(error);
-			if (/Profile changed|Reload before saving/.test(message)) {
+			const failure = readHostError(error);
+			const message = failure.message;
+			if (failure.code === "request_conflict") {
 				await refreshBots();
 				const fresh = useStore.getState().bots.find((bot) => bot.botId === core.botId);
 				if (fresh) setName(fresh.name);

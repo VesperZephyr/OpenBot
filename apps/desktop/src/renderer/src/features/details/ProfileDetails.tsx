@@ -8,7 +8,8 @@ import { RoleSkills } from "../../RoleSkills";
 import { UsagePanel } from "../../UsagePanel";
 import { DetailsPanel } from "../../ConversationUI";
 import { t } from "../../i18n";
-import { api, errorMessage, refreshBots, report, useStore } from "../../store";
+import { readHostError } from "../../../../shared/api";
+import { api, refreshBots, report, useStore } from "../../store";
 import { ModelSelect } from "../../ModelSelect";
 
 export function ProfileDetails({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
@@ -50,6 +51,8 @@ export function EditProfile({ bot, onClose }: { readonly bot: BotSummary; readon
 const THINKING_LABEL: Record<ThinkingLevel, string> = { off: "Off", low: "Low", medium: "Medium", high: "High" };
 
 function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
+	const [botId] = useState(bot.botId);
+	const [opened] = useState({ name: bot.name, role: bot.role, instructions: bot.instructions });
 	const [revision, setRevision] = useState(bot.revision);
 	const [avatar, setAvatar] = useState<AvatarChange>();
 	const [profileBase, setProfileBase] = useState(bot);
@@ -74,7 +77,7 @@ function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 		setSaving(true);
 		try {
 			await api["bots.update"]({
-				botId: bot.botId,
+				botId,
 				expectedRevision: revision,
 				...(avatar ? { avatar } : {}),
 				defaultSkills,
@@ -87,7 +90,25 @@ function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 			await refreshBots();
 			onClose();
 		} catch (error) {
-			setSaveError(errorMessage(error));
+			const failure = readHostError(error);
+			const unchanged = name === opened.name && role === opened.role && instructions === opened.instructions && avatar === undefined;
+			if (failure.code === "request_conflict" && failure.details?.currentRevision !== undefined && unchanged) {
+				const fresh = (await api["bots.list"]({})).find((item) => item.botId === botId);
+				if (fresh && fresh.revision === failure.details.currentRevision) {
+					setRevision(fresh.revision);
+					setAvatar(undefined);
+					setProfileBase(fresh);
+					setDefaultSkills(fresh.defaultSkills ?? []);
+					setName(fresh.name);
+					setRole(fresh.role);
+					setInstructions(fresh.instructions);
+					setModel(fresh.model);
+					setThinkingLevel(fresh.thinkingLevel ?? "off");
+					setSaveError("");
+					return;
+				}
+			}
+			setSaveError(failure.message);
 		} finally {
 			setSaving(false);
 		}
@@ -106,7 +127,7 @@ function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 								onClick={() =>
 									void api["bots.list"]({})
 										.then((bots) => {
-											const fresh = bots.find((item) => item.botId === bot.botId);
+											const fresh = bots.find((item) => item.botId === botId);
 											if (!fresh) return;
 											setRevision(fresh.revision);
 											setAvatar(undefined);

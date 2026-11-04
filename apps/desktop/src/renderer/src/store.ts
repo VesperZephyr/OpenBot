@@ -19,7 +19,9 @@ import type {
 } from "@openbot/protocol";
 import { create } from "zustand";
 import { composers } from "./useComposer";
-import { ERROR_PREFIX, type HostState } from "../../shared/api";
+import { readHostError, type HostState } from "../../shared/api";
+import { setDetailsOpen } from "./features/details/details-open";
+import { requestIdentityClose } from "./features/details/identity-draft";
 import { hostCalls } from "./host-calls";
 
 export type TaskView = {readonly kind:"tasks"; readonly botId:string; readonly taskId?:string; readonly draftId?:string; readonly archived?:boolean; readonly cursor?:string};
@@ -93,8 +95,7 @@ window.openbotCalls = api;
 
 /** Strip IPC and protocol envelopes so application errors can be translated at the display boundary. */
 export function errorMessage(error: unknown): string {
-	const message = error instanceof Error ? error.message : String(error);
-	return message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "").replace(ERROR_PREFIX, "");
+	return readHostError(error).message;
 }
 
 export function report(error: unknown): void {
@@ -220,6 +221,11 @@ export function closeSettings(): void {
 }
 
 export async function openBot(botId: string, searchTarget?: SearchTarget): Promise<void> {
+	const view = useStore.getState().view;
+	if (view.kind === "bot" && view.botId !== botId && !requestIdentityClose({ kind: "bot", botId })) {
+		setDetailsOpen(true);
+		return;
+	}
 	useStore.setState({ view: { kind: "bot", botId }, searchTarget });
 	await conversationRead.request();
 }

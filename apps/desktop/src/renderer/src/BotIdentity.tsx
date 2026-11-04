@@ -1,11 +1,25 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { defaultAvatar, type AvatarChange, type BotAvatar, type BotSummary, type GeneratedAvatar } from "@openbot/protocol";
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from "react";
+import { defaultAvatar, type BotSummary, type GeneratedAvatar } from "@openbot/protocol";
 import { Avatar, AvatarStack } from "./Avatar";
 import { AvatarEditor } from "./AvatarEditor";
 import { InterfaceIcon } from "./InterfaceIcon";
 import { setDetailsOpen } from "./features/details/details-open";
+import {
+	beginIdentityDraft,
+	discardIdentityDraft,
+	identityDirty,
+	identityDraftSnapshot,
+	keepConflictRevision,
+	keepIdentityDraft,
+	motifChange,
+	patchIdentityDraft,
+	replaceIdentityDraft,
+	requestIdentityClose,
+	subscribeIdentityDraft,
+} from "./features/details/identity-draft";
+import { readHostError } from "../../shared/api";
 import { t } from "./i18n";
-import { api, errorMessage, refreshBots, report, useStore } from "./store";
+import { api, openBot, refreshBots, report, useStore } from "./store";
 
 const MOTIFS = ["leaf", "glasses", "cap"] as const;
 const MOTIF_LABEL: Record<(typeof MOTIFS)[number], string> = { leaf: "Leaf", glasses: "Glasses", cap: "Cap" };
@@ -13,11 +27,19 @@ const MOTIF_LABEL: Record<(typeof MOTIFS)[number], string> = { leaf: "Leaf", gla
 /** Wide-layout Bot card. The intro is read-only until Edit opens the form. */
 export function BotIdentity({ botId, profileOpen }: { readonly botId: string; readonly profileOpen: boolean }) {
 	const bot = useStore((state) => state.bots.find((candidate) => candidate.botId === botId));
-	const [form, setForm] = useState(false);
+	const draft = useSyncExternalStore(subscribeIdentityDraft, identityDraftSnapshot, identityDraftSnapshot);
+	const [form, setForm] = useState(() => {
+		const existing = identityDraftSnapshot();
+		return !profileOpen && existing?.baseline.botId === botId && (identityDirty(existing) || existing.confirming);
+	});
 	const [expanded, setExpanded] = useState(false);
 	useEffect(() => {
-		if (profileOpen) setForm(false);
-	}, [profileOpen]);
+		if (profileOpen) {
+			setForm(false);
+			return;
+		}
+		if (draft?.baseline.botId === botId && (identityDirty(draft) || draft.confirming)) setForm(true);
+	}, [profileOpen, botId, draft]);
 	const models = useStore((state) => state.models);
 	const defaultModel = useStore((state) => state.settings?.defaultModel);
 	const skills = useStore((state) => state.skills);
@@ -44,7 +66,14 @@ export function BotIdentity({ botId, profileOpen }: { readonly botId: string; re
 						<button type="button" onClick={() => setForm(true)}>
 							{t("Edit")}
 						</button>
-						<button ref={closeRef} type="button" aria-label={t("Close details")} onClick={() => setDetailsOpen(false)}>
+						<button
+							ref={closeRef}
+							type="button"
+							aria-label={t("Close details")}
+							onClick={() => {
+								if (requestIdentityClose({ kind: "close" })) setDetailsOpen(false);
+							}}
+						>
 							<InterfaceIcon name="close" />
 						</button>
 					</div>
@@ -80,27 +109,26 @@ export function BotIdentity({ botId, profileOpen }: { readonly botId: string; re
 	);
 }
 
-function sameGenerated(change: AvatarChange | undefined, current: BotAvatar | undefined): boolean {
-	if (!change) return true;
-	if (change.kind !== "generated" || current?.kind !== "generated") return false;
-	return current.seed === change.seed && current.motif === change.motif && current.version === change.version;
-}
-
 function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
-	const [baseline] = useState({
-		name: bot.name,
-		role: bot.role,
-		instructions: bot.instructions,
-		revision: bot.revision,
-		avatar: bot.avatar,
-	});
-	const [name, setName] = useState(baseline.name);
-	const [role, setRole] = useState(baseline.role);
-	const [instructions, setInstructions] = useState(baseline.instructions);
-	const [avatar, setAvatar] = useState<AvatarChange>();
+	const draft = useSyncExternalStore(subscribeIdentityDraft, identityDraftSnapshot, identityDraftSnapshot);
 	const [saving, setSaving] = useState(false);
-	const [confirming, setConfirming] = useState(false);
 	const [error, setError] = useState("");
+	useEffect(() => {
+		const existing = identityDraftSnapshot();
+		if (existing?.baseline.botId === bot.botId) return;
+		beginIdentityDraft(bot);
+	}, [bot]);
+	const finishDiscard = (): void => {
+		const pending = discardIdentityDraft();
+		onClose();
+		if (pending?.kind === "close") setDetailsOpen(false);
+		else if (pending?.kind === "bot") void openBot(pending.botId);
+	};
+	const requestClose = (): void => {
+		if (requestIdentityClose()) onClose();
+	};
+	if (!draft || draft.baseline.botId !== bot.botId) return null;
+	const { baseline, name, role, instructions, avatar, confirming, conflictRevision } = draft;
 	const generated =
 		avatar?.kind === "generated"
 			? avatar
@@ -110,27 +138,22 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 					? baseline.avatar
 					: baseline.avatar
 						? undefined
-						: defaultAvatar(bot.botId);
+						: defaultAvatar(baseline.botId);
 	const seed =
-		avatar?.kind === "generated"
-			? avatar.seed
-			: baseline.avatar?.kind === "generated"
-				? baseline.avatar.seed
-				: defaultAvatar(bot.botId).seed;
-	const dirty = name !== baseline.name || role !== baseline.role || instructions !== baseline.instructions || !sameGenerated(avatar, baseline.avatar);
-	const requestClose = (): void => {
-		if (dirty) setConfirming(true);
-		else onClose();
-	};
+		avatar?.kind === "generated" ? avatar.seed : baseline.avatar?.kind === "generated" ? baseline.avatar.seed : defaultAvatar(baseline.botId).seed;
 	const onKeyDown = (event: KeyboardEvent): void => {
 		if (event.key !== "Escape") return;
 		event.preventDefault();
 		event.stopPropagation();
-		if (confirming) onClose();
+		if (confirming) finishDiscard();
 		else requestClose();
 	};
 	const chooseMotif = (motif: GeneratedAvatar["motif"]): void => {
-		setAvatar({ kind: "generated", version: 1, seed, motif });
+		patchIdentityDraft({ avatar: motifChange(seed, motif) });
+	};
+	const reload = async (): Promise<void> => {
+		const fresh = (await api["bots.list"]({})).find((item) => item.botId === baseline.botId);
+		if (fresh && (conflictRevision === undefined || fresh.revision === conflictRevision)) replaceIdentityDraft(fresh);
 	};
 	const save = async (event: FormEvent): Promise<void> => {
 		event.preventDefault();
@@ -139,7 +162,7 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 		setError("");
 		try {
 			await api["bots.update"]({
-				botId: bot.botId,
+				botId: baseline.botId,
 				expectedRevision: baseline.revision,
 				name: name.trim(),
 				role,
@@ -147,18 +170,29 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 				...(avatar ? { avatar } : {}),
 			});
 			await refreshBots();
+			discardIdentityDraft();
 			onClose();
 		} catch (caught) {
-			const message = errorMessage(caught);
-			const conflict = message.includes("Profile changed");
-			setError(conflict ? `${t(message)} ${t("Close this editor and open it again.")}` : t(message));
+			const failure = readHostError(caught);
+			const current = identityDraftSnapshot();
+			if (failure.code === "request_conflict" && failure.details?.currentRevision !== undefined) {
+				const fresh = (await api["bots.list"]({})).find((item) => item.botId === baseline.botId);
+				if (fresh && fresh.revision === failure.details.currentRevision) {
+					if (current && identityDirty(current)) patchIdentityDraft({ conflictRevision: fresh.revision });
+					else replaceIdentityDraft(fresh);
+					report(caught);
+					setSaving(false);
+					return;
+				}
+			}
+			setError(t(failure.message));
 			report(caught);
 			setSaving(false);
 		}
 	};
 	return (
 		<form className="identity-form" onSubmit={(event) => void save(event)} onKeyDown={onKeyDown}>
-			<AvatarEditor bot={bot} role={role} value={avatar} onChange={setAvatar} disabled={saving} />
+			<AvatarEditor bot={{ ...bot, botId: baseline.botId }} role={role} value={avatar} onChange={(value) => patchIdentityDraft({ avatar: value })} disabled={saving} />
 			<div className="identity-motifs" role="group" aria-label={t("Avatar motif")}>
 				{MOTIFS.map((motif) => (
 					<button key={motif} type="button" aria-pressed={generated?.motif === motif} disabled={saving} onClick={() => chooseMotif(motif)}>
@@ -168,17 +202,27 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 			</div>
 			<label className="identity-field">
 				<span>{t("Name")}</span>
-				<input required maxLength={200} value={name} onChange={(event) => setName(event.target.value)} />
+				<input required maxLength={200} value={name} onChange={(event) => patchIdentityDraft({ name: event.target.value })} />
 			</label>
 			<label className="identity-field">
 				<span>{t("Label")}</span>
-				<input maxLength={200} value={role} onChange={(event) => setRole(event.target.value)} />
+				<input maxLength={200} value={role} onChange={(event) => patchIdentityDraft({ role: event.target.value })} />
 			</label>
 			<label className="identity-field">
 				<span>{t("Prompt")}</span>
-				<textarea rows={4} value={instructions} onChange={(event) => setInstructions(event.target.value)} />
+				<textarea rows={4} value={instructions} onChange={(event) => patchIdentityDraft({ instructions: event.target.value })} />
 			</label>
-			{error ? (
+			{conflictRevision !== undefined ? (
+				<div className="identity-alert" role="alert">
+					<p>{t("Profile changed. Reload before saving your draft.")}</p>
+					<button type="button" onClick={() => void reload()}>
+						{t("Reload profile")}
+					</button>
+					<button type="button" onClick={() => keepConflictRevision(conflictRevision)}>
+						{t("Keep editing")}
+					</button>
+				</div>
+			) : error ? (
 				<p className="identity-alert" role="alert">
 					{error}
 				</p>
@@ -187,10 +231,10 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 				<div className="identity-confirm" role="alertdialog" aria-label={t("Discard these edits?")}>
 					<p>{t("Discard these edits?")}</p>
 					<div className="identity-actions">
-						<button type="button" onClick={() => setConfirming(false)}>
+						<button type="button" onClick={() => keepIdentityDraft()}>
 							{t("Keep editing")}
 						</button>
-						<button type="button" onClick={onClose}>
+						<button type="button" onClick={finishDiscard}>
 							{t("Discard")}
 						</button>
 					</div>

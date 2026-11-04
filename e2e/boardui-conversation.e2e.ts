@@ -131,12 +131,13 @@ it("reports a revision conflict instead of overwriting the name", async () => {
 	await h.api("bots.update", { botId: atlasId, expectedRevision: current.revision, name: "Atlas remote" });
 	await panel.getByRole("button", { name: "Save", exact: true }).click();
 	await panel.locator(".identity-alert").getByText("Profile changed. Reload before saving your draft.").waitFor();
-	await panel.locator(".identity-alert").getByText("Close this editor and open it again.").waitFor();
+	expect(await panel.getByLabel("Name", { exact: true }).inputValue()).toBe("Atlas local");
 	expect((await h.api("bots.list")).find((bot: { botId: string }) => bot.botId === atlasId).name).toBe("Atlas remote");
 	await h.page().locator(".toast").getByRole("button", { name: "Dismiss", exact: true }).click();
 	await h.page().locator(".toast").waitFor({ state: "hidden" });
+	await panel.getByRole("button", { name: "Reload profile", exact: true }).click();
+	await poll(() => panel.getByLabel("Name", { exact: true }).inputValue()).toBe("Atlas remote");
 	await panel.getByRole("button", { name: "Cancel", exact: true }).click();
-	await panel.getByRole("button", { name: "Discard", exact: true }).click();
 	await panel.getByRole("button", { name: "Edit", exact: true }).waitFor();
 });
 

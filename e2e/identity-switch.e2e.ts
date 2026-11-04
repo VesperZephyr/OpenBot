@@ -1,5 +1,5 @@
 /**
- * The wide-layout identity editor freezes its baseline on first open. Switching Bots must not keep that draft.
+ * Switching Bots asks before dropping an open profile draft, and never saves that draft onto the other Bot.
  */
 import { expect, it } from "vitest";
 import { type AppHarness, launchApp } from "./harness.ts";
@@ -33,6 +33,12 @@ it("does not save A's open profile draft onto B", async () => {
 		await panel.getByRole("button", { name: "Edit", exact: true }).click();
 		await panel.locator("form.identity-form input").first().fill("Ada renamed");
 		await row("Bee").click();
+		await panel.getByRole("alertdialog", { name: "Discard these edits?" }).waitFor();
+		expect(await panel.getByLabel("Name", { exact: true }).inputValue()).toBe("Ada renamed");
+		expect(await page.getByRole("textbox", { name: "Message Ada" }).count()).toBe(1);
+		await panel.getByRole("button", { name: "Keep editing", exact: true }).click();
+		await row("Bee").click();
+		await panel.getByRole("button", { name: "Discard", exact: true }).click();
 		await page.getByRole("textbox", { name: "Message Bee" }).waitFor();
 		const shown = async (): Promise<string> => {
 			const input = panel.locator("form.identity-form input").first();
