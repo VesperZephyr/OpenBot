@@ -121,6 +121,18 @@
 	font-size: 13px;
 	line-height: 20px;
 }
+.identity-confirm {
+	margin: 0 0 12px;
+	padding: 12px;
+	border-radius: 12px;
+	background: var(--surface-raised);
+}
+.identity-confirm p {
+	margin: 0 0 10px;
+	text-align: center;
+	font-size: 14px;
+	line-height: 22px;
+}
 .identity-field span {
 	font-size: 12px;
 	line-height: 20px;

@@ -202,9 +202,9 @@ it("renders a Chinese approval at minimum window size and denies it without crea
 	await box.press("Enter");
 	await h.page().locator(".approval").waitFor();
 	expect(await h.page().locator(".approval-reason").textContent()).not.toBe("Review this Bot change");
-	await h.page().locator(".approval-actions button").first().scrollIntoViewIfNeeded();
+	await h.page().getByRole("button", { name: "拒绝", exact: true }).scrollIntoViewIfNeeded();
 	await h.shot("07-chinese-approval-minimum");
-	await h.page().locator(".approval-actions button").first().click();
+	await h.page().getByRole("button", { name: "拒绝", exact: true }).click();
 	await h.page().getByText("Preview declined.", { exact: true }).waitFor();
 	await idle();
 	expect(await roster()).toHaveLength(1);

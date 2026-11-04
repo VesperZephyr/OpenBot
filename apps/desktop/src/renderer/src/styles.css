@@ -989,7 +989,15 @@ textarea {
 	border-top: 1px solid var(--surface-raised);
 }
 .always-allow > button {
-	width: 100%;
+	width: auto;
+	border: 0;
+	background: transparent;
+	padding: 0;
+	color: var(--text);
+	text-decoration: underline;
+	text-underline-offset: 3px;
+	font-size: 13px;
+	line-height: 20px;
 }
 .always-allow p {
 	margin: 0 0 8px;

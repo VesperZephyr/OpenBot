@@ -65,6 +65,7 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 	const [instructions, setInstructions] = useState(baseline.instructions);
 	const [avatar, setAvatar] = useState<AvatarChange>();
 	const [saving, setSaving] = useState(false);
+	const [confirming, setConfirming] = useState(false);
 	const [error, setError] = useState("");
 	const generated =
 		avatar?.kind === "generated"
@@ -83,15 +84,16 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 				? baseline.avatar.seed
 				: defaultAvatar(bot.botId).seed;
 	const dirty = name !== baseline.name || role !== baseline.role || instructions !== baseline.instructions || !sameGenerated(avatar, baseline.avatar);
-	const close = (): void => {
-		if (dirty && !window.confirm(t("Discard these edits?"))) return;
-		onClose();
+	const requestClose = (): void => {
+		if (dirty) setConfirming(true);
+		else onClose();
 	};
 	const onKeyDown = (event: KeyboardEvent): void => {
 		if (event.key !== "Escape") return;
 		event.preventDefault();
 		event.stopPropagation();
-		close();
+		if (confirming) onClose();
+		else requestClose();
 	};
 	const chooseMotif = (motif: GeneratedAvatar["motif"]): void => {
 		setAvatar({ kind: "generated", version: 1, seed, motif });
@@ -147,8 +149,21 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 					{error}
 				</p>
 			) : null}
+			{confirming ? (
+				<div className="identity-confirm" role="alertdialog" aria-label={t("Discard these edits?")}>
+					<p>{t("Discard these edits?")}</p>
+					<div className="identity-actions">
+						<button type="button" onClick={() => setConfirming(false)}>
+							{t("Keep editing")}
+						</button>
+						<button type="button" className="primary" onClick={onClose}>
+							{t("Discard")}
+						</button>
+					</div>
+				</div>
+			) : null}
 			<div className="identity-actions">
-				<button type="button" onClick={close}>
+				<button type="button" onClick={requestClose}>
 					{t("Cancel")}
 				</button>
 				<button type="submit" className="primary" disabled={saving || !name.trim()}>

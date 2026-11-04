@@ -376,11 +376,12 @@ function ComposerModel({ conversationKey, selectable }: { readonly conversationK
 					onChange={(event) => {
 						const separator = event.target.value.indexOf("/");
 						const model = separator < 0 ? null : { provider: event.target.value.slice(0, separator), modelId: event.target.value.slice(separator + 1) };
-						const revision = useStore.getState().bots.find((candidate) => candidate.botId === bot.botId)?.revision;
+						const current = useStore.getState().bots.find((candidate) => candidate.botId === bot.botId);
+						if (!current) return;
 						setSaving(true);
 						void api["bots.update"]({
-							botId: bot.botId,
-							...(revision === undefined ? {} : { expectedRevision: revision }),
+							botId: current.botId,
+							expectedRevision: current.revision,
 							model,
 						})
 							.then(() => refreshBots())

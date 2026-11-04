@@ -161,6 +161,80 @@ it("closes the detail form when the conversation editor opens", async () => {
 	await poll(async () => dialog.count()).toBe(0);
 });
 
+it("captures the review states in light and dark", async () => {
+	await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1280, 820));
+	await h.api("settings.update", { language: "en" });
+	const panel = h.page().locator(".bot-identity");
+	const atlas = async () => (await h.api("bots.list")).find((bot: { botId: string; revision: number }) => bot.botId === atlasId);
+
+	await h.page().locator(".sidebar .roster-name").getByText("Atlas remote", { exact: true }).click();
+	await h.page().getByRole("textbox", { name: /Message / }).waitFor();
+	const beforePrompt = await atlas();
+	await h.api("bots.update", {
+		botId: atlasId,
+		expectedRevision: beforePrompt.revision,
+		instructions: "Atlas keeps research concise. The standing prompt continues onto another line so the detail card can expand it.\nExample: Summarize the notes from today",
+	});
+	await panel.getByText("standing prompt continues").waitFor();
+	await panel.locator(".identity-kicker").getByText("Prompt", { exact: true }).waitFor();
+	await panel.getByRole("button", { name: "Show more", exact: true }).click();
+	await panel.locator(".identity-bio.is-open").waitFor();
+	await h.shot("prompt-expanded-light");
+	await appearance("Dark");
+	await panel.getByRole("button", { name: "Show more", exact: true }).click();
+	await panel.locator(".identity-bio.is-open").waitFor();
+	await h.shot("prompt-expanded-dark");
+	await appearance("Light");
+
+	await panel.getByRole("button", { name: "Edit", exact: true }).click();
+	await panel.getByLabel("Name", { exact: true }).fill("Atlas draft");
+	await panel.getByRole("button", { name: "Cancel", exact: true }).click();
+	await panel.getByRole("alertdialog", { name: "Discard these edits?" }).waitFor();
+	expect(await panel.getByLabel("Name", { exact: true }).inputValue()).toBe("Atlas draft");
+	await h.shot("cancel-confirm-light");
+	await panel.getByRole("button", { name: "Keep editing", exact: true }).click();
+	await appearance("Dark");
+	await panel.getByRole("button", { name: "Edit", exact: true }).click();
+	await panel.getByLabel("Name", { exact: true }).fill("Atlas draft");
+	await panel.getByRole("button", { name: "Cancel", exact: true }).click();
+	await panel.getByRole("alertdialog", { name: "Discard these edits?" }).waitFor();
+	await h.shot("cancel-confirm-dark");
+	await panel.getByRole("button", { name: "Discard", exact: true }).click();
+	await panel.getByRole("button", { name: "Edit", exact: true }).waitFor();
+	expect((await atlas()).name).toBe("Atlas remote");
+	await appearance("Light");
+
+	h.model.script({ tool: "local_exec", args: { command: "echo review", description: "Preview a command" } }, { text: "The command was not run." });
+	await h.send("Preview a command");
+	const card = h.page().getByRole("group", { name: "Approval request" });
+	await card.waitFor();
+	const actions = card.locator(".approval-actions button");
+	expect(await actions.nth(0).textContent()).toBe("Allow once");
+	expect(await actions.nth(1).textContent()).toBe("Deny");
+	await card.getByRole("button", { name: "Always allow", exact: true }).waitFor();
+	await h.shot("approval-light");
+	await appearance("Dark");
+	await card.waitFor();
+	expect(await card.locator(".approval-actions button").nth(0).textContent()).toBe("Allow once");
+	expect(await card.locator(".approval-actions button").nth(1).textContent()).toBe("Deny");
+	await h.shot("approval-dark");
+	await appearance("Light");
+	await card.getByRole("button", { name: "Deny", exact: true }).click();
+	await card.waitFor({ state: "hidden" });
+
+	const beforeModel = await atlas();
+	await h.api("bots.update", { botId: atlasId, expectedRevision: beforeModel.revision, model: { provider: "missing", modelId: "nope" } });
+	await h.page().locator(".composer-model").getByRole("button", { name: "Model settings", exact: true }).waitFor();
+	await h.shot("model-settings-light");
+	await appearance("Dark");
+	await h.page().locator(".composer-model").getByText("Model unavailable", { exact: true }).waitFor();
+	await h.shot("model-settings-dark");
+	await appearance("Light");
+	const afterModel = await atlas();
+	await h.api("bots.update", { botId: atlasId, expectedRevision: afterModel.revision, model: null });
+	await h.page().getByRole("combobox", { name: "Model", exact: true }).waitFor();
+});
+
 it("hides group more-actions when nothing is unread", async () => {
 	const bots = await h.api("bots.list");
 	const core = bots.find((bot: { kind: string; botId: string }) => bot.kind === "core");
@@ -174,6 +248,11 @@ it("hides group more-actions when nothing is unread", async () => {
 	await h.page().locator(".group-nav").filter({ hasText: "Studio" }).click();
 	await h.page().locator(".conversation-header").getByRole("heading", { name: "Studio", exact: true }).waitFor();
 	expect(await h.page().getByRole("button", { name: "More actions", exact: true }).count()).toBe(0);
+	await h.shot("menu-hidden-light");
+	await appearance("Dark");
+	expect(await h.page().getByRole("button", { name: "More actions", exact: true }).count()).toBe(0);
+	await h.shot("menu-hidden-dark");
+	await appearance("Light");
 });
 
 function lightTranslucent(fill: string, opacity: number): boolean {

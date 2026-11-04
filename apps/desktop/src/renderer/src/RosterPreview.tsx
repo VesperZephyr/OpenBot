@@ -4,7 +4,7 @@ import type { ConversationKey, ConversationSummary } from "@openbot/protocol";
 import { useComposer } from "./useComposer";
 import { markRead, report, useStore } from "./store";
 import { t } from "./i18n";
-import { reducedMotionWorking } from "../../shared/i18n";
+import { activityWorkingLabel } from "../../shared/i18n";
 
 export function recentTime(key: string, summaries: Readonly<Record<string, ConversationSummary>>, createdAt: number): number {
 	return summaries[key]?.latest?.at || createdAt;
@@ -54,7 +54,7 @@ export function RosterPreview({
 			</span>
 			<span className="roster-preview-line">
 				{activity && activity !== "Working" && <span className={`activity activity-${activity.toLowerCase().replaceAll(" ", "_")}`} aria-hidden />}
-				{activity === "Working" && <span className="activity-text">{reducedMotionWorking(language === "zh-CN" ? "zh-CN" : "en")}</span>}
+				{activity === "Working" && <span className="activity-text">{activityWorkingLabel(language === "zh-CN" ? "zh-CN" : "en")}</span>}
 				<span className="bot-row-role" title={preview}>
 					{preview}
 				</span>

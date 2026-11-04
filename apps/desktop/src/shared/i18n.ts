@@ -947,6 +947,8 @@ export const chinese: Readonly<Record<string, string>> = {
 	"Show more": "展开",
 	"Show less": "收起",
 	"Discard these edits?": "放弃这些修改？",
+	"Discard": "放弃",
+	"Keep editing": "继续编辑",
 	"Close this editor and open it again.": "请关闭后重新打开。",
 	"Dismiss": "关闭",
 	"Bots": "Bot",
@@ -1202,7 +1204,7 @@ export function translate(language: Language, message: string, values: Readonly<
  return template.replace(/\{(\w+)\}/g, (match, key: string) => Object.hasOwn(values, key) ? String(values[key]) : match);
 }
 
-/** Reduced-motion working label. Distinct from the "Working" activity preview, which stays "正在处理". */
-export function reducedMotionWorking(language: Language): string {
+/** Always-visible roster label. Distinct from the "Working" preview, which stays "正在处理". */
+export function activityWorkingLabel(language: Language): string {
 	return language === "zh-CN" ? "工作中" : "Working";
 }

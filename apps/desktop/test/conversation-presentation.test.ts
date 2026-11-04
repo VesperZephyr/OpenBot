@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { conversationPresence } from "../src/renderer/src/conversation-status";
 import { botGreeting, conversationExamples } from "../src/renderer/src/examples";
-import { reducedMotionWorking } from "../src/shared/i18n";
+import { activityWorkingLabel } from "../src/shared/i18n";
 
 describe("conversation presentation", () => {
 	it("derives header status only from approvals, live work and idle", () => {
@@ -26,7 +26,7 @@ describe("conversation presentation", () => {
 	});
 
 	it("uses Working and 工作中 for the working label", () => {
-		expect(reducedMotionWorking("en")).toBe("Working");
-		expect(reducedMotionWorking("zh-CN")).toBe("工作中");
+		expect(activityWorkingLabel("en")).toBe("Working");
+		expect(activityWorkingLabel("zh-CN")).toBe("工作中");
 	});
 });

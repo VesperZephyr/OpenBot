@@ -44,11 +44,11 @@ export function ApprovalCard({ approval }: { readonly approval: PendingApproval 
 			)}
 			<p id={scopeId} className="approval-scope">{t("Allow once applies only to this request.")}</p>
 			<div className="approval-actions">
-				<button type="button" disabled={pending||expired} onClick={() => decide("deny")}>
-					{t("Deny")}
-				</button>
 				<button type="button" disabled={pending||expired} className="primary" aria-describedby={skillChange || tool.startsWith("group_") || ["bot_create", "bot_update", "bot_delete"].includes(tool) ? scopeId : `${scopeId} ${argsId}`} onClick={() => decide("allow_once")}>
 					{t("Allow once")}
+				</button>
+				<button type="button" disabled={pending||expired} onClick={() => decide("deny")}>
+					{t("Deny")}
 				</button>
 			</div>
 			{!expired&&<AlwaysAllow approval={approval} />}
