@@ -12,6 +12,8 @@ import type {
 	Group,
 	BotSummary,
 	ConversationSnapshot,
+	ModelApi,
+	ModelRef,
 	ModelSummary,
 	RedactedSettings,
 } from "@openbot/protocol";
@@ -174,6 +176,32 @@ export const refreshSummaries = () => summariesRead.request();
 export const refreshGroups = () => groupsRead.request();
 export const refreshBots = () => botsRead.request();
 export const refreshSettings = () => settingsRead.request();
+
+/** Test a model, then persist a custom provider and its key only after the test succeeds. */
+export async function connectModel(
+	ref: ModelRef,
+	secret: string,
+	custom?: { readonly id: string; readonly name: string; readonly baseUrl: string; readonly api: ModelApi },
+): Promise<void> {
+	const key = secret.trim();
+	if (custom) {
+		await api["models.addProvider"]({
+			id: custom.id,
+			name: custom.name,
+			baseUrl: custom.baseUrl,
+			api: custom.api,
+			modelIds: [ref.modelId],
+			verify: true,
+			...(key === "" ? {} : { secret: key }),
+		});
+	} else {
+		const tested = await api["models.test"](key === "" ? ref : { ...ref, secret: key });
+		if (!tested.ok) throw new Error(tested.error ?? "Connection failed. Check your model settings.");
+		if (key !== "") await api["credentials.set"]({ providerId: ref.provider, apiKey: key });
+	}
+	await api["settings.update"]({ defaultModel: ref });
+	await refreshSettings();
+}
 export const refreshGroupSnapshot = () => groupRead.request();
 export async function markRead(conversationKey: ConversationKey, through: number): Promise<void> {
 	await api["conversations.markRead"]({ conversationKey, through });

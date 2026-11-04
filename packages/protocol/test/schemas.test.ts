@@ -76,8 +76,21 @@ describe("Host method parameter schemas", () => {
 				api: "openai-completions",
 				modelIds: ["m"],
 				verify: true,
+				secret: "sk-test-CANARY-xxx",
 			}),
 		).toBeUndefined();
+		expect(paramsError("models.test", { provider: "p", modelId: "m", secret: "sk-test-CANARY-xxx" })).toBeUndefined();
+		const leaked = paramsError("models.addProvider", {
+			id: "local-llm",
+			name: "Local",
+			baseUrl: "http://127.0.0.1:1/v1",
+			api: "openai-completions",
+			modelIds: ["m"],
+			verify: true,
+			secret: { leak: "sk-test-CANARY-xxx" },
+		});
+		expect(leaked).toBeDefined();
+		expect(leaked).not.toContain("sk-test-CANARY-xxx");
 	});
 
 	it("reject wrong shapes, unknown fields, and values outside the contract, naming the field", () => {

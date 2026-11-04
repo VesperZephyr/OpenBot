@@ -386,8 +386,8 @@ export class HostService {
 			},
 			"usage.get": ({botId,limit}) => this.#runtime.usage(botId,limit),
 			"settings.get": () => this.#settings(),
-			"settings.update": async ({ defaultModel, setupComplete, language }) => {
-				if (language !== undefined) await this.#runtime.setLanguage(language);
+			"settings.update": async ({ defaultModel, setupComplete, language, languageChosen }) => {
+				if (language !== undefined) await this.#runtime.setLanguage(language, languageChosen === true);
 				if (setupComplete !== undefined) await this.#runtime.setSetupComplete(setupComplete);
 				if (defaultModel !== undefined) await this.#runtime.setDefaultModel(defaultModel);
 				return this.#settings();
@@ -430,47 +430,45 @@ export class HostService {
 			"grants.list": () => this.#policy.grants(),
 			"grants.revoke": ({ id }) => this.#policy.revoke(id),
 			"grants.add": ({ path, access }) => this.#policy.add(path, access),
-			"models.addProvider": (provider) => {
-				const next = this.#configWrites
-					.catch(() => {})
-					.then(async () => {
-						await this.#reloadModelConfig();
-						const declared = new Set(this.#configStatus.providers.filter((entry) => !entry.overlay).map((entry) => entry.providerId));
-						if (this.#runtime.listProviders().some(({ providerId }) => providerId === provider.id && !declared.has(providerId))) {
-							throw new ProtocolError("invalid_request", "This is a built-in provider; choose another ID");
-						}
-						const merged = mergeProvider(await this.#modelConfig.read(), provider);
-						if (provider.verify === true) {
-							const modelId = provider.modelIds.map((id) => id.trim()).find((id) => id !== "");
-							if (modelId === undefined) throw new ProtocolError("invalid_request", "Name at least one model ID");
-							const staged = {
-								id: provider.id,
-								name: provider.name.trim(),
-								baseUrl: provider.baseUrl.trim().replace(/\/+$/, ""),
-								api: provider.api,
-								modelIds: [modelId],
-							};
-							this.#runtime.holdProvider(staged, this.#modelConfig.environment);
-							const tested = await this.#runtime.testModel({ provider: provider.id, modelId });
-							if (!tested.ok) {
-								this.#runtime.holdProvider(undefined, this.#modelConfig.environment, provider.id);
-								throw new ProtocolError("invalid_request", tested.error ?? "Connection failed. Check your model settings.");
-							}
-						}
-						try {
-							await this.#modelConfig.write(merged);
-						} catch (error) {
-							if (provider.verify === true) this.#runtime.holdProvider(undefined, this.#modelConfig.environment, provider.id);
-							throw error;
-						}
-						return this.#settings();
-					});
+			"models.addProvider": async (provider) => {
+				if (provider.secret !== undefined && provider.verify !== true) {
+					throw new ProtocolError("invalid_request", "Send a key only when verifying a provider");
+				}
+				if (provider.verify === true) {
+					const modelId = provider.modelIds.map((id) => id.trim()).find((id) => id !== "");
+					if (modelId === undefined) throw new ProtocolError("invalid_request", "Name at least one model ID");
+					const tested = await this.#runtime.testProvider(
+						{
+							id: provider.id,
+							name: provider.name.trim(),
+							baseUrl: provider.baseUrl.trim().replace(/\/+$/, ""),
+							api: provider.api,
+							modelId,
+							...(provider.secret === undefined ? {} : { secret: provider.secret }),
+						},
+						this.#modelConfig.environment,
+					);
+					if (!tested.ok) throw new ProtocolError("invalid_request", tested.error ?? "Connection failed. Check your model settings.");
+				}
+				const next = this.#configWrites.catch(() => {}).then(async () => {
+					await this.#reloadModelConfig();
+					const declared = new Set(this.#configStatus.providers.filter((entry) => !entry.overlay).map((entry) => entry.providerId));
+					if (this.#runtime.listProviders().some(({ providerId }) => providerId === provider.id && !declared.has(providerId))) {
+						throw new ProtocolError("invalid_request", "This is a built-in provider; choose another ID");
+					}
+					const merged = mergeProvider(await this.#modelConfig.read(), provider);
+					if (provider.verify === true && provider.secret !== undefined && provider.secret.trim() !== "") {
+						await this.#secrets.setApiKey(provider.id, provider.secret.trim());
+					}
+					await this.#modelConfig.write(merged);
+					return this.#settings();
+				});
 				this.#configWrites = next;
 				return next;
 			},
-			"models.test": async (model) => {
+			"models.test": async ({ secret, ...model }) => {
 				await this.#reloadModelConfig();
-				return this.#runtime.testModel(model);
+				return this.#runtime.testModel(model, undefined, secret);
 			},
 			"conversations.subscribe": async ({ botId }) => {
 				if (botId !== null) await this.#liveBot(botId);
@@ -774,6 +772,7 @@ export class HostService {
 		return {
 			setupComplete: await this.#runtime.setupComplete(),
 			language: await this.#runtime.language(),
+			languageChosen: await this.#runtime.languageChosen(),
 			...(defaultModel === undefined ? {} : { defaultModel }),
 			providers: this.#runtime
 				.listProviders()

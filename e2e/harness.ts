@@ -49,7 +49,7 @@ export type HarnessOptions = {
 	/** Optional CDP port for isolated agent-browser exploration. */
 	readonly debugPort?: number;
 	/** Create launch fixtures after the suite directory is reset; return environment overrides for every relaunch. */
-	readonly prepare?: (run: string) => Promise<Readonly<Record<string, string>>>;
+	readonly prepare?: (run: string, modelBaseUrl: string) => Promise<Readonly<Record<string, string>>>;
 	/** Extra environment for the app, for example `OPENBOT_MAX_ACTIVE_RUNS`. */
 	readonly env?: Readonly<Record<string, string>>;
 	/**
@@ -83,7 +83,7 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 		);
 	}
 
-	const preparedEnvironment = await auditSpan("fixture.prepare", name, async () => options.prepare?.(run));
+	const preparedEnvironment = await auditSpan("fixture.prepare", name, async () => options.prepare?.(run, baseUrl));
 	let app: ElectronApplication | undefined;
 	let page: Page | undefined;
 	let launches = 0;

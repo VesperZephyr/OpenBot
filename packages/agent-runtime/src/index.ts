@@ -42,7 +42,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import type { CredentialStore, Provider } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
-import type { MutableModels } from "@earendil-works/pi-ai/models";
+import { createModels, type MutableModels } from "@earendil-works/pi-ai/models";
 import {
 	type AgentChange,
 	type ConversationRecord,
@@ -119,7 +119,7 @@ type PiConversationId = ConversationRecord["id"];
 const channelKey = (botId: string, channelId: string): string => JSON.stringify([botId, channelId]);
 
 /** Application settings that live with the conversation store. */
-const SettingsDoc = defineDoc<{ defaultModel?: ModelRef; setupComplete?: boolean; language?: "en" | "zh-CN" }>({
+const SettingsDoc = defineDoc<{ defaultModel?: ModelRef; setupComplete?: boolean; language?: "en" | "zh-CN"; languageChosen?: boolean }>({
 	kind: "openbot.settings",
 	version: 1,
 	scope: "session",
@@ -233,6 +233,7 @@ export class BotRuntime {
 	/** Built-in providers as registered at open, so a removed overlay restores the original. */
 	readonly #builtins: ReadonlyMap<string, Provider>;
 	#configuredIds: readonly string[] = [];
+	#configEnvironment: ConfigEnvironment | undefined;
 	#pricing: Readonly<Record<string, boolean>> = {};
 	#usageEpoch = randomUUID();
 	#usageConfigDigest: string | undefined;
@@ -643,10 +644,15 @@ export class BotRuntime {
 	async language(): Promise<"en" | "zh-CN"> {
 		return (await this.#harness.snapshot(SettingsDoc, this.#context))?.language ?? "en";
 	}
-	async setLanguage(language: "en" | "zh-CN"): Promise<void> {
+	async setLanguage(language: "en" | "zh-CN", chosen = false): Promise<void> {
 		await this.#harness.commit(async (tx) => {
-			(await tx.doc(SettingsDoc)).language = language;
+			const doc = await tx.doc(SettingsDoc);
+			doc.language = language;
+			if (chosen) doc.languageChosen = true;
 		}, this.#context);
+	}
+	async languageChosen(): Promise<boolean> {
+		return (await this.#harness.snapshot(SettingsDoc, this.#context))?.languageChosen === true;
 	}
 
 	async setupComplete(): Promise<boolean> {
@@ -1378,26 +1384,14 @@ export class BotRuntime {
 	}
 
 	/**
-	 * Send one tiny real request to the model, with the same provider, endpoint, and credentials Bots use, and report
-	 * whether it answered. Failures (unknown model, missing key, HTTP errors, timeout) become `{ ok: false, error }`.
+	 * Test one provider without registering it. The provider object lives only for this call.
+	 * `secret` is placed in that temporary configuration and is never written to the shared model table or the Keychain.
 	 */
-	/**
-	 * Register one custom provider in memory, or remove it when `input` is omitted. Does not read or write the
-	 * configuration file. `models.addProvider` with `verify` uses this so a failed test never lands on disk.
-	 */
-	holdProvider(
-		input: { readonly id: string; readonly name: string; readonly baseUrl: string; readonly api: string; readonly modelIds: readonly string[] } | undefined,
+	async testProvider(
+		input: { readonly id: string; readonly name: string; readonly baseUrl: string; readonly api: string; readonly modelId: string; readonly secret?: string },
 		environment: ConfigEnvironment,
-		removeId?: string,
-	): void {
-		if (input === undefined) {
-			const id = removeId;
-			if (id === undefined) return;
-			const builtin = this.#builtins.get(id);
-			if (builtin !== undefined) this.#models.setProvider(this.taskModels.provider(builtin));
-			else this.#models.deleteProvider(id);
-			return;
-		}
+		timeoutMs = MODEL_TEST_TIMEOUT_MS,
+	): Promise<{ readonly ok: boolean; readonly error?: string }> {
 		const built = buildConfiguredProviders(
 			JSON.stringify({
 				providers: {
@@ -1405,33 +1399,38 @@ export class BotRuntime {
 						name: input.name,
 						baseUrl: input.baseUrl,
 						api: input.api,
-						models: input.modelIds.map((id) => ({ id })),
+						...(input.secret === undefined ? {} : { apiKey: input.secret }),
+						models: [{ id: input.modelId }],
 					},
 				},
 			}),
 			{ environment, builtins: this.#builtins },
 		);
 		const created = built.providers.find((provider) => provider.id === input.id);
-		if (created === undefined) throw new ProtocolError("invalid_request", built.status.errors[0] ?? "Could not register the provider");
-		this.#models.setProvider(this.taskModels.provider(created));
+		if (created === undefined) return { ok: false, error: modelTestError(built.status.errors[0] ?? "Could not register the provider") };
+		const scratch = createModels();
+		scratch.setProvider(created);
+		return completeTest(scratch, { provider: input.id, modelId: input.modelId }, timeoutMs);
 	}
 
-	async testModel(ref: ModelRef, timeoutMs = MODEL_TEST_TIMEOUT_MS): Promise<{ readonly ok: boolean; readonly error?: string }> {
+	/**
+	 * Send one tiny real request to the model, with the same provider, endpoint, and credentials Bots use, and report
+	 * whether it answered. Failures (unknown model, missing key, HTTP errors, timeout) become `{ ok: false, error }`.
+	 * `secret`, when passed, is tried on a temporary provider and is not stored.
+	 */
+	async testModel(ref: ModelRef, timeoutMs = MODEL_TEST_TIMEOUT_MS, secret?: string): Promise<{ readonly ok: boolean; readonly error?: string }> {
 		const model = this.#models.getModel(ref.provider, ref.modelId);
 		if (model === undefined) return { ok: false, error: "Unknown model. Reload configuration or choose an available model." };
-		try {
-			const answer = await this.#models.completeSimple(
-				model,
-				{ messages: [{ role: "user", content: "Reply with OK.", timestamp: Date.now() }] },
-				{ maxTokens: 16, signal: AbortSignal.timeout(timeoutMs) },
+		if (secret !== undefined) {
+			const environment = this.#configEnvironment;
+			if (environment === undefined) return { ok: false, error: modelTestError("Could not register the provider") };
+			return this.testProvider(
+				{ id: model.provider, name: model.provider, baseUrl: model.baseUrl, api: model.api, modelId: model.id, secret },
+				environment,
+				timeoutMs,
 			);
-			if (answer.stopReason === "error" || answer.stopReason === "aborted") {
-				return { ok: false, error: modelTestError(answer.errorMessage ?? answer.stopReason) };
-			}
-			return { ok: true };
-		} catch (error) {
-			return { ok: false, error: modelTestError(error instanceof Error ? error.message : String(error)) };
 		}
+		return completeTest(this.#models, ref, timeoutMs);
 	}
 
 	/**
@@ -1440,6 +1439,7 @@ export class BotRuntime {
 	 * removed or restored. Takes effect from the next model request.
 	 */
 	reloadConfiguredProviders(text: string | undefined, environment: ConfigEnvironment): ModelConfigStatus {
+		this.#configEnvironment = environment;
 		const { providers, status, pricing } = buildConfiguredProviders(text, { environment, builtins: this.#builtins });
 		for (const providerId of this.#configuredIds) {
 			const builtin = this.#builtins.get(providerId);
@@ -1782,11 +1782,31 @@ export function safeEndpoint(value: string): string {
 }
 
 export function modelTestError(message: string): string {
-	if (/401|403|api.key|auth|credential/i.test(message)) return "Authentication failed. Check the provider key and access.";
+	if (/402|insufficient[_\s-]?quota|quota exceeded|billing|credit balance|payment required/i.test(message)) return "The provider account has no remaining quota.";
+	if (/ECONNREFUSED|ENOTFOUND|ECONNRESET|EAI_AGAIN|ETIMEDOUT|getaddrinfo|fetch failed|network error|socket hang up/i.test(message)) return "The network request failed. Check the connection and try again.";
+	if (/401|403|api.key|auth|credential|invalid[_\s-]?key/i.test(message)) return "Authentication failed. Check the provider key and access.";
 	if (/timeout|timed out|abort/i.test(message)) return "The request timed out. Check the endpoint and try again.";
 	if (/404|not found|unknown model/i.test(message)) return "Model or endpoint not found. Check the model ID and base URL.";
 	if (/429|rate.limit/i.test(message)) return "The provider is rate limiting requests. Try again later.";
 	return "The model request failed. Check the endpoint, protocol and model ID.";
+}
+
+async function completeTest(models: MutableModels, ref: ModelRef, timeoutMs: number): Promise<{ readonly ok: boolean; readonly error?: string }> {
+	const model = models.getModel(ref.provider, ref.modelId);
+	if (model === undefined) return { ok: false, error: "Unknown model. Reload configuration or choose an available model." };
+	try {
+		const answer = await models.completeSimple(
+			model,
+			{ messages: [{ role: "user", content: "Reply with OK.", timestamp: Date.now() }] },
+			{ maxTokens: 16, signal: AbortSignal.timeout(timeoutMs) },
+		);
+		if (answer.stopReason === "error" || answer.stopReason === "aborted") {
+			return { ok: false, error: modelTestError(answer.errorMessage ?? answer.stopReason) };
+		}
+		return { ok: true };
+	} catch (error) {
+		return { ok: false, error: modelTestError(error instanceof Error ? error.message : String(error)) };
+	}
 }
 
 async function committedManagement(tx: Tx, proposal?: BotManagementProposal): Promise<BotProfile | undefined> {

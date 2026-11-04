@@ -1,7 +1,7 @@
 import { t } from "./i18n";
 import { MODEL_APIS, type ModelApi, type ModelRef } from "@openbot/protocol";
 import { type FormEvent, useState } from "react";
-import { api, errorMessage, refreshSettings, useStore } from "./store";
+import { connectModel, errorMessage, useStore } from "./store";
 
 /** Shared setup path: catalog metadata never implies credentials or a successful connection. */
 export function ModelSetup({ onDone, initialSource = "builtin" }: { readonly onDone?: () => void; readonly initialSource?: "builtin" | "custom" }) {
@@ -31,29 +31,13 @@ export function ModelSetup({ onDone, initialSource = "builtin" }: { readonly onD
 		setBusy(true);
 		clearResult();
 		const secret = key.trim();
-		setKey("");
 		try {
-			let ref: ModelRef;
-			let verified = false;
-			if (source === "custom") {
-				ref = { provider: customId, modelId: custom.modelId.trim() };
-				if (secret !== "") await api["credentials.set"]({ providerId: ref.provider, apiKey: secret });
-				if (installed !== signature) {
-					await api["models.addProvider"]({ id: customId, name: custom.name.trim(), baseUrl: custom.baseUrl.trim(), api: custom.api, modelIds: [ref.modelId], verify: true });
-					setInstalled(signature);
-					verified = true;
-				}
-			} else {
-				ref = { provider: providerId, modelId: selectedId };
-				if (secret !== "") await api["credentials.set"]({ providerId: ref.provider, apiKey: secret });
-			}
-			await refreshSettings();
-			if (!verified) {
-				const tested = await api["models.test"](ref);
-				if (!tested.ok) { setResult({ ok: false, message: tested.error ?? "Connection failed. Check your model settings." }); return; }
-			}
-			await api["settings.update"]({ defaultModel: ref });
-			await refreshSettings();
+			const ref: ModelRef = source === "custom" ? { provider: customId, modelId: custom.modelId.trim() } : { provider: providerId, modelId: selectedId };
+			if (source === "custom" && installed !== signature) {
+				await connectModel(ref, secret, { id: customId, name: custom.name.trim(), baseUrl: custom.baseUrl.trim(), api: custom.api });
+				setInstalled(signature);
+			} else await connectModel(ref, secret);
+			setKey("");
 			setResult({ ok: true, message: "Connection tested. This is now your default model." });
 			onDone?.();
 		} catch (error) {

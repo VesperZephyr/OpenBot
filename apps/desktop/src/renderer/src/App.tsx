@@ -1261,6 +1261,7 @@ function Settings() {
 							.catch(report)
 					}
 				/>
+				<button type="button" onClick={() => useStore.setState({ onboarding: true })}>{t("Open the setup wizard again")}</button>
 			</div>
 
 			<div className="settings-group" id="settings-language">
@@ -1269,7 +1270,7 @@ function Settings() {
 					caption={t("Changes the app interface. Your conversations and Bot instructions stay as written.")}
 					value={settings.language ?? "en"}
 					onChange={(language) => {
-						void api["settings.update"]({ language }).then(refreshSettings).catch(report);
+						void api["settings.update"]({ language, languageChosen: true }).then(refreshSettings).catch(report);
 					}}
 				/>
 			</div>

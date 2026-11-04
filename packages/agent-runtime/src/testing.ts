@@ -2,7 +2,7 @@
  * Test seam: a model collection whose only provider (`faux`, model `faux-1`) answers with scripted turns. Lets packages
  * above agent-runtime exercise real Pi conversations without importing Pi themselves.
  */
-import type { ToolCall } from "@earendil-works/pi-ai";
+import type { CredentialStore, ToolCall } from "@earendil-works/pi-ai";
 import type { MutableModels } from "@earendil-works/pi-ai/models";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
@@ -24,6 +24,11 @@ export type ScriptedModels = {
 };
 
 export function scriptedModels(...turns: ScriptedTurn[]): ScriptedModels {
+	return scriptedModelsUsing(undefined, ...turns);
+}
+
+/** Same scripted collection, reading provider keys from `credentials` the way the Host runtime does. */
+export function scriptedModelsUsing(credentials: CredentialStore | undefined, ...turns: ScriptedTurn[]): ScriptedModels {
 	const faux = fauxProvider();
 	const toMessage = (turn: ScriptedTurn) => {
 		if (typeof turn === "string") return fauxAssistantMessage(turn);
@@ -35,7 +40,7 @@ export function scriptedModels(...turns: ScriptedTurn[]): ScriptedModels {
 		return fauxAssistantMessage(fauxToolCall(turn.tool, turn.args as ToolCall["arguments"]), { stopReason: "toolUse" });
 	};
 	faux.setResponses(turns.map(toMessage));
-	const models = createModels();
+	const models = credentials === undefined ? createModels() : createModels({ credentials });
 	models.setProvider(faux.provider);
 	return {
 		models,

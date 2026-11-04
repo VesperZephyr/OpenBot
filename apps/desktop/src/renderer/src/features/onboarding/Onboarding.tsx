@@ -7,9 +7,9 @@ import { t } from "../../i18n";
 import { ModelSetup } from "../../ModelSetup";
 import { RadioGroup } from "../../ui/boardui/components/base/radio/radio";
 import { RadioCard } from "../../ui/boardui/components/base/radio/radio-card";
-import { api, errorMessage, openBot, refreshBots, refreshSettings, report, useStore } from "../../store";
+import { api, connectModel, errorMessage, openBot, refreshBots, refreshSettings, report, useStore } from "../../store";
 import researchTemplate from "./research-bot.json" with { type: "json" };
-import { FILE_PROMPT, LANGUAGE_CHOSEN, RECOMMENDED_PROVIDERS, WEEK_PROMPT, systemLanguage } from "./recommended";
+import { FILE_PROMPT, RECOMMENDED_PROVIDERS, WEEK_PROMPT, systemLanguage } from "./recommended";
 import { PROVIDER_KEY_URLS } from "./provider-links";
 import "./onboarding.css";
 
@@ -32,6 +32,7 @@ export function Onboarding() {
 	const [connectError, setConnectError] = useState("");
 	const [connected, setConnected] = useState("");
 	const [advanced, setAdvanced] = useState(false);
+	const [modelFormMounted, setModelFormMounted] = useState(false);
 	const [setupSource, setSetupSource] = useState<"builtin" | "custom">("builtin");
 	const [setupKey, setSetupKey] = useState(0);
 	const [name, setName] = useState(core?.name ?? "");
@@ -62,28 +63,27 @@ export function Onboarding() {
 	const recommended = RECOMMENDED_PROVIDERS.filter((provider) => models.some((model) => model.provider === provider.id));
 	const selectedId = recommended.some((provider) => provider.id === providerId) ? providerId : recommended[0]?.id ?? "";
 	const available = models.filter((model) => model.provider === selectedId);
-	const preferred = recommended.find((provider) => provider.id === selectedId)?.modelId;
-	const selectedModel = available.some((model) => model.modelId === modelId) ? modelId : available.some((model) => model.modelId === preferred) ? preferred ?? "" : available[0]?.modelId ?? "";
+	const selectedModel = available.some((model) => model.modelId === modelId) ? modelId : available[0]?.modelId ?? "";
 	const selected = available.find((model) => model.modelId === selectedModel);
 	const configured = settings?.providers.find((provider) => provider.providerId === selectedId)?.configured === true;
 	const hasModel = settings?.defaultModel !== undefined;
 	const catalogEmpty = settings !== undefined && models.length === 0;
 
-	const finish = async () => {
+	const finish = async (botId?: string) => {
 		try {
 			await api["settings.update"]({ setupComplete: true });
 			await refreshSettings();
 			useStore.setState({ onboarding: false });
-			const current = useStore.getState().bots.find((bot) => bot.kind === "core");
-			if (current) await openBot(current.botId);
+			const id = botId ?? useStore.getState().bots.find((bot) => bot.kind === "core")?.botId;
+			if (id) await openBot(id);
 		} catch (error) { report(error); }
 	};
-	const persistLanguage = async (language: "en" | "zh-CN") => {
+	const persistLanguage = async (language: "en" | "zh-CN", chosen: boolean) => {
 		const current = useStore.getState().settings;
-		if (current) useStore.setState({ settings: { ...current, language } });
+		if (current) useStore.setState({ settings: { ...current, language, ...(chosen ? { languageChosen: true } : {}) } });
 		setLanguageError(false);
 		try {
-			await api["settings.update"]({ language });
+			await api["settings.update"](chosen ? { language, languageChosen: true } : { language });
 			await refreshSettings();
 		} catch {
 			if (alive.current) setLanguageError(true);
@@ -92,32 +92,21 @@ export function Onboarding() {
 	useEffect(() => {
 		if (languageApplied.current || !settings) return;
 		languageApplied.current = true;
-		let chosen = false;
-		try { chosen = localStorage.getItem(LANGUAGE_CHOSEN) === "1"; } catch { /* The visible choice still applies this session. */ }
 		const system = systemLanguage();
-		if (!chosen && settings.language !== system) void persistLanguage(system);
+		if (settings.languageChosen !== true && settings.language !== system) void persistLanguage(system, false);
 	}, [settings]);
 	const chooseLanguage = (language: string) => {
 		if (language !== "en" && language !== "zh-CN") return;
-		try { localStorage.setItem(LANGUAGE_CHOSEN, "1"); } catch { /* Saving the setting is what the next launch reads. */ }
-		void persistLanguage(language);
+		void persistLanguage(language, true);
 	};
 	const connect = async () => {
 		if (busy || selectedId === "" || selectedModel === "" || (!configured && key.trim() === "")) return;
 		const secret = key.trim();
-		setKey("");
 		setBusy(true);
 		setConnectError("");
 		try {
-			if (secret !== "") await api["credentials.set"]({ providerId: selectedId, apiKey: secret });
-			await refreshSettings();
-			const tested = await api["models.test"]({ provider: selectedId, modelId: selectedModel });
-			if (!tested.ok) {
-				setConnectError(tested.error ?? "Connection failed. Check your model settings.");
-				return;
-			}
-			await api["settings.update"]({ defaultModel: { provider: selectedId, modelId: selectedModel } });
-			await refreshSettings();
+			await connectModel({ provider: selectedId, modelId: selectedModel }, secret);
+			setKey("");
 			const label = selected?.name ?? selectedModel;
 			setConnected(label);
 			advanceTimer.current = window.setTimeout(() => {
@@ -158,7 +147,7 @@ export function Onboarding() {
 				const fresh = useStore.getState().bots.find((bot) => bot.botId === core.botId);
 				if (fresh) setName(fresh.name);
 				setBotError("This Bot was just changed elsewhere. Refreshed, please try again.");
-			} else setBotError(message || "Could not save model settings.");
+			} else setBotError(message || "Could not save Bot settings.");
 		} finally {
 			if (alive.current) setBusy(false);
 		}
@@ -182,7 +171,7 @@ export function Onboarding() {
 			<div className="onboarding-progress" role="progressbar" aria-valuemin={1} aria-valuemax={STEPS} aria-valuenow={step + 1} aria-label={t("Setup progress")}>
 				{titles.map((_, index) => <span key={index} data-done={index <= step ? "true" : "false"} />)}
 			</div>
-			<button type="button" className="onboarding-text-button" onClick={() => void finish()}>{t("Set up later")}</button>
+			{step < 3 ? <button type="button" className="onboarding-text-button" onClick={() => void finish()}>{t("Set up later")}</button> : <span />}
 		</div>
 		<h1 ref={heading} tabIndex={-1}>{title}</h1>
 		{step === 0 && <>
@@ -230,15 +219,15 @@ export function Onboarding() {
 					<div className="onboarding-recovery">
 						<button type="button" onClick={() => { setKey(""); setConnectError(""); keyInput.current?.focus(); }}>{t("Check key")}</button>
 						<button type="button" onClick={() => { setShowModels(true); setConnectError(""); requestAnimationFrame(() => modelSelect.current?.focus()); }}>{t("Try another model")}</button>
-						<button type="button" onClick={() => { setSetupSource("custom"); setSetupKey((value) => value + 1); setAdvanced(true); setConnectError(""); }}>{t("Use custom or local")}</button>
+						<button type="button" onClick={() => { setModelFormMounted(true); setSetupSource("custom"); setSetupKey((value) => value + 1); setAdvanced(true); setConnectError(""); }}>{t("Use custom or local")}</button>
 					</div>
 				</div>}
 				{connected && <p className="onboarding-status" role="status">{t("Connected · {model} is your default", { model: connected })}</p>}
 				<p className="onboarding-note">{t("Billed by the provider per use. A short test sends one very short message.")}</p>
 			</>}
-			<button type="button" className="onboarding-text-button" onClick={() => { setAdvanced((value) => !value); setSetupSource("builtin"); }}>{t("More providers or a custom or local model")}</button>
-			{advanced && <ModelSetup key={setupKey} initialSource={setupSource} onDone={() => setStep(2)} />}
+			<button type="button" className="onboarding-text-button" onClick={() => { setModelFormMounted(true); setAdvanced((value) => !value); setSetupSource("builtin"); }}>{t("More providers or a custom or local model")}</button>
 		</>}
+		{modelFormMounted && step < 2 && <div hidden={step !== 1 || !advanced}><ModelSetup key={setupKey} initialSource={setupSource} onDone={() => setStep(2)} /></div>}
 		{step === 2 && core && <>
 			<p className="muted">{t("This Bot helps with everyday tasks. You can add specialists later.")}</p>
 			{!hasModel && <p className="onboarding-banner">{t("No model yet. Your Bot can't reply until you connect one.")} <button type="button" onClick={() => setStep(1)}>{t("Connect")}</button></p>}
@@ -259,7 +248,7 @@ export function Onboarding() {
 			</div>}
 		</>}
 		{step === 3 && <>
-			<p className="muted">{t("Try an example. Nothing runs until you send it.")}</p>
+			<p className="muted">{t("Opens in the composer. Nothing runs until you send it.")}</p>
 			{hasModel && <p className="onboarding-status" role="status">{t("Connected · {model} is your default", { model: settings?.defaultModel ? models.find((model) => model.provider === settings.defaultModel?.provider && model.modelId === settings.defaultModel?.modelId)?.name ?? settings.defaultModel.modelId : connected })}</p>}
 			<div className="onboarding-examples">
 				<article className="onboarding-example">
@@ -269,7 +258,7 @@ export function Onboarding() {
 				</article>
 				<article className="onboarding-example">
 					<h2>{t("Summarize a file")}</h2>
-					<p>{t("Choose a file, then review the summary before sending.")}</p>
+					<p>{t("Choose a file and put it in the composer with the prompt. Summarizing starts when you send.")}</p>
 					<button type="button" disabled={busy} onClick={() => void (hasModel ? (async () => {
 						setBusy(true);
 						setWelcomeError("");
@@ -288,11 +277,10 @@ export function Onboarding() {
 				<article className="onboarding-example">
 					<h2>{t("Create a research Bot")}</h2>
 					<p>{t("Built-in template. You review permissions before import.")}</p>
-					<button type="button" disabled={busy} onClick={() => hasModel ? beginTemplateReview(researchBot) : setStep(1)}>{t(hasModel ? "Review and create" : "Connect a model first")}</button>
+					<button type="button" disabled={busy} onClick={() => hasModel ? beginTemplateReview(researchBot, heading.current, (outcome, botId) => { if (outcome === "imported" && botId) void finish(botId); }) : setStep(1)}>{t(hasModel ? "Review and create" : "Connect a model first")}</button>
 				</article>
 			</div>
 			{welcomeError && <p className="onboarding-failure" role="alert">{t(welcomeError)}</p>}
-			<p className="onboarding-note">{t("You can find these examples again in New.")}</p>
 		</>}
 		<div className="onboarding-actions">
 			{step > 0 ? <button type="button" className="onboarding-text-button" onClick={() => setStep((value) => value - 1)}>{t("Go back")}</button> : <span />}

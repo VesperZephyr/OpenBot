@@ -185,6 +185,7 @@ export const HOST_PARAM_SCHEMAS = {
 	"settings.get": NoParams,
 	"settings.update": strict({
 		language: Type.Optional(Type.Union([Type.Literal("en"), Type.Literal("zh-CN")])),
+		languageChosen: Type.Optional(Type.Boolean()),
 		setupComplete: Type.Optional(Type.Boolean()),
 		defaultModel: Type.Optional(Type.Union([ModelRef, Type.Null()])),
 	}),
@@ -230,8 +231,9 @@ export const HOST_PARAM_SCHEMAS = {
 		api: Type.Enum(MODEL_APIS),
 		modelIds: Type.Array(Type.String({ minLength: 1, maxLength: 256 }), { minItems: 1, maxItems: 50 }),
 		verify: Type.Optional(Type.Boolean()),
+		secret: Type.Optional(Type.String({ minLength: 1, maxLength: 16384 })),
 	}),
-	"models.test": ModelRef,
+	"models.test": strict({ provider: Id, modelId: Id, secret: Type.Optional(Type.String({ minLength: 1, maxLength: 16384 })) }),
 	"conversations.subscribe": strict({ botId: Type.Union([Id, Type.Null()]) }),
 	"bots.duplicate": strict({ botId: Id, requestId: Id }),
 	"bots.delete": BotOnly,

@@ -1,13 +1,85 @@
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BotRuntime } from "@openbot/agent-runtime";
-import { SCRIPTED_MODEL, scriptedModels } from "@openbot/agent-runtime/testing";
+import { BotRuntime, type CredentialStore } from "@openbot/agent-runtime";
+import { SCRIPTED_MODEL, scriptedModelsUsing } from "@openbot/agent-runtime/testing";
 import { type HostEventType, PROTOCOL_VERSION } from "@openbot/protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApprovalBook, HostService, MemorySecretStore, type ModelConfigFile } from "../src/index.ts";
 
 const status = { protocolVersion: PROTOCOL_VERSION, hostVersion: "test", nodeVersion: "test", targetId: "mac", startedAt: 0 };
+
+function chatChunk(text: string): string {
+	const chunk = (delta: object, finish: string | null) =>
+		`data: ${JSON.stringify({ id: "s", object: "chat.completion.chunk", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+	return `${chunk({ role: "assistant", content: text }, null)}${chunk({}, "stop")}data: [DONE]\n\n`;
+}
+
+async function chatEndpoint(): Promise<{ url: string; authorizations: string[]; hold: Promise<unknown> | undefined; received: Promise<void>; close: () => Promise<void> }> {
+	const authorizations: string[] = [];
+	const state: { hold: Promise<unknown> | undefined } = { hold: undefined };
+	let resolveReceived = () => {};
+	const received = new Promise<void>((resolve) => {
+		resolveReceived = resolve;
+	});
+	let held = false;
+	const server: Server = createServer((request, response) => {
+		request.on("data", () => {});
+		request.on("end", () => {
+			void (async () => {
+				const authorization = request.headers.authorization ?? "";
+				authorizations.push(authorization);
+				resolveReceived();
+				if (state.hold && authorization !== "Bearer old-key") {
+					if (!held) {
+						held = true;
+						resolveReceived();
+					}
+					await state.hold;
+					response.writeHead(401, { "content-type": "application/json" });
+					response.end(JSON.stringify({ error: { message: "invalid api key" } }));
+					return;
+				}
+				response.writeHead(200, { "content-type": "text/event-stream" });
+				response.end(chatChunk("OK"));
+			})();
+		});
+	});
+	await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+	return {
+		url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`,
+		authorizations,
+		received,
+		get hold() {
+			return state.hold;
+		},
+		set hold(value: Promise<unknown> | undefined) {
+			state.hold = value;
+		},
+		close: () => new Promise((resolve) => server.close(() => resolve())),
+	};
+}
+
+/** Pi reads provider keys from this store; the Host writes the same `MemorySecretStore`. */
+function secretCredentials(store: MemorySecretStore): CredentialStore {
+	return {
+		async read(providerId) {
+			const key = await store.getApiKey(providerId);
+			return key === undefined ? undefined : { type: "api_key", key };
+		},
+		async list() {
+			return [...(await store.configuredProviders())].map((providerId) => ({ providerId, type: "api_key" as const }));
+		},
+		modify() {
+			return Promise.reject(new Error("Tests store keys through the Host"));
+		},
+		delete() {
+			return Promise.reject(new Error("Tests store keys through the Host"));
+		},
+	};
+}
 
 /** An in-memory configuration file; tests change `text` to simulate editing it. */
 type MemoryConfigFile = ModelConfigFile & { text: string | undefined };
@@ -32,7 +104,7 @@ function memoryConfigFile(): MemoryConfigFile {
 describe("HostService", () => {
 	let directory: string;
 	let runtime: BotRuntime;
- let responses: ReturnType<typeof scriptedModels>;
+	let responses: ReturnType<typeof scriptedModelsUsing>;
 	let service: HostService;
 	let events: HostEventType[];
 	/** Bot of every `conversation.updated` event, in order. */
@@ -58,13 +130,13 @@ describe("HostService", () => {
 
 	beforeEach(async () => {
 		directory = await mkdtemp(join(tmpdir(), "openbot-host-"));
-		responses = scriptedModels("Done.");
-  runtime = await BotRuntime.open({ databasePath: join(directory, "db.sqlite"), models: responses.models });
+		secrets = new MemorySecretStore();
+		responses = scriptedModelsUsing(secretCredentials(secrets), "Done.");
+		runtime = await BotRuntime.open({ databasePath: join(directory, "db.sqlite"), models: responses.models });
 		events = [];
 		audit = [];
 		stoppedBots = [];
 		updated = [];
-		secrets = new MemorySecretStore();
 		configFile = memoryConfigFile();
 		service = new HostService({
 			runtime,
@@ -333,26 +405,91 @@ describe("HostService", () => {
 		expect(configFile.text).toContain("// comment");
 	});
 
-	it("drops a verified provider from memory and leaves the model file unchanged when the test fails", async () => {
-		const before = configFile.text;
-		const listed = (await service.handle("models.list", {})).map((model) => `${model.provider}/${model.modelId}`);
-		await service.handle("credentials.set", { providerId: "ephemeral", apiKey: "sk-test-CANARY-xxx" });
-		await expect(
-			service.handle("models.addProvider", {
-				id: "ephemeral",
-				name: "Ephemeral",
-				baseUrl: "http://127.0.0.1:1/v1",
+	it("keeps an existing provider and its key when verify fails, and hides the unverified config while the test runs", async () => {
+		const canary = "sk-test-CANARY-xxx";
+		const endpoint = await chatEndpoint();
+		let release = () => {};
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		try {
+			await service.handle("models.addProvider", {
+				id: "kept",
+				name: "Kept",
+				baseUrl: endpoint.url,
 				api: "openai-completions",
-				modelIds: ["nope"],
+				modelIds: ["kept-model"],
+			});
+			await service.handle("credentials.set", { providerId: "kept", apiKey: "old-key" });
+			const before = configFile.text;
+			const listed = (await service.handle("models.list", {})).map((model) => `${model.provider}/${model.modelId}`);
+			endpoint.hold = gate;
+			const pending = service.handle("models.addProvider", {
+				id: "kept",
+				name: "Replacement",
+				baseUrl: endpoint.url,
+				api: "openai-completions",
+				modelIds: ["other-model"],
 				verify: true,
-			}),
-		).rejects.toThrow(/Authentication failed|timed out|not found|rate limiting|model request failed|Connection failed/);
-		expect(configFile.text).toBe(before);
-		expect(JSON.stringify(configFile.text ?? "")).not.toContain("sk-test-CANARY-xxx");
-		expect(JSON.stringify(configFile.text ?? "")).not.toContain("ephemeral");
-		expect((await service.handle("models.list", {})).map((model) => `${model.provider}/${model.modelId}`)).toEqual(listed);
-		expect(JSON.stringify(audit)).not.toContain("sk-test-CANARY-xxx");
-	}, 40_000);
+				secret: canary,
+			});
+			await vi.waitFor(
+				() => {
+					if (!endpoint.authorizations.includes(`Bearer ${canary}`)) throw new Error("verify request has not started");
+				},
+				{ timeout: 5000 },
+			);
+			const during = await service.handle("models.list", {});
+			expect(during.find((model) => model.provider === "kept")?.modelId).toBe("kept-model");
+			expect(during.some((model) => model.modelId === "other-model")).toBe(false);
+			expect(await service.handle("models.test", { provider: "kept", modelId: "kept-model" })).toEqual({ ok: true });
+			expect(endpoint.authorizations.at(-1)).toBe("Bearer old-key");
+			release();
+			await expect(pending).rejects.toThrow(/Authentication failed|network request failed|model request failed/);
+			const failure = await pending.catch((error: unknown) => (error instanceof Error ? error.message : String(error)));
+			expect(failure).not.toContain(canary);
+			expect(configFile.text).toBe(before);
+			expect(configFile.text ?? "").not.toContain(canary);
+			expect(JSON.stringify(during)).not.toContain(canary);
+			expect(JSON.stringify(audit)).not.toContain(canary);
+			expect(await secrets.getApiKey("kept")).toBe("old-key");
+			expect([...(await secrets.configuredProviders())]).toEqual(["kept"]);
+			expect(await service.handle("models.test", { provider: "kept", modelId: "kept-model" })).toEqual({ ok: true });
+			expect(endpoint.authorizations.at(-1)).toBe("Bearer old-key");
+			expect((await service.handle("models.list", {})).map((model) => `${model.provider}/${model.modelId}`)).toEqual(listed);
+		} finally {
+			release();
+			await endpoint.close();
+		}
+	}, 20_000);
+
+	it("writes the key and file only after verify succeeds, and the model list matches the file", async () => {
+		const canary = "sk-test-CANARY-xxx";
+		const endpoint = await chatEndpoint();
+		try {
+			const before = new Set(await secrets.configuredProviders());
+			const settings = await service.handle("models.addProvider", {
+				id: "fresh",
+				name: "Fresh",
+				baseUrl: endpoint.url,
+				api: "openai-completions",
+				modelIds: ["fresh-model"],
+				verify: true,
+				secret: canary,
+			});
+			expect(configFile.text ?? "").not.toContain(canary);
+			expect(JSON.parse(configFile.text ?? "{}").providers.fresh).toMatchObject({ baseUrl: endpoint.url, models: [{ id: "fresh-model" }] });
+			const listed = (await service.handle("models.list", {})).filter((model) => model.provider === "fresh").map((model) => model.modelId);
+			expect(listed).toEqual(["fresh-model"]);
+			expect(JSON.stringify(settings)).not.toContain(canary);
+			expect(await service.handle("models.test", { provider: "fresh", modelId: "fresh-model" })).toEqual({ ok: true });
+			expect(endpoint.authorizations.at(-1)).toBe(`Bearer ${canary}`);
+			expect([...(await secrets.configuredProviders())].filter((id) => !before.has(id))).toEqual(["fresh"]);
+			expect(JSON.stringify(audit)).not.toContain(canary);
+		} finally {
+			await endpoint.close();
+		}
+	}, 20_000);
 
 	it("tests a model with a real request and reports failures as results", async () => {
 		expect(await service.handle("models.test", SCRIPTED_MODEL)).toEqual({ ok: true });

@@ -125,13 +125,10 @@
 }
 
 .onboarding-wizard a {
-	color: var(--accent);
+	color: var(--muted);
 	font-size: 12px;
 	line-height: 16px;
-}
-
-:root[data-theme="dark"] .onboarding-wizard a {
-	color: var(--unread);
+	text-decoration: underline;
 }
 
 .onboarding-key {
