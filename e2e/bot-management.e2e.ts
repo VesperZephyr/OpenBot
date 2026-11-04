@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect, it } from "vitest";
+import { translate } from "../apps/desktop/src/shared/i18n.ts";
 import { type AppHarness, launchApp } from "./harness.ts";
 import { chooseSettingsLanguage } from "./pilot-ui.ts";
 let h: AppHarness;
@@ -202,10 +203,13 @@ it("renders a Chinese approval at minimum window size and denies it without crea
 	await box.press("Enter");
 	await h.page().locator(".approval").waitFor();
 	expect(await h.page().locator(".approval-reason").textContent()).not.toBe("Review this Bot change");
-	await h.page().getByRole("button", { name: "拒绝", exact: true }).scrollIntoViewIfNeeded();
+	const deny = h.page().locator(".approval").getByRole("button", { name: translate("zh-CN", "Deny"), exact: true });
+	await deny.scrollIntoViewIfNeeded();
 	await h.shot("07-chinese-approval-minimum");
-	await h.page().getByRole("button", { name: "拒绝", exact: true }).click();
+	await deny.click();
 	await h.page().getByText("Preview declined.", { exact: true }).waitFor();
+	expect(await h.page().getByText("Do not retry it", { exact: false }).count()).toBe(0);
+	expect(await h.page().locator(".tool-output").last().textContent()).toBe(translate("zh-CN", "Denied"));
 	await idle();
 	expect(await roster()).toHaveLength(1);
 });

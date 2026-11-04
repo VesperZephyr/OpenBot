@@ -210,6 +210,9 @@ it("captures the review states in light and dark", async () => {
 	await panel.getByRole("button", { name: "Cancel", exact: true }).click();
 	await panel.getByRole("alertdialog", { name: "Discard these edits?" }).waitFor();
 	expect(await panel.getByLabel("Name", { exact: true }).inputValue()).toBe("Atlas draft");
+	expect(await panel.getByRole("button", { name: "Save", exact: true }).count()).toBe(0);
+	expect(await panel.getByRole("button", { name: "Cancel", exact: true }).count()).toBe(0);
+	expect(await panel.getByRole("button", { name: "Discard", exact: true }).evaluate((element) => element.classList.contains("primary"))).toBe(false);
 	await h.shot("cancel-confirm-light");
 	await panel.getByRole("button", { name: "Keep editing", exact: true }).click();
 	await appearance("Dark");
@@ -217,6 +220,9 @@ it("captures the review states in light and dark", async () => {
 	await panel.getByLabel("Name", { exact: true }).fill("Atlas draft");
 	await panel.getByRole("button", { name: "Cancel", exact: true }).click();
 	await panel.getByRole("alertdialog", { name: "Discard these edits?" }).waitFor();
+	expect(await panel.getByRole("button", { name: "Save", exact: true }).count()).toBe(0);
+	expect(await panel.getByRole("button", { name: "Cancel", exact: true }).count()).toBe(0);
+	expect(await panel.getByRole("button", { name: "Discard", exact: true }).evaluate((element) => element.classList.contains("primary"))).toBe(false);
 	await h.shot("cancel-confirm-dark");
 	await panel.getByRole("button", { name: "Discard", exact: true }).click();
 	await panel.getByRole("button", { name: "Edit", exact: true }).waitFor();
@@ -227,6 +233,9 @@ it("captures the review states in light and dark", async () => {
 	await h.send("Preview a command");
 	const card = h.page().getByRole("group", { name: "Approval request" });
 	await card.waitFor();
+	expect(await h.page().locator(".conversation-status").textContent()).toBe("Working");
+	expect(await h.page().locator(".live-reply .reply-activity").count()).toBe(0);
+	expect(await h.page().locator(".tool-verb").last().textContent()).toBe("Running");
 	const actions = card.locator(".approval-actions button");
 	expect(await actions.nth(0).textContent()).toBe("Allow once");
 	expect(await actions.nth(1).textContent()).toBe("Deny");
@@ -240,6 +249,11 @@ it("captures the review states in light and dark", async () => {
 	await appearance("Light");
 	await card.getByRole("button", { name: "Deny", exact: true }).click();
 	await card.waitFor({ state: "hidden" });
+	await h.page().getByText("The command was not run.", { exact: true }).waitFor();
+	const denied = h.page().locator(".tool-card", { hasText: "echo review" });
+	expect(await denied.locator(".tool-verb").textContent()).toBe("Denied");
+	expect(await denied.locator(".tool-output").textContent()).toBe("Denied");
+	expect(await h.page().getByText("Do not retry it", { exact: false }).count()).toBe(0);
 
 	const beforeModel = await atlas();
 	await h.api("bots.update", { botId: atlasId, expectedRevision: beforeModel.revision, model: { provider: "missing", modelId: "nope" } });

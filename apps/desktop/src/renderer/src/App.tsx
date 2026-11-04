@@ -30,6 +30,7 @@ import { ConversationShell, DetailsPanel, useDialogFocus } from "./ConversationU
 import { MarkReadItem, RosterPreview, recentTime } from "./RosterPreview";
 import { ManagementHistory } from "./BotManagement";
 import { t } from "./i18n";
+import { presentError } from "../../shared/i18n";
 import type {
 	BotSummary,
 	PendingApproval,
@@ -47,7 +48,7 @@ import { WebSearchSettings } from "./WebSearchSettings";
 import { ProfileMemory } from "./ProfileMemory";
 import { Divider, RetryButton, retryTarget, Thinking } from "./TranscriptExtras";
 import { PendingMessages, StopButton, StoppedNote } from "./runs";
-import { ApprovalCard } from "./ApprovalCard";
+import { ApprovalCard, SettledApprovals } from "./ApprovalCard";
 import { GroupView, GroupRow, GroupEditor } from "./Groups";
 import { CommandSettings, FolderSettings } from "./PolicySettings";
 import { ConfirmDeleteBot, DeleteBotItem, DuplicateBotItem } from "./BotLifecycle";
@@ -55,7 +56,8 @@ import { ModelSetup } from "./ModelSetup";
 import { Onboarding } from "./Onboarding";
 import { transcriptRows } from "./steps";
 import { MessageTime, RevealButton, StepsRow } from "./TranscriptDetails";
-import { conversationPresence, presenceLabel } from "./conversation-status";
+import { conversationPresence, headerStatusLabel } from "./conversation-status";
+import { displayToolOutput } from "./tool-output";
 import { botGreeting, conversationExamples } from "./examples";
 import { composers } from "./useComposer";
 import { api, connect, createBot, openBot, refreshBots, refreshSettings, report, errorMessage, sendMessage, useStore } from "./store";
@@ -192,7 +194,7 @@ export function App() {
 			{creating && <NewBotDialog onClose={() => setCreating(false)} />}
 			{notice !== undefined && (
 				<div className="toast" role="status">
-					<span>{t(notice)}</span>
+					<span>{t(presentError(notice))}</span>
 					<button type="button" className="toast-close" onClick={() => useStore.setState({ notice: undefined })}>
 						{t("Dismiss")}
 					</button>
@@ -331,7 +333,7 @@ function BotRow({ bot, selected }: { readonly bot: BotSummary; readonly selected
 			onClick={() => void openBot(bot.botId).catch(report)}
 			aria-current={selected ? "page" : undefined}
 		>
-			<Avatar bot={bot} />
+			<Avatar bot={bot} working={bot.activity === "working"} />
 			<RosterPreview conversationKey={`bot:${bot.botId}`} name={bot.name} core={bot.kind === "core"} fallback={bot.role} activity={label} />
 		</button>
 	);
@@ -447,7 +449,7 @@ function Conversation({ botId, editing, onEditing }: { readonly botId: string; r
 			}
 		>
 			<header className="conversation-header">
-				<Avatar bot={bot} size={29} />
+				<Avatar bot={bot} size={29} working={presence !== "idle"} />
 				<div className="conversation-title">
 					<div className="conversation-name"><span title={bot.name}>{bot.name}</span>{bot.kind === "core" && <PersonalStar />}</div>
 					<p className="conversation-meta">
@@ -457,8 +459,8 @@ function Conversation({ botId, editing, onEditing }: { readonly botId: string; r
 								<span className="conversation-meta-sep" aria-hidden="true">·</span>
 							</>
 						) : null}
-						{presence === "working" && <span className="status-dot" aria-hidden="true" />}
-						<span className="conversation-status" role="status">{t(presenceLabel(presence))}</span>
+						{presence !== "idle" && <span className="status-dot" aria-hidden="true" />}
+						<span className="conversation-status" role="status">{t(headerStatusLabel(presence))}</span>
 					</p>
 				</div>
 				<button className="details-toggle" aria-label={t("Conversation details")} onClick={() => setEditing(!editing)}>
@@ -588,10 +590,11 @@ function HistoryTranscript({
 						row.content.item.runId === run.runId && row.content.item.category === "interrupted");
 				const retry = snapshot.messageMode && !snapshot.channelId && !snapshot.live && snapshot.retry?.outcomeId &&
 					!rows.some(row => row.id === snapshot.retry!.outcomeId) ? snapshot.retry : undefined;
+				const userAt = latestUserAt(snapshot.items);
 				return <>
 					<Transcript snapshot={{ ...snapshot, items: missingInterruption
 						? [{ kind: "outcome", id: `run-outcome:${run.runId}`, runId: run.runId, category: "interrupted" }]
-						: [] }} />
+						: [] }} {...(userAt === undefined ? {} : { latestUserAt: userAt })} />
 					{retry && <ol className="messages"><OutcomeRow item={{ id: retry.outcomeId!, category: "failed" }} retry={{ botId: snapshot.botId, ...retry }} /></ol>}
 				</>;
 			}}
@@ -599,7 +602,13 @@ function HistoryTranscript({
 	);
 }
 
-function Transcript({ snapshot,historyOnly=false,retryOverride }: { readonly snapshot: ConversationSnapshot;historyOnly?:boolean;retryOverride?:ReturnType<typeof retryTarget> }) {
+function latestUserAt(items: readonly TranscriptItem[]): number | undefined {
+	let latest: number | undefined;
+	for (const item of items) if (item.kind === "user" && item.at !== undefined && (latest === undefined || item.at > latest)) latest = item.at;
+	return latest;
+}
+
+function Transcript({ snapshot,historyOnly=false,latestUserAt:userAt,retryOverride }: { readonly snapshot: ConversationSnapshot;historyOnly?:boolean;latestUserAt?:number;retryOverride?:ReturnType<typeof retryTarget> }) {
 	const approvals = new Map(snapshot.approvals.map((approval) => [approval.callId, approval]));
 	const retry = retryOverride??(snapshot.channelId ? undefined : retryTarget(snapshot.items, snapshot.live !== undefined));
 	const item = (entry: TranscriptItem) =>
@@ -640,6 +649,7 @@ function Transcript({ snapshot,historyOnly=false,retryOverride }: { readonly sna
 				),
 			)}
 			{!historyOnly&&<PendingMessages snapshot={snapshot} />}
+ {!historyOnly&&<SettledApprovals conversationId={snapshot.conversationId} pending={snapshot.approvals.map((approval) => approval.approvalId)} runActive={snapshot.run !== undefined && snapshot.run.state !== "completed" && snapshot.run.state !== "failed" && snapshot.run.state !== "cancelled"} {...(userAt === undefined ? {} : { latestUserAt: userAt })} listItem />}
  {!historyOnly&&snapshot.approvals.map(approval=><li key={approval.approvalId} className="approval-slot"><ApprovalCard approval={approval}/></li>)}
  {!historyOnly&&!snapshot.channelId?.startsWith("routine_")&&!snapshot.messageMode&&snapshot.run?.state==="needs_attention"&&<InterruptedRun key={snapshot.run.runId} run={snapshot.run}/>}
             {!historyOnly&&(snapshot.live || snapshot.run?.state === "running" || snapshot.run?.state === "queued") && (
@@ -740,16 +750,7 @@ function ToolCard({
 	readonly childApprovals?: readonly PendingApproval[];
 }) {
 	const args = (item.args ?? {}) as Record<string, unknown>;
-	let output = item.output;
-	if (item.tool === "codemode" && item.execution?.error) output = t(item.execution.error);
-	if (item.tool.startsWith("app_") && output) {
-		try {
-			const result = JSON.parse(output);
-			if (result.ok === false && typeof result.error?.message === "string") output = t(result.error.message);
-		} catch {
-			/* Interrupted tools may not have a complete result envelope. */
-		}
-	}
+	const output = displayToolOutput(item.tool, item.output, item.execution?.error, (text) => t(text));
 	const managedName = useStore(
 		(state) =>
 			state.bots.find((bot) => bot.botId === args.botId)?.name ?? state.groups.find((group) => group.groupId === args.groupId)?.name,
@@ -771,9 +772,13 @@ function ToolCard({
 			"",
 	);
 	const waiting = approval !== undefined || childApprovals.length > 0;
-	const failureLabel=item.failureReason?{approval_expired:"Approval expired",permission_revoked:"Permission revoked",approval_denied:"Approval denied"}[item.failureReason]:undefined;
- const label = failureLabel?t(failureLabel):waiting
-		? t("Waiting for approval")
+	const failureLabel = item.failureReason
+		? { approval_expired: "Approval expired", permission_revoked: "Permission revoked", approval_denied: "Denied" }[item.failureReason]
+		: undefined;
+	const label = failureLabel
+		? t(failureLabel)
+		: waiting
+		? t(running)
 		: item.status === "running" || item.status === "pending"
 			? t(running)
 			: item.status === "failed"

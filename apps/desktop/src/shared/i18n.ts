@@ -1,4 +1,6 @@
 /** Application-owned text only. Bot content and external diagnostics are never translated. */
+import { EXECUTOR_ERROR, executorErrorCode, type ExecutorErrorCode } from "@openbot/protocol";
+
 export type Language = "en" | "zh-CN";
 export const chinese: Readonly<Record<string, string>> = {
  "View previous result": "查看先前结果",
@@ -988,6 +990,14 @@ export const chinese: Readonly<Record<string, string>> = {
 	"Approval request": "授权请求",
 	"Deny": "拒绝",
 	"Allow once": "允许一次",
+	"Allowed once: {action} · {time}": "已允许一次：{action} · {time}",
+	"Set to always allow: {action} · {time}": "已设为始终允许：{action} · {time}",
+	"Denied: {action} · {time}": "已拒绝：{action} · {time}",
+	"Approval record": "授权请求",
+	"Loading": "加载中",
+	"The local runtime failed to start": "本地运行环境启动失败",
+	"The local runtime did not become ready in time": "本地运行环境没有及时就绪",
+	"The operation timed out. The result is unknown and may have partly run. Check the result before retrying.": "操作超时，结果未知，可能已部分执行。请先确认结果，再决定是否重试。",
 	"Edit profile": "编辑资料",
 	"New topic": "新话题",
 	"Profile": "资料",
@@ -1198,6 +1208,18 @@ export const chinese: Readonly<Record<string, string>> = {
 	"Role and message skills exceed two methods. Edit the role defaults or message attachments.": "角色默认技能与消息合计超过两个方法。请修改默认技能或消息附件。",
 	"Reload the profile before changing role skills": "修改角色技能前请重新加载资料",
 };
+
+const executorCopy: Readonly<Record<ExecutorErrorCode, string>> = {
+	[EXECUTOR_ERROR.startFailed]: "The local runtime failed to start",
+	[EXECUTOR_ERROR.readyTimeout]: "The local runtime did not become ready in time",
+	[EXECUTOR_ERROR.invokeTimeout]: "The operation timed out. The result is unknown and may have partly run. Check the result before retrying.",
+};
+
+/** Maps a shared executor error code to user-facing copy. Other text is unchanged. */
+export function presentError(message: string): string {
+	const code = executorErrorCode(message);
+	return code ? executorCopy[code] : message;
+}
 
 export function translate(language: Language, message: string, values: Readonly<Record<string, string | number>> = {}): string {
  const template = language === "zh-CN" ? chinese[message] ?? message : message;

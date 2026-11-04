@@ -42,12 +42,15 @@ export function Avatar({
 	size = 34,
 	value,
 	ground = size >= 96,
+	working = false,
 }: {
 	bot: Pick<BotProfile, "botId" | "avatar">;
 	size?: number;
 	value?: BotAvatar | AvatarUpload;
 	/** Large previews only. Sidebar and message avatars stay flat. */
 	ground?: boolean;
+	/** Working avatar breathes. Reduced motion leaves it still. */
+	working?: boolean;
 }) {
 	const selected = value ?? bot.avatar ?? defaultAvatar(bot.botId);
 	const sha256 = selected.kind === "image" ? selected.sha256 : undefined;
@@ -70,7 +73,7 @@ export function Avatar({
 				? loaded?.url
 				: undefined;
 	return (
-		<span className="avatar" style={{ width: size, height: size }} aria-hidden="true" data-avatar-kind={selected.kind}>
+		<span className={`avatar${working ? " is-working" : ""}`} style={{ width: size, height: size }} aria-hidden="true" data-avatar-kind={selected.kind}>
 			{url && broken !== url ? (
 				<img src={url} alt="" draggable={false} onError={() => setBroken(url)} />
 			) : (

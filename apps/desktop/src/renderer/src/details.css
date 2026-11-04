@@ -14,12 +14,13 @@
 .onboarding-step {
 	display: flex;
 	flex-direction: column;
-	gap: 14px;
+	gap: 16px;
 }
 .onboarding-step h1 {
 	margin: 0;
 	font-family: var(--font-display);
-	font-size: 26px;
+	font-size: 24px;
+	line-height: 32px;
 	font-weight: 600;
 }
 .onboarding-step > p {
@@ -66,13 +67,13 @@
 	border: 1px solid var(--attention);
 	border-radius: 8px;
 	color: var(--attention);
-	font-size: 13px;
+	font-size: 12px;
 }
 
 /* "Ran N steps": consecutive successful tool calls folded into one quiet row */
 .steps-row {
 	align-self: stretch;
-	font-size: 13px;
+	font-size: 14px;
 }
 .steps-row > details > summary {
 	display: flex;

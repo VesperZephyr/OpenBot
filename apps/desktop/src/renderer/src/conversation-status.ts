@@ -12,8 +12,7 @@ export function conversationPresence(input: {
 	return "idle";
 }
 
-export function presenceLabel(status: ConversationPresence): "Working" | "Waiting for approval" | "Idle" {
-	if (status === "working") return "Working";
-	if (status === "awaiting_approval") return "Waiting for approval";
-	return "Idle";
+/** Header copy. An approval is shown on its card, so the title stays Working or Idle. */
+export function headerStatusLabel(status: ConversationPresence): "Working" | "Idle" {
+	return status === "idle" ? "Idle" : "Working";
 }

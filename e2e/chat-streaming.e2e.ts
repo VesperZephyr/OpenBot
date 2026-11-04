@@ -102,8 +102,10 @@ it("keeps older reading anchored while a new answer is pending", async () => {
 it("distinguishes approvals and running tools and clears activity after Stop or failure", async () => {
     h.model.script({tool:"local_exec",args:{command:"sleep 2; printf checked",description:"Check a source"}},{chunks:["Checked."],delayMs:500,chunkDelayMs:300});
     await h.send("Check a source with a command");
-    await poll(() => activity().textContent()).toBe("Needs approval");
-    expect(await activity().getAttribute("class")).not.toContain("is-active");
+    await h.page().getByRole("group", { name: "Approval request" }).waitFor();
+    expect(await activity().count()).toBe(0);
+    expect(await h.page().locator(".conversation-status").textContent()).toBe("Working");
+    expect(await h.page().locator(".tool-verb").last().textContent()).toBe("Running");
     await button("Allow once").click();
     await poll(() => activity().textContent()).toBe("Waiting for result");
     await h.shot("04-tool-running");

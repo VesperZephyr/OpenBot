@@ -86,14 +86,14 @@ export function Select<T extends object>({
 				if (allowOpenChange(open)) setIsOpen(open);
 			}}
 			data-openbot-ui=""
-			className={cx("ob:group ob:flex ob:w-full ob:flex-col ob:gap-1.5", className)}
+			className={cx("ob:group ob:flex ob:w-full ob:flex-col ob:gap-2", className)}
 		>
 			{label !== undefined && label !== null ? <AriaLabel className="ob:text-body-medium ob:text-text-primary">{label}</AriaLabel> : null}
 			<AriaButton
 				ref={triggerRef}
 				className={cx(
-					"ob:flex ob:min-h-9 ob:w-full ob:cursor-pointer ob:items-center ob:justify-between ob:gap-1.5 ob:rounded-2lg",
-					"ob:border ob:border-muted ob:bg-surface ob:px-2.5 ob:py-2 ob:text-body-medium ob:text-text-primary ob:shadow-xs",
+					"ob:flex ob:min-h-9 ob:w-full ob:cursor-pointer ob:items-center ob:justify-between ob:gap-2 ob:rounded-md",
+					"ob:border ob:border-muted ob:bg-surface ob:px-3 ob:py-2 ob:text-body-medium ob:text-text-primary ob:shadow-xs",
 					"ob:hover:bg-surface-raised",
 					"ob:outline-none ob:focus-visible:ring-2 ob:focus-visible:ring-offset-2 ob:focus-visible:ring-accent",
 					"ob:disabled:cursor-not-allowed ob:disabled:opacity-45",

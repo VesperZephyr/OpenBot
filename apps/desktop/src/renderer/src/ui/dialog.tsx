@@ -44,7 +44,7 @@ export function OpenBotDialog({
 					className="new-conversation ob:flex ob:max-h-[calc(100vh-12vh)] ob:flex-col ob:gap-2 ob:overflow-y-auto ob:rounded-2xl ob:border ob:border-muted ob:bg-surface-raised ob:p-5 ob:shadow-dialog ob:outline-none"
 				>
 					<div className="ob:flex ob:items-start ob:justify-between ob:gap-3">
-						<Heading slot="title" className="ob:font-panel ob:text-[17px] ob:leading-6 ob:font-medium">
+						<Heading slot="title" className="ob:font-panel ob:text-base ob:leading-6 ob:font-medium">
 							{title}
 						</Heading>
 						<Button iconOnly icon={<InterfaceIcon name="close" size={18} />} aria-label={closeLabel} autoFocus onClick={onClose} />
