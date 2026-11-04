@@ -1,12 +1,16 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile, chmod, access } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile, chmod, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { expect, it, vi } from "vitest";
 import type { ToolInvocation } from "@openbot/protocol";
-import { ExecutorProcess } from "../src/executor.ts";
+import { CONNECTOR_LIMITS } from "@openbot/protocol";
+import { DEFAULT_YIELD_MS, MAX_TASK_OUTPUT_WAIT_MS } from "@openbot/local-executor";
+import { invokeProbe, resetInvokeProbe } from "@openbot/local-executor/test-hook";
+import { DEFAULT_INVOCATION_DEADLINE_MS } from "@openbot/tool-router";
+import { INVOKE_TIMEOUT_MS, ExecutorProcess } from "../src/executor.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const executorEntry = resolve(here, "../../local-executor/src/main.ts");
@@ -135,14 +139,15 @@ process.send({ kind: "executor.hello", targetId: process.env.OPENBOT_TARGET_ID }
 	);
 	const executor = await executorProcess(root, entry, { invokeTimeoutMs: 400, env: { CANCELLED: cancelled } });
 	try {
+		resetInvokeProbe();
 		const first = await executor.invoke(invocation("call-1"), () => {}, new AbortController().signal);
 		expect(first).toMatchObject({
 			status: "unknown",
 			output: "The local executor timed out before reporting a result; the action may have partly run",
 		});
-		await vi.waitFor(async () => expect(await readFile(cancelled, "utf8")).toBe("call-1"));
-		await new Promise((resolve) => setTimeout(resolve, 50));
-		expect(first.output).toContain("timed out");
+		await vi.waitFor(() => expect(invokeProbe.dropped).toContain("call-1"));
+		expect(invokeProbe.settlements.filter((entry) => entry.id === "call-1")).toEqual([{ id: "call-1", status: "unknown" }]);
+		expect(invokeProbe.pending).toBe(0);
 		await expect(executor.invoke(invocation("call-2"), () => {}, new AbortController().signal)).resolves.toEqual({
 			status: "succeeded",
 			output: "second",
@@ -153,7 +158,7 @@ process.send({ kind: "executor.hello", targetId: process.env.OPENBOT_TARGET_ID }
 	}
 }, 20_000);
 
-it("releases child processes, listeners, and file handles when a shutdown step throws", async () => {
+it("releases child processes, listeners, and file handles when a shutdown step throws", { tags: ["integration"], timeout: 45_000 }, async () => {
 	const root = await mkdtemp(join(tmpdir(), "openbot-executor-shutdown-"));
 	const workspace = join(root, "workspace");
 	const data = join(root, "data");
@@ -167,8 +172,8 @@ it("releases child processes, listeners, and file handles when a shutdown step t
 			OPENBOT_TARGET_ID: "local:test",
 			OPENBOT_WORKSPACE: workspace,
 			OPENBOT_DATA_DIR: data,
-			OPENBOT_SHUTDOWN_FAULT: "artifacts",
-			OPENBOT_SHUTDOWN_MARKER: marker,
+			NODE_ENV: "test",
+			OPENBOT_TEST_HOOK: JSON.stringify({ shutdownFault: "artifacts", shutdownMarker: marker }),
 		},
 	});
 	let host: ChildProcess | undefined;
@@ -194,12 +199,14 @@ it("releases child processes, listeners, and file handles when a shutdown step t
 			new Promise<never>((_, reject) => setTimeout(() => reject(new Error("executor shutdown hung")), 2_000)),
 		]);
 		expect(code).toBe(0);
+		expect(Buffer.concat(output).toString("utf8")).toContain("Executor shutdown step failed");
 		expect(await readFile(marker, "utf8")).toBe("closed");
 		const database = new DatabaseSync(join(data, "executor", "receipts.sqlite"));
 		expect(database.prepare("select count(*) as count from receipts").get()).toEqual({ count: 0 });
 		database.close();
 
 		const home = join(root, "home");
+		await mkdir(home, { recursive: true });
 		const hostData = join(root, "host-data");
 		const hostWorkspace = join(root, "host-workspace");
 		const hostMarker = join(root, "host-marker");
@@ -224,15 +231,15 @@ setInterval(() => {}, 1000);
 			stdio: ["ignore", "pipe", "pipe", "ipc"],
 			env: {
 				PATH: process.env.PATH,
-				HOME: process.env.HOME,
+				HOME: home,
 				TMPDIR: process.env.TMPDIR,
 				USER: process.env.USER,
+				NODE_ENV: "test",
 				OPENBOT_DATA_DIR: hostData,
 				OPENBOT_WORKSPACE: hostWorkspace,
 				OPENBOT_HOME: home,
 				OPENBOT_EXECUTOR_ENTRY: fake,
-				OPENBOT_SHUTDOWN_FAULT: "pause",
-				OPENBOT_SHUTDOWN_MARKER: hostMarker,
+				OPENBOT_TEST_HOOK: JSON.stringify({ shutdownFault: "pause", shutdownMarker: hostMarker }),
 				PIDFILE: pidfile,
 			},
 		});
@@ -283,4 +290,125 @@ setInterval(() => {}, 1000);
 		}
 		await rm(root, { recursive: true, force: true });
 	}
-}, 45_000);
+});
+
+it("keeps every invoke deadline under the 120s transport timeout", () => {
+	expect(INVOKE_TIMEOUT_MS).toBe(120_000);
+	for (const deadline of [DEFAULT_INVOCATION_DEADLINE_MS, DEFAULT_YIELD_MS, MAX_TASK_OUTPUT_WAIT_MS, CONNECTOR_LIMITS.callMs, CONNECTOR_LIMITS.handshakeMs]) {
+		expect(deadline).toBeLessThan(INVOKE_TIMEOUT_MS);
+	}
+});
+
+it("clears the recorded process group after the executor crashes", async () => {
+	const root = await mkdtemp(join(tmpdir(), "openbot-executor-crash-"));
+	const entry = join(root, "executor.mjs");
+	const pidfile = join(root, "pids.json");
+	await writeFile(
+		entry,
+		`import { spawn } from "node:child_process";
+import { writeFileSync } from "node:fs";
+const child = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { stdio: "ignore" });
+writeFileSync(process.env.PIDFILE, JSON.stringify({ parent: process.pid, child: child.pid }));
+child.unref();
+process.send({ kind: "executor.hello", targetId: process.env.OPENBOT_TARGET_ID });
+setTimeout(() => process.exit(1), 50);
+`,
+	);
+	const executor = await executorProcess(root, entry, { env: { PIDFILE: pidfile } });
+	try {
+		await executor.start();
+		const ids = JSON.parse(await readFile(pidfile, "utf8")) as { parent: number; child: number };
+		expect(alive(ids.parent)).toBe(true);
+		expect(alive(ids.child)).toBe(true);
+		await vi.waitFor(() => expect(alive(ids.parent)).toBe(false));
+		await executor.stop();
+		await vi.waitFor(() => expect(alive(ids.child)).toBe(false), { timeout: 3_000 });
+	} finally {
+		await executor.stop();
+		await rm(root, { recursive: true, force: true });
+	}
+}, 20_000);
+
+it("kills the executor group inside Desktop's 5s budget when pause is slow", { tags: ["integration"], timeout: 30_000 }, async () => {
+	const root = await mkdtemp(join(tmpdir(), "openbot-executor-budget-"));
+	const home = join(root, "home");
+	await mkdir(home, { recursive: true });
+	const fake = join(root, "fake-executor.mjs");
+	const pidfile = join(root, "pids.json");
+	await writeFile(
+		fake,
+		`import { spawn } from "node:child_process";
+import { writeFileSync } from "node:fs";
+const command = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { detached: true, stdio: "ignore" });
+writeFileSync(process.env.PIDFILE, JSON.stringify({ executor: process.pid, command: command.pid }));
+command.unref();
+process.on("SIGTERM", () => {});
+process.on("disconnect", () => {});
+process.on("message", (message) => {
+  if (message.kind === "policy.sync") process.send({ kind: "policy.synced", messageId: message.messageId, confirmed: true });
+  if (message.kind === "execution.quiesce" || message.kind === "execution.revoke") process.send({ kind: "execution.quiesced", messageId: message.messageId, confirmed: true });
+  if (message.kind === "tasks.inspect") process.send({ kind: "tasks.inspected", messageId: message.messageId, receipts: [] });
+});
+process.send({ kind: "executor.hello", targetId: process.env.OPENBOT_TARGET_ID });
+setInterval(() => {}, 1000);
+`,
+	);
+	const host = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", hostEntry], {
+		stdio: ["ignore", "pipe", "pipe", "ipc"],
+		env: {
+			PATH: process.env.PATH,
+			HOME: home,
+			TMPDIR: process.env.TMPDIR,
+			USER: process.env.USER,
+			NODE_ENV: "test",
+			OPENBOT_DATA_DIR: join(root, "data"),
+			OPENBOT_WORKSPACE: join(root, "workspace"),
+			OPENBOT_HOME: home,
+			OPENBOT_EXECUTOR_ENTRY: fake,
+			OPENBOT_TEST_HOOK: JSON.stringify({ pauseDelayMs: 2_000 }),
+			PIDFILE: pidfile,
+		},
+	});
+	const output: Buffer[] = [];
+	host.stdout?.on("data", (chunk: Buffer) => output.push(chunk));
+	host.stderr?.on("data", (chunk: Buffer) => output.push(chunk));
+	try {
+		await new Promise<void>((resolve, reject) => {
+			const timer = setTimeout(() => reject(new Error(`host did not become ready\n${Buffer.concat(output).toString("utf8")}`)), 20_000);
+			host.on("message", (message: unknown) => {
+				if (!message || typeof message !== "object" || !("kind" in message) || message.kind !== "ready") return;
+				clearTimeout(timer);
+				resolve();
+			});
+		});
+		const ids = JSON.parse(await readFile(pidfile, "utf8")) as { executor: number; command: number };
+		expect(alive(ids.executor)).toBe(true);
+		expect(alive(ids.command)).toBe(true);
+		const started = Date.now();
+		const exited = new Promise<void>((resolve) => host.once("exit", () => resolve()));
+		host.disconnect();
+		const killer = setTimeout(() => {
+			try {
+				host.kill("SIGKILL");
+			} catch {
+				// Desktop's 5s kill is a no-op once shutdown has already exited.
+			}
+		}, 5_000);
+		await exited;
+		clearTimeout(killer);
+		expect(Date.now() - started).toBeLessThan(5_500);
+		await vi.waitFor(() => {
+			expect(alive(ids.executor)).toBe(false);
+			expect(alive(ids.command)).toBe(false);
+		});
+	} finally {
+		if (host.exitCode === null && host.signalCode === null && host.pid !== undefined) {
+			try {
+				process.kill(host.pid, "SIGKILL");
+			} catch {
+				// Already gone.
+			}
+		}
+		await rm(root, { recursive: true, force: true });
+	}
+});

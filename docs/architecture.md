@@ -275,6 +275,7 @@ flowchart BT
   hostApp --> serverCore
   hostApp --> agentRuntime
   hostApp --> toolRouter
+  hostApp --> localExec
   execApp --> localExec
   deskApp --> protocol
 ```
@@ -283,6 +284,7 @@ flowchart BT
 - Only `agent-runtime` imports `third_party/pi`.
 - `tool-router` depends only on `protocol`. It reaches grants, policy, approvals, and the dispatch ledger through ports that `apps/local-server` wires to `server-core`. `agent-runtime` reaches the router only through its own `ToolInvoker` port. This keeps the router from importing application logic and avoids a cycle between the runtime, the router, and the application layer.
 - `browser` and `computer-use` are imported only by `local-executor`.
+- The Host may import `@openbot/local-executor`'s process-group helpers and the test-only hook so shutdown uses the same start-time identity as the receipt ledger. It still does not run executor tools in-process.
 - Concrete Keychain, IPC, and process-spawning implementations live in `apps/*`; packages define the ports.
 - Both Host↔Desktop and Host↔Executor traffic uses `protocol` envelopes, so a future executor transport changes no business package.
 

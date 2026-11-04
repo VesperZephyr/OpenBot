@@ -20,7 +20,8 @@ import {
 } from "@openbot/protocol";
 import { paramsError } from "@openbot/protocol/schemas";
 import { ApprovalBook, DEFAULT_MAX_ACTIVE_RUNS, HostService } from "@openbot/server-core";
-import { ExecutorProcess } from "./executor.ts";
+import { SHUTDOWN_FORCE_MS, ExecutorProcess } from "./executor.ts";
+import { readTestHook } from "@openbot/local-executor/test-hook";
 import { CredentialBroker, KeychainCredentials } from "./keychain.ts";
 import { modelConfigFile, openBotHome } from "./model-config-file.ts";
 import { hostClock } from "./test-clock.ts";
@@ -209,47 +210,48 @@ const keepAlive = process.send === undefined ? setInterval(() => {}, 2 ** 30) : 
 let stopping = false;
 const onSignal = (): void => void shutdown(0);
 const onDisconnect = (): void => void shutdown(0);
+/** Desktop force-kills this process after 5s, so shutdown itself must finish inside that budget. */
+const SHUTDOWN_BUDGET_MS = 4_500;
 async function shutdown(code: number): Promise<void> {
 	if (stopping) return;
 	stopping = true;
 	clearInterval(keepAlive);
-	try {
-		await service.lifecycle.pause("quitting").catch(() => console.error("Lifecycle shutdown could not be confirmed"));
-		if (process.env.OPENBOT_SHUTDOWN_FAULT === "pause") throw new Error("injected shutdown fault: pause");
-		await service.stop();
-	} catch (error) {
-		console.error("Host shutdown failed", error);
-	} finally {
+	const hook = readTestHook();
+	// Snapshot groups immediately. Disconnect waits until pause has quiesced; the force timer still fires inside Desktop's 5s.
+	await executor.armShutdown(SHUTDOWN_FORCE_MS);
+	const run = async (step: () => Promise<unknown> | unknown): Promise<void> => {
 		try {
-			await runtime.close();
+			await step();
 		} catch (error) {
-			console.error("Host runtime could not be closed", error);
-		} finally {
-			try {
-				await executor.stop();
-			} catch (error) {
-				console.error("Executor could not be stopped", error);
-			} finally {
-				try {
-					credentialBroker.close();
-					process.removeListener("message", onMessage);
-					process.removeListener("SIGTERM", onSignal);
-					process.removeListener("SIGINT", onSignal);
-					process.removeListener("disconnect", onDisconnect);
-				} finally {
-					try {
-						await lock.close();
-					} catch (error) {
-						console.error("Host lock could not be closed", error);
-					} finally {
-						await rm(lockPath, { force: true }).catch((error: unknown) => console.error("Could not remove the host lock", error));
-						const marker = process.env.OPENBOT_SHUTDOWN_MARKER;
-						if (marker !== undefined) await writeFile(marker, "closed");
-						process.exit(code);
-					}
-				}
-			}
+			console.error("Host shutdown step failed", error);
 		}
+	};
+	const work = (async () => {
+		await run(async () => {
+			if (hook.pauseDelayMs !== undefined) await new Promise((resolve) => setTimeout(resolve, hook.pauseDelayMs));
+			if (hook.shutdownFault === "pause") throw new Error("injected shutdown fault: pause");
+			await service.lifecycle.pause("quitting").catch(() => console.error("Lifecycle shutdown could not be confirmed"));
+		});
+		await Promise.all([run(() => service.stop()), run(() => runtime.close()), run(() => executor.stop())]);
+	})();
+	await Promise.race([work, new Promise<void>((resolve) => setTimeout(resolve, SHUTDOWN_BUDGET_MS))]);
+	try {
+		credentialBroker.close();
+		process.removeListener("message", onMessage);
+		process.removeListener("SIGTERM", onSignal);
+		process.removeListener("SIGINT", onSignal);
+		process.removeListener("disconnect", onDisconnect);
+		try {
+			await lock.close();
+		} catch (error) {
+			console.error("Host lock could not be closed", error);
+		}
+		await rm(lockPath, { force: true }).catch((error: unknown) => console.error("Could not remove the host lock", error));
+		if (hook.shutdownMarker !== undefined) await writeFile(hook.shutdownMarker, "closed");
+	} catch (error) {
+		console.error("Host shutdown cleanup failed", error);
+	} finally {
+		process.exit(code);
 	}
 }
 

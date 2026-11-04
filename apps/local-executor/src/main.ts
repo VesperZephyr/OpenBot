@@ -1,3 +1,4 @@
+import { readTestHook } from "@openbot/local-executor/test-hook";
 import { readBotTemplate } from "@openbot/local-executor";
 import { listReaderFiles, readWorkspaceFile, readSelectedFile } from "@openbot/local-executor";
 import { avatarSource, validateAvatar } from "@openbot/local-executor";
@@ -260,41 +261,39 @@ process.on("message", onMessage);
 
 // Losing the Host means nobody can receive results: stop supervised commands, record their outcomes, then exit.
 let stopping = false;
-const releaseStep = async (step: () => unknown, next: () => Promise<void>): Promise<void> => {
-	try {
-		await step();
-	} finally {
-		await next();
-	}
-};
 const shutdown = (): void => {
 	if (stopping) return;
 	stopping = true;
 	const force = setTimeout(() => process.exit(0), 3_500);
 	force.unref();
-	const fault = process.env.OPENBOT_SHUTDOWN_FAULT;
-	void releaseStep(() => executor.cancelAll(), () =>
-		releaseStep(() => connectors.close(), () =>
-			releaseStep(() => {
-				if (fault === "artifacts") throw new Error("injected shutdown fault: artifacts");
-				artifactStore.close();
-			}, () =>
-				releaseStep(() => skillStore.close(), () =>
-					releaseStep(() => {
-						ledger.close();
-						const marker = process.env.OPENBOT_SHUTDOWN_MARKER;
-						if (marker !== undefined) writeFileSync(marker, "closed");
-					}, async () => {
-						clearTimeout(force);
-						process.removeListener("message", onMessage);
-						process.removeListener("disconnect", shutdown);
-						process.removeListener("SIGTERM", shutdown);
-						process.exit(0);
-					}),
-				),
-			),
-		),
-	);
+	const hook = readTestHook();
+	const steps: Array<() => unknown> = [
+		() => executor.cancelAll(),
+		() => connectors.close(),
+		() => {
+			if (hook.shutdownFault === "artifacts") throw new Error("injected shutdown fault: artifacts");
+			artifactStore.close();
+		},
+		() => skillStore.close(),
+		() => ledger.close(),
+		() => {
+			if (hook.shutdownMarker !== undefined) writeFileSync(hook.shutdownMarker, "closed");
+		},
+	];
+	void (async () => {
+		for (const step of steps) {
+			try {
+				await step();
+			} catch (error) {
+				console.error("Executor shutdown step failed", error);
+			}
+		}
+		clearTimeout(force);
+		process.removeListener("message", onMessage);
+		process.removeListener("disconnect", shutdown);
+		process.removeListener("SIGTERM", shutdown);
+		process.exit(0);
+	})();
 };
 process.on("disconnect", shutdown);
 process.on("SIGTERM", shutdown);

@@ -11,6 +11,7 @@
 	},
 	"dependencies": {
 		"@openbot/agent-runtime": "workspace:*",
+		"@openbot/local-executor": "workspace:*",
 		"@openbot/protocol": "workspace:*",
 		"@openbot/server-core": "workspace:*",
 		"@openbot/tool-router": "workspace:*"

@@ -8,14 +8,18 @@ import { randomUUID } from "node:crypto";
  * correlates invocations with results. Implements Tool Router's `ExecutorTransport`.
  */
 import type { ArtifactOperation, ArtifactOperationResult } from "@openbot/protocol";
-import { type ChildProcess, execFileSync, spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
+import { noteInvokeDropped, noteInvokeSettlement } from "@openbot/local-executor/test-hook";
+import { posixProcessGroups, processSnapshot, signalTrackedGroups, trackedGroups, type TrackedGroup } from "@openbot/local-executor/process-group";
 import type { ExecutorMessage, ExecutorRequest, ToolInvocation, ToolOutcome } from "@openbot/protocol";
 import type { ExecutorTransport } from "@openbot/tool-router";
 
 const START_TIMEOUT_MS = 20_000;
 const STOP_TIMEOUT_MS = 5_000;
 /** Foreground commands yield at 60s and task_output waits at most 60s; this only bounds a lost executor reply. */
-const INVOKE_TIMEOUT_MS = 120_000;
+export const INVOKE_TIMEOUT_MS = 120_000;
+/** Desktop SIGKILLs the Host after 5s, so a shutdown arms group cleanup inside that budget. */
+export const SHUTDOWN_FORCE_MS = 3_000;
 const INVOKE_TIMEOUT_OUTPUT = "The local executor timed out before reporting a result; the action may have partly run";
 
 type Pending = {
@@ -24,7 +28,6 @@ type Pending = {
 	readonly timer: ReturnType<typeof setTimeout>;
 };
 type StatusReply = Extract<ExecutorMessage, { kind: "tool.status" }>;
-type TrackedGroup = { readonly pgid: number; readonly started: string | undefined };
 
 export class ExecutorProcess implements ExecutorTransport {
 	readonly #entry: string;
@@ -47,7 +50,13 @@ export class ExecutorProcess implements ExecutorTransport {
 	readonly #pending = new Map<string, Pending>();
 	readonly #statusWaiters = new Map<string, ((reply: StatusReply) => void)[]>();
 	readonly #controls=new Map<string,{resolve:()=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
- #child: ChildProcess | undefined;
+	#child: ChildProcess | undefined;
+	#pgid: number | undefined;
+	#groups: readonly TrackedGroup[] | undefined;
+	#arming: Promise<void> | undefined;
+	#generation = 0;
+	#forceTimer: ReturnType<typeof setTimeout> | undefined;
+	#forceAfterMs = STOP_TIMEOUT_MS;
 	#ready: Promise<void> | undefined;
 	#quiescence:
 		| { id: string; promise: Promise<void>; resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
@@ -109,6 +118,7 @@ export class ExecutorProcess implements ExecutorTransport {
 			settled = true;
 			clearTimeout(timer);
 			this.#pending.delete(invocation.invocationId);
+			noteInvokeSettlement(invocation.invocationId, outcome.status, this.#pending.size);
 			resolve(outcome);
 		};
 		const cancel = (): void => this.#send({ kind: "tool.cancel", invocationId: invocation.invocationId });
@@ -225,33 +235,65 @@ export class ExecutorProcess implements ExecutorTransport {
   return result.outcome;
  }
 
-	async stop(): Promise<void> {
-		const child = this.#child;
-		if (child === undefined) return;
-		await this.#stopChild(child);
+	/**
+	 * Snapshot the executor's process groups once and force-kill them after `forceAfterMs`.
+	 * Does not disconnect, so a shutdown can still quiesce before `stop()`.
+	 */
+	async armShutdown(forceAfterMs = SHUTDOWN_FORCE_MS): Promise<void> {
+		if (this.#arming) return this.#arming;
+		const generation = this.#generation;
+		this.#forceAfterMs = forceAfterMs;
+		this.#arming = (async () => {
+			const pid = this.#pgid ?? this.#child?.pid;
+			const groups = pid === undefined || !posixProcessGroups() ? [] : trackedGroups(pid, await processSnapshot());
+			if (generation !== this.#generation) return;
+			this.#groups = groups;
+			this.#forceTimer = setTimeout(() => this.#signalGroups(), forceAfterMs);
+		})();
+		return this.#arming;
 	}
 
-	/** Stop this child and every process group it still leads, including groups that outlive the leader. */
-	async #stopChild(child: ChildProcess): Promise<void> {
-		const pid = child.pid;
-		if (child.exitCode !== null || child.signalCode !== null || pid === undefined) return;
-		const groups = descendantGroups(pid);
+	/** After an unexpected exit, kill the process group recorded at spawn even though `exitCode` is already set. */
+	async #reap(): Promise<void> {
+		if (this.#groups === undefined) await this.armShutdown(0);
+		this.#signalGroups();
+	}
+
+	async stop(): Promise<void> {
+		if (this.#groups === undefined) await this.armShutdown(this.#stopTimeoutMs);
+		await this.#disconnectAndWait();
+	}
+
+	/** Disconnect if the child is still up, then signal the groups captured by `armShutdown`, including after a crash. */
+	async #disconnectAndWait(): Promise<void> {
+		const child = this.#child;
+		const alive = child !== undefined && child.exitCode === null && child.signalCode === null && child.pid !== undefined;
+		if (!alive) {
+			this.#signalGroups();
+			return;
+		}
 		const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
-		const kill = (): void => {
-			signalGroups(mergeGroups(groups, descendantGroups(pid)));
+		if (child.connected) child.disconnect();
+		const timer = setTimeout(() => this.#signalGroups(), this.#forceAfterMs);
+		try {
+			await exited;
+		} finally {
+			clearTimeout(timer);
+			this.#signalGroups();
+		}
+	}
+
+	#signalGroups(): void {
+		clearTimeout(this.#forceTimer);
+		this.#forceTimer = undefined;
+		if (posixProcessGroups()) signalTrackedGroups(this.#groups ?? []);
+		const child = this.#child;
+		if (child !== undefined && child.exitCode === null && child.signalCode === null) {
 			try {
 				child.kill("SIGKILL");
 			} catch {
 				// The process has already exited.
 			}
-		};
-		if (child.connected) child.disconnect();
-		const timer = setTimeout(kill, this.#stopTimeoutMs);
-		try {
-			await exited;
-		} finally {
-			clearTimeout(timer);
-			kill();
 		}
 	}
 
@@ -263,7 +305,13 @@ export class ExecutorProcess implements ExecutorTransport {
 			// Lead a new process group so stop can signal it without signaling the Host.
 			detached: true,
 		});
+		clearTimeout(this.#forceTimer);
+		this.#forceTimer = undefined;
+		this.#generation++;
+		this.#groups = undefined;
+		this.#arming = undefined;
 		this.#child = child;
+		this.#pgid = child.pid;
 		const { promise, resolve, reject } = Promise.withResolvers<void>();
 		let settled = false;
 		let readyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -275,13 +323,13 @@ export class ExecutorProcess implements ExecutorTransport {
 		};
 		readyTimer = setTimeout(() => {
 			fail(new Error("The local executor did not become ready in time"));
-			void this.#stopChild(child);
+			void this.stop();
 		}, this.#startTimeoutMs);
 		// Spawn and later IPC failures are delivered here. After the handshake, exit settles the work.
 		child.on("error", (error: NodeJS.ErrnoException) => {
 			if (settled) return;
 			fail(new Error(`Could not start the local executor: ${error.message}`));
-			void this.#stopChild(child);
+			void this.stop();
 		});
 		child.on("message", (message: ExecutorMessage) => {
 			if (this.#child !== child) return;
@@ -325,7 +373,7 @@ export class ExecutorProcess implements ExecutorTransport {
 				case "executor.hello":
 					if (message.targetId !== this.#targetId) {
 						fail(new Error(`Executor bound to ${message.targetId}, expected ${this.#targetId}`));
-						void this.#stopChild(child);
+						void this.stop();
 					} else if (!settled) {
 						settled = true;
 						clearTimeout(readyTimer);
@@ -337,7 +385,10 @@ export class ExecutorProcess implements ExecutorTransport {
 					return;
 				case "tool.result": {
 					const pending = this.#pending.get(message.invocationId);
-					if (!pending) return;
+					if (!pending) {
+						noteInvokeDropped(message.invocationId, this.#pending.size);
+						return;
+					}
 					clearTimeout(pending.timer);
 					this.#pending.delete(message.invocationId);
 					pending.resolve(message.outcome);
@@ -368,6 +419,7 @@ export class ExecutorProcess implements ExecutorTransport {
 				waiting.reject(new Error("Executor stopped before quiescence was confirmed"));
 			}
 			fail(new Error(`The local executor exited (${signal ?? code})`));
+			void this.#reap();
 			// An invocation the executor accepted but did not answer may have had an effect.
 			for (const [invocationId, pending] of this.#pending) {
 				clearTimeout(pending.timer);
@@ -388,78 +440,5 @@ export class ExecutorProcess implements ExecutorTransport {
 
 	#send(message: ExecutorRequest): void {
 		if (this.#child?.connected === true) this.#child.send(message);
-	}
-}
-
-function listProcessRows(): { pid: number; ppid: number; pgid: number }[] {
-	try {
-		const text = execFileSync("ps", ["-ax", "-o", "pid=,ppid=,pgid="], { encoding: "utf8" });
-		return text.trim().split("\n").flatMap((line) => {
-			const parts = line.trim().split(/\s+/).map(Number);
-			const pid = parts[0];
-			const ppid = parts[1];
-			const pgid = parts[2];
-			if (pid === undefined || ppid === undefined || pgid === undefined || !Number.isInteger(pid) || !Number.isInteger(ppid) || !Number.isInteger(pgid) || pid <= 0) return [];
-			return [{ pid, ppid, pgid }];
-		});
-	} catch {
-		return [];
-	}
-}
-
-function processStart(pid: number): string | undefined {
-	try {
-		const started = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8" }).trim();
-		return started === "" ? undefined : started;
-	} catch {
-		return undefined;
-	}
-}
-
-/** Process groups of `rootPid` and its descendants, excluding this process's own group. */
-function descendantGroups(rootPid: number): TrackedGroup[] {
-	const rows = listProcessRows();
-	const own = rows.find((row) => row.pid === process.pid)?.pgid;
-	const children = new Map<number, number[]>();
-	for (const row of rows) {
-		const list = children.get(row.ppid) ?? [];
-		list.push(row.pid);
-		children.set(row.ppid, list);
-	}
-	const seen = new Set<number>();
-	const descendants = new Set<number>();
-	const stack = [rootPid];
-	while (stack.length > 0) {
-		const pid = stack.pop();
-		if (pid === undefined || seen.has(pid)) continue;
-		seen.add(pid);
-		descendants.add(pid);
-		for (const child of children.get(pid) ?? []) stack.push(child);
-	}
-	const groups = new Set<number>();
-	for (const row of rows) {
-		if (!descendants.has(row.pid) || row.pgid <= 1 || row.pgid === own) continue;
-		groups.add(row.pgid);
-	}
-	return [...groups].map((pgid) => ({ pgid, started: processStart(pgid) }));
-}
-
-function mergeGroups(left: readonly TrackedGroup[], right: readonly TrackedGroup[]): TrackedGroup[] {
-	const byId = new Map<number, TrackedGroup>();
-	for (const group of left) byId.set(group.pgid, group);
-	for (const group of right) if (!byId.has(group.pgid)) byId.set(group.pgid, group);
-	return [...byId.values()];
-}
-
-function signalGroups(groups: readonly TrackedGroup[]): void {
-	for (const group of groups) {
-		const started = processStart(group.pgid);
-		// A different start time means this pid now belongs to someone else.
-		if (started !== undefined && started !== group.started) continue;
-		try {
-			process.kill(-group.pgid, "SIGKILL");
-		} catch {
-			// The group is already gone.
-		}
 	}
 }
