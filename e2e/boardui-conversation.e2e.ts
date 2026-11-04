@@ -2,6 +2,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { type AppHarness, launchApp } from "./harness.ts";
 
 let h: AppHarness;
+let atlasId: string;
 const poll = (fn: () => Promise<unknown>) => expect.poll(fn, { timeout: 15000 });
 
 function opaqueDarkShadow(shadow: string): boolean {
@@ -20,12 +21,13 @@ function opaqueDarkShadow(shadow: string): boolean {
 beforeAll(async () => {
 	h = await launchApp("boardui-conversation");
 	await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" }, language: "en" });
-	await h.api("bots.create", {
+	const created = await h.api("bots.create", {
 		requestId: "atlas-ui",
 		name: "Atlas",
 		role: "Research",
 		instructions: "Atlas keeps research concise.\nExample: Summarize the notes from today",
 	});
+	atlasId = created.botId;
 	await h.page().locator(".bot-row").filter({ has: h.page().getByText("Atlas", { exact: true }) }).click();
 	await h.page().getByRole("textbox", { name: "Message Atlas" }).waitFor();
 }, 60000);
@@ -46,6 +48,10 @@ it("shows the empty conversation, detail panel and themes", async () => {
 	await empty.getByRole("heading", { name: "Atlas", exact: true }).waitFor();
 	await empty.getByRole("button", { name: "Summarize the notes from today", exact: true }).waitFor();
 	await h.page().locator(".bot-identity").getByText("Research", { exact: true }).waitFor();
+	await h.page().locator(".identity-kicker").getByText("Prompt", { exact: true }).waitFor();
+	expect(await h.page().locator(".identity-avatar .avatar-ground").count()).toBe(1);
+	expect(await h.page().locator(".sidebar .avatar-ground").count()).toBe(0);
+	expect(await h.page().locator(".empty-conversation .avatar-ground").count()).toBe(0);
 	await h.page().locator(".conversation-status").getByText("Idle", { exact: true }).waitFor();
 	await h.shot("01-empty-light");
 	await h.shot("02-detail-light");
@@ -53,6 +59,11 @@ it("shows the empty conversation, detail panel and themes", async () => {
 	await h.page().locator(".conversation-status").getByText("Idle", { exact: true }).waitFor();
 	const shadow = await h.page().locator(".identity-avatar .avatar").first().evaluate((element) => getComputedStyle(element).boxShadow);
 	expect(opaqueDarkShadow(shadow)).toBe(false);
+	const ground = await h.page().locator(".identity-avatar .avatar-ground").evaluate((element) => {
+		const style = getComputedStyle(element);
+		return { fill: style.fill, opacity: Number(style.opacity) };
+	});
+	expect(lightTranslucent(ground.fill, ground.opacity), JSON.stringify(ground)).toBe(true);
 	await h.shot("03-empty-dark");
 	await h.shot("04-detail-dark");
 	await h.api("settings.update", { language: "zh-CN" });
@@ -69,6 +80,7 @@ it("shows the empty conversation, detail panel and themes", async () => {
 	h.model.script({ text: "Today's notes are in three short points." });
 	await empty.getByRole("button", { name: "Summarize the notes from today", exact: true }).click();
 	await h.page().getByText("Today's notes are in three short points.", { exact: true }).waitFor();
+	expect(await h.page().locator(".message-author .avatar-ground").count()).toBe(0);
 	await h.shot("07-conversation-light");
 	await appearance("Dark");
 	await h.shot("08-conversation-dark");
@@ -87,3 +99,91 @@ it("shows a textual working indicator when motion is reduced", async () => {
 	await h.page().getByRole("button", { name: "Stop", exact: true }).click();
 	await h.page().getByRole("button", { name: "Stop", exact: true }).waitFor({ state: "hidden" });
 });
+
+it("saves a renamed Bot from the detail form", async () => {
+	const panel = h.page().locator(".bot-identity");
+	await panel.getByRole("button", { name: "Edit", exact: true }).click();
+	await panel.getByLabel("Name", { exact: true }).fill("Atlas kept");
+	await panel.getByRole("button", { name: "Save", exact: true }).click();
+	await panel.locator(".identity-name").getByText("Atlas kept", { exact: true }).waitFor();
+	await poll(async () => (await h.api("bots.list")).find((bot: { botId: string }) => bot.botId === atlasId).name).toBe("Atlas kept");
+});
+
+it("reports a revision conflict instead of overwriting the name", async () => {
+	const panel = h.page().locator(".bot-identity");
+	await panel.getByRole("button", { name: "Edit", exact: true }).click();
+	await panel.getByLabel("Name", { exact: true }).fill("Atlas local");
+	const current = (await h.api("bots.list")).find((bot: { botId: string; revision: number }) => bot.botId === atlasId);
+	await h.api("bots.update", { botId: atlasId, expectedRevision: current.revision, name: "Atlas remote" });
+	await panel.getByRole("button", { name: "Save", exact: true }).click();
+	await panel.locator(".identity-alert").getByText("Profile changed. Reload before saving your draft.").waitFor();
+	await panel.locator(".identity-alert").getByText("Close this editor and open it again.").waitFor();
+	expect((await h.api("bots.list")).find((bot: { botId: string }) => bot.botId === atlasId).name).toBe("Atlas remote");
+});
+
+it("switches the composer model twice", async () => {
+	await h.page().locator(".conversation-name").getByText("Atlas remote", { exact: true }).waitFor();
+	const model = h.page().getByRole("combobox", { name: "Model", exact: true });
+	await model.waitFor();
+	await poll(async () => model.locator("option").count()).toBeGreaterThan(1);
+	expect(await model.locator("option").first().textContent()).toBe("Default (Scripted)");
+	expect(await h.page().locator(".composer-model-note").textContent()).toBe("This Bot uses this model from now on.");
+	await model.selectOption("scripted/scripted");
+	await poll(async () => (await h.api("bots.list")).find((bot: { botId: string }) => bot.botId === atlasId).model).toEqual({
+		provider: "scripted",
+		modelId: "scripted",
+	});
+	await model.selectOption("");
+	await poll(async () => (await h.api("bots.list")).find((bot: { botId: string }) => bot.botId === atlasId).model).toBeUndefined();
+	const revision = (await h.api("bots.list")).find((bot: { botId: string; revision: number }) => bot.botId === atlasId).revision;
+	await h.api("bots.update", { botId: atlasId, expectedRevision: revision, model: { provider: "missing", modelId: "nope" } });
+	await h.page().locator(".composer-model").getByText("Model unavailable", { exact: true }).waitFor();
+	await h.page().locator(".composer-model").getByRole("button", { name: "Settings", exact: true }).click();
+	await h.page().getByRole("heading", { name: "Settings", exact: true }).waitFor();
+	await h.page().getByRole("button", { name: "Back to chat" }).click();
+	await h.page().getByRole("textbox", { name: /Message / }).waitFor();
+	const again = (await h.api("bots.list")).find((bot: { botId: string; revision: number }) => bot.botId === atlasId);
+	await h.api("bots.update", { botId: atlasId, expectedRevision: again.revision, model: null });
+	await h.page().getByRole("combobox", { name: "Model", exact: true }).waitFor();
+});
+
+it("closes the detail form when the conversation editor opens", async () => {
+	const panel = h.page().locator(".bot-identity");
+	await panel.getByRole("button", { name: "Edit", exact: true }).click();
+	await panel.getByLabel("Name", { exact: true }).waitFor();
+	await h.page().getByRole("button", { name: "•••", exact: true }).click();
+	await h.page().getByRole("menuitem", { name: "Edit profile", exact: true }).click();
+	const dialog = h.page().getByRole("dialog", { name: "Conversation details" });
+	await dialog.waitFor();
+	expect(await panel.locator(".identity-form").count()).toBe(0);
+	expect(await dialog.getByLabel("Name", { exact: true }).count()).toBe(1);
+	await h.page().keyboard.press("Escape");
+	await poll(async () => dialog.count()).toBe(0);
+});
+
+it("hides group more-actions when nothing is unread", async () => {
+	const bots = await h.api("bots.list");
+	const core = bots.find((bot: { kind: string; botId: string }) => bot.kind === "core");
+	await h.api("groups.change", {
+		requestId: "boardui-group",
+		groupId: "group_boardui",
+		action: "create",
+		expectedRevision: 0,
+		fields: { name: "Studio", objective: "Shared notes", memberIds: [core.botId, atlasId], leadBotId: core.botId },
+	});
+	await h.page().locator(".group-nav").filter({ hasText: "Studio" }).click();
+	await h.page().locator(".conversation-header").getByRole("heading", { name: "Studio", exact: true }).waitFor();
+	expect(await h.page().getByRole("button", { name: "More actions", exact: true }).count()).toBe(0);
+});
+
+function lightTranslucent(fill: string, opacity: number): boolean {
+	const match = fill.match(/rgba?\(([^)]+)\)/) ?? fill.match(/color\(([^)]+)\)/);
+	if (!match?.[1]) return false;
+	const body = match[1];
+	const percent = body.match(/\/\s*([\d.]+)%/);
+	const nums = body.match(/[\d.]+/g)?.map(Number) ?? [];
+	const channels = nums.slice(0, 3);
+	const parsed = percent ? Number(percent[1]) / 100 : nums.length >= 4 ? (nums[3]! > 1 ? nums[3]! / 100 : nums[3]!) : 1;
+	const alpha = parsed * (Number.isFinite(opacity) ? opacity : 1);
+	return channels.length >= 3 && channels.every((channel) => channel >= 180) && alpha < 1;
+}

@@ -344,36 +344,61 @@ function ComposerModel({ conversationKey, selectable }: { readonly conversationK
 	const bot = useStore((state) => (botId ? state.bots.find((candidate) => candidate.botId === botId) : undefined));
 	const settings = useStore((state) => state.settings);
 	const models = useStore((state) => state.models);
+	const [saving, setSaving] = useState(false);
 	const configured = new Set(settings?.providers.filter((provider) => provider.configured).map((provider) => provider.providerId));
 	const selected = bot?.model ? `${bot.model.provider}/${bot.model.modelId}` : "";
-	const effective = bot?.model ?? settings?.defaultModel;
-	const effectiveName =
-		models.find((model) => model.provider === effective?.provider && model.modelId === effective?.modelId)?.name ??
-		(effective ? `${effective.provider}/${effective.modelId}` : t("Use the default model"));
-	if (!selectable || !bot) return <span className="composer-model">{t("Model")} · {effectiveName}</span>;
+	const fallback = settings?.defaultModel;
+	const effective = bot?.model ?? fallback;
+	const modelName = (ref: { provider: string; modelId: string } | undefined): string =>
+		models.find((model) => model.provider === ref?.provider && model.modelId === ref?.modelId)?.name ??
+		(ref ? `${ref.provider}/${ref.modelId}` : t("Use the default model"));
+	const unavailable = !effective || !configured.has(effective.provider);
+	const defaultLabel = fallback ? t("Default ({name})", { name: modelName(fallback) }) : t("Use the default model");
+	if (unavailable) {
+		return (
+			<span className="composer-model">
+				<span>{t("Model unavailable")}</span>
+				<button type="button" onClick={() => useStore.setState({ view: { kind: "settings" } })}>
+					{t("Settings")}
+				</button>
+			</span>
+		);
+	}
+	if (!selectable || !bot) return <span className="composer-model">{t("Model")} · {defaultLabel}</span>;
 	return (
-		<label className="composer-model">
-			<span>{t("Model")}</span>
-			<select
-				aria-label={t("Model")}
-				value={selected}
-				onChange={(event) => {
-					const separator = event.target.value.indexOf("/");
-					const model = separator < 0 ? null : { provider: event.target.value.slice(0, separator), modelId: event.target.value.slice(separator + 1) };
-					void api["bots.update"]({ botId: bot.botId, expectedRevision: bot.revision, model })
-						.then(() => refreshBots())
-						.catch(report);
-				}}
-			>
-				<option value="">{effective && !bot.model ? effectiveName : t("Use the default model")}</option>
-				{models
-					.filter((model) => configured.has(model.provider))
-					.map((model) => (
-						<option key={`${model.provider}/${model.modelId}`} value={`${model.provider}/${model.modelId}`}>
-							{model.name}
-						</option>
-					))}
-			</select>
-		</label>
+		<div className="composer-model">
+			<label>
+				<span>{t("Model")}</span>
+				<select
+					aria-label={t("Model")}
+					value={selected}
+					disabled={saving}
+					onChange={(event) => {
+						const separator = event.target.value.indexOf("/");
+						const model = separator < 0 ? null : { provider: event.target.value.slice(0, separator), modelId: event.target.value.slice(separator + 1) };
+						const revision = useStore.getState().bots.find((candidate) => candidate.botId === bot.botId)?.revision;
+						setSaving(true);
+						void api["bots.update"]({
+							botId: bot.botId,
+							...(revision === undefined ? {} : { expectedRevision: revision }),
+							model,
+						})
+							.then(() => refreshBots())
+							.catch(report)
+							.finally(() => setSaving(false));
+					}}
+				>
+					<option value="">{defaultLabel}</option>
+					{models
+						.filter((model) => configured.has(model.provider))
+						.map((model) => (
+							<option key={`${model.provider}/${model.modelId}`} value={`${model.provider}/${model.modelId}`}>
+								{model.name}
+							</option>
+						))}
+				</select>
+			</label>
+			<span className="composer-model-note">{t("This Bot uses this model from now on.")}</span>
+		</div>
 	);
 }

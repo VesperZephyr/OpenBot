@@ -1,32 +1,27 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { defaultAvatar } from "@openbot/protocol";
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("../src/renderer/src/store", () => ({
-	api: {},
-	useStore: () => undefined,
-}));
-
-import { avatarColorIndex } from "../src/renderer/src/Avatar";
+import { describe, expect, it } from "vitest";
+import { avatarColorIndex, avatarShape } from "../src/renderer/src/avatar-appearance";
 
 const expected = [
-	["bot_core", 1287337752, 0],
-	["bot_alpha", 2998701621, 3],
-	["bot_reviewer", 4007021800, 4],
-	["bot_0123456789abcdef", 2572814767, 1],
-	["OpenBot", 1551256970, 2],
-	["研究助手", 3832696635, 3],
-	["atlas", 3407328204, 0],
-	["scribe", 4245756147, 3],
+	["bot_core", 1287337752, "leaf", 0, 0],
+	["bot_alpha", 2998701621, "leaf", 3, 1],
+	["bot_reviewer", 4007021800, "leaf", 4, 0],
+	["bot_0123456789abcdef", 2572814767, "leaf", 1, 2],
+	["OpenBot", 1551256970, "leaf", 2, 2],
+	["研究助手", 3832696635, "leaf", 3, 2],
+	["atlas", 3407328204, "leaf", 0, 1],
+	["scribe", 4245756147, "leaf", 3, 1],
 ] as const;
 
 describe("default avatar mapping", () => {
-	it("keeps seed, motif and color index for fixed Bot ids", () => {
-		for (const [id, seed, colorIndex] of expected) {
+	it("keeps seed, motif, color index and shape for fixed Bot ids", () => {
+		for (const [id, seed, motif, colorIndex, shape] of expected) {
 			const avatar = defaultAvatar(id);
-			expect(avatar).toEqual({ kind: "generated", version: 1, seed, motif: "leaf" });
+			expect(avatar).toEqual({ kind: "generated", version: 1, seed, motif });
 			expect(avatarColorIndex(avatar.seed)).toBe(colorIndex);
+			expect(avatarShape(avatar.seed)).toBe(shape);
 		}
 	});
 

@@ -73,8 +73,10 @@ function GroupEmpty({ groupId }: { readonly groupId: string }) {
 }
 
 function GroupMenu({ groupId, cursor }: { readonly groupId: string; readonly cursor: number | undefined }) {
+	const unread = useStore((state) => state.summaries[`group:${groupId}`]?.unreadCount ?? 0);
 	const [open, setOpen] = useState(false);
 	const menu = useRef<HTMLDivElement>(null);
+	const button = useRef<HTMLButtonElement>(null);
 	useEffect(() => {
 		if (!open) return;
 		menu.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
@@ -84,9 +86,28 @@ function GroupMenu({ groupId, cursor }: { readonly groupId: string; readonly cur
 		document.addEventListener("pointerdown", close);
 		return () => document.removeEventListener("pointerdown", close);
 	}, [open]);
+	if (unread <= 0) return null;
 	return (
-		<div className="menu" ref={menu}>
-			<button type="button" className="icon-button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+		<div
+			className="menu"
+			ref={menu}
+			onKeyDown={(event) => {
+				if (event.key !== "Escape" || !open) return;
+				event.preventDefault();
+				event.stopPropagation();
+				setOpen(false);
+				button.current?.focus();
+			}}
+		>
+			<button
+				ref={button}
+				type="button"
+				className="icon-button"
+				aria-label={t("More actions")}
+				aria-haspopup="menu"
+				aria-expanded={open}
+				onClick={() => setOpen(!open)}
+			>
 				•••
 			</button>
 			{open && (

@@ -451,8 +451,12 @@ function Conversation({ botId, editing, onEditing }: { readonly botId: string; r
 				<div className="conversation-title">
 					<div className="conversation-name"><span title={bot.name}>{bot.name}</span>{bot.kind === "core" && <PersonalStar />}</div>
 					<p className="conversation-meta">
-						<span className="conversation-role">{bot.role || t("No label")}</span>
-						<span className="conversation-meta-sep" aria-hidden="true">·</span>
+						{bot.role ? (
+							<>
+								<span className="conversation-role">{bot.role}</span>
+								<span className="conversation-meta-sep" aria-hidden="true">·</span>
+							</>
+						) : null}
 						{presence === "working" && <span className="status-dot" aria-hidden="true" />}
 						<span className="conversation-status" role="status">{t(presenceLabel(presence))}</span>
 					</p>

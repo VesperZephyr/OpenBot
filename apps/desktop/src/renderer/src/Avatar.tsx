@@ -6,6 +6,7 @@ import {
 	type AvatarUpload,
 	type GeneratedAvatar,
 } from "@openbot/protocol";
+import { avatarColorIndex, avatarShape } from "./avatar-appearance";
 import { api, useStore } from "./store";
 import { t } from "./i18n";
 
@@ -18,13 +19,7 @@ const AVATAR_PALETTES = [
 	["#d0d25a", "#3c461c", "#dcc6ee"],
 ] as const;
 
-/** V1 color slot. `seed % 6` is the stable mapping; paint may change, this index may not. */
-export function avatarColorIndex(seed: number): number {
-	return (seed >>> 0) % 6;
-}
-function avatarShape(seed: number): 0 | 1 | 2 {
-	return (Math.floor((seed >>> 0) / 6) % 3) as 0 | 1 | 2;
-}
+export { avatarColorIndex, avatarShape } from "./avatar-appearance";
 
 const images = new Map<string, Promise<string | undefined>>();
 function imageFor(botId: string, sha256: string): Promise<string | undefined> {
@@ -46,10 +41,13 @@ export function Avatar({
 	bot,
 	size = 34,
 	value,
+	ground = size >= 96,
 }: {
 	bot: Pick<BotProfile, "botId" | "avatar">;
 	size?: number;
 	value?: BotAvatar | AvatarUpload;
+	/** Large previews only. Sidebar and message avatars stay flat. */
+	ground?: boolean;
 }) {
 	const selected = value ?? bot.avatar ?? defaultAvatar(bot.botId);
 	const sha256 = selected.kind === "image" ? selected.sha256 : undefined;
@@ -76,7 +74,7 @@ export function Avatar({
 			{url && broken !== url ? (
 				<img src={url} alt="" draggable={false} onError={() => setBroken(url)} />
 			) : (
-				<Character recipe={selected.kind === "generated" ? selected : defaultAvatar(bot.botId)} />
+				<Character recipe={selected.kind === "generated" ? selected : defaultAvatar(bot.botId)} ground={ground} />
 			)}
 		</span>
 	);
@@ -98,7 +96,7 @@ export function PersonalStar() {
 }
 
 /** V1 geometry. Only saturation, solid fill and a light highlight change. */
-function Character({ recipe }: { recipe: GeneratedAvatar }) {
+function Character({ recipe, ground }: { recipe: GeneratedAvatar; ground: boolean }) {
 	const n = recipe.seed >>> 0;
 	const colorIndex = avatarColorIndex(n);
 	const shape = avatarShape(n);
@@ -112,7 +110,8 @@ function Character({ recipe }: { recipe: GeneratedAvatar }) {
 			<path d="M26 59 38 25l31 10c12-3 23-3 34 0l22-9 3 40c10 35-5 70-39 76-34 6-66-9-68-44-1-15 1-29 5-39Z" />
 		);
 	return (
-		<svg viewBox="0 0 150 165" fill="none" aria-hidden="true">
+		<svg viewBox="0 0 150 165" fill="none" aria-hidden="true" style={{ ["--avatar-ink" as string]: ink }}>
+			{ground && <ellipse className="avatar-ground" cx="76" cy="154" rx="34" ry="7" />}
 			<g fill={body} stroke={ink} strokeWidth="2.4">
 				{bodyShape}
 			</g>
