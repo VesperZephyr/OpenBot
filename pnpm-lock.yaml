@@ -153,6 +153,9 @@ importers:
       '@openbot/agent-runtime':
         specifier: workspace:*
         version: link:../../packages/agent-runtime
+      '@openbot/local-executor':
+        specifier: workspace:*
+        version: link:../../packages/local-executor
       '@openbot/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol

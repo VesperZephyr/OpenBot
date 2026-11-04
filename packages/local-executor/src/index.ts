@@ -22,7 +22,7 @@ export { commandEnvironment } from "./command.ts";
 export { INTERRUPTED_OUTCOME, type Receipt, ReceiptLedger, type ReceiptStatus, type TaskRecord, type TaskStatus } from "./ledger.ts";
 export { OUTPUT_LIMITS, pruneArtifacts } from "./output.ts";
 export { canonicalPath } from "./paths.ts";
-export { DEFAULT_YIELD_MS } from "./tasks.ts";
+export { DEFAULT_YIELD_MS, MAX_TASK_OUTPUT_WAIT_MS } from "./tasks.ts";
 
 export const EXECUTOR_TOOLS: readonly ExecutorToolName[] = [
 	"artifact_publish",

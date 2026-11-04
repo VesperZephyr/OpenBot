@@ -16,7 +16,9 @@ import { LOG_START, type LogPosition, OutputLog } from "./output.ts";
 
 /** How long a foreground command runs before it yields to the background. */
 export const DEFAULT_YIELD_MS = 60_000;
-const MAX_WAIT_SECONDS = 60;
+/** `task_output` will not wait longer than this for a background command to finish. */
+export const MAX_TASK_OUTPUT_WAIT_MS = 60_000;
+const MAX_WAIT_SECONDS = MAX_TASK_OUTPUT_WAIT_MS / 1000;
 
 export type TaskLedger = Pick<ReceiptLedger, "recordGroup" | "recordTask" | "finishTask" | "task"> & Partial<Pick<ReceiptLedger, "consumeTask">>;
 

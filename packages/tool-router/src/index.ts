@@ -92,6 +92,9 @@ export type ToolRouterOptions = {
 	readonly deadlineMs?: number;
 };
 
+/** Default life of an executor invocation. The Host transport timeout stays strictly above this. */
+export const DEFAULT_INVOCATION_DEADLINE_MS = 60_000;
+
 export class ToolRouter {
 	readonly #options: ToolRouterOptions;
 	/** One active call per Run: Pi already runs tools sequentially; this is the second gate. */
@@ -256,7 +259,7 @@ export class ToolRouter {
 			target: this.#options.target,
 			grants: grants.readwrite,
 			readGrants: grants.read,
-			deadline: (this.#options.now ?? Date.now)() + (this.#options.deadlineMs ?? 60_000),
+			deadline: (this.#options.now ?? Date.now)() + (this.#options.deadlineMs ?? DEFAULT_INVOCATION_DEADLINE_MS),
 		};
 		const outcome=await dispatch(async revision=>{
 			const completionTracking=call.tool==="local_exec" ? await this.#options.trackCommand?.prepare(call,invocation.argsDigest) : false;

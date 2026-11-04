@@ -2,7 +2,7 @@
  * Host Runtime process entry point. Started by Desktop main with an IPC channel (`stdio[3] = "ipc"`), or standalone
  * for development. Owns the conversation store exclusively, then serves `@openbot/protocol` requests.
  */
-import { mkdir, open, readFile, realpath, rm } from "node:fs/promises";
+import { mkdir, open, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,7 +20,8 @@ import {
 } from "@openbot/protocol";
 import { paramsError } from "@openbot/protocol/schemas";
 import { ApprovalBook, DEFAULT_MAX_ACTIVE_RUNS, HostService } from "@openbot/server-core";
-import { ExecutorProcess } from "./executor.ts";
+import { SHUTDOWN_FORCE_MS, ExecutorProcess } from "./executor.ts";
+import { readTestHook } from "@openbot/local-executor/test-hook";
 import { CredentialBroker, KeychainCredentials } from "./keychain.ts";
 import { modelConfigFile, openBotHome } from "./model-config-file.ts";
 import { hostClock } from "./test-clock.ts";
@@ -54,6 +55,7 @@ await lock.writeFile(`${process.pid}\n`);
 const credentialBroker = new CredentialBroker({
  send: message => { if (!process.send || !process.connected) throw new Error("Credential parent unavailable"); process.send(message, error => { if (error) credentialBroker.close(); }); },
  on: (event, listener) => process.on(event, listener),
+ off: (event, listener) => process.off(event, listener),
 });
 const credentials = new KeychainCredentials(credentialBroker);
 
@@ -175,7 +177,7 @@ await executor.start();
 await service.start();
 serviceReady=true;
 
-process.on("message", async (message: unknown) => {
+const onMessage = async (message: unknown): Promise<void> => {
  if (message && typeof message === "object" && "kind" in message && message.kind === "credential.response") return;
 	if (!isRequestEnvelope(message)) return;
 	let response: ResponseEnvelope;
@@ -198,30 +200,65 @@ process.on("message", async (message: unknown) => {
 		};
 	}
 	send(response);
-});
+};
+process.on("message", onMessage);
 
 // Pi's timers are unreferenced and SQLite holds no handle, so without an IPC channel nothing keeps the event loop
 // alive. A standalone (development) Host stays up until it is signalled.
 const keepAlive = process.send === undefined ? setInterval(() => {}, 2 ** 30) : undefined;
 
 let stopping = false;
+const onSignal = (): void => void shutdown(0);
+const onDisconnect = (): void => void shutdown(0);
+/** Desktop force-kills this process after 5s, so shutdown itself must finish inside that budget. */
+const SHUTDOWN_BUDGET_MS = 4_500;
 async function shutdown(code: number): Promise<void> {
 	if (stopping) return;
 	stopping = true;
 	clearInterval(keepAlive);
-	await service.lifecycle.pause("quitting").catch(() => console.error("Lifecycle shutdown could not be confirmed"));
-	await service.stop();
-	await runtime.close();
-	await executor.stop();
-	await lock.close();
-	await rm(lockPath, { force: true });
-	process.exit(code);
+	const hook = readTestHook();
+	// Snapshot groups immediately. Disconnect waits until pause has quiesced; the force timer still fires inside Desktop's 5s.
+	await executor.armShutdown(SHUTDOWN_FORCE_MS);
+	const run = async (step: () => Promise<unknown> | unknown): Promise<void> => {
+		try {
+			await step();
+		} catch (error) {
+			console.error("Host shutdown step failed", error);
+		}
+	};
+	const work = (async () => {
+		await run(async () => {
+			if (hook.pauseDelayMs !== undefined) await new Promise((resolve) => setTimeout(resolve, hook.pauseDelayMs));
+			if (hook.shutdownFault === "pause") throw new Error("injected shutdown fault: pause");
+			await service.lifecycle.pause("quitting").catch(() => console.error("Lifecycle shutdown could not be confirmed"));
+		});
+		await Promise.all([run(() => service.stop()), run(() => runtime.close()), run(() => executor.stop())]);
+	})();
+	await Promise.race([work, new Promise<void>((resolve) => setTimeout(resolve, SHUTDOWN_BUDGET_MS))]);
+	try {
+		credentialBroker.close();
+		process.removeListener("message", onMessage);
+		process.removeListener("SIGTERM", onSignal);
+		process.removeListener("SIGINT", onSignal);
+		process.removeListener("disconnect", onDisconnect);
+		try {
+			await lock.close();
+		} catch (error) {
+			console.error("Host lock could not be closed", error);
+		}
+		await rm(lockPath, { force: true }).catch((error: unknown) => console.error("Could not remove the host lock", error));
+		if (hook.shutdownMarker !== undefined) await writeFile(hook.shutdownMarker, "closed");
+	} catch (error) {
+		console.error("Host shutdown cleanup failed", error);
+	} finally {
+		process.exit(code);
+	}
 }
 
-process.on("SIGTERM", () => void shutdown(0));
-process.on("SIGINT", () => void shutdown(0));
+process.on("SIGTERM", onSignal);
+process.on("SIGINT", onSignal);
 // Losing the parent means Desktop quit or crashed; the Host must not outlive it.
-process.on("disconnect", () => void shutdown(0));
+process.on("disconnect", onDisconnect);
 
 send({ protocolVersion: PROTOCOL_VERSION, kind: "ready", status });
 if (process.send === undefined) console.log(`OpenBot Host Runtime ready (data: ${dataDirectory})`);

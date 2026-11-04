@@ -28,6 +28,8 @@ export interface CredentialTransport {
 	send(message: CredentialRequest): void;
 	on(event: "message", listener: (message: unknown) => void): unknown;
 	on(event: "disconnect", listener: () => void): unknown;
+	off?(event: "message", listener: (message: unknown) => void): unknown;
+	off?(event: "disconnect", listener: () => void): unknown;
 }
 export class CredentialBroker {
 	readonly #pending = new Map<
@@ -35,13 +37,17 @@ export class CredentialBroker {
 		{ operation: CredentialOperation; resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
 	>();
 	#closed = false;
+	readonly #onMessage: (message: unknown) => void;
+	readonly #onDisconnect: () => void;
 	readonly transport: CredentialTransport;
 	readonly timeoutMs: number;
 	constructor(transport: CredentialTransport, timeoutMs: number = CREDENTIAL_LIMITS.timeoutMs) {
 		this.transport = transport;
 		this.timeoutMs = timeoutMs;
-		transport.on("message", (message) => this.#receive(message));
-		transport.on("disconnect", () => this.close());
+		this.#onMessage = (message) => this.#receive(message);
+		this.#onDisconnect = () => this.close();
+		transport.on("message", this.#onMessage);
+		transport.on("disconnect", this.#onDisconnect);
 	}
 	async request<K extends CredentialOperation>(
 		operation: K,
@@ -87,6 +93,8 @@ export class CredentialBroker {
 		else pending.reject(new ProtocolError("host_unavailable", messages[message.code]));
 	}
 	close(): void {
+		this.transport.off?.("message", this.#onMessage);
+		this.transport.off?.("disconnect", this.#onDisconnect);
 		this.#closed = true;
 		for (const pending of this.#pending.values()) {
 			clearTimeout(pending.timer);

@@ -23,6 +23,7 @@ const allowed = {
 		"@openbot/server-core",
 		"@openbot/agent-runtime",
 		"@openbot/tool-router",
+		"@openbot/local-executor",
 	],
 	"@openbot/local-executor-app": ["@openbot/protocol", "@openbot/local-executor"],
 	"@openbot/desktop": ["@openbot/protocol"],

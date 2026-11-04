@@ -9,8 +9,8 @@
  * row with the same group until it ends; opening the ledger kills the groups of rows still `running` and marks them
  * `unknown`.
  */
-import { execFileSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
+import { killOrphanGroup, processStartTime } from "./process-group.ts";
 import type { InvocationStatus, ToolInvocation, ToolOutcome } from "@openbot/protocol";
 
 /** Acknowledged receipts are kept this long, so a rerun soon after an ack still finds the outcome. */
@@ -248,27 +248,4 @@ export class ReceiptLedger {
 	}
 }
 
-/**
- * Kill a process group a dead executor left behind. The leader still running with the recorded start time proves the
- * group is ours; a different start time means the PID was reused, so it is left alone. A leader that exited while its
- * group lives on also proves it: a PID is not reused while a process group with that ID exists.
- */
-export function killOrphanGroup(pgid: number, leaderStarted: string): void {
-	const started = processStartTime(pgid);
-	if (started !== undefined && started !== leaderStarted) return;
-	try {
-		process.kill(-pgid, "SIGKILL");
-	} catch {
-		// The group is gone.
-	}
-}
-
-/** `ps` start time of a process, or undefined when it does not exist. */
-export function processStartTime(pid: number): string | undefined {
-	try {
-		const started = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8" }).trim();
-		return started === "" ? undefined : started;
-	} catch {
-		return undefined;
-	}
-}
+export { killOrphanGroup, processStartTime };

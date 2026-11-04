@@ -9,14 +9,32 @@ import { randomUUID } from "node:crypto";
  */
 import type { ArtifactOperation, ArtifactOperationResult } from "@openbot/protocol";
 import { type ChildProcess, spawn } from "node:child_process";
+import { noteInvokeDropped, noteInvokeSettlement } from "@openbot/local-executor/test-hook";
+import { posixProcessGroups, processSnapshot, signalTrackedGroups, trackedGroups, type TrackedGroup } from "@openbot/local-executor/process-group";
 import type { ExecutorMessage, ExecutorRequest, ToolInvocation, ToolOutcome } from "@openbot/protocol";
 import type { ExecutorTransport } from "@openbot/tool-router";
 
-type Pending = { readonly resolve: (outcome: ToolOutcome) => void; readonly onProgress: (output: string) => void };
+const START_TIMEOUT_MS = 20_000;
+const STOP_TIMEOUT_MS = 5_000;
+/** Foreground commands yield at 60s and task_output waits at most 60s; this only bounds a lost executor reply. */
+export const INVOKE_TIMEOUT_MS = 120_000;
+/** Desktop SIGKILLs the Host after 5s, so a shutdown arms group cleanup inside that budget. */
+export const SHUTDOWN_FORCE_MS = 3_000;
+const INVOKE_TIMEOUT_OUTPUT = "The local executor timed out before reporting a result; the action may have partly run";
+
+type Pending = {
+	readonly resolve: (outcome: ToolOutcome) => void;
+	readonly onProgress: (output: string) => void;
+	readonly timer: ReturnType<typeof setTimeout>;
+};
 type StatusReply = Extract<ExecutorMessage, { kind: "tool.status" }>;
 
 export class ExecutorProcess implements ExecutorTransport {
 	readonly #entry: string;
+	readonly #node: string;
+	readonly #startTimeoutMs: number;
+	readonly #stopTimeoutMs: number;
+	readonly #invokeTimeoutMs: number;
  readonly #connectorWaiters=new Map<string,{resolve:(value:ConnectorConnection)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
  readonly #connectorChanged:(id:string)=>void;
 	readonly #env: NodeJS.ProcessEnv;
@@ -32,7 +50,13 @@ export class ExecutorProcess implements ExecutorTransport {
 	readonly #pending = new Map<string, Pending>();
 	readonly #statusWaiters = new Map<string, ((reply: StatusReply) => void)[]>();
 	readonly #controls=new Map<string,{resolve:()=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
- #child: ChildProcess | undefined;
+	#child: ChildProcess | undefined;
+	#pgid: number | undefined;
+	#groups: readonly TrackedGroup[] | undefined;
+	#arming: Promise<void> | undefined;
+	#generation = 0;
+	#forceTimer: ReturnType<typeof setTimeout> | undefined;
+	#forceAfterMs = STOP_TIMEOUT_MS;
 	#ready: Promise<void> | undefined;
 	#quiescence:
 		| { id: string; promise: Promise<void>; resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }
@@ -44,11 +68,19 @@ export class ExecutorProcess implements ExecutorTransport {
 		workspace: string;
 		dataDirectory: string;
 		env: NodeJS.ProcessEnv;
+		node?: string;
+		startTimeoutMs?: number;
+		stopTimeoutMs?: number;
+		invokeTimeoutMs?: number;
 		assertAllowed?: () => void;
   admit?:(invocation:ToolInvocation,signal:AbortSignal,send:()=>void)=>Promise<void>;
  connectorChanged?:(id:string)=>void;
 	}) {
 		this.#entry = options.entry;
+		this.#node = options.node ?? process.execPath;
+		this.#startTimeoutMs = options.startTimeoutMs ?? START_TIMEOUT_MS;
+		this.#stopTimeoutMs = options.stopTimeoutMs ?? STOP_TIMEOUT_MS;
+		this.#invokeTimeoutMs = options.invokeTimeoutMs ?? INVOKE_TIMEOUT_MS;
   this.#admit=options.admit??(async(_invocation,_signal,send)=>send());
  this.#connectorChanged=options.connectorChanged??(()=>{});
 		this.#assertAllowed = options.assertAllowed ?? (() => {});
@@ -79,14 +111,31 @@ export class ExecutorProcess implements ExecutorTransport {
 		const child = this.#child;
 		if (child === undefined || !child.connected) return { status: "failed", output: "The local executor is not running" };
 		const { promise, resolve } = Promise.withResolvers<ToolOutcome>();
-  const cancel = (): void => this.#send({ kind: "tool.cancel", invocationId: invocation.invocationId });
-  try {
-   await this.#admit(invocation,signal,()=>{
-    signal.throwIfAborted();this.#assertAllowed();
-    this.#pending.set(invocation.invocationId,{resolve,onProgress});
-    signal.addEventListener("abort",cancel,{once:true});
-    this.#send({kind:"tool.invoke",invocation});
-   });
+		let settled = false;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const finish = (outcome: ToolOutcome): void => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			this.#pending.delete(invocation.invocationId);
+			noteInvokeSettlement(invocation.invocationId, outcome.status, this.#pending.size);
+			resolve(outcome);
+		};
+		const cancel = (): void => this.#send({ kind: "tool.cancel", invocationId: invocation.invocationId });
+		try {
+			await this.#admit(invocation, signal, () => {
+				signal.throwIfAborted();
+				this.#assertAllowed();
+				const pendingTimer = setTimeout(() => {
+					// Drop the waiter before cancel so a late result cannot replace the timeout outcome.
+					finish({ status: "unknown", output: INVOKE_TIMEOUT_OUTPUT });
+					cancel();
+				}, this.#invokeTimeoutMs);
+				timer = pendingTimer;
+				this.#pending.set(invocation.invocationId, { resolve: finish, onProgress, timer: pendingTimer });
+				signal.addEventListener("abort", cancel, { once: true });
+				this.#send({ kind: "tool.invoke", invocation });
+			});
 			return await promise;
 		} finally {
 			signal.removeEventListener("abort", cancel);
@@ -186,24 +235,102 @@ export class ExecutorProcess implements ExecutorTransport {
   return result.outcome;
  }
 
+	/**
+	 * Snapshot the executor's process groups once and force-kill them after `forceAfterMs`.
+	 * Does not disconnect, so a shutdown can still quiesce before `stop()`.
+	 */
+	async armShutdown(forceAfterMs = SHUTDOWN_FORCE_MS): Promise<void> {
+		if (this.#arming) return this.#arming;
+		const generation = this.#generation;
+		this.#forceAfterMs = forceAfterMs;
+		this.#arming = (async () => {
+			const pid = this.#pgid ?? this.#child?.pid;
+			const groups = pid === undefined || !posixProcessGroups() ? [] : trackedGroups(pid, await processSnapshot());
+			if (generation !== this.#generation) return;
+			this.#groups = groups;
+			this.#forceTimer = setTimeout(() => this.#signalGroups(), forceAfterMs);
+		})();
+		return this.#arming;
+	}
+
+	/** After an unexpected exit, kill the process group recorded at spawn even though `exitCode` is already set. */
+	async #reap(): Promise<void> {
+		if (this.#groups === undefined) await this.armShutdown(0);
+		this.#signalGroups();
+	}
+
 	async stop(): Promise<void> {
+		if (this.#groups === undefined) await this.armShutdown(this.#stopTimeoutMs);
+		await this.#disconnectAndWait();
+	}
+
+	/** Disconnect if the child is still up, then signal the groups captured by `armShutdown`, including after a crash. */
+	async #disconnectAndWait(): Promise<void> {
 		const child = this.#child;
-		if (child === undefined || child.exitCode !== null) return;
+		const alive = child !== undefined && child.exitCode === null && child.signalCode === null && child.pid !== undefined;
+		if (!alive) {
+			this.#signalGroups();
+			return;
+		}
 		const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
 		if (child.connected) child.disconnect();
-		const timer = setTimeout(() => child.kill("SIGKILL"), 5_000);
-		await exited;
-		clearTimeout(timer);
+		const timer = setTimeout(() => this.#signalGroups(), this.#forceAfterMs);
+		try {
+			await exited;
+		} finally {
+			clearTimeout(timer);
+			this.#signalGroups();
+		}
+	}
+
+	#signalGroups(): void {
+		clearTimeout(this.#forceTimer);
+		this.#forceTimer = undefined;
+		if (posixProcessGroups()) signalTrackedGroups(this.#groups ?? []);
+		const child = this.#child;
+		if (child !== undefined && child.exitCode === null && child.signalCode === null) {
+			try {
+				child.kill("SIGKILL");
+			} catch {
+				// The process has already exited.
+			}
+		}
 	}
 
 	#start(): Promise<void> {
 		if (this.#ready !== undefined && this.#child?.connected === true) return this.#ready;
-		const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", this.#entry], {
+		const child = spawn(this.#node, ["--disable-warning=ExperimentalWarning", this.#entry], {
 			stdio: ["ignore", "inherit", "inherit", "ipc"],
 			env: this.#env,
+			// Lead a new process group so stop can signal it without signaling the Host.
+			detached: true,
 		});
+		clearTimeout(this.#forceTimer);
+		this.#forceTimer = undefined;
+		this.#generation++;
+		this.#groups = undefined;
+		this.#arming = undefined;
 		this.#child = child;
+		this.#pgid = child.pid;
 		const { promise, resolve, reject } = Promise.withResolvers<void>();
+		let settled = false;
+		let readyTimer: ReturnType<typeof setTimeout> | undefined;
+		const fail = (error: Error): void => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(readyTimer);
+			reject(error);
+		};
+		readyTimer = setTimeout(() => {
+			fail(new Error("The local executor did not become ready in time"));
+			void this.stop();
+		}, this.#startTimeoutMs);
+		// Spawn and later IPC failures are delivered here. After the handshake, exit settles the work.
+		child.on("error", (error: NodeJS.ErrnoException) => {
+			if (settled) return;
+			fail(new Error(`Could not start the local executor: ${error.message}`));
+			void this.stop();
+		});
 		child.on("message", (message: ExecutorMessage) => {
 			if (this.#child !== child) return;
 			if(message.kind==="policy.synced"||message.kind==="execution.quiesced"){
@@ -244,16 +371,27 @@ export class ExecutorProcess implements ExecutorTransport {
 					return;
 				}
 				case "executor.hello":
-					if (message.targetId !== this.#targetId) reject(new Error(`Executor bound to ${message.targetId}, expected ${this.#targetId}`));
-					else resolve();
+					if (message.targetId !== this.#targetId) {
+						fail(new Error(`Executor bound to ${message.targetId}, expected ${this.#targetId}`));
+						void this.stop();
+					} else if (!settled) {
+						settled = true;
+						clearTimeout(readyTimer);
+						resolve();
+					}
 					return;
 				case "tool.progress":
 					this.#pending.get(message.invocationId)?.onProgress(message.output);
 					return;
 				case "tool.result": {
 					const pending = this.#pending.get(message.invocationId);
+					if (!pending) {
+						noteInvokeDropped(message.invocationId, this.#pending.size);
+						return;
+					}
+					clearTimeout(pending.timer);
 					this.#pending.delete(message.invocationId);
-					pending?.resolve(message.outcome);
+					pending.resolve(message.outcome);
 					return;
 				}
 				case "tool.status": {
@@ -280,9 +418,11 @@ export class ExecutorProcess implements ExecutorTransport {
 				clearTimeout(waiting.timer);
 				waiting.reject(new Error("Executor stopped before quiescence was confirmed"));
 			}
-			reject(new Error(`The local executor exited (${signal ?? code})`));
+			fail(new Error(`The local executor exited (${signal ?? code})`));
+			void this.#reap();
 			// An invocation the executor accepted but did not answer may have had an effect.
 			for (const [invocationId, pending] of this.#pending) {
+				clearTimeout(pending.timer);
 				this.#pending.delete(invocationId);
 				pending.resolve({
 					status: "unknown",

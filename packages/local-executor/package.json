@@ -4,7 +4,9 @@
 	"private": true,
 	"type": "module",
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./process-group": "./src/process-group.ts",
+		"./test-hook": "./src/test-hook.ts"
 	},
 	"dependencies": {
 		"@openbot/protocol": "workspace:*",

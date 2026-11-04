@@ -6,5 +6,6 @@ export default defineConfig({
 	test: {
 		environment: "node",
 		include: ["apps/*/test/**/*.test.ts", "packages/*/test/**/*.test.ts", "scripts/test/**/*.test.ts"],
+		tags: [{ name: "integration", description: "Boots a Host process against a temporary home" }],
 	},
 });
