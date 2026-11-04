@@ -40,7 +40,7 @@ export function connectorStore(harness: Harness, context: Context) {
 				}
 				const existing = doc.records[definition.connectorId];
 				if ((existing?.revision ?? 0) !== expectedRevision || (existing?.removed && !definition.removed))
-					throw new ProtocolError("request_conflict", "Connector changed. Reload before continuing.");
+					throw new ProtocolError("request_conflict", "Connector changed. Reload before continuing.", { currentRevision: existing?.revision ?? 0 });
 				if (
 					Object.keys(doc.mutations).length >= CONNECTOR_LIMITS.receipts ||
 					(!existing &&

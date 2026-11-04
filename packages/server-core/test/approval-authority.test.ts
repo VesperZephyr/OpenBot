@@ -22,6 +22,7 @@ function fixture() {
 			rows.set(record.approvalId, structuredClone(record));
 		},
 		pending: async () => [...rows.values()].filter((r) => r.state === "pending"),
+		decided: async () => [...rows.values()].filter((r) => r.decision === "allow_once" || r.decision === "deny" || (typeof r.decision === "object" && r.decision?.kind === "always_allow")),
 		prune: async () => {},
 	};
 	return { rows, store };

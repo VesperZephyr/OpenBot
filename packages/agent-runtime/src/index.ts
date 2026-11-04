@@ -679,7 +679,7 @@ export class BotRuntime {
 			const bot = (await tx.doc(BotsDoc)).bots[botId];
 			if (!bot || bot.status === "deleted") throw new ProtocolError("not_found", "Bot is unavailable");
 			if ((bot.revision ?? 1) !== expectedRevision)
-				throw new ProtocolError("request_conflict", "Profile changed; refresh the export preview");
+				throw new ProtocolError("request_conflict", "Profile changed; refresh the export preview", { currentRevision: bot.revision ?? 1 });
 			const avatar = bot.avatar ?? defaultAvatar(botId);
 			const portable =
 				avatar.kind === "image"
@@ -799,11 +799,11 @@ export class BotRuntime {
 				throw new ProtocolError("invalid_request", "The Core Bot cannot be deleted, hidden or unpinned");
 			}
 			if (proposal && (record.status === "deleted" || (record.revision ?? 1) !== proposal.expectedRevision))
-				throw new ProtocolError("request_conflict", "Bot changed. Inspect it again before proposing another change.");
+				throw new ProtocolError("request_conflict", "Bot changed. Inspect it again before proposing another change.", { currentRevision: record.revision ?? 1 });
 			const { model: currentModel, ...rest } = JSON.parse(JSON.stringify(record)) as BotRecord;
 			const model = change.model === undefined ? currentModel : (change.model ?? undefined);
 			if (change.expectedRevision !== undefined && change.expectedRevision !== (record.revision ?? 1))
-				throw new ProtocolError("request_conflict", "Profile changed. Reload before saving your draft.");
+				throw new ProtocolError("request_conflict", "Profile changed. Reload before saving your draft.", { currentRevision: record.revision ?? 1 });
 			const { model: _model, expectedRevision: _expectedRevision, defaultSkills, ...fields } = change;
 			const updated: BotRecord = { ...rest, ...fields, ...(defaultSkills ? { defaultSkills: defaultSkills.map(ref => ({ ...ref })) } : {}), revision: (record.revision ?? 1) + 1, ...(model === undefined ? {} : { model }) };
 			const effectiveModel = change.model === null ? (defaultModel ?? null) : change.model;

@@ -160,7 +160,7 @@ export class HostProcess {
 				this.#pending.delete(message.messageId);
 				clearTimeout(pending.timer);
 				if (message.ok) pending.resolve(message.result);
-				else pending.reject(new ProtocolError(message.error.code, message.error.message));
+				else pending.reject(new ProtocolError(message.error.code, message.error.message, message.error.details));
 			}
 		}
 	}

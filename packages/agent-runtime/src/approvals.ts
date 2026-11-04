@@ -17,6 +17,10 @@ type StoredApproval = Omit<ApprovalRecord, "args" | "alwaysAllowOptions"> & {
 	readonly alwaysAllowOptions?: AlwaysAllowOption[];
 };
 
+function isUserDecision(decision: ApprovalRecord["decision"]): boolean {
+	return decision === "allow_once" || decision === "deny" || (typeof decision === "object" && decision.kind === "always_allow");
+}
+
 export const ApprovalsDoc = defineDoc<{ approvals: Record<string, StoredApproval> }>({
 	kind: "openbot.approvals",
 	version: 1,
@@ -30,6 +34,8 @@ export interface ApprovalStore {
 	/** With `saved` (**Always allow**), the rule or grant is written in the same commit as the record. */
 	put(record: ApprovalRecord, saved?: SavedScope): Promise<void>;
 	pending(): Promise<readonly ApprovalRecord[]>;
+	/** Allow and deny decisions, including ones already consumed. */
+	decided(): Promise<readonly ApprovalRecord[]>;
 	/**
 	 * Delete answered records last changed before `before` (epoch ms): consumed, withdrawn, and decided ones whose
 	 * result was committed before the Host could mark them consumed. Pending records are kept.
@@ -47,7 +53,7 @@ export function approvalStore(harness: Harness, context: Context): ApprovalStore
 			let copy = JSON.parse(JSON.stringify(record)) as StoredApproval;
 			await harness.commit(async (tx) => {
 				const policy=await tx.doc(PolicyDoc);
-    if(record.state==="allowed"&&record.binding&&record.binding.revision!==(policy.revision??0))throw new ProtocolError("request_conflict","Approval authority changed");
+    if(record.state==="allowed"&&record.binding&&record.binding.revision!==(policy.revision??0))throw new ProtocolError("request_conflict","Approval authority changed",{currentRevision:policy.revision??0});
     if(record.state==="allowed" || saved){
      const run=record.binding?.runId?(await tx.doc(RunsDoc)).runs[record.binding.runId]:undefined;
      const channel=Object.values((await tx.doc(ChannelsDoc)).channels).find(c=>String(c.conversationId)===record.conversationId);
@@ -59,6 +65,7 @@ export function approvalStore(harness: Harness, context: Context): ApprovalStore
 			}, context);
 		},
 		pending: async () => Object.values(await all()).filter((record) => record.state === "pending"),
+		decided: async () => Object.values(await all()).filter((record) => isUserDecision(record.decision)),
 		prune: async (before) => {
 			const stale = Object.values(await all())
 				.filter((record) => record.state !== "pending" && (!record.binding || record.state === "consumed") && (record.decidedAt ?? record.createdAt) < before)

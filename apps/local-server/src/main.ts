@@ -22,6 +22,7 @@ import { paramsError } from "@openbot/protocol/schemas";
 import { ApprovalBook, DEFAULT_MAX_ACTIVE_RUNS, HostService } from "@openbot/server-core";
 import { SHUTDOWN_FORCE_MS, ExecutorProcess } from "./executor.ts";
 import { readTestHook } from "@openbot/local-executor/test-hook";
+import { hostError } from "./host-error.ts";
 import { CredentialBroker, KeychainCredentials } from "./keychain.ts";
 import { modelConfigFile, openBotHome } from "./model-config-file.ts";
 import { hostClock } from "./test-clock.ts";
@@ -189,14 +190,12 @@ const onMessage = async (message: unknown): Promise<void> => {
 		const result = await service.handle(method, message.params as HostParams<typeof method>);
 		response = { protocolVersion: PROTOCOL_VERSION, kind: "response", messageId: message.messageId, ok: true, result };
 	} catch (error) {
-		const code = error instanceof ProtocolError ? error.code : "internal";
-		const text = error instanceof Error ? error.message : String(error);
 		response = {
 			protocolVersion: PROTOCOL_VERSION,
 			kind: "response",
 			messageId: message.messageId,
 			ok: false,
-			error: { code, message: text },
+			error: hostError(error),
 		};
 	}
 	send(response);

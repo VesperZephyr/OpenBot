@@ -59,6 +59,35 @@ describe("ApprovalBook", () => {
 		expect(second.forBot("bot")).toEqual([]);
 	});
 
+	it("reads allow and deny records after a restart", async () => {
+		const allow = { ...approval, conversationId: "session-a", approvalId: "approval:session-a:call_1", callId: "call_1" };
+		const deny = {
+			...approval,
+			conversationId: "session-b",
+			approvalId: "approval:session-b:call_2",
+			callId: "call_2",
+			tool: "local_write",
+		};
+		const first = await restart();
+		const waitingAllow = first.request(allow, live());
+		const waitingDeny = first.request(deny, live());
+		await expect.poll(() => first.forBot("bot").length).toBe(2);
+		await first.decide(allow.approvalId, "allow_once");
+		await first.decide(deny.approvalId, "deny");
+		await waitingAllow;
+		await waitingDeny;
+
+		const second = await restart();
+		const log = await second.decisions();
+		expect(log.map(({ at: _at, ...rest }) => rest)).toEqual([
+			{ approvalId: allow.approvalId, decision: "allow", tool: "local_exec", conversationId: "session-a" },
+			{ approvalId: deny.approvalId, decision: "deny", tool: "local_write", conversationId: "session-b" },
+		]);
+		expect(log[0]?.at).toEqual(expect.any(Number));
+		expect(log[1]!.at).toBeGreaterThanOrEqual(log[0]!.at);
+		expect(second.forBot("bot")).toEqual([]);
+	});
+
 	it("decision survives a new book on the same store", async () => {
 		const first = await restart();
 		const waiting = first.request(approval, live());
