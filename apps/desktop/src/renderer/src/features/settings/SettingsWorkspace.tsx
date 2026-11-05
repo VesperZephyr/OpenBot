@@ -14,7 +14,6 @@ import { CommandSettings, FolderSettings } from "../../PolicySettings";
 import { ModelSetup } from "../../ModelSetup";
 import { ManagementHistory } from "../../BotManagement";
 import { t } from "../../i18n";
-import { modelCatalogPending } from "../../model-options";
 import { api, closeSettings, holdOnboarding, refreshSettings, report, useStore, type View } from "../../store";
 import { ModelSelect } from "../../ModelSelect";
 
@@ -78,40 +77,9 @@ export function SettingsWorkspace({
 
 function Settings() {
 	const settings = useStore((state) => state.settings);
-	const models = useStore((state) => state.models);
-	const catalogPending = modelCatalogPending(models, settings);
 	useEffect(() => {
-		if (!catalogPending) return;
-		let stop = false;
-		let timer = 0;
-		const load = (): void => {
-			void (async () => {
-				try {
-					const nextSettings = await api["settings.get"]({});
-					const nextModels = await api["models.list"]({});
-					if (stop) return;
-					useStore.setState((state) => ({
-						models: nextModels,
-						// A read that started before the user picked a default model must not clear that pick.
-						settings:
-							nextSettings.defaultModel !== undefined || state.settings?.defaultModel === undefined
-								? nextSettings
-								: { ...nextSettings, defaultModel: state.settings.defaultModel },
-					}));
-				} catch {
-					if (!stop) timer = window.setTimeout(load, 300);
-					return;
-				}
-				if (!stop && modelCatalogPending(useStore.getState().models, useStore.getState().settings))
-					timer = window.setTimeout(load, 300);
-			})();
-		};
-		load();
-		return () => {
-			stop = true;
-			window.clearTimeout(timer);
-		};
-	}, [catalogPending]);
+		void refreshSettings().catch(report);
+	}, []);
 	const [providerId, setProviderId] = useState("openai");
 	const [apiKey, setApiKey] = useState("");
 	const configured = settings?.providers.filter((provider) => provider.configured) ?? [];
@@ -153,23 +121,15 @@ function Settings() {
 			<div className="settings-group" id="settings-models">
 				<h2>{t("Default model")}</h2>
 				<p className="muted">{t("Bots without a model of their own use this one.")}</p>
-				{catalogPending ? null : (
+				{settings && (
 				<ModelSelect
-					value={settings?.defaultModel}
+					value={settings.defaultModel}
 					emptyLabel={configured.length === 0 ? "Add an API key below first" : "Choose a model"}
-					onChange={(model) => {
-						const current = useStore.getState().settings;
-						if (current) {
-							if (model) useStore.setState({ settings: { ...current, defaultModel: model } });
-							else {
-								const { defaultModel: _removed, ...rest } = current;
-								useStore.setState({ settings: rest });
-							}
-						}
+					onChange={(model) =>
 						void api["settings.update"]({ defaultModel: model ?? null })
-							.then((next) => useStore.setState({ settings: next }))
-							.catch(report);
-					}}
+							.then(refreshSettings)
+							.catch(report)
+					}
 				/>
 				)}
 				<button type="button" onClick={() => { closeSettings(); holdOnboarding(); }}>{t("Open the setup wizard again")}</button>

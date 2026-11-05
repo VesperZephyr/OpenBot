@@ -1,6 +1,6 @@
 import type { ModelRef, ModelSummary } from "@openbot/protocol";
 import { t } from "./i18n";
-import { visibleModelOptions } from "./model-options";
+import { defaultModelOptionValues } from "./model-options";
 import { useStore } from "./store";
 
 export function ModelSelect(props: {
@@ -10,23 +10,26 @@ export function ModelSelect(props: {
 }) {
 	const models = useStore((state) => state.models);
 	const settings = useStore((state) => state.settings);
+	const visible = new Set(defaultModelOptionValues(models, settings?.providers));
 	const byProvider = new Map<string, ModelSummary[]>();
-	for (const model of visibleModelOptions(models, settings?.providers)) {
+	for (const model of models) {
+		if (!visible.has(`${model.provider}/${model.modelId}`)) continue;
 		byProvider.set(model.provider, [...(byProvider.get(model.provider) ?? []), model]);
 	}
 	const groups = [...byProvider];
 	const selected = props.value === undefined ? "" : `${props.value.provider}/${props.value.modelId}`;
-	const commit = (value: string): void => {
-		if (value === selected) return;
-		const separator = value.indexOf("/");
-		props.onChange(separator < 0 ? undefined : { provider: value.slice(0, separator), modelId: value.slice(separator + 1) });
-	};
 
 	return (
 		<select
 			value={selected}
-			onChange={(event) => commit(event.target.value)}
-			onInput={(event) => commit((event.target as HTMLSelectElement).value)}
+			onChange={(event) => {
+				const separator = event.target.value.indexOf("/");
+				props.onChange(
+					separator < 0
+						? undefined
+						: { provider: event.target.value.slice(0, separator), modelId: event.target.value.slice(separator + 1) },
+				);
+			}}
 		>
 			<option value="">{t(props.emptyLabel)}</option>
 			{/* Keep a stored model selectable even when its provider key was removed. */}
