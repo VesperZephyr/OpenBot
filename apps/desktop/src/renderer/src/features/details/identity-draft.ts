@@ -24,17 +24,18 @@ export type IdentityDraft = {
 	readonly conflictRevision?: number;
 };
 
-let draft: IdentityDraft | undefined;
+const drafts = new Map<string, IdentityDraft>();
 let confirmSurfaceMounted = false;
 const listeners = new Set<() => void>();
 
-function publish(next: IdentityDraft | undefined): void {
-	draft = next;
+function publish(botId: string, next: IdentityDraft | undefined): void {
+	if (next) drafts.set(botId, next);
+	else drafts.delete(botId);
 	for (const listener of listeners) listener();
 }
 
-export function identityDraftSnapshot(): IdentityDraft | undefined {
-	return draft;
+export function identityDraftSnapshot(botId: string): IdentityDraft | undefined {
+	return drafts.get(botId);
 }
 
 export function subscribeIdentityDraft(listener: () => void): () => void {
@@ -44,7 +45,8 @@ export function subscribeIdentityDraft(listener: () => void): () => void {
 
 export function resetIdentityDraft(): void {
 	confirmSurfaceMounted = false;
-	publish(undefined);
+	drafts.clear();
+	for (const listener of listeners) listener();
 }
 
 /** True while the wide-layout card that can show the discard confirmation is mounted. */
@@ -83,9 +85,10 @@ function baselineOf(bot: IdentityBot): IdentityBaseline {
 	};
 }
 
-/** Keep an existing draft for this Bot, including one restored after the inspector unmounts. A dirty draft for another Bot is left in place. */
+/** Return this Bot's draft, creating one when this Bot has none. Other Bots' drafts stay stored. */
 export function beginIdentityDraft(bot: IdentityBot): IdentityDraft {
-	if (draft && (draft.baseline.botId === bot.botId || identityDirty(draft))) return draft;
+	const existing = drafts.get(bot.botId);
+	if (existing) return existing;
 	const baseline = baselineOf(bot);
 	const next: IdentityDraft = {
 		baseline,
@@ -95,41 +98,47 @@ export function beginIdentityDraft(bot: IdentityBot): IdentityDraft {
 		avatar: undefined,
 		confirming: false,
 	};
-	publish(next);
+	publish(bot.botId, next);
 	return next;
 }
 
-export function patchIdentityDraft(patch: Partial<Pick<IdentityDraft, "name" | "role" | "instructions" | "avatar" | "confirming" | "conflictRevision" | "pending">>): void {
-	if (!draft) return;
-	publish({ ...draft, ...patch });
+export function patchIdentityDraft(
+	botId: string,
+	patch: Partial<Pick<IdentityDraft, "name" | "role" | "instructions" | "avatar" | "confirming" | "conflictRevision" | "pending">>,
+): void {
+	const current = drafts.get(botId);
+	if (!current) return;
+	publish(botId, { ...current, ...patch });
 }
 
-export function requestIdentityClose(pending?: IdentityPending, options?: { readonly confirmVisible?: boolean }): boolean {
-	if (!draft || !identityDirty(draft)) {
-		if (draft) publish(undefined);
+export function requestIdentityClose(botId: string, pending?: IdentityPending, options?: { readonly confirmVisible?: boolean }): boolean {
+	const current = drafts.get(botId);
+	if (!current || !identityDirty(current)) {
+		if (current) publish(botId, undefined);
 		return true;
 	}
 	if (options?.confirmVisible === false) return true;
-	const { pending: _previous, ...rest } = draft;
-	publish(pending ? { ...rest, confirming: true, pending } : { ...rest, confirming: true });
+	const { pending: _previous, ...rest } = current;
+	publish(botId, pending ? { ...rest, confirming: true, pending } : { ...rest, confirming: true });
 	return false;
 }
 
-export function keepIdentityDraft(): void {
-	if (!draft) return;
-	const { pending: _pending, ...rest } = draft;
-	publish({ ...rest, confirming: false });
+export function keepIdentityDraft(botId: string): void {
+	const current = drafts.get(botId);
+	if (!current) return;
+	const { pending: _pending, ...rest } = current;
+	publish(botId, { ...rest, confirming: false });
 }
 
-export function discardIdentityDraft(): IdentityPending | undefined {
-	const pending = draft?.pending;
-	publish(undefined);
+export function discardIdentityDraft(botId: string): IdentityPending | undefined {
+	const pending = drafts.get(botId)?.pending;
+	if (drafts.has(botId)) publish(botId, undefined);
 	return pending;
 }
 
 export function replaceIdentityDraft(bot: IdentityBot): void {
 	const baseline = baselineOf(bot);
-	publish({
+	publish(bot.botId, {
 		baseline,
 		name: baseline.name,
 		role: baseline.role,
@@ -139,10 +148,11 @@ export function replaceIdentityDraft(bot: IdentityBot): void {
 	});
 }
 
-export function keepConflictRevision(revision: number): void {
-	if (!draft) return;
-	const { conflictRevision: _revision, ...rest } = draft;
-	publish({ ...rest, baseline: { ...draft.baseline, revision } });
+export function keepConflictRevision(botId: string, revision: number): void {
+	const current = drafts.get(botId);
+	if (!current) return;
+	const { conflictRevision: _revision, ...rest } = current;
+	publish(botId, { ...rest, baseline: { ...current.baseline, revision } });
 }
 
 export function motifChange(seed: number, motif: GeneratedAvatar["motif"]): AvatarChange {

@@ -28,10 +28,14 @@ const MOTIF_LABEL: Record<(typeof MOTIFS)[number], string> = { leaf: "Leaf", gla
 /** Wide-layout Bot card. The intro is read-only until Edit opens the form. */
 export function BotIdentity({ botId, profileOpen }: { readonly botId: string; readonly profileOpen: boolean }) {
 	const bot = useStore((state) => state.bots.find((candidate) => candidate.botId === botId));
-	const draft = useSyncExternalStore(subscribeIdentityDraft, identityDraftSnapshot, identityDraftSnapshot);
+	const draft = useSyncExternalStore(
+		subscribeIdentityDraft,
+		() => identityDraftSnapshot(botId),
+		() => identityDraftSnapshot(botId),
+	);
 	const [form, setForm] = useState(() => {
-		const existing = identityDraftSnapshot();
-		return !profileOpen && existing?.baseline.botId === botId && (identityDirty(existing) || existing.confirming);
+		const existing = identityDraftSnapshot(botId);
+		return !profileOpen && existing !== undefined && (identityDirty(existing) || existing.confirming);
 	});
 	const [expanded, setExpanded] = useState(false);
 	useEffect(() => {
@@ -78,7 +82,7 @@ export function BotIdentity({ botId, profileOpen }: { readonly botId: string; re
 							type="button"
 							aria-label={t("Close details")}
 							onClick={() => {
-								if (requestIdentityClose({ kind: "close" })) setDetailsOpen(false);
+								if (requestIdentityClose(botId, { kind: "close" })) setDetailsOpen(false);
 							}}
 						>
 							<InterfaceIcon name="close" />
@@ -117,22 +121,26 @@ export function BotIdentity({ botId, profileOpen }: { readonly botId: string; re
 }
 
 function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
-	const draft = useSyncExternalStore(subscribeIdentityDraft, identityDraftSnapshot, identityDraftSnapshot);
+	const botId = bot.botId;
+	const draft = useSyncExternalStore(
+		subscribeIdentityDraft,
+		() => identityDraftSnapshot(botId),
+		() => identityDraftSnapshot(botId),
+	);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState("");
 	useEffect(() => {
-		const existing = identityDraftSnapshot();
-		if (existing?.baseline.botId === bot.botId) return;
+		if (identityDraftSnapshot(bot.botId)) return;
 		beginIdentityDraft(bot);
 	}, [bot]);
 	const finishDiscard = (): void => {
-		const pending = discardIdentityDraft();
+		const pending = discardIdentityDraft(bot.botId);
 		onClose();
 		if (pending?.kind === "close") setDetailsOpen(false);
 		else if (pending?.kind === "bot") void openBot(pending.botId);
 	};
 	const requestClose = (): void => {
-		if (requestIdentityClose()) onClose();
+		if (requestIdentityClose(bot.botId)) onClose();
 	};
 	if (!draft || draft.baseline.botId !== bot.botId) return null;
 	const { baseline, name, role, instructions, avatar, confirming, conflictRevision } = draft;
@@ -156,7 +164,7 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 		else requestClose();
 	};
 	const chooseMotif = (motif: GeneratedAvatar["motif"]): void => {
-		patchIdentityDraft({ avatar: motifChange(seed, motif) });
+		patchIdentityDraft(baseline.botId, { avatar: motifChange(seed, motif) });
 	};
 	const reload = async (): Promise<void> => {
 		const fresh = (await api["bots.list"]({})).find((item) => item.botId === baseline.botId);
@@ -177,15 +185,15 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 				...(avatar ? { avatar } : {}),
 			});
 			await refreshBots();
-			discardIdentityDraft();
+			discardIdentityDraft(baseline.botId);
 			onClose();
 		} catch (caught) {
 			const failure = readHostError(caught);
-			const current = identityDraftSnapshot();
+			const current = identityDraftSnapshot(baseline.botId);
 			if (failure.code === "request_conflict" && failure.details?.currentRevision !== undefined) {
 				const fresh = (await api["bots.list"]({})).find((item) => item.botId === baseline.botId);
 				if (fresh && fresh.revision === failure.details.currentRevision) {
-					if (current && identityDirty(current)) patchIdentityDraft({ conflictRevision: fresh.revision });
+					if (current && identityDirty(current)) patchIdentityDraft(baseline.botId, { conflictRevision: fresh.revision });
 					else replaceIdentityDraft(fresh);
 					report(caught);
 					setSaving(false);
@@ -199,7 +207,7 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 	};
 	return (
 		<form className="identity-form" onSubmit={(event) => void save(event)} onKeyDown={onKeyDown}>
-			<AvatarEditor bot={{ ...bot, botId: baseline.botId }} role={role} value={avatar} onChange={(value) => patchIdentityDraft({ avatar: value })} disabled={saving} />
+			<AvatarEditor bot={{ ...bot, botId: baseline.botId }} role={role} value={avatar} onChange={(value) => patchIdentityDraft(baseline.botId, { avatar: value })} disabled={saving} />
 			<div className="identity-motifs" role="group" aria-label={t("Avatar motif")}>
 				{MOTIFS.map((motif) => (
 					<button key={motif} type="button" aria-pressed={generated?.motif === motif} disabled={saving} onClick={() => chooseMotif(motif)}>
@@ -209,15 +217,15 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 			</div>
 			<label className="identity-field">
 				<span>{t("Name")}</span>
-				<input required maxLength={200} value={name} onChange={(event) => patchIdentityDraft({ name: event.target.value })} />
+				<input required maxLength={200} value={name} onChange={(event) => patchIdentityDraft(baseline.botId, { name: event.target.value })} />
 			</label>
 			<label className="identity-field">
 				<span>{t("Label")}</span>
-				<input maxLength={200} value={role} onChange={(event) => patchIdentityDraft({ role: event.target.value })} />
+				<input maxLength={200} value={role} onChange={(event) => patchIdentityDraft(baseline.botId, { role: event.target.value })} />
 			</label>
 			<label className="identity-field">
 				<span>{t("Prompt")}</span>
-				<textarea rows={4} value={instructions} onChange={(event) => patchIdentityDraft({ instructions: event.target.value })} />
+				<textarea rows={4} value={instructions} onChange={(event) => patchIdentityDraft(baseline.botId, { instructions: event.target.value })} />
 			</label>
 			{conflictRevision !== undefined ? (
 				<div className="identity-alert" role="alert">
@@ -225,7 +233,7 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 					<button type="button" onClick={() => void reload()}>
 						{t("Reload profile")}
 					</button>
-					<button type="button" onClick={() => keepConflictRevision(conflictRevision)}>
+					<button type="button" onClick={() => keepConflictRevision(baseline.botId, conflictRevision)}>
 						{t("Keep editing")}
 					</button>
 				</div>
@@ -238,7 +246,7 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 				<div className="identity-confirm" role="alertdialog" aria-label={t("Discard these edits?")}>
 					<p>{t("Discard these edits?")}</p>
 					<div className="identity-actions">
-						<button type="button" onClick={() => keepIdentityDraft()}>
+						<button type="button" onClick={() => keepIdentityDraft(baseline.botId)}>
 							{t("Keep editing")}
 						</button>
 						<button type="button" onClick={finishDiscard}>
