@@ -215,11 +215,8 @@ export async function markRead(conversationKey: ConversationKey, through: number
 }
 export type SettingsPage = "settings" | "skills" | "connectors" | "routines";
 
-let onboardingHeld = false;
-
-/** The user asked for the setup wizard. Do not dismiss it when a provider is already configured. */
+/** The user asked for the setup wizard again. */
 export function holdOnboarding(): void {
-	onboardingHeld = true;
 	useStore.setState({ onboarding: true });
 }
 
@@ -343,13 +340,9 @@ async function loadAll(changes: number): Promise<void> {
 	if (generation !== readGeneration || useStore.getState().host.status !== "ready") return;
 	if(changes&7)useStore.setState(s=>({historyRevision:s.historyRevision+1}));
  const { view, onboarding, settings, bots } = useStore.getState();
-	if (settings) {
-		const needed = needsOnboarding(settings, bots);
-		// A first read can land before the model file is applied and latch the wizard. Leave that latch once a
-		// provider is actually configured, unless the user opened the wizard on purpose.
-		if (onboarding === undefined) useStore.setState({ onboarding: needed });
-		else if (onboarding === true && !needed && !onboardingHeld) useStore.setState({ onboarding: false });
-	}
+	// Decide once. Closing the wizard when a model becomes configured skips "Meet your first Bot"
+	// and "Hello, I'm OpenBot" after Connect. The wizard dismisses itself when setup finishes.
+	if (onboarding === undefined && settings) useStore.setState({ onboarding: needsOnboarding(settings, bots) });
 	if(view.kind==="tasks" && !bots.some(bot=>bot.kind==="core" && bot.botId===view.botId)){const core=bots.find(bot=>bot.kind==="core");if(core)useStore.setState({view:{kind:"tasks",botId:core.botId}});}
  else if (view.kind === "home" || (view.kind === "bot" && !bots.some((bot) => bot.botId === view.botId))) {
 		const core = bots.find((b) => b.kind === "core");

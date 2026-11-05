@@ -52,7 +52,6 @@ const THINKING_LABEL: Record<ThinkingLevel, string> = { off: "Off", low: "Low", 
 
 function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
 	const [botId] = useState(bot.botId);
-	const [opened] = useState({ name: bot.name, role: bot.role, instructions: bot.instructions });
 	const [revision, setRevision] = useState(bot.revision);
 	const [avatar, setAvatar] = useState<AvatarChange>();
 	const [profileBase, setProfileBase] = useState(bot);
@@ -90,25 +89,8 @@ function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 			await refreshBots();
 			onClose();
 		} catch (error) {
-			const failure = readHostError(error);
-			const unchanged = name === opened.name && role === opened.role && instructions === opened.instructions && avatar === undefined;
-			if (failure.code === "request_conflict" && failure.details?.currentRevision !== undefined && unchanged) {
-				const fresh = (await api["bots.list"]({})).find((item) => item.botId === botId);
-				if (fresh && fresh.revision === failure.details.currentRevision) {
-					setRevision(fresh.revision);
-					setAvatar(undefined);
-					setProfileBase(fresh);
-					setDefaultSkills(fresh.defaultSkills ?? []);
-					setName(fresh.name);
-					setRole(fresh.role);
-					setInstructions(fresh.instructions);
-					setModel(fresh.model);
-					setThinkingLevel(fresh.thinkingLevel ?? "off");
-					setSaveError("");
-					return;
-				}
-			}
-			setSaveError(failure.message);
+			// A stale profile dialog must keep the "Profile changed" alert. Refreshing here drops the draft the user still has on screen.
+			setSaveError(readHostError(error).message);
 		} finally {
 			setSaving(false);
 		}

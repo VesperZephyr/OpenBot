@@ -139,6 +139,15 @@
 	background: var(--surface);
 	margin: 4px;
 }
+/* The user bubble redefines ink. A chip inside it must keep its own pair, or the contrast check reads 1. */
+.message .skill-chip {
+	color: #1c1d21;
+	background: #ffffff;
+}
+:root[data-theme="dark"] .message .skill-chip {
+	color: #f4f5f7;
+	background: #1c1d22;
+}
 .skill-chip small {
 	color: var(--muted);
 }
