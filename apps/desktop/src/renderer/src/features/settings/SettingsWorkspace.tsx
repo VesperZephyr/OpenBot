@@ -90,7 +90,14 @@ function Settings() {
 					const nextSettings = await api["settings.get"]({});
 					const nextModels = await api["models.list"]({});
 					if (stop) return;
-					useStore.setState({ settings: nextSettings, models: nextModels });
+					useStore.setState((state) => ({
+						models: nextModels,
+						// A read that started before the user picked a default model must not clear that pick.
+						settings:
+							nextSettings.defaultModel !== undefined || state.settings?.defaultModel === undefined
+								? nextSettings
+								: { ...nextSettings, defaultModel: state.settings.defaultModel },
+					}));
 				} catch {
 					if (!stop) timer = window.setTimeout(load, 300);
 					return;
@@ -150,11 +157,19 @@ function Settings() {
 				<ModelSelect
 					value={settings?.defaultModel}
 					emptyLabel={configured.length === 0 ? "Add an API key below first" : "Choose a model"}
-					onChange={(model) =>
+					onChange={(model) => {
+						const current = useStore.getState().settings;
+						if (current) {
+							if (model) useStore.setState({ settings: { ...current, defaultModel: model } });
+							else {
+								const { defaultModel: _removed, ...rest } = current;
+								useStore.setState({ settings: rest });
+							}
+						}
 						void api["settings.update"]({ defaultModel: model ?? null })
-							.then(refreshSettings)
-							.catch(report)
-					}
+							.then((next) => useStore.setState({ settings: next }))
+							.catch(report);
+					}}
 				/>
 				)}
 				<button type="button" onClick={() => useStore.setState({ onboarding: true })}>{t("Open the setup wizard again")}</button>
