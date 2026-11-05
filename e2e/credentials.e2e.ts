@@ -54,6 +54,8 @@ it("requires explicit migration, preserves model selection and shows bilingual r
 		.page()
 		.getByRole("button", { name: /^Settings/ })
 		.click();
+	// Settings swaps in a second credential section once its snapshot arrives. Wait for that section before scrolling.
+	await h.page().getByRole("heading", { name: "Default model", exact: true }).waitFor();
 	await h.page().getByRole("button", { name: "Migrate saved credentials", exact: true }).scrollIntoViewIfNeeded();
 	await h.shot("01-migration-en");
 	expect(await h.api("credentials.status")).toMatchObject({ migrationRequired: 1 });
@@ -63,6 +65,7 @@ it("requires explicit migration, preserves model selection and shows bilingual r
 		.page()
 		.getByRole("button", { name: /^Settings/ })
 		.click();
+	await h.page().getByRole("heading", { name: "Default model", exact: true }).waitFor();
 	await h.page().getByRole("button", { name: "Migrate saved credentials", exact: true }).click();
 	await h.page().getByText("Migrated: 1. Blocked: 0. Cleanup pending: 0.", { exact: true }).waitFor();
 	expect((await h.api("settings.get")).defaultModel).toEqual({ provider: "scripted", modelId: "scripted" });
