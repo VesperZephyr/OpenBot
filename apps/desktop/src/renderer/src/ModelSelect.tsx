@@ -1,8 +1,7 @@
-import { useEffect } from "react";
 import type { ModelRef, ModelSummary } from "@openbot/protocol";
 import { t } from "./i18n";
-import { modelCatalogPending, visibleModelOptions } from "./model-options";
-import { refreshSettings, useStore } from "./store";
+import { visibleModelOptions } from "./model-options";
+import { useStore } from "./store";
 
 export function ModelSelect(props: {
 	readonly value: ModelRef | undefined;
@@ -11,28 +10,6 @@ export function ModelSelect(props: {
 }) {
 	const models = useStore((state) => state.models);
 	const settings = useStore((state) => state.settings);
-	const pending = modelCatalogPending(models, settings);
-	useEffect(() => {
-		if (!pending) return;
-		let active = true;
-		let timer = 0;
-		const load = (): void => {
-			void refreshSettings()
-				.catch(() => undefined)
-				.finally(() => {
-					if (!active) return;
-					const state = useStore.getState();
-					if (modelCatalogPending(state.models, state.settings)) timer = window.setTimeout(load, 300);
-				});
-		};
-		load();
-		return () => {
-			active = false;
-			window.clearTimeout(timer);
-		};
-	}, [pending]);
-	if (pending) return <span aria-busy="true" />;
-
 	const byProvider = new Map<string, ModelSummary[]>();
 	for (const model of visibleModelOptions(models, settings?.providers)) {
 		byProvider.set(model.provider, [...(byProvider.get(model.provider) ?? []), model]);

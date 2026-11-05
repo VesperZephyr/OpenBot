@@ -56,7 +56,7 @@ type State = {
 	settings: RedactedSettings | undefined;
 	models: readonly ModelSummary[];
 	view: View;
-	settingsOverlay: "settings" | "skills" | "connectors" | undefined;
+	settingsOverlay: "settings" | "skills" | "connectors" | "routines" | undefined;
 	showHidden: boolean;
 	notice: string | undefined;
 	/** First-launch setup: `undefined` until the first roster and settings arrive, then decided once. */
@@ -122,7 +122,10 @@ const botsRead = new LatestRead(
 );
 const settingsRead = new LatestRead(
 	async () => {
-		const [settings, models] = await Promise.all([api["settings.get"]({}), api["models.list"]({})]);
+		// Read settings first, then the catalog. The two calls both reload the model file; running them together can
+		// publish a configured provider whose model is not in the list yet.
+		const settings = await api["settings.get"]({});
+		const models = await api["models.list"]({});
 		return { settings, models };
 	},
 	(value) => useStore.setState(value),
@@ -210,7 +213,7 @@ export async function markRead(conversationKey: ConversationKey, through: number
 	await api["conversations.markRead"]({ conversationKey, through });
 	await refreshSummaries();
 }
-export type SettingsPage = "settings" | "skills" | "connectors";
+export type SettingsPage = "settings" | "skills" | "connectors" | "routines";
 
 export function openSettings(page: SettingsPage = "settings"): void {
 	useStore.setState({ settingsOverlay: page });

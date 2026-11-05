@@ -58,8 +58,10 @@ export function App() {
 	if (["bot", "group", "home", "tasks"].includes(view.kind)) lastChat.current = view;
 	const selectSettings = (kind: SettingsDestination): void => {
 		if (kind === "routines") {
-			closeSettings();
-			if (useStore.getState().view.kind !== "routines") useStore.setState({ view: { kind: "routines" } });
+			// Stay on the same settings navigation. Leaving the overlay for a full-page Routines view
+			// removes the button Playwright is still clicking.
+			if (useStore.getState().view.kind === "routines") closeSettings();
+			else openSettings("routines");
 			return;
 		}
 		if (useStore.getState().view.kind === "routines") useStore.setState({ view: lastChat.current });

@@ -226,8 +226,28 @@ export function createBot(harness: AppHarness, name: string): Promise<void> {
 }
 async function createBotUnprofiled(harness: AppHarness, name: string): Promise<void> {
 	const page = harness.page();
-	await page.getByRole("button", { name: /^Settings/ }).click();
-	await page.locator("#settings-models select").selectOption("scripted/scripted");
+	// The sidebar control toggles. A second click, after a test already opened Settings, closes it.
+	if ((await page.getByRole("dialog", { name: "Settings" }).count()) === 0)
+		await page.getByRole("button", { name: /^Settings/ }).click();
+	const modelSelect = page.locator("#settings-models select");
+	try {
+		await modelSelect.selectOption("scripted/scripted");
+	} catch (error) {
+		const options = await modelSelect
+			.locator("option")
+			.evaluateAll((nodes) => nodes.map((node) => (node as HTMLOptionElement).value))
+			.catch(() => [] as string[]);
+		const listed = await harness.api("models.list").catch((reason: unknown) => reason);
+		const settings = await harness.api("settings.get").catch((reason: unknown) => reason);
+		const configured = Array.isArray(settings?.providers)
+			? settings.providers.filter((provider: { configured?: boolean }) => provider.configured).map((provider: { providerId: string }) => provider.providerId)
+			: String(settings);
+		const models = Array.isArray(listed)
+			? listed.map((model: { provider: string; modelId: string; source?: string }) => `${model.provider}/${model.modelId}:${model.source ?? ""}`)
+			: String(listed);
+		const reason = error instanceof Error ? error.message : String(error);
+		throw new Error(`scripted/scripted was not selected. options=[${options.join(", ")}] models=${JSON.stringify(models)} configured=${JSON.stringify(configured)} (${reason})`);
+	}
 	await page.waitForFunction(
 		() => (document.querySelector("#settings-models select") as HTMLSelectElement | null)?.value === "scripted/scripted",
 	);

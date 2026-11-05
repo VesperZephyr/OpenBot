@@ -14,6 +14,7 @@ import { CommandSettings, FolderSettings } from "../../PolicySettings";
 import { ModelSetup } from "../../ModelSetup";
 import { ManagementHistory } from "../../BotManagement";
 import { t } from "../../i18n";
+import { modelCatalogPending } from "../../model-options";
 import { api, refreshSettings, report, useStore, type View } from "../../store";
 import { ModelSelect } from "../../ModelSelect";
 
@@ -77,9 +78,33 @@ export function SettingsWorkspace({
 
 function Settings() {
 	const settings = useStore((state) => state.settings);
+	const models = useStore((state) => state.models);
+	const catalogPending = modelCatalogPending(models, settings);
 	useEffect(() => {
-		void refreshSettings().catch(report);
-	}, []);
+		if (!catalogPending) return;
+		let stop = false;
+		let timer = 0;
+		const load = (): void => {
+			void (async () => {
+				try {
+					const nextSettings = await api["settings.get"]({});
+					const nextModels = await api["models.list"]({});
+					if (stop) return;
+					useStore.setState({ settings: nextSettings, models: nextModels });
+				} catch {
+					if (!stop) timer = window.setTimeout(load, 300);
+					return;
+				}
+				if (!stop && modelCatalogPending(useStore.getState().models, useStore.getState().settings))
+					timer = window.setTimeout(load, 300);
+			})();
+		};
+		load();
+		return () => {
+			stop = true;
+			window.clearTimeout(timer);
+		};
+	}, [catalogPending]);
 	const [providerId, setProviderId] = useState("openai");
 	const [apiKey, setApiKey] = useState("");
 	const configured = settings?.providers.filter((provider) => provider.configured) ?? [];
@@ -121,6 +146,7 @@ function Settings() {
 			<div className="settings-group" id="settings-models">
 				<h2>{t("Default model")}</h2>
 				<p className="muted">{t("Bots without a model of their own use this one.")}</p>
+				{catalogPending ? null : (
 				<ModelSelect
 					value={settings?.defaultModel}
 					emptyLabel={configured.length === 0 ? "Add an API key below first" : "Choose a model"}
@@ -130,6 +156,7 @@ function Settings() {
 							.catch(report)
 					}
 				/>
+				)}
 				<button type="button" onClick={() => useStore.setState({ onboarding: true })}>{t("Open the setup wizard again")}</button>
 			</div>
 			{settings ? (
