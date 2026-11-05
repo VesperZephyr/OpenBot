@@ -80,9 +80,6 @@ export function App() {
 	const [searchOpen, setSearchOpen] = useState(false);
 	useEffect(() => { if (searchOpen) document.querySelector<HTMLInputElement>(".conversation-search")?.focus(); }, [searchOpen]);
 	useEffect(() => {
-		if (onboarding === true && settingsOverlay) closeSettings();
-	}, [onboarding, settingsOverlay]);
-	useEffect(() => {
 		if (!settingsOverlay) return;
 		const onKey = (event: KeyboardEvent): void => {
 			if (event.key !== "Escape" || event.isComposing) return;

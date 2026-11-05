@@ -15,7 +15,7 @@ import { ModelSetup } from "../../ModelSetup";
 import { ManagementHistory } from "../../BotManagement";
 import { t } from "../../i18n";
 import { modelCatalogPending } from "../../model-options";
-import { api, refreshSettings, report, useStore, type View } from "../../store";
+import { api, closeSettings, holdOnboarding, refreshSettings, report, useStore, type View } from "../../store";
 import { ModelSelect } from "../../ModelSelect";
 
 const SETTINGS_PAGES = [
@@ -172,7 +172,7 @@ function Settings() {
 					}}
 				/>
 				)}
-				<button type="button" onClick={() => useStore.setState({ onboarding: true })}>{t("Open the setup wizard again")}</button>
+				<button type="button" onClick={() => { closeSettings(); holdOnboarding(); }}>{t("Open the setup wizard again")}</button>
 			</div>
 			{settings ? (
 			<>
