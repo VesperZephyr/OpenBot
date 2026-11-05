@@ -1,6 +1,7 @@
 /**
  * Switching Bots asks before dropping an open profile draft, and never saves that draft onto the other Bot.
  * A narrow window hides that confirm dialog; the draft stays and the switch still happens.
+ * Widening onto the next Bot still edits and closes that Bot, and the first draft remains.
  */
 import { expect, it } from "vitest";
 import { type AppHarness, launchApp } from "./harness.ts";
@@ -95,6 +96,52 @@ it("keeps a dirty profile draft when the window is too narrow to show the confir
 		await row("Ada").click();
 		await page.getByRole("textbox", { name: "Message Ada" }).waitFor();
 		await setContentSize(h, 1440, 900);
+		await expect.poll(() => panel.getByLabel("Name", { exact: true }).inputValue()).toBe("Ada renamed");
+	} finally {
+		await h?.close();
+	}
+}, 90_000);
+
+it("lets the next Bot edit and close after a narrow switch, and keeps the first draft", async () => {
+	let h: AppHarness | undefined;
+	try {
+		h = await launchApp("identity-narrow-widen");
+		await setContentSize(h, 1440, 900);
+		await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" }, language: "en" });
+		await h.api("bots.create", { requestId: "ada-widen", name: "Ada", role: "Writer", instructions: "Write clearly." });
+		await h.api("bots.create", { requestId: "bee-widen", name: "Bee", role: "Editor", instructions: "Edit carefully." });
+		const page = h.page();
+		const row = (name: string) => page.locator(".bot-row").filter({ has: page.getByText(name, { exact: true }) });
+		await row("Ada").click();
+		await page.getByRole("textbox", { name: "Message Ada" }).waitFor();
+		const panel = page.locator("aside.bot-identity");
+		await page.getByRole("button", { name: "View details", exact: true }).click();
+		await panel.getByRole("button", { name: "Edit", exact: true }).click();
+		await panel.getByLabel("Name", { exact: true }).fill("Ada renamed");
+		expect(await panel.getByLabel("Name", { exact: true }).inputValue()).toBe("Ada renamed");
+		// The inspector unmounts below 1180px. Ada's dirty draft stays, with no confirm dialog.
+		await setContentSize(h, 1000, 720);
+		await expect.poll(() => panel.count()).toBe(0);
+		await row("Bee").click();
+		await h.nextFrame();
+		expect(await page.getByRole("alertdialog", { name: "Discard these edits?" }).count()).toBe(0);
+		await page.getByRole("textbox", { name: "Message Bee" }).waitFor();
+		await setContentSize(h, 1440, 900);
+		await panel.getByRole("button", { name: "Edit", exact: true }).waitFor();
+		expect(await panel.locator(".identity-name").innerText()).toBe("Bee");
+		await panel.getByRole("button", { name: "Edit", exact: true }).click();
+		const beeName = async (): Promise<string> => {
+			if ((await panel.locator("form.identity-form").count()) === 0) return "no form";
+			return panel.getByLabel("Name", { exact: true }).inputValue();
+		};
+		await expect.poll(beeName).toBe("Bee");
+		// Cancel leaves Bee's unchanged form so Close details can dismiss the card.
+		await panel.getByRole("button", { name: "Cancel", exact: true }).click();
+		await panel.getByRole("button", { name: "Close details", exact: true }).click();
+		await expect.poll(() => panel.count()).toBe(0);
+		await row("Ada").click();
+		await page.getByRole("textbox", { name: "Message Ada" }).waitFor();
+		await page.getByRole("button", { name: "View details", exact: true }).click();
 		await expect.poll(() => panel.getByLabel("Name", { exact: true }).inputValue()).toBe("Ada renamed");
 	} finally {
 		await h?.close();
