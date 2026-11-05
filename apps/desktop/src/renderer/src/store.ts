@@ -224,7 +224,12 @@ export function holdOnboarding(): void {
 }
 
 export function openSettings(page: SettingsPage = "settings"): void {
-	useStore.setState({ settingsOverlay: page });
+	// Settings is a page, as on main. An overlay is not in the tree while onboarding is showing,
+	// so the model select and Routines button never appear for the tests that open Settings.
+	if (page === "routines") useStore.setState({ view: { kind: "routines" }, settingsOverlay: undefined });
+	else if (page === "skills") useStore.setState({ view: { kind: "skills" }, settingsOverlay: undefined });
+	else if (page === "connectors") useStore.setState({ view: { kind: "connectors" }, settingsOverlay: undefined });
+	else useStore.setState({ view: { kind: "settings" }, settingsOverlay: undefined });
 }
 
 export function closeSettings(): void {

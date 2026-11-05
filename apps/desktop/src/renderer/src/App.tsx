@@ -57,14 +57,6 @@ export function App() {
 	const lastChat = useRef(view);
 	if (["bot", "group", "home", "tasks"].includes(view.kind)) lastChat.current = view;
 	const selectSettings = (kind: SettingsDestination): void => {
-		if (kind === "routines") {
-			// Stay on the same settings navigation. Leaving the overlay for a full-page Routines view
-			// removes the button Playwright is still clicking.
-			if (useStore.getState().view.kind === "routines") closeSettings();
-			else openSettings("routines");
-			return;
-		}
-		if (useStore.getState().view.kind === "routines") useStore.setState({ view: lastChat.current });
 		openSettings(kind);
 	};
 	const notice = useStore((state) => state.notice);
@@ -108,11 +100,7 @@ export function App() {
 				setNewMenu(true);
 			} else if (event.key === ",") {
 				event.preventDefault();
-				if (useStore.getState().settingsOverlay) closeSettings();
-				else {
-					if (useStore.getState().view.kind === "routines") useStore.setState({ view: lastChat.current });
-					openSettings();
-				}
+				openSettings();
 			} else if (event.shiftKey && event.key.toLowerCase() === "i") {
 				event.preventDefault();
 				if (useStore.getState().view.kind === "bot") toggleDetails();
@@ -135,13 +123,7 @@ export function App() {
 	return (
 		<div className="app">
             <WorkspaceLayout
-				sidebar={<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} onSettings={() => {
-					if (useStore.getState().settingsOverlay) closeSettings();
-					else {
-						if (useStore.getState().view.kind === "routines") useStore.setState({ view: lastChat.current });
-						openSettings();
-					}
-				}} />}
+				sidebar={<Sidebar searchOpen={searchOpen} onSearchOpen={setSearchOpen} query={query} onQuery={setQuery} onNew={() => setNewMenu(true)} onSettings={() => openSettings()} />}
 				inspector={onboarding === true ? undefined : wide && view.kind === "bot" && detailsOpen ? <BotIdentity key={view.botId} botId={view.botId} profileOpen={editorBotId === view.botId} /> : wide && view.kind === "group" ? <GroupIdentity key={view.groupId} groupId={view.groupId} /> : undefined}
 			>
 			<main className="main">
@@ -157,7 +139,7 @@ export function App() {
 					<>
 						{view.kind === "tasks" && <LocalTasks key={view.taskId??view.draftId??`list:${view.archived}:${view.cursor}`} view={view} renderHistory={(snapshot,taskId)=><HistoryTranscript snapshot={snapshot} taskId={taskId}/>}/>}
                         {view.kind === "bot" && <Conversation key={view.botId} botId={view.botId} editing={editorBotId === view.botId} onEditing={setEditorBotId} />}
-						{view.kind === "routines" && (
+						{(view.kind === "settings" || view.kind === "skills" || view.kind === "connectors" || view.kind === "routines") && (
 							<SettingsWorkspace
 								view={view}
 								onBack={() => useStore.setState({ view: lastChat.current })}
@@ -167,19 +149,6 @@ export function App() {
 						)}
 						{view.kind === "group" && <GroupView key={view.groupId} groupId={view.groupId} renderExecution={(botId,deliveryId)=><HistoryTranscript snapshot={{botId,channelId:view.groupId,items:[],approvals:[]}} conversationKey={`group:${view.groupId}`} deliveryId={deliveryId}/>}/>}
 						{view.kind === "home" && <Home onNew={() => setCreating(true)} />}
-						{settingsOverlay && (
-							<>
-								<div className="settings-scrim" onClick={() => closeSettings()} />
-								<div className="settings-overlay" role="dialog" aria-modal="true" aria-label={t("Settings")}>
-									<SettingsWorkspace
-										view={{ kind: settingsOverlay }}
-										onBack={() => closeSettings()}
-										onSelect={selectSettings}
-										renderTranscript={(snapshot, occurrenceId) => <HistoryTranscript snapshot={snapshot} occurrenceId={occurrenceId} />}
-									/>
-								</div>
-							</>
-						)}
 					</>
 				)}
 			</main>
@@ -240,7 +209,6 @@ function Sidebar({ onNew, query, onQuery, searchOpen, onSearchOpen, onSettings }
 	const [unreadOnly, setUnreadOnly] = useState(false);
 	const eligible = (key: string) => !unreadOnly || (summaries[key]?.unreadCount ?? 0) > 0;
 	const view = useStore((state) => state.view);
-	const settingsOverlay = useStore((state) => state.settingsOverlay);
 	const showHidden = useStore((state) => state.showHidden);
     const visible = chatEntries({bots, groups, summaries}).filter(entry => eligible(entry.key) &&
         (entry.kind === "bot" ? `${entry.bot.name} ${entry.bot.role}` : `${entry.group.name} ${entry.group.objective}`).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
@@ -327,13 +295,13 @@ function Sidebar({ onNew, query, onQuery, searchOpen, onSearchOpen, onSettings }
 				<button
 					type="button"
 					aria-label={t("Settings")} title={t("Settings")}
-					className={`settings-icon icon-button ${settingsOverlay || view.kind === "routines" ? "is-selected" : ""}`}
+					className={`settings-icon icon-button ${view.kind === "settings" || view.kind === "skills" || view.kind === "connectors" || view.kind === "routines" ? "is-selected" : ""}`}
 					onClick={onSettings}
 				>
 					<InterfaceIcon name="settings" />
 				</button>
 			</div>
-			{view.kind !== "routines" && !settingsOverlay && <LifecycleControls contextual />}
+			{view.kind !== "settings" && view.kind !== "skills" && view.kind !== "connectors" && view.kind !== "routines" && <LifecycleControls contextual />}
 		</nav>
 	);
 }
