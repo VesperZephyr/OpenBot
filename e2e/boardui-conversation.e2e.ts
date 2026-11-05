@@ -47,6 +47,7 @@ it("shows the empty conversation, detail panel and themes", async () => {
 	const empty = h.page().locator(".empty-conversation");
 	await empty.getByRole("heading", { name: "Atlas", exact: true }).waitFor();
 	await empty.getByRole("button", { name: "Summarize the notes from today", exact: true }).waitFor();
+	await h.page().getByRole("button", { name: "View details", exact: true }).click();
 	await h.page().locator(".bot-identity").getByText("Research", { exact: true }).waitFor();
 	await h.page().locator(".identity-kicker").getByText("Prompt", { exact: true }).waitFor();
 	expect(await h.page().locator(".identity-avatar .avatar-ground").count()).toBe(1);
@@ -130,12 +131,13 @@ it("reports a revision conflict instead of overwriting the name", async () => {
 	await h.api("bots.update", { botId: atlasId, expectedRevision: current.revision, name: "Atlas remote" });
 	await panel.getByRole("button", { name: "Save", exact: true }).click();
 	await panel.locator(".identity-alert").getByText("Profile changed. Reload before saving your draft.").waitFor();
-	await panel.locator(".identity-alert").getByText("Close this editor and open it again.").waitFor();
+	expect(await panel.getByLabel("Name", { exact: true }).inputValue()).toBe("Atlas local");
 	expect((await h.api("bots.list")).find((bot: { botId: string }) => bot.botId === atlasId).name).toBe("Atlas remote");
 	await h.page().locator(".toast").getByRole("button", { name: "Dismiss", exact: true }).click();
 	await h.page().locator(".toast").waitFor({ state: "hidden" });
+	await panel.getByRole("button", { name: "Reload profile", exact: true }).click();
+	await poll(() => panel.getByLabel("Name", { exact: true }).inputValue()).toBe("Atlas remote");
 	await panel.getByRole("button", { name: "Cancel", exact: true }).click();
-	await panel.getByRole("button", { name: "Discard", exact: true }).click();
 	await panel.getByRole("button", { name: "Edit", exact: true }).waitFor();
 });
 
@@ -200,7 +202,8 @@ it("captures the review states in light and dark", async () => {
 	await panel.locator(".identity-bio.is-open").waitFor();
 	await h.shot("prompt-expanded-light");
 	await appearance("Dark");
-	await panel.getByRole("button", { name: "Show more", exact: true }).click();
+	const showMore = panel.getByRole("button", { name: "Show more", exact: true });
+	if (await showMore.count()) await showMore.click();
 	await panel.locator(".identity-bio.is-open").waitFor();
 	await h.shot("prompt-expanded-dark");
 	await appearance("Light");
@@ -216,7 +219,8 @@ it("captures the review states in light and dark", async () => {
 	await h.shot("cancel-confirm-light");
 	await panel.getByRole("button", { name: "Keep editing", exact: true }).click();
 	await appearance("Dark");
-	await panel.getByRole("button", { name: "Edit", exact: true }).click();
+	const editAgain = panel.getByRole("button", { name: "Edit", exact: true });
+	if (await editAgain.count()) await editAgain.click();
 	await panel.getByLabel("Name", { exact: true }).fill("Atlas draft");
 	await panel.getByRole("button", { name: "Cancel", exact: true }).click();
 	await panel.getByRole("alertdialog", { name: "Discard these edits?" }).waitFor();

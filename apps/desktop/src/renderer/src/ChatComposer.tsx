@@ -2,7 +2,7 @@ import { ActivityIndicator } from "./LiveReply";
 import { InterfaceIcon } from "./InterfaceIcon";
 import { ArtifactCard } from "./ArtifactCard";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { api, refreshBots, report, sendMessage, useStore } from "./store";
+import { api, openSettings, refreshBots, report, sendMessage, useStore } from "./store";
 import { t } from "./i18n";
 import { hasPendingApproval } from "./composer-approval";
 import { composers, useComposer } from "./useComposer";
@@ -360,7 +360,7 @@ function ComposerModel({ conversationKey, selectable }: { readonly conversationK
 		return (
 			<span className="composer-model">
 				<span>{t("Model unavailable")}</span>
-				<button type="button" onClick={() => useStore.setState({ view: { kind: "settings" } })}>
+				<button type="button" onClick={() => openSettings()}>
 					{t("Model settings")}
 				</button>
 			</span>

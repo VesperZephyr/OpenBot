@@ -58,6 +58,7 @@ export const RENDERER_METHODS = [
 	"runs.cancel",
 	"background.stop",
 	"approvals.decide",
+	"approvals.list",
 	"usage.get",
 	"settings.get",
 	"settings.update",
@@ -187,3 +188,30 @@ export const CHANNELS = {
 
 /** Errors crossing the IPC boundary keep their protocol code in the message prefix, e.g. `[not_found] …`. */
 export const ERROR_PREFIX = /^\[([a-z_]+)\] /;
+const ERROR_DETAILS = /\n\[details:(\{.*\})\]$/;
+
+/** Serialize a Host error for Electron IPC, which keeps only `Error.message`. */
+export function formatHostError(error: { readonly code: string; readonly message: string; readonly details?: { readonly currentRevision?: number } }): string {
+	const suffix = error.details?.currentRevision === undefined ? "" : `\n[details:${JSON.stringify({ currentRevision: error.details.currentRevision })}]`;
+	return `[${error.code}] ${error.message}${suffix}`;
+}
+
+/** Read the code and `currentRevision` from an IPC error. The message is the sentence after the code prefix. */
+export function readHostError(error: unknown): { code?: string; message: string; details?: { currentRevision: number } } {
+	const raw = error instanceof Error ? error.message : String(error);
+	const stripped = raw.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "");
+	const detailsMatch = ERROR_DETAILS.exec(stripped);
+	const body = detailsMatch ? stripped.slice(0, detailsMatch.index) : stripped;
+	let details: { currentRevision: number } | undefined;
+	if (detailsMatch?.[1]) {
+		try {
+			const parsed = JSON.parse(detailsMatch[1]) as { currentRevision?: unknown };
+			if (typeof parsed.currentRevision === "number" && Number.isFinite(parsed.currentRevision)) details = { currentRevision: parsed.currentRevision };
+		} catch {
+			/* A malformed suffix is not a revision the form can reload. */
+		}
+	}
+	const prefix = ERROR_PREFIX.exec(body);
+	const message = prefix ? body.slice(prefix[0].length) : body;
+	return { ...(prefix?.[1] ? { code: prefix[1] } : {}), message, ...(details ? { details } : {}) };
+}

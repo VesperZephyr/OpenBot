@@ -11,7 +11,7 @@ import { ConversationShell, DetailsPanel } from "./ConversationUI";
 import { MarkReadItem, RosterPreview } from "./RosterPreview";
 import { useEffect, useRef, useState } from "react";
 import type { Group } from "@openbot/protocol";
-import { refreshGroupSnapshot, api, refreshGroups, report, useStore } from "./store";
+import { closeSettings, refreshGroupSnapshot, api, refreshGroups, report, useStore } from "./store";
 import { t } from "./i18n";
 import { Markdown } from "./markdown";
 import { routineScheduleLabel } from "./Routines";
@@ -126,7 +126,10 @@ export function GroupRow({ group: g }: { group: Group }) {
 			type="button"
 			aria-current={view.kind === "group" && view.groupId === g.groupId ? "page" : undefined}
             className={`bot-row group-nav ${view.kind === "group" && view.groupId === g.groupId ? "is-selected" : ""}`}
-			onClick={() => useStore.setState({ view: { kind: "group", groupId: g.groupId }, searchTarget: undefined })}
+			onClick={() => {
+				closeSettings();
+				useStore.setState({ view: { kind: "group", groupId: g.groupId }, searchTarget: undefined });
+			}}
 		>
 			<GroupAvatar memberIds={g.memberIds} />
 			<RosterPreview

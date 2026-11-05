@@ -511,8 +511,10 @@
 .personal-star { display:inline-flex; align-items:center; flex-shrink:0; color:var(--star); }
 .personal-star svg { width:12px; height:12px; fill:currentColor; }
 .sidebar .personal-star { color:var(--star); }
-.conversation-name { display:flex; align-items:center; gap:7px; font-family:var(--font-display); }
-.conversation-name > span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.conversation-name { display:flex; align-items:center; gap:7px; font-family:var(--font-display); min-width:0; }
+.conversation-name-button { display:inline-flex; align-items:center; gap:4px; max-width:100%; min-width:0; padding:0; border:0; background:transparent; color:inherit; font:inherit; }
+.conversation-name-button > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.conversation-name-button .interface-icon { width:14px; height:14px; color:var(--muted); flex:none; }
 .conversation-header > button, .conversation-header > .menu { flex-shrink:0; }
 .message-author { display:flex; align-items:center; gap:8px; margin:0 0 11px; font-size:12px; color:var(--muted); }
 .message-author strong { font-weight:600; color:var(--text); overflow-wrap:anywhere; min-width:0; }
@@ -602,6 +604,10 @@
 
 /* D7: management lives inside Settings; the conversation stays the primary surface. */
 .settings-workspace { display:flex; height:100%; min-height:0; }
+.settings-scrim { position:absolute; inset:0; z-index:21; background:var(--overlay); }
+.settings-overlay { position:absolute; z-index:22; inset:12px; display:flex; border-radius:16px; background:var(--bg); box-shadow:var(--shadow); overflow:hidden; }
+.settings-overlay .settings-workspace { flex:1; min-height:0; height:auto; }
+.settings-heading h1 { font-size:20px; line-height:28px; font-weight:600; }
 .settings-navigation { width:176px; flex-shrink:0; border-right:1px solid var(--border); padding:28px 14px; display:flex; flex-direction:column; gap:5px; }
 .settings-navigation .settings-nav-title { margin:22px 10px 12px; font:600 20px var(--font-display); }
 .settings-navigation button { display:flex; align-items:center; gap:9px; text-align:left; border:0; background:transparent; font-size:12px; padding:10px; }

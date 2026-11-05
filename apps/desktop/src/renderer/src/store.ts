@@ -19,7 +19,9 @@ import type {
 } from "@openbot/protocol";
 import { create } from "zustand";
 import { composers } from "./useComposer";
-import { ERROR_PREFIX, type HostState } from "../../shared/api";
+import { readHostError, type HostState } from "../../shared/api";
+import { setDetailsOpen } from "./features/details/details-open";
+import { requestIdentityClose } from "./features/details/identity-draft";
 import { hostCalls } from "./host-calls";
 
 export type TaskView = {readonly kind:"tasks"; readonly botId:string; readonly taskId?:string; readonly draftId?:string; readonly archived?:boolean; readonly cursor?:string};
@@ -54,6 +56,7 @@ type State = {
 	settings: RedactedSettings | undefined;
 	models: readonly ModelSummary[];
 	view: View;
+	settingsOverlay: "settings" | "skills" | "connectors" | "routines" | undefined;
 	showHidden: boolean;
 	notice: string | undefined;
 	/** First-launch setup: `undefined` until the first roster and settings arrive, then decided once. */
@@ -81,6 +84,7 @@ export const useStore = create<State>(() => ({
 	settings: undefined,
 	models: [],
 	view: restoredTaskView() ?? { kind: "home" },
+	settingsOverlay: undefined,
 	showHidden: false,
 	notice: undefined,
 	onboarding: undefined,
@@ -91,8 +95,7 @@ window.openbotCalls = api;
 
 /** Strip IPC and protocol envelopes so application errors can be translated at the display boundary. */
 export function errorMessage(error: unknown): string {
-	const message = error instanceof Error ? error.message : String(error);
-	return message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "").replace(ERROR_PREFIX, "");
+	return readHostError(error).message;
 }
 
 export function report(error: unknown): void {
@@ -119,7 +122,10 @@ const botsRead = new LatestRead(
 );
 const settingsRead = new LatestRead(
 	async () => {
-		const [settings, models] = await Promise.all([api["settings.get"]({}), api["models.list"]({})]);
+		// Read settings first, then the catalog. The two calls both reload the model file; running them together can
+		// publish a configured provider whose model is not in the list yet.
+		const settings = await api["settings.get"]({});
+		const models = await api["models.list"]({});
 		return { settings, models };
 	},
 	(value) => useStore.setState(value),
@@ -207,7 +213,33 @@ export async function markRead(conversationKey: ConversationKey, through: number
 	await api["conversations.markRead"]({ conversationKey, through });
 	await refreshSummaries();
 }
+export type SettingsPage = "settings" | "skills" | "connectors" | "routines";
+
+/** The user asked for the setup wizard again. */
+export function holdOnboarding(): void {
+	useStore.setState({ onboarding: true });
+}
+
+export function openSettings(page: SettingsPage = "settings"): void {
+	// Settings is a page, as on main. An overlay is not in the tree while onboarding is showing,
+	// so the model select and Routines button never appear for the tests that open Settings.
+	if (page === "routines") useStore.setState({ view: { kind: "routines" }, settingsOverlay: undefined });
+	else if (page === "skills") useStore.setState({ view: { kind: "skills" }, settingsOverlay: undefined });
+	else if (page === "connectors") useStore.setState({ view: { kind: "connectors" }, settingsOverlay: undefined });
+	else useStore.setState({ view: { kind: "settings" }, settingsOverlay: undefined });
+}
+
+export function closeSettings(): void {
+	useStore.setState({ settingsOverlay: undefined });
+}
+
 export async function openBot(botId: string, searchTarget?: SearchTarget): Promise<void> {
+	closeSettings();
+	const view = useStore.getState().view;
+	if (view.kind === "bot" && view.botId !== botId && !requestIdentityClose({ kind: "bot", botId })) {
+		setDetailsOpen(true);
+		return;
+	}
 	useStore.setState({ view: { kind: "bot", botId }, searchTarget });
 	await conversationRead.request();
 }
@@ -308,6 +340,8 @@ async function loadAll(changes: number): Promise<void> {
 	if (generation !== readGeneration || useStore.getState().host.status !== "ready") return;
 	if(changes&7)useStore.setState(s=>({historyRevision:s.historyRevision+1}));
  const { view, onboarding, settings, bots } = useStore.getState();
+	// Decide once. Closing the wizard when a model becomes configured skips "Meet your first Bot"
+	// and "Hello, I'm OpenBot" after Connect. The wizard dismisses itself when setup finishes.
 	if (onboarding === undefined && settings) useStore.setState({ onboarding: needsOnboarding(settings, bots) });
 	if(view.kind==="tasks" && !bots.some(bot=>bot.kind==="core" && bot.botId===view.botId)){const core=bots.find(bot=>bot.kind==="core");if(core)useStore.setState({view:{kind:"tasks",botId:core.botId}});}
  else if (view.kind === "home" || (view.kind === "bot" && !bots.some((bot) => bot.botId === view.botId))) {

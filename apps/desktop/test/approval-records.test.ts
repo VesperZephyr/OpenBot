@@ -3,7 +3,9 @@ import type { PendingApproval } from "@openbot/protocol";
 import { hasPendingApproval } from "../src/renderer/src/composer-approval";
 import {
 	approvalChoices,
+	approvalRecordSnapshot,
 	forgetApproval,
+	mergeApprovalRecords,
 	rememberApproval,
 	rememberTaskConversation,
 	resetApprovalRecords,
@@ -50,6 +52,24 @@ describe("approval records", () => {
 		expect(rememberTaskConversation("task_1", [])).toBeUndefined();
 		expect(rememberTaskConversation("task_1", [approval("task-conversation")])).toBe("task-conversation");
 		expect(rememberTaskConversation("task_1", [])).toBe("task-conversation");
+	});
+
+	it("merges host decisions for one conversation and keeps the richer memory row", () => {
+		rememberApproval(record({ approvalId: "live", conversationId: "chat", decision: "allow_once", action: "Keep a note", at: 20 }));
+		const merged = mergeApprovalRecords(
+			"chat",
+			approvalRecordSnapshot(),
+			[
+				{ approvalId: "live", decision: "allow", at: 20, tool: "local_exec", conversationId: "chat" },
+				{ approvalId: "stored", decision: "deny", at: 10, tool: "local_exec", conversationId: "chat" },
+				{ approvalId: "other", decision: "allow", at: 30, tool: "local_exec", conversationId: "other" },
+			],
+			[],
+		);
+		expect(merged.map((item) => item.approvalId)).toEqual(["stored", "live"]);
+		expect(merged[1]?.action).toBe("Keep a note");
+		expect(merged[0]?.decision).toBe("deny");
+		expect(mergeApprovalRecords(undefined, approvalRecordSnapshot(), [], [])).toEqual([]);
 	});
 
 	it("clears a conversation when its run ends or a later user message arrives", () => {

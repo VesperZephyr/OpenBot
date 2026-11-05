@@ -16,7 +16,7 @@ import type { RedactedSettings } from "@openbot/protocol";
 import type { Language } from "../shared/i18n";
 import { AVATAR_LIMITS, ProtocolError } from "@openbot/protocol";
 import { paramsError } from "@openbot/protocol/schemas";
-import { CHANNELS, RENDERER_METHODS, type RendererMethod } from "../shared/api";
+import { CHANNELS, formatHostError, RENDERER_METHODS, type RendererMethod } from "../shared/api";
 import { FolderSelections } from "./folder-picker";
 import type { HostProcess } from "./host";
 
@@ -74,7 +74,7 @@ export function registerIpc({ host, backups, isTrustedFrame, language, onSetting
 			return result;
 		} catch (error) {
 			// Electron serializes only the message across IPC, so the code travels as a prefix.
-			if (error instanceof ProtocolError) throw new Error(`[${error.code}] ${error.message}`);
+			if (error instanceof ProtocolError) throw new Error(formatHostError(error));
 			throw error;
 		}
 	});
@@ -358,7 +358,7 @@ export function registerIpc({ host, backups, isTrustedFrame, language, onSetting
 			await host.call("artifacts.export", { requestId, artifactId, path: selected.filePath });
 			return true;
 		} catch (error) {
-			if (error instanceof ProtocolError) throw new Error(`[${error.code}] ${error.message}`);
+			if (error instanceof ProtocolError) throw new Error(formatHostError(error));
 			throw error;
 		} finally {
 			event.sender.removeListener("did-start-navigation", expire);
@@ -400,7 +400,7 @@ export function registerIpc({ host, backups, isTrustedFrame, language, onSetting
 		try {
 			resolved = await host.call("files.resolveReveal", { path });
 		} catch (error) {
-			if (error instanceof ProtocolError) throw new Error(`[${error.code}] ${error.message}`);
+			if (error instanceof ProtocolError) throw new Error(formatHostError(error));
 			throw error;
 		}
 		if (resolved === null) throw new Error("[not_found] This file is not in a folder Bots may use any more");
