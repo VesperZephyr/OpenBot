@@ -1,5 +1,6 @@
 /**
  * Switching Bots asks before dropping an open profile draft, and never saves that draft onto the other Bot.
+ * A narrow window hides that confirm dialog; the draft stays and the switch still happens.
  */
 import { expect, it } from "vitest";
 import { type AppHarness, launchApp } from "./harness.ts";
@@ -52,6 +53,49 @@ it("does not save A's open profile draft onto B", async () => {
 		const current = (id: string) => profile(after.find((bot) => bot.botId === id)!);
 		expect(current(ada.botId)).toEqual(profile(before[0]!));
 		expect(current(bee.botId)).toEqual(profile(before[1]!));
+	} finally {
+		await h?.close();
+	}
+}, 90_000);
+
+async function setContentSize(h: AppHarness, width: number, height: number): Promise<void> {
+	await h.app().evaluate(
+		({ BrowserWindow }, size: { width: number; height: number }) => {
+			BrowserWindow.getAllWindows()[0]!.setContentSize(size.width, size.height);
+		},
+		{ width, height },
+	);
+	await h.nextFrame();
+}
+
+it("keeps a dirty profile draft when the window is too narrow to show the confirm dialog", async () => {
+	let h: AppHarness | undefined;
+	try {
+		h = await launchApp("identity-narrow");
+		await setContentSize(h, 1440, 900);
+		await h.api("settings.update", { defaultModel: { provider: "scripted", modelId: "scripted" }, language: "en" });
+		await h.api("bots.create", { requestId: "ada-narrow", name: "Ada", role: "Writer", instructions: "Write clearly." });
+		await h.api("bots.create", { requestId: "bee-narrow", name: "Bee", role: "Editor", instructions: "Edit carefully." });
+		const page = h.page();
+		const row = (name: string) => page.locator(".bot-row").filter({ has: page.getByText(name, { exact: true }) });
+		await row("Ada").click();
+		await page.getByRole("textbox", { name: "Message Ada" }).waitFor();
+		const panel = page.locator("aside.bot-identity");
+		await page.getByRole("button", { name: "View details", exact: true }).click();
+		await panel.getByRole("button", { name: "Edit", exact: true }).click();
+		await panel.getByLabel("Name", { exact: true }).fill("Ada renamed");
+		expect(await panel.getByLabel("Name", { exact: true }).inputValue()).toBe("Ada renamed");
+		// Below the 1180px inspector breakpoint the confirm dialog is not mounted.
+		await setContentSize(h, 1000, 720);
+		await expect.poll(() => panel.count()).toBe(0);
+		await row("Bee").click();
+		await h.nextFrame();
+		expect(await page.getByRole("alertdialog", { name: "Discard these edits?" }).count()).toBe(0);
+		await page.getByRole("textbox", { name: "Message Bee" }).waitFor();
+		await row("Ada").click();
+		await page.getByRole("textbox", { name: "Message Ada" }).waitFor();
+		await setContentSize(h, 1440, 900);
+		await expect.poll(() => panel.getByLabel("Name", { exact: true }).inputValue()).toBe("Ada renamed");
 	} finally {
 		await h?.close();
 	}
