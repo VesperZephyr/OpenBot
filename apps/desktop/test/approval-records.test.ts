@@ -60,9 +60,9 @@ describe("approval records", () => {
 			"chat",
 			approvalRecordSnapshot(),
 			[
-				{ approvalId: "live", decision: "allow", at: 20, tool: "local_exec", conversationId: "chat" },
+				{ approvalId: "live", decision: "allow_once", at: 20, tool: "local_exec", conversationId: "chat" },
 				{ approvalId: "stored", decision: "deny", at: 10, tool: "local_exec", conversationId: "chat" },
-				{ approvalId: "other", decision: "allow", at: 30, tool: "local_exec", conversationId: "other" },
+				{ approvalId: "other", decision: "allow_once", at: 30, tool: "local_exec", conversationId: "other" },
 			],
 			[],
 		);
@@ -70,6 +70,16 @@ describe("approval records", () => {
 		expect(merged[1]?.action).toBe("Keep a note");
 		expect(merged[0]?.decision).toBe("deny");
 		expect(mergeApprovalRecords(undefined, approvalRecordSnapshot(), [], [])).toEqual([]);
+	});
+
+	it("maps a stored always_allow decision to always_allow", () => {
+		const merged = mergeApprovalRecords(
+			"chat",
+			[],
+			[{ approvalId: "stored", decision: "always_allow", at: 10, tool: "local_exec", conversationId: "chat" }],
+			[],
+		);
+		expect(merged).toMatchObject([{ approvalId: "stored", decision: "always_allow", action: "local_exec" }]);
 	});
 
 	it("clears a conversation when its run ends or a later user message arrives", () => {

@@ -512,10 +512,10 @@ export type ApprovalRecord = PendingApproval & {
 	readonly decidedAt?: number;
 };
 
-/** A user allow or deny, readable after the Host restarts. `allow_once` and `always_allow` are both `allow`. */
+/** A user decision, readable after the Host restarts: `allow_once`, `deny`, or `always_allow`. */
 export type ApprovalDecisionLog = {
 	readonly approvalId: string;
-	readonly decision: "allow" | "deny";
+	readonly decision: "allow_once" | "deny" | "always_allow";
 	readonly at: number;
 	readonly tool: string;
 	readonly conversationId: string;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from "react";
 import { defaultAvatar, type BotSummary, type GeneratedAvatar } from "@openbot/protocol";
 import { Avatar, AvatarStack } from "./Avatar";
 import { AvatarEditor } from "./AvatarEditor";
@@ -15,6 +15,7 @@ import {
 	patchIdentityDraft,
 	replaceIdentityDraft,
 	requestIdentityClose,
+	setIdentityConfirmSurfaceMounted,
 	subscribeIdentityDraft,
 } from "./features/details/identity-draft";
 import { readHostError } from "../../shared/api";
@@ -44,6 +45,12 @@ export function BotIdentity({ botId, profileOpen }: { readonly botId: string; re
 	const defaultModel = useStore((state) => state.settings?.defaultModel);
 	const skills = useStore((state) => state.skills);
 	const closeRef = useRef<HTMLButtonElement>(null);
+	const confirmSurface = bot !== undefined;
+	useLayoutEffect(() => {
+		if (!confirmSurface) return;
+		setIdentityConfirmSurfaceMounted(true);
+		return () => setIdentityConfirmSurfaceMounted(false);
+	}, [confirmSurface]);
 	useEffect(() => {
 		closeRef.current?.focus();
 	}, []);

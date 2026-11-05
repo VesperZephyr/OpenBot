@@ -42,7 +42,7 @@ export function approvalRecordSnapshot(): readonly SettledApproval[] {
 
 export type RemoteApproval = {
 	readonly approvalId: string;
-	readonly decision: "allow" | "deny";
+	readonly decision: ApprovalPress;
 	readonly at: number;
 	readonly tool: string;
 	readonly conversationId: string;
@@ -68,7 +68,7 @@ export function mergeApprovalRecords(
 			botId: "",
 			conversationId: item.conversationId,
 			callId: item.approvalId,
-			decision: item.decision === "deny" ? "deny" : "allow_once",
+			decision: item.decision,
 			action: item.tool,
 			detail: item.tool,
 			at: item.at,
