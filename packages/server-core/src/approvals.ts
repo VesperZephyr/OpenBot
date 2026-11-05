@@ -235,7 +235,7 @@ export class ApprovalBook {
 			if (record.conversationId !== conversationId || record.decidedAt === undefined || record.decision === undefined) continue;
 			entries.push({
 				approvalId: record.approvalId,
-				decision: record.decision === "deny" ? "deny" : "allow",
+				decision: record.decision === "deny" || record.decision === "allow_once" ? record.decision : "always_allow",
 				at: record.decidedAt,
 				tool: record.tool,
 				conversationId: record.conversationId,

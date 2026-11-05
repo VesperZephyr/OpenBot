@@ -79,12 +79,33 @@ describe("ApprovalBook", () => {
 
 		const second = await restart();
 		expect(await second.decisions("session-a")).toMatchObject([
-			{ approvalId: allow.approvalId, decision: "allow", tool: "local_exec", conversationId: "session-a" },
+			{ approvalId: allow.approvalId, decision: "allow_once", tool: "local_exec", conversationId: "session-a" },
 		]);
 		expect(await second.decisions("session-b")).toMatchObject([
 			{ approvalId: deny.approvalId, decision: "deny", tool: "local_write", conversationId: "session-b" },
 		]);
 		expect(second.forBot("bot")).toEqual([]);
+	});
+
+	it("returns always_allow unchanged after a restart", async () => {
+		const scope = { kind: "command" as const, rule: { program: "echo", exact: "echo kept" } };
+		const saved = {
+			...approval,
+			conversationId: "session-a",
+			approvalId: "approval:session-a:call_always",
+			callId: "call_always",
+			alwaysAllowOptions: [{ label: "echo kept", scope }],
+		};
+		const first = await restart();
+		const waiting = first.request(saved, live());
+		await expect.poll(() => first.forBot("bot").some((row) => row.approvalId === saved.approvalId)).toBe(true);
+		expect(await first.decide(saved.approvalId, { kind: "always_allow", scope })).toBe(true);
+		expect(await waiting).toEqual({ kind: "always_allow", scope });
+
+		const second = await restart();
+		expect(await second.decisions("session-a")).toMatchObject([
+			{ approvalId: saved.approvalId, decision: "always_allow", tool: "local_exec", conversationId: "session-a" },
+		]);
 	});
 
 	it("returns only the requested conversation, newest 32", async () => {

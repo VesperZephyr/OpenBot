@@ -25,6 +25,7 @@ export type IdentityDraft = {
 };
 
 let draft: IdentityDraft | undefined;
+let confirmSurfaceMounted = false;
 const listeners = new Set<() => void>();
 
 function publish(next: IdentityDraft | undefined): void {
@@ -42,7 +43,17 @@ export function subscribeIdentityDraft(listener: () => void): () => void {
 }
 
 export function resetIdentityDraft(): void {
+	confirmSurfaceMounted = false;
 	publish(undefined);
+}
+
+/** True while the wide-layout card that can show the discard confirmation is mounted. */
+export function identityConfirmSurfaceMounted(): boolean {
+	return confirmSurfaceMounted;
+}
+
+export function setIdentityConfirmSurfaceMounted(mounted: boolean): void {
+	confirmSurfaceMounted = mounted;
 }
 
 export function sameGenerated(change: AvatarChange | undefined, current: BotAvatar | undefined): boolean {
@@ -72,9 +83,9 @@ function baselineOf(bot: IdentityBot): IdentityBaseline {
 	};
 }
 
-/** Keep an existing draft for this Bot, including one restored after the inspector unmounts. */
+/** Keep an existing draft for this Bot, including one restored after the inspector unmounts. A dirty draft for another Bot is left in place. */
 export function beginIdentityDraft(bot: IdentityBot): IdentityDraft {
-	if (draft?.baseline.botId === bot.botId) return draft;
+	if (draft && (draft.baseline.botId === bot.botId || identityDirty(draft))) return draft;
 	const baseline = baselineOf(bot);
 	const next: IdentityDraft = {
 		baseline,
@@ -93,11 +104,12 @@ export function patchIdentityDraft(patch: Partial<Pick<IdentityDraft, "name" | "
 	publish({ ...draft, ...patch });
 }
 
-export function requestIdentityClose(pending?: IdentityPending): boolean {
+export function requestIdentityClose(pending?: IdentityPending, options?: { readonly confirmVisible?: boolean }): boolean {
 	if (!draft || !identityDirty(draft)) {
 		if (draft) publish(undefined);
 		return true;
 	}
+	if (options?.confirmVisible === false) return true;
 	const { pending: _previous, ...rest } = draft;
 	publish(pending ? { ...rest, confirming: true, pending } : { ...rest, confirming: true });
 	return false;

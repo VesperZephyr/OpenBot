@@ -21,7 +21,7 @@ import { create } from "zustand";
 import { composers } from "./useComposer";
 import { readHostError, type HostState } from "../../shared/api";
 import { setDetailsOpen } from "./features/details/details-open";
-import { requestIdentityClose } from "./features/details/identity-draft";
+import { identityConfirmSurfaceMounted, requestIdentityClose } from "./features/details/identity-draft";
 import { hostCalls } from "./host-calls";
 
 export type TaskView = {readonly kind:"tasks"; readonly botId:string; readonly taskId?:string; readonly draftId?:string; readonly archived?:boolean; readonly cursor?:string};
@@ -236,7 +236,7 @@ export function closeSettings(): void {
 export async function openBot(botId: string, searchTarget?: SearchTarget): Promise<void> {
 	closeSettings();
 	const view = useStore.getState().view;
-	if (view.kind === "bot" && view.botId !== botId && !requestIdentityClose({ kind: "bot", botId })) {
+	if (view.kind === "bot" && view.botId !== botId && !requestIdentityClose({ kind: "bot", botId }, { confirmVisible: identityConfirmSurfaceMounted() })) {
 		setDetailsOpen(true);
 		return;
 	}

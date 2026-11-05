@@ -585,7 +585,7 @@ The transport is private IPC with versioned request, response, and event envelop
 | `messages.submit` | Accept `requestId`, conversation, content, mentions, skill and connector attachments, and artifact references; return `runId`, state, and whether the message steered an active Run, after durable receipt |
 | `runs.cancel`, `runs.pause`, `runs.resume` | Persist an idempotent cancellation or pause request and report its outcome separately |
 | `approvals.decide` | `allow_once`, `always_allow` with a confirmed rule scope, or `deny` for the exact pending invocation |
-| `approvals.list` | Read at most 32 persisted allow and deny decisions for one `conversationId`, newest first |
+| `approvals.list` | Read at most 32 persisted decisions (`allow_once`, `deny`, or `always_allow`) for one `conversationId`, newest first |
 | `policy.get`, `policy.update`, `policy.rules.delete`, `policy.ask.create`, `policy.ask.delete`, `policy.reconcile` | Target-bound policy revisions, command defaults/allow rules, bounded Ask first predicates and durable scoped-revocation reconciliation; user-only methods |
 | `grants.list`, `grants.add`, `grants.revoke` | List, add (folder picked in a native dialog by main), or revoke folder grants for a `targetId` |
 | `models.list`, `models.addProvider`, `models.test` | List models, declare an OpenAI- or Anthropic-compatible endpoint in the model configuration file (never its key), and send one small test request |
