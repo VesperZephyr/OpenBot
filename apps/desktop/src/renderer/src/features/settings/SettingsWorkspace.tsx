@@ -26,6 +26,16 @@ const SETTINGS_PAGES = [
 
 export type SettingsDestination = (typeof SETTINGS_PAGES)[number][0];
 
+function ModelConfigFileNote({ path }: { readonly path: string }) {
+	return (
+		<>
+			{t("Add OpenAI- or Anthropic-compatible endpoints in ")}
+			<code>{path}</code>
+			{t(". Changes apply when you open Settings or choose a model.")}
+		</>
+	);
+}
+
 export function SettingsWorkspace({
 	view,
 	onBack,
@@ -124,7 +134,7 @@ function Settings() {
 				{settings && (
 				<ModelSelect
 					value={settings.defaultModel}
-					emptyLabel={configured.length === 0 ? "Add an API key below first" : "Choose a model"}
+					emptyLabel={configured.length === 0 ? t("Add an API key below first") : t("Choose a model")}
 					onChange={(model) =>
 						void api["settings.update"]({ defaultModel: model ?? null })
 							.then(refreshSettings)
@@ -181,7 +191,12 @@ function Settings() {
 							<span>{provider.name}</span>
 							<span className="muted">
 								{t(provider.keyStored ? "Key stored" : "Key from models.json")}
-								{provider.source === "config" && " · models.json"}
+								{provider.source === "config" && (
+									<>
+										{" "}
+										<ModelConfigFileNote path={settings.modelConfig.path} />
+									</>
+								)}
 							</span>
 							{provider.keyStored && (
 								<button
@@ -206,9 +221,7 @@ function Settings() {
 			<div className="settings-group">
 				<h2>{t("Your own providers")}</h2>
 				<p className="muted">
-					{t("Add OpenAI- or Anthropic-compatible endpoints in ")}
-					<code>{settings.modelConfig.path}</code>
-					{t(". Changes apply when you open Settings or choose a model.")}
+					<ModelConfigFileNote path={settings.modelConfig.path} />
 				</p>
 				{settings.providers.some((provider) => provider.source === "config" && !provider.configured) && (
 					<p className="muted">

@@ -213,7 +213,7 @@ export function ApprovalCard({ approval }: { readonly approval: PendingApproval 
 		</pre>
 	);
 	const describedBy = skillChange || tool.startsWith("group_") || ["bot_create", "bot_update", "bot_delete"].includes(tool) ? scopeId : `${scopeId} ${argsId}`;
-	const label = (kind: ApprovalPress, text: string) => (choices[kind === "allow_once" ? "allow" : kind === "deny" ? "deny" : "always"].loading ? t("Loading") : text);
+	const label = (kind: ApprovalPress, text: string) => (choices[kind === "allow_once" ? "allow" : kind === "deny" ? "deny" : "always"].loading ? t("Submitting") : text);
 	return (
 		<ChoiceCard
 			className="approval"
