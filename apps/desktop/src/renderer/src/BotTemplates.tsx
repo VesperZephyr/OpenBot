@@ -10,9 +10,11 @@ import type {
 	SkillVersion,
 	TemplateReview,
 } from "@openbot/protocol";
+import { readHostError } from "../../shared/api";
 import { api, errorMessage, openBot, refreshBots, useStore } from "./store";
 import { Avatar } from "./Avatar";
 import { t } from "./i18n";
+import { recoverTemplateImportFailure } from "./template-import-failure";
 import "./bot-templates.css";
 export const PENDING_TEMPLATE = "openbot.pending-template-import.v1";
 type Loaded = { review: TemplateReview; filename?: string } | { error: string } | null;
@@ -297,15 +299,19 @@ function TemplateDialog({ action }: { action: Action }) {
 		try {
 			await finish(await api["bots.templates.import"](input));
 		} catch (error) {
-			const message = errorMessage(error);
-			setError(message);
-			if (
-				/\[(invalid_request|request_conflict|not_found)\]/.test(error instanceof Error ? error.message : "") &&
-				!uncertain
-			) {
-				localStorage.removeItem(PENDING_TEMPLATE);
-				setSubmitted(undefined);
-				const fresh = await api["bots.templates.inspect"]({ template: review.template }).catch(() => undefined);
+			const failure = readHostError(error);
+			setError(failure.message);
+			const recovered = await recoverTemplateImportFailure({
+				code: failure.code,
+				uncertain,
+				clearPending: () => {
+					localStorage.removeItem(PENDING_TEMPLATE);
+					setSubmitted(undefined);
+				},
+				reinspect: () => api["bots.templates.inspect"]({ template: review.template }).catch(() => undefined),
+			});
+			if (recovered.kind === "reinspect") {
+				const fresh = recovered.review;
 				if (fresh) {
 					setReview(fresh);
 					const checked = await Promise.all(
