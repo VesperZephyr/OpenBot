@@ -349,7 +349,6 @@ export function LocalTasks({
           <SettledApprovals
             conversationId={rememberTaskConversation(task.taskId, task.approvals)}
             pending={task.approvals.map((a) => a.approvalId)}
-            runActive={task.busy || task.state === "approving" || task.state === "working" || task.state === "queued"}
           />
           {renderHistory(
             {

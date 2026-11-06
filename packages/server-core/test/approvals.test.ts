@@ -151,9 +151,51 @@ describe("ApprovalBook", () => {
 		expect(page).toHaveLength(32);
 		expect(page.every((row) => row.conversationId === "session-a")).toBe(true);
 		expect(page.map((row) => row.approvalId)).toEqual(Array.from({ length: 32 }, (_, n) => `approval:session-a:call_${32 - n}`));
+		expect(page.some((row) => row.approvalId === "approval:session-a:bare")).toBe(false);
 		expect(await second.decisions("session-b")).toMatchObject([
 			{ approvalId: "approval:session-b:other", decision: "deny", conversationId: "session-b" },
 		]);
+	});
+
+	it("uses conversationId and skips a record that does not have one", async () => {
+		const first = await restart();
+		const labeled = { ...approval, conversationId: "session-a", approvalId: "approval:session-a:labeled", callId: "labeled" };
+		const bare = { ...approval, approvalId: "approval:session-a:bare-pending", callId: "bare-pending" };
+		const other = { ...approval, conversationId: "session-b", approvalId: "approval:other:pending", callId: "other-pending" };
+		const waitingLabeled = first.request(labeled, live());
+		const waitingBare = first.request(bare, live());
+		const waitingOther = first.request(other, live());
+		await expect.poll(() => first.forBot("bot").length).toBe(3);
+		expect(first.forBot("bot", "session-a").map((row) => row.approvalId)).toEqual([labeled.approvalId]);
+		expect(first.forBot("bot", "session-b").map((row) => row.approvalId)).toEqual([other.approvalId]);
+		await first.decide(labeled.approvalId, "allow_once");
+		await first.decide(bare.approvalId, "deny");
+		await first.decide(other.approvalId, "allow_once");
+		await waitingLabeled;
+		await waitingBare;
+		await waitingOther;
+		expect((await first.decisions("session-a")).map((row) => row.approvalId)).toEqual([labeled.approvalId]);
+		expect((await first.decisions("session-a")).some((row) => row.approvalId === bare.approvalId)).toBe(false);
+	});
+
+	it("clears a deleted conversation's records and leaves records without that conversationId", async () => {
+		const first = await restart();
+		const gone = { ...approval, conversationId: "session-a", approvalId: "approval:session-a:gone", callId: "gone" };
+		const kept = { ...approval, conversationId: "session-b", approvalId: "approval:session-b:kept", callId: "kept" };
+		const bare = { ...approval, approvalId: "approval:session-a:bare-kept", callId: "bare-kept" };
+		for (const item of [gone, kept, bare]) {
+			const waiting = first.request(item, live());
+			await expect.poll(() => first.forBot("bot").some((row) => row.approvalId === item.approvalId)).toBe(true);
+			await first.decide(item.approvalId, "allow_once");
+			await waiting;
+		}
+		await first.forgetConversation("session-a");
+		expect(await first.decisions("session-a")).toEqual([]);
+		expect(await first.decisions("session-b")).toMatchObject([{ approvalId: kept.approvalId, conversationId: "session-b" }]);
+		const second = await restart();
+		expect(await second.decisions("session-a")).toEqual([]);
+		expect(await second.decisions("session-b")).toMatchObject([{ approvalId: kept.approvalId, conversationId: "session-b" }]);
+		expect(await second.request(bare, live())).toBe("allow_once");
 	});
 
 	it("decision survives a new book on the same store", async () => {
