@@ -16,6 +16,7 @@ import { ManagementHistory } from "../../BotManagement";
 import { t } from "../../i18n";
 import { api, closeSettings, holdOnboarding, refreshSettings, report, useStore, type View } from "../../store";
 import { ModelSelect } from "../../ModelSelect";
+import { providerCredentialStatus } from "./provider-credential-status";
 
 const SETTINGS_PAGES = [
 	["settings", "General", "settings"],
@@ -25,16 +26,6 @@ const SETTINGS_PAGES = [
 ] as const;
 
 export type SettingsDestination = (typeof SETTINGS_PAGES)[number][0];
-
-function ModelConfigFileNote({ path }: { readonly path: string }) {
-	return (
-		<>
-			{t("Add OpenAI- or Anthropic-compatible endpoints in ")}
-			<code>{path}</code>
-			{t(". Changes apply when you open Settings or choose a model.")}
-		</>
-	);
-}
 
 export function SettingsWorkspace({
 	view,
@@ -189,15 +180,7 @@ function Settings() {
 					{configured.map((provider) => (
 						<li key={provider.providerId}>
 							<span>{provider.name}</span>
-							<span className="muted">
-								{t(provider.keyStored ? "Key stored" : "Key from models.json")}
-								{provider.source === "config" && (
-									<>
-										{" "}
-										<ModelConfigFileNote path={settings.modelConfig.path} />
-									</>
-								)}
-							</span>
+							<span className="muted">{providerCredentialStatus(provider.keyStored, settings.language ?? "en")}</span>
 							{provider.keyStored && (
 								<button
 									type="button"
@@ -221,7 +204,9 @@ function Settings() {
 			<div className="settings-group">
 				<h2>{t("Your own providers")}</h2>
 				<p className="muted">
-					<ModelConfigFileNote path={settings.modelConfig.path} />
+					{t("Add OpenAI- or Anthropic-compatible endpoints in ")}
+					<code>{settings.modelConfig.path}</code>
+					{t(". Changes apply when you open Settings or choose a model.")}
 				</p>
 				{settings.providers.some((provider) => provider.source === "config" && !provider.configured) && (
 					<p className="muted">
@@ -231,7 +216,8 @@ function Settings() {
 							.map((provider) => provider.name)
 							.join(", ")}
 						{t(". Save one above or fix its ")}
-						<code>apiKey</code>.
+						<code>apiKey</code>
+						{t(".")}
 					</p>
 				)}
 				{settings.modelConfig.errors.length > 0 && (

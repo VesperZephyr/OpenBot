@@ -29,4 +29,6 @@ it("translates settings empty states, the model file sentence, and approval copy
  expect(translate("zh-CN", "Loading")).toBe("加载中");
  expect(translate("en", "Submitting")).toBe("Submitting");
  expect(translate("zh-CN", "Submitting")).toBe("提交中");
+ expect(translate("en", ".")).toBe(".");
+ expect(translate("zh-CN", ".")).toBe("。");
 });

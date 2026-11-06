@@ -1240,6 +1240,7 @@ export const chinese: Readonly<Record<string, string>> = {
 	" · Unavailable": " · 不可用",
 	"Add OpenAI- or Anthropic-compatible endpoints in ": "可在以下文件中添加兼容 OpenAI 或 Anthropic 的端点： ",
 	". Save one above or fix its ": "。请在上方保存密钥，或修正其 ",
+	".": "。",
 	"Conversations, Bot memory and operation logs are stored on this Mac in ": "对话、Bot 记忆和操作日志都保存在这台 Mac 上： ",
 	"Delete ": "删除 ",
 	" stops any work in progress and disappears from OpenBot. Files it saved in the workspace stay where they are.": " 将停止正在进行的工作，并从 OpenBot 中移除。已保存到工作区的文件会保留。",
