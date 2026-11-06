@@ -10,10 +10,10 @@ describe("hostError", () => {
 			message: "Message is empty",
 		});
 		expect(
-			hostError(new ProtocolError("request_conflict", "Profile changed. Reload before saving your draft.", { currentRevision: 4 })),
+			hostError(new ProtocolError("request_conflict", "This Bot was just changed elsewhere.", { currentRevision: 4 })),
 		).toEqual({
 			code: "request_conflict",
-			message: "Profile changed. Reload before saving your draft.",
+			message: "This Bot was just changed elsewhere.",
 			details: { currentRevision: 4 },
 		});
 		const system = new Error("disk full");

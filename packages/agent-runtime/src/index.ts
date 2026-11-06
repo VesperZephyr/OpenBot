@@ -803,7 +803,7 @@ export class BotRuntime {
 			const { model: currentModel, ...rest } = JSON.parse(JSON.stringify(record)) as BotRecord;
 			const model = change.model === undefined ? currentModel : (change.model ?? undefined);
 			if (change.expectedRevision !== undefined && change.expectedRevision !== (record.revision ?? 1))
-				throw new ProtocolError("request_conflict", "Profile changed. Reload before saving your draft.", { currentRevision: record.revision ?? 1 });
+				throw new ProtocolError("request_conflict", "This Bot was just changed elsewhere.", { currentRevision: record.revision ?? 1 });
 			const { model: _model, expectedRevision: _expectedRevision, defaultSkills, ...fields } = change;
 			const updated: BotRecord = { ...rest, ...fields, ...(defaultSkills ? { defaultSkills: defaultSkills.map(ref => ({ ...ref })) } : {}), revision: (record.revision ?? 1) + 1, ...(model === undefined ? {} : { model }) };
 			const effectiveModel = change.model === null ? (defaultModel ?? null) : change.model;

@@ -42,7 +42,7 @@ it("previews and pins a role method, supplies the exact text and keeps stale pro
 	await page.getByRole("button", { name: "Remove role skill invoice-check" }).click();
 	await h.api("bots.update", { botId, expectedRevision: (await profile()).revision, role: "Finance" });
 	await page.getByRole("button", { name: "Save profile" }).click();
-	await page.getByRole("alert").filter({ hasText: "Profile changed" }).waitFor();
+	await page.getByRole("alert").filter({ hasText: "This Bot was just changed elsewhere." }).waitFor();
 	await page.getByText("No role defaults. Attach a skill to individual messages when needed.", { exact: true }).waitFor();
 	expect((await profile()).defaultSkills).toEqual([original]);
 	await h.shot("02-profile-conflict");

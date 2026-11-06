@@ -78,7 +78,7 @@ it("does not create a receipt for failed edits and rejects deleted-Bot writes", 
 
 it("protects stale Prompt edits and keeps the raw Prompt separate from its request marker", async () => {
 	await runtime.updateBot("a", { instructions: "Answer in Chinese.", expectedRevision: 1 });
-	await expect(runtime.updateBot("a", { instructions: "Stale", expectedRevision: 1 })).rejects.toThrow("Profile changed");
+	await expect(runtime.updateBot("a", { instructions: "Stale", expectedRevision: 1 })).rejects.toThrow("This Bot was just changed elsewhere.");
 	expect(await runtime.getBot("a")).toMatchObject({ instructions: "Answer in Chinese.", revision: 2 });
 	await runtime.close();
 	runtime = await open();
