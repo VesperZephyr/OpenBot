@@ -5,6 +5,7 @@ import { t } from "./i18n";
  */
 import type { BotSummary } from "@openbot/protocol";
 import { useState } from "react";
+import { discardIdentityDraft } from "./features/details/identity-draft";
 import { api, openBot, refreshBots, report, useStore } from "./store";
 
 export function DuplicateBotItem({ bot, onDone }: { readonly bot: BotSummary; readonly onDone: () => void }) {
@@ -35,6 +36,7 @@ export function ConfirmDeleteBot({ bot, onClose }: { readonly bot: BotSummary; r
 		setBusy(true);
 		try {
 			await api["bots.delete"]({ botId: bot.botId });
+			discardIdentityDraft(bot.botId);
 			useStore.setState({ view: { kind: "home" } });
 			await refreshBots();
 			onClose();
