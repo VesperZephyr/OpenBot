@@ -120,7 +120,7 @@ it("shows an external profile change without a conflict notice", async () => {
 	await panel.getByText("Field notes", { exact: true }).waitFor();
 	await h.page().locator(".conversation-name").getByText("Atlas synced", { exact: true }).waitFor();
 	await h.page().locator(".conversation-role").getByText("Field notes", { exact: true }).waitFor();
-	expect(await h.page().getByText("Profile changed. Reload before saving your draft.").count()).toBe(0);
+	expect(await h.page().getByText("This Bot was just changed elsewhere.").count()).toBe(0);
 });
 
 it("reports a revision conflict instead of overwriting the name", async () => {
@@ -130,7 +130,10 @@ it("reports a revision conflict instead of overwriting the name", async () => {
 	const current = (await h.api("bots.list")).find((bot: { botId: string; revision: number }) => bot.botId === atlasId);
 	await h.api("bots.update", { botId: atlasId, expectedRevision: current.revision, name: "Atlas remote" });
 	await panel.getByRole("button", { name: "Save", exact: true }).click();
-	await panel.locator(".identity-alert").getByText("Profile changed. Reload before saving your draft.").waitFor();
+	const conflict = panel.locator(".identity-alert");
+	await conflict.getByText("This Bot was just changed elsewhere.").waitFor();
+	await conflict.getByRole("button", { name: "Reload profile", exact: true }).waitFor();
+	await conflict.getByRole("button", { name: "Keep editing", exact: true }).waitFor();
 	expect(await panel.getByLabel("Name", { exact: true }).inputValue()).toBe("Atlas local");
 	expect((await h.api("bots.list")).find((bot: { botId: string }) => bot.botId === atlasId).name).toBe("Atlas remote");
 	await h.page().locator(".toast").getByRole("button", { name: "Dismiss", exact: true }).click();
@@ -184,7 +187,7 @@ it("closes the detail form when the conversation editor opens", async () => {
 it("captures the review states in light and dark", async () => {
 	await h.app().evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1280, 820));
 	await h.api("settings.update", { language: "en" });
-	expect(await h.page().getByText("Profile changed. Reload before saving your draft.").count()).toBe(0);
+	expect(await h.page().getByText("This Bot was just changed elsewhere.").count()).toBe(0);
 	const panel = h.page().locator(".bot-identity");
 	const atlas = async () => (await h.api("bots.list")).find((bot: { botId: string; revision: number }) => bot.botId === atlasId);
 

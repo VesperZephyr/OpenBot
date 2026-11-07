@@ -185,7 +185,9 @@ describe("HostService", () => {
 		const copy = await service.handle("bots.duplicate", { botId: bot.botId, requestId: "role-copy" });
 		expect(copy.defaultSkills).toEqual([ref]);
 		expect(await runtime.memory(copy.botId)).toBe("");
-		await expect(service.handle("bots.update", { botId: bot.botId, expectedRevision: 1, defaultSkills: [] })).rejects.toThrow("Profile changed");
+		await expect(service.handle("bots.update", { botId: bot.botId, expectedRevision: 1, defaultSkills: [] })).rejects.toThrow(
+			"This Bot was just changed elsewhere.",
+		);
 		expect((await runtime.getBot(bot.botId))?.defaultSkills).toEqual([ref]);
 	});
 

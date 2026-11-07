@@ -215,7 +215,7 @@ export class ApprovalBook {
 				if (
 					r.botId !== botId ||
 					r.callId !== callId ||
-					(conversationId !== undefined && (r.conversationId ?? r.approvalId.split(":")[1]) !== conversationId) ||
+					!sameConversation(r, conversationId) ||
 					r.decision === undefined
 				)
 					continue;
@@ -232,13 +232,13 @@ export class ApprovalBook {
 	async decisions(conversationId: string): Promise<readonly ApprovalDecisionLog[]> {
 		const entries: ApprovalDecisionLog[] = [];
 		for (const record of await this.#requireStore().decided()) {
-			if (record.conversationId !== conversationId || record.decidedAt === undefined || record.decision === undefined) continue;
+			if (!sameConversation(record, conversationId) || record.decidedAt === undefined || record.decision === undefined) continue;
 			entries.push({
 				approvalId: record.approvalId,
 				decision: record.decision === "deny" || record.decision === "allow_once" ? record.decision : "always_allow",
 				at: record.decidedAt,
 				tool: record.tool,
-				conversationId: record.conversationId,
+				conversationId,
 			});
 		}
 		entries.sort((a, b) => b.at - a.at || b.approvalId.localeCompare(a.approvalId));
@@ -251,7 +251,7 @@ export class ApprovalBook {
 					!withdrawing &&
 					r.state === "pending" &&
 					r.botId === botId &&
-					(conversationId === undefined || (r.conversationId ?? r.approvalId.split(":")[1]) === conversationId),
+					sameConversation(r, conversationId),
 			)
 			.map(({ record: { state: _s, decision: _d, decidedAt: _at, ...r } }) => r)
 			.sort((a, b) => a.createdAt - b.createdAt);
@@ -283,10 +283,32 @@ export class ApprovalBook {
 		for (const waiter of entry.waiters) waiter(undefined, approvalError(state));
 		entry.waiters.clear();
 	}
+	/** Delete the conversation's records. A record with no conversationId is not part of any conversation. */
+	forgetConversation(conversationId: string): Promise<void> {
+		return this.#serial(async () => {
+			if (conversationId === "" || !this.#store) return;
+			await this.#store.forgetConversation(conversationId);
+			const bots = new Set<BotId>();
+			for (const [id, entry] of this.#entries) {
+				if (entry.record.conversationId !== conversationId) continue;
+				if (entry.timer) clearTimeout(entry.timer);
+				this.#entries.delete(id);
+				bots.add(entry.record.botId);
+				for (const waiter of entry.waiters) waiter(undefined, approvalError("withdrawn"));
+				entry.waiters.clear();
+			}
+			for (const botId of bots) this.#changed(botId);
+		});
+	}
 	#requireStore(): ApprovalStore {
 		if (!this.#store) throw new Error("The approval book is not started");
 		return this.#store;
 	}
+}
+/** No conversation filter matches every record. A filter matches only a stored conversationId, never the approval id. */
+function sameConversation(record: { readonly conversationId?: string }, conversationId: string | undefined): boolean {
+	if (conversationId === undefined) return true;
+	return record.conversationId === conversationId;
 }
 function approvalError(state: string): Error {
 	return new ProtocolError(

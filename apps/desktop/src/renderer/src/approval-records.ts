@@ -89,15 +89,10 @@ export function settledForCall(conversationId: string | undefined, callId: strin
 	return settledList.find((record) => record.conversationId === conversationId && record.callId === callId);
 }
 
-export function retireApprovalRecords(input: { readonly conversationId: string | undefined; readonly runActive: boolean; readonly latestUserAt?: number }) {
-	if (!input.conversationId) return;
-	if (!input.runActive) {
-		publish(settledList.filter((record) => record.conversationId !== input.conversationId));
-		return;
-	}
-	if (input.latestUserAt === undefined) return;
-	const latestUserAt = input.latestUserAt;
-	publish(settledList.filter((record) => record.conversationId !== input.conversationId || record.at >= latestUserAt));
+/** Remove one conversation's log. A missing id matches nothing, so other conversations stay. */
+export function clearConversationApprovals(conversationId: string | undefined) {
+	if (!conversationId) return;
+	publish(settledList.filter((record) => record.conversationId !== conversationId));
 }
 
 export function rememberTaskConversation(taskId: string, approvals: readonly Pick<PendingApproval, "conversationId">[]): string | undefined {

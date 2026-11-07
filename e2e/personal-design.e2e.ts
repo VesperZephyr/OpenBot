@@ -156,7 +156,7 @@ it("rejects malformed uploads, keeps conflicting drafts and treats duplicate nam
 	await h.api("bots.update", { botId: core, role: "Changed elsewhere" });
 	await page.getByLabel("Name", { exact: true }).fill("Keep this draft");
 	await page.getByRole("button", { name: "Save profile", exact: true }).click();
-	await page.getByRole("alert").filter({ hasText: "Profile changed" }).waitFor();
+	await page.getByRole("alert").filter({ hasText: "This Bot was just changed elsewhere." }).waitFor();
 	expect(await page.getByLabel("Name", { exact: true }).inputValue()).toBe("Keep this draft");
 	expect((await profile()).avatar).toEqual(previous);
 	await page.getByRole("button", { name: "Reload profile", exact: true }).click();

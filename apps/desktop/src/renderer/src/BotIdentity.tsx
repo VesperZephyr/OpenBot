@@ -18,6 +18,7 @@ import {
 	setIdentityConfirmSurfaceMounted,
 	subscribeIdentityDraft,
 } from "./features/details/identity-draft";
+import { ProfileConflictNotice } from "./features/details/profile-conflict";
 import { readHostError } from "../../shared/api";
 import { t } from "./i18n";
 import { api, openBot, refreshBots, report, useStore } from "./store";
@@ -228,15 +229,10 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 				<textarea rows={4} value={instructions} onChange={(event) => patchIdentityDraft(baseline.botId, { instructions: event.target.value })} />
 			</label>
 			{conflictRevision !== undefined ? (
-				<div className="identity-alert" role="alert">
-					<p>{t("Profile changed. Reload before saving your draft.")}</p>
-					<button type="button" onClick={() => void reload()}>
-						{t("Reload profile")}
-					</button>
-					<button type="button" onClick={() => keepConflictRevision(baseline.botId, conflictRevision)}>
-						{t("Keep editing")}
-					</button>
-				</div>
+				<ProfileConflictNotice
+					onReload={() => void reload()}
+					onKeepEditing={() => keepConflictRevision(baseline.botId, conflictRevision)}
+				/>
 			) : error ? (
 				<p className="identity-alert" role="alert">
 					{error}

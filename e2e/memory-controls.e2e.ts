@@ -70,7 +70,7 @@ it("protects Prompt drafts and applies the saved revision to the next model requ
 	await prompt.fill("Reply with CEDAR_PROMPT.");
 	await h.api("bots.update", { botId: bot.botId, name: "Cedar", expectedRevision: bot.revision });
 	await page.getByRole("button", { name: "Save profile" }).click();
-	await page.getByRole("alert").filter({ hasText: "Profile changed" }).waitFor();
+	await page.getByRole("alert").filter({ hasText: "This Bot was just changed elsewhere." }).waitFor();
 	await h.shot("04-profile-conflict");
 	expect(await prompt.inputValue()).toBe("Reply with CEDAR_PROMPT.");
 	await page.getByRole("button", { name: "Reload profile" }).click();
