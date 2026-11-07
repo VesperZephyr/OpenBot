@@ -6,13 +6,13 @@ describe("host error crossing IPC", () => {
 		const wrapped = new Error(
 			`Error invoking remote method 'openbot:call': Error: ${formatHostError({
 				code: "request_conflict",
-				message: "Profile changed. Reload before saving your draft.",
+				message: "This Bot was just changed elsewhere.",
 				details: { currentRevision: 4 },
 			})}`,
 		);
 		expect(readHostError(wrapped)).toEqual({
 			code: "request_conflict",
-			message: "Profile changed. Reload before saving your draft.",
+			message: "This Bot was just changed elsewhere.",
 			details: { currentRevision: 4 },
 		});
 		expect(readHostError(new Error("[not_found] Missing")).message).toBe("Missing");

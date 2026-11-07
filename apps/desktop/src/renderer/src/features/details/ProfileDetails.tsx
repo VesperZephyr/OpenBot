@@ -89,7 +89,7 @@ function ProfileForm({ bot, onClose }: { readonly bot: BotSummary; readonly onCl
 			await refreshBots();
 			onClose();
 		} catch (error) {
-			// A stale profile dialog must keep the "Profile changed" alert. Refreshing here drops the draft the user still has on screen.
+			// A stale profile dialog must keep the conflict alert. Refreshing here drops the draft the user still has on screen.
 			setSaveError(readHostError(error).message);
 		} finally {
 			setSaving(false);

@@ -41,7 +41,7 @@ it("commits image and profile atomically, rejects stale revisions and missing as
 	const bot = await runtime.createBot({ botId: "one", name: "One", createdAt: 1 });
 	await runtime.updateBot(bot.botId, { name: "Renamed", expectedRevision: 1 });
 	await expect(runtime.updateBot(bot.botId, { avatar, expectedRevision: 1 }, undefined, image)).rejects.toThrow(
-		"Profile changed",
+		"This Bot was just changed elsewhere.",
 	);
 	expect(await runtime.avatarImage(bot.botId)).toBeNull();
 	await expect(runtime.updateBot(bot.botId, { avatar, expectedRevision: 2 })).rejects.toThrow("unavailable");

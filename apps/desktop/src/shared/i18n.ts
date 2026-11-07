@@ -879,7 +879,7 @@ export const chinese: Readonly<Record<string, string>> = {
  "Reload profile": "重新加载资料",
  "Unknown or deleted Bot": "Bot 不存在或已删除",
  "Memory version is no longer available": "此记忆版本已不再保留",
- "Profile changed. Reload before saving your draft.": "资料已变更。请重新加载后再保存草稿。",
+ "This Bot was just changed elsewhere.": "这个 Bot 刚在别处改过",
  "Memory changed. Reload before saving your draft.": "记忆已变更。请重新加载后再保存草稿。",
  "Up to 20 previous versions are kept locally. Restoring creates a new version.": "本地最多保留 20 个历史版本。恢复操作会生成新版本。",
  "Clearing memory does not erase chat history, retained versions, backups or prior model requests. Start a new topic to leave old chat context behind.": "清空记忆不会删除聊天记录、历史版本、备份或已发送的模型请求。开启新话题可不再使用旧聊天上下文。",
