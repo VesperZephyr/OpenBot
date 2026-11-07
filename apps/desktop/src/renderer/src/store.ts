@@ -23,6 +23,19 @@ import { readHostError, type HostState } from "../../shared/api";
 import { setDetailsOpen } from "./features/details/details-open";
 import { identityConfirmSurfaceMounted, requestIdentityClose, retainIdentityDrafts } from "./features/details/identity-draft";
 import { hostCalls } from "./host-calls";
+import {
+	beginSettingsClose,
+	isChatView,
+	isSettingsView,
+	restoreDescribedFocus,
+	retainSettingsFocus,
+	settingsEscapeCloses,
+	settingsFocusLost,
+	shouldRestoreSettingsFocus,
+	type FocusDescriptor,
+	type FocusSource,
+	type SettingsEscapeEvent,
+} from "./settings-page";
 
 export type TaskView = {readonly kind:"tasks"; readonly botId:string; readonly taskId?:string; readonly draftId?:string; readonly archived?:boolean; readonly cursor?:string};
 export type View =
@@ -56,7 +69,8 @@ type State = {
 	settings: RedactedSettings | undefined;
 	models: readonly ModelSummary[];
 	view: View;
-	settingsOverlay: "settings" | "skills" | "connectors" | "routines" | undefined;
+	/** Last bot, group, home, or tasks view. Settings pages return here. */
+	lastChat: View;
 	showHidden: boolean;
 	notice: string | undefined;
 	/** First-launch setup: `undefined` until the first roster and settings arrive, then decided once. */
@@ -66,6 +80,7 @@ type State = {
 function restoredTaskView(): TaskView | undefined {
  try { const view = JSON.parse(localStorage.getItem("openbot.task-view.v1") ?? "null"); if (view?.kind === "tasks" && typeof view.botId === "string" && [view.taskId,view.draftId].every(id=>id===undefined||typeof id==="string")) return view; } catch { /* A stale selection must not prevent opening the app. */ }
 }
+const initialView = restoredTaskView() ?? { kind: "home" as const };
 export const useStore = create<State>(() => ({
  tasks:undefined,task:undefined,
  historyRevision:0,
@@ -83,12 +98,18 @@ export const useStore = create<State>(() => ({
 	conversations: {},
 	settings: undefined,
 	models: [],
-	view: restoredTaskView() ?? { kind: "home" },
-	settingsOverlay: undefined,
+	view: initialView,
+	lastChat: initialView,
 	showHidden: false,
 	notice: undefined,
 	onboarding: undefined,
 }));
+
+useStore.subscribe((state, previous) => {
+	if (state.view === previous.view) return;
+	if (isChatView(state.view) && state.lastChat !== state.view) useStore.setState({ lastChat: state.view });
+	retainSettingsFocus(previous.view, state.view, focusSource(document.activeElement), focusRoots());
+});
 
 const api = hostCalls(window.openbot.methods);
 window.openbotCalls = api;
@@ -222,25 +243,70 @@ export function holdOnboarding(): void {
 }
 
 export function openSettings(page: SettingsPage = "settings"): void {
-	// Settings is a page, as on main. An overlay is not in the tree while onboarding is showing,
-	// so the model select and Routines button never appear for the tests that open Settings.
-	if (page === "routines") useStore.setState({ view: { kind: "routines" }, settingsOverlay: undefined });
-	else if (page === "skills") useStore.setState({ view: { kind: "skills" }, settingsOverlay: undefined });
-	else if (page === "connectors") useStore.setState({ view: { kind: "connectors" }, settingsOverlay: undefined });
-	else useStore.setState({ view: { kind: "settings" }, settingsOverlay: undefined });
+	const view: View =
+		page === "routines" ? { kind: "routines" }
+		: page === "skills" ? { kind: "skills" }
+		: page === "connectors" ? { kind: "connectors" }
+		: { kind: "settings" };
+	useStore.setState({ view });
 }
 
 export function closeSettings(): void {
-	useStore.setState({ settingsOverlay: undefined });
+	const state = useStore.getState();
+	const closed = beginSettingsClose(state.view, state.lastChat);
+	if (!closed) return;
+	useStore.setState({ view: closed.view });
+	scheduleSettingsFocus(closed.focus, closed.view);
+}
+
+/** Escape on a settings page uses the same close as Back. Popups and dialogs keep the key. */
+export function closeSettingsFromEscape(event: SettingsEscapeEvent): void {
+	if (!isSettingsView(useStore.getState().view)) return;
+	if (!settingsEscapeCloses(event, (selector) => document.querySelector(selector))) return;
+	event.preventDefault();
+	event.stopPropagation();
+	closeSettings();
+}
+
+function focusSource(node: EventTarget | null): FocusSource | null {
+	if (node === null || typeof node !== "object" || !("getAttribute" in node) || !("tagName" in node) || !("id" in node)) return null;
+	const source = node as unknown as FocusSource;
+	return typeof source.getAttribute === "function" && typeof source.tagName === "string" && typeof source.id === "string" ? source : null;
+}
+
+function focusRoots(): readonly FocusSource[] {
+	return [document.body, document.documentElement].flatMap((node) => {
+		const source = focusSource(node);
+		return source ? [source] : [];
+	});
+}
+
+let settingsFocusGeneration = 0;
+
+function scheduleSettingsFocus(focus: FocusDescriptor | undefined, destination: View): void {
+	const generation = ++settingsFocusGeneration;
+	requestAnimationFrame(() => requestAnimationFrame(() => {
+		if (generation !== settingsFocusGeneration) return;
+		const state = useStore.getState();
+		const active = focusSource(document.activeElement);
+		if (!shouldRestoreSettingsFocus({
+			returned: state.view === destination,
+			onboarding: state.onboarding === true,
+			stillOnSettings: isSettingsView(state.view),
+			lost: settingsFocusLost(active, focusRoots()),
+		})) return;
+		restoreDescribedFocus(focus, (selector) => focusSource(document.querySelector(selector)));
+	}));
 }
 
 export async function openBot(botId: string, searchTarget?: SearchTarget): Promise<void> {
-	closeSettings();
 	const view = useStore.getState().view;
+	// Settings is not a Bot. Confirm a draft against the open Bot before close restores the previous one.
 	if (view.kind === "bot" && view.botId !== botId && !requestIdentityClose(view.botId, { kind: "bot", botId }, { confirmVisible: identityConfirmSurfaceMounted() })) {
 		setDetailsOpen(true);
 		return;
 	}
+	closeSettings();
 	useStore.setState({ view: { kind: "bot", botId }, searchTarget });
 	await conversationRead.request();
 }
