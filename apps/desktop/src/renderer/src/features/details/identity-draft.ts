@@ -136,6 +136,11 @@ export function discardIdentityDraft(botId: string): IdentityPending | undefined
 	return pending;
 }
 
+export function retainIdentityDrafts(botIds: readonly string[]): void {
+	const live = new Set(botIds);
+	for (const botId of drafts.keys()) if (!live.has(botId)) discardIdentityDraft(botId);
+}
+
 export function replaceIdentityDraft(bot: IdentityBot): void {
 	const baseline = baselineOf(bot);
 	publish(bot.botId, {

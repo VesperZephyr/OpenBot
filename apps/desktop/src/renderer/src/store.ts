@@ -21,7 +21,7 @@ import { create } from "zustand";
 import { composers } from "./useComposer";
 import { readHostError, type HostState } from "../../shared/api";
 import { setDetailsOpen } from "./features/details/details-open";
-import { identityConfirmSurfaceMounted, requestIdentityClose } from "./features/details/identity-draft";
+import { identityConfirmSurfaceMounted, requestIdentityClose, retainIdentityDrafts } from "./features/details/identity-draft";
 import { hostCalls } from "./host-calls";
 import {
 	beginSettingsClose,
@@ -136,6 +136,7 @@ const groupsRead = new LatestRead(
 const botsRead = new LatestRead(
 	() => api["bots.list"]({}),
 	(bots) => {
+		retainIdentityDrafts(bots.map((bot) => bot.botId));
 		for (const key of Object.keys(composers.snapshot()))
 			if (key.startsWith("bot:") && !bots.some((b) => b.botId === key.slice(4))) composers.remove(key as `bot:${string}`);
 		useStore.setState({ bots });
