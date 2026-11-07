@@ -196,22 +196,40 @@ export function formatHostError(error: { readonly code: string; readonly message
 	return `[${error.code}] ${error.message}${suffix}`;
 }
 
-/** Read the code and `currentRevision` from an IPC error. The message is the sentence after the code prefix. */
+/** Protocol `code` on the error object. IPC errors omit it and carry the same code in the message prefix. */
+function structuredHostCode(error: unknown): string | undefined {
+	if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
+	const code = (error as { readonly code?: unknown }).code;
+	return typeof code === "string" && /^[a-z_]+$/.test(code) ? code : undefined;
+}
+
+function structuredHostRevision(error: unknown): { currentRevision: number } | undefined {
+	if (typeof error !== "object" || error === null || !("details" in error)) return undefined;
+	const details = (error as { readonly details?: unknown }).details;
+	if (typeof details !== "object" || details === null || !("currentRevision" in details)) return undefined;
+	const currentRevision = (details as { readonly currentRevision?: unknown }).currentRevision;
+	return typeof currentRevision === "number" && Number.isFinite(currentRevision) ? { currentRevision } : undefined;
+}
+
+/** Read the code and `currentRevision` from a Host error. A structured `code` wins; otherwise the `[code] ` prefix does. */
 export function readHostError(error: unknown): { code?: string; message: string; details?: { currentRevision: number } } {
 	const raw = error instanceof Error ? error.message : String(error);
 	const stripped = raw.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "");
 	const detailsMatch = ERROR_DETAILS.exec(stripped);
 	const body = detailsMatch ? stripped.slice(0, detailsMatch.index) : stripped;
-	let details: { currentRevision: number } | undefined;
+	let parsedDetails: { currentRevision: number } | undefined;
 	if (detailsMatch?.[1]) {
 		try {
 			const parsed = JSON.parse(detailsMatch[1]) as { currentRevision?: unknown };
-			if (typeof parsed.currentRevision === "number" && Number.isFinite(parsed.currentRevision)) details = { currentRevision: parsed.currentRevision };
+			if (typeof parsed.currentRevision === "number" && Number.isFinite(parsed.currentRevision)) parsedDetails = { currentRevision: parsed.currentRevision };
 		} catch {
 			/* A malformed suffix is not a revision the form can reload. */
 		}
 	}
 	const prefix = ERROR_PREFIX.exec(body);
-	const message = prefix ? body.slice(prefix[0].length) : body;
-	return { ...(prefix?.[1] ? { code: prefix[1] } : {}), message, ...(details ? { details } : {}) };
+	const fieldCode = structuredHostCode(error);
+	const code = fieldCode ?? prefix?.[1];
+	const message = prefix && (fieldCode === undefined || fieldCode === prefix[1]) ? body.slice(prefix[0].length) : body;
+	const details = structuredHostRevision(error) ?? parsedDetails;
+	return { ...(code ? { code } : {}), message, ...(details ? { details } : {}) };
 }

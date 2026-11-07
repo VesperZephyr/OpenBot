@@ -1,6 +1,6 @@
-import type { PendingApproval } from "@openbot/protocol";
+import type { ApprovalPress, PendingApproval } from "@openbot/protocol";
 
-export type ApprovalPress = "allow_once" | "deny" | "always_allow";
+export type { ApprovalPress };
 
 export type SettledApproval = {
 	readonly approvalId: string;

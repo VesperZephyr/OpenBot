@@ -512,10 +512,13 @@ export type ApprovalRecord = PendingApproval & {
 	readonly decidedAt?: number;
 };
 
+/** Recorded approval button. `always_allow` is this string; `ApprovalDecision` carries an always-allow scope instead. */
+export type ApprovalPress = "allow_once" | "deny" | "always_allow";
+
 /** A user decision, readable after the Host restarts: `allow_once`, `deny`, or `always_allow`. */
 export type ApprovalDecisionLog = {
 	readonly approvalId: string;
-	readonly decision: "allow_once" | "deny" | "always_allow";
+	readonly decision: ApprovalPress;
 	readonly at: number;
 	readonly tool: string;
 	readonly conversationId: string;

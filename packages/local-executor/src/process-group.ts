@@ -3,6 +3,9 @@ import { promisify } from "node:util";
 
 const exec = promisify(execFile);
 
+/** Bounds the process-table read. Host shutdown awaits it before the 4.5s budget, so a hung `ps` must return. */
+export const PROCESS_SNAPSHOT_TIMEOUT_MS = 1_000;
+
 export type ProcessRow = { readonly pid: number; readonly ppid: number; readonly pgid: number; readonly started: string | undefined };
 export type TrackedGroup = { readonly pgid: number; readonly started: string | undefined };
 
@@ -20,10 +23,19 @@ export function groupStillOurs(current: string | undefined, recorded: string): b
 }
 
 /** One process table read. Stop uses this once; it does not call `ps` again per group. */
-export async function processSnapshot(): Promise<readonly ProcessRow[]> {
+export async function processSnapshot(options?: {
+	readonly command?: string;
+	readonly args?: readonly string[];
+	readonly timeoutMs?: number;
+}): Promise<readonly ProcessRow[]> {
 	if (!posixProcessGroups()) return [];
+	const timeoutMs = options?.timeoutMs ?? PROCESS_SNAPSHOT_TIMEOUT_MS;
 	try {
-		const { stdout } = await exec("ps", ["-ax", "-o", "pid=,ppid=,pgid=,lstart="], { encoding: "utf8" });
+		const { stdout } = await exec(options?.command ?? "ps", [...(options?.args ?? ["-ax", "-o", "pid=,ppid=,pgid=,lstart="])], {
+			encoding: "utf8",
+			timeout: timeoutMs,
+			killSignal: "SIGKILL",
+		});
 		return parseProcessTable(stdout);
 	} catch {
 		return [];
