@@ -113,3 +113,18 @@ it("publishes group summaries atomically, deduplicates replies and keeps channel
 	await runtime.conversationIndex().markRead("group:group_g", 1);
 	expect(await row("group:group_g")).toMatchObject({ unreadCount: 0, latest: { text: "Group answer" } });
 });
+
+it("keeps a deleted conversation deleted and leaves the other conversation", async () => {
+	await runtime.conversationIndex().projectDirect(snapshot([message("1", "user"), message("2", "assistant", "Kept")]));
+	await runtime.conversationIndex().projectDirect(snapshot([message("9", "user")], "b"));
+	await runtime.conversationIndex().deleteConversation("bot:a");
+	expect(await row("bot:a")).toMatchObject({ deleted: true, latest: { text: "Kept" } });
+	await runtime.conversationIndex().projectDirect(snapshot([message("1", "user"), message("2", "assistant", "Kept"), message("3", "assistant", "Later")]));
+	expect(await row("bot:a")).toMatchObject({ deleted: true, latest: { text: "Kept" } });
+	expect((await row("bot:b")).deleted).toBeUndefined();
+	await expect(runtime.conversationIndex().markRead("bot:a", 0)).rejects.toThrow("Conversation is unavailable");
+	await runtime.close();
+	runtime = await open();
+	expect((await row("bot:a")).deleted).toBe(true);
+	expect((await row("bot:b")).deleted).toBeUndefined();
+});

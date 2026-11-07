@@ -22,6 +22,7 @@ import { composers } from "./useComposer";
 import { readHostError, type HostState } from "../../shared/api";
 import { setDetailsOpen } from "./features/details/details-open";
 import { identityConfirmSurfaceMounted, requestIdentityClose, retainIdentityDrafts } from "./features/details/identity-draft";
+import { planConversationDelete, type ListedConversation } from "./conversation-delete";
 import { hostCalls } from "./host-calls";
 import {
 	beginSettingsClose,
@@ -300,6 +301,7 @@ function scheduleSettingsFocus(focus: FocusDescriptor | undefined, destination: 
 }
 
 export async function openBot(botId: string, searchTarget?: SearchTarget): Promise<void> {
+	if (useStore.getState().summaries[`bot:${botId}`]?.deleted) return;
 	const view = useStore.getState().view;
 	// Settings is not a Bot. Confirm a draft against the open Bot before close restores the previous one.
 	if (view.kind === "bot" && view.botId !== botId && !requestIdentityClose(view.botId, { kind: "bot", botId }, { confirmVisible: identityConfirmSurfaceMounted() })) {
@@ -309,6 +311,43 @@ export async function openBot(botId: string, searchTarget?: SearchTarget): Promi
 	closeSettings();
 	useStore.setState({ view: { kind: "bot", botId }, searchTarget });
 	await conversationRead.request();
+}
+
+function listedConversations(state: { readonly bots: readonly BotSummary[]; readonly groups: readonly Group[]; readonly summaries: Readonly<Record<string, ConversationSummary>> }): ListedConversation[] {
+	return [
+		...state.bots.filter((bot) => bot.status === "active" && state.summaries[`bot:${bot.botId}`]?.deleted !== true).map((bot) => ({ key: `bot:${bot.botId}` as const, core: bot.kind === "core" })),
+		...state.groups.filter((group) => state.summaries[`group:${group.groupId}`]?.deleted !== true).map((group) => ({ key: `group:${group.groupId}` as const })),
+	];
+}
+
+/** Confirmed delete. The Host clears that conversation's approval records; this drops the row and any ghost selection. */
+export async function deleteConversation(botId: string): Promise<void> {
+	const deletedKey = `bot:${botId}` as const;
+	const { conversationId } = await api["conversations.delete"]({ conversationKey: deletedKey });
+	const state = useStore.getState();
+	const summaries = {
+		...state.summaries,
+		[deletedKey]: { ...(state.summaries[deletedKey] ?? { conversationKey: deletedKey, incomingCount: 0, readThrough: 0, unreadCount: 0 }), deleted: true as const },
+	};
+	const plan = planConversationDelete({
+		confirmed: true,
+		deletedKey,
+		conversationId,
+		entries: listedConversations({ ...state, summaries }),
+		view: state.view,
+		lastChat: state.lastChat,
+	});
+	composers.remove(deletedKey);
+	const conversations = { ...state.conversations };
+	delete conversations[botId];
+	useStore.setState({
+		summaries,
+		conversations,
+		view: plan.view,
+		lastChat: plan.lastChat,
+		...(state.searchTarget?.conversationKey === deletedKey ? { searchTarget: undefined } : {}),
+	});
+	await Promise.all([refreshBots(), refreshSummaries()]);
 }
 
 export async function createBot(name: string): Promise<void> {
@@ -410,6 +449,19 @@ async function loadAll(changes: number): Promise<void> {
 	// Decide once. Closing the wizard when a model becomes configured skips "Meet your first Bot"
 	// and "Hello, I'm OpenBot" after Connect. The wizard dismisses itself when setup finishes.
 	if (onboarding === undefined && settings) useStore.setState({ onboarding: needsOnboarding(settings, bots) });
+	if (view.kind === "bot" && useStore.getState().summaries[`bot:${view.botId}`]?.deleted === true) {
+		const deletedKey = `bot:${view.botId}` as const;
+		const plan = planConversationDelete({
+			confirmed: true,
+			deletedKey,
+			conversationId: undefined,
+			entries: listedConversations(useStore.getState()),
+			view,
+			lastChat: useStore.getState().lastChat,
+		});
+		useStore.setState({ view: plan.view, lastChat: plan.lastChat });
+		return;
+	}
 	if(view.kind==="tasks" && !bots.some(bot=>bot.kind==="core" && bot.botId===view.botId)){const core=bots.find(bot=>bot.kind==="core");if(core)useStore.setState({view:{kind:"tasks",botId:core.botId}});}
  else if (view.kind === "home" || (view.kind === "bot" && !bots.some((bot) => bot.botId === view.botId))) {
 		const core = bots.find((b) => b.kind === "core");

@@ -112,7 +112,7 @@ export class AppCapabilities {
 		return this.#unwrap(await this.#guard(()=>this.#execute("conversations.read",input,{principal:`desktop:${this.targetId}`}))) as AppReadValue;
 	}
 	async desktopSummaries(): Promise<readonly ConversationSummary[]> {
-		return (await this.#resources({principal:`desktop:${this.targetId}`},{includeHidden:true})).summaries;
+		return (await this.#resources({principal:`desktop:${this.targetId}`},{includeHidden:true}, true)).summaries;
 	}
 	#unwrap(result: AppResult<unknown>): unknown {
 		if (result.ok) return result.value;
@@ -127,13 +127,14 @@ export class AppCapabilities {
 			return {ok:false,error:{code:"not_found",message:"Application data is unavailable"}};
 		}
 	}
-	async #resources(scope:Scope,input:Input) {
+	async #resources(scope:Scope,input:Input, includeDeleted = false) {
 		const [allBots,allGroups,allSummaries] = await Promise.all([this.runtime.listBots(),this.runtime.groups().list(),this.runtime.conversationIndex().list()]);
 		const group = scope.groupId ? allGroups.find(g=>g.groupId===scope.groupId) : undefined;
 		const bots = allBots.filter(b=>b.status !== "deleted" && (scope.groupId ? group?.memberIds.includes(b.botId) || b.kind === "core" : b.status === "active" || input.includeHidden));
 		const groups = allGroups.filter(g=>!scope.groupId || g.groupId===scope.groupId);
-		const keys = new Set<ConversationKey>([...(!scope.groupId ? bots.map(b=>`bot:${b.botId}` as const) : []),...groups.map(g=>`group:${g.groupId}` as const)]);
-		const summaries = allSummaries.filter(s=>keys.has(s.conversationKey));
+		const removed = new Set(allSummaries.filter(s => s.deleted).map(s => s.conversationKey));
+		const keys = new Set<ConversationKey>([...(!scope.groupId ? bots.map(b=>`bot:${b.botId}` as const) : []),...groups.map(g=>`group:${g.groupId}` as const)].filter(key => includeDeleted || !removed.has(key)));
+		const summaries = allSummaries.filter(s=>keys.has(s.conversationKey) && (includeDeleted || !s.deleted));
 		return {bots,groups,keys,summaries};
 	}
 	async #execute(id: AppCapabilityId, raw: unknown, scope: Scope, signal?:AbortSignal): Promise<AppResult<unknown>> {

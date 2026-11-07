@@ -11,7 +11,7 @@ import {
 } from "@openbot/protocol";
 
 type Projection = { messageCount: number; incomingCount: number; latest?: ConversationPreview };
-type RecordState = Projection & { readThrough: number };
+type RecordState = Projection & { readThrough: number; deleted?: boolean };
 export const ConversationIndexDoc = defineDoc<{ records: Record<string, RecordState> }>({
 	kind: "openbot.conversation-index",
 	version: 1,
@@ -66,13 +66,19 @@ export function groupProjection(posts:readonly GroupPost[]):Projection{
  return {messageCount,incomingCount,...(latest?{latest:{...latest,text:previewText(latest.text)}}:{})};
 }
 function summary(key: ConversationKey, record: RecordState): ConversationSummary {
-	const { messageCount: _count, ...state } = record;
-	return { conversationKey: key, ...state, unreadCount: state.incomingCount - state.readThrough };
+	const { messageCount: _count, deleted, ...state } = record;
+	return {
+		conversationKey: key,
+		...state,
+		unreadCount: state.incomingCount - state.readThrough,
+		...(deleted ? { deleted: true } : {}),
+	};
 }
 /** New identities call this with empty history; absent legacy identities start with their old history read. */
 export async function projectConversation(tx: Tx, key: ConversationKey, next: Projection): Promise<void> {
 	const doc = await tx.doc(ConversationIndexDoc);
 	const old = doc.records[key];
+	if (old?.deleted) return;
 	if (old && old.messageCount >= next.messageCount) return;
 	doc.records[key] = { ...next, readThrough: old?.readThrough ?? next.incomingCount };
 }
@@ -86,14 +92,26 @@ export function conversationIndexStore(harness: Harness, context: Context) {
 			const next = directProjection(snapshot);
 			const key: ConversationKey = `bot:${snapshot.botId}`;
 			const old = (await read())[key];
+			if (old?.deleted) return old.incomingCount;
 			// Streaming changes must not write the session document and trigger every observer again.
 			if (!old || old.messageCount < next.messageCount) await harness.commit((tx) => projectConversation(tx, key, next), context);
 			return next.incomingCount;
 		},
+		async deleted(key: ConversationKey): Promise<boolean> {
+			return (await read())[key]?.deleted === true;
+		},
+		/** Hide one conversation. A later projection must not bring it back. */
+		async deleteConversation(key: ConversationKey): Promise<void> {
+			await harness.commit(async (tx) => {
+				const record = (await tx.doc(ConversationIndexDoc)).records[key];
+				if (!record) throw new ProtocolError("not_found", "Conversation is unavailable");
+				record.deleted = true;
+			}, context);
+		},
 		async markRead(key: ConversationKey, through: number): Promise<boolean> {
 			return harness.commit(async (tx) => {
 				const record = (await tx.doc(ConversationIndexDoc)).records[key];
-				if (!record) throw new ProtocolError("not_found", "Conversation is unavailable");
+				if (!record || record.deleted) throw new ProtocolError("not_found", "Conversation is unavailable");
 				if (!Number.isSafeInteger(through) || through < 0 || through > record.incomingCount)
 					throw new ProtocolError("invalid_request", "Invalid reading position");
 				if (through <= record.readThrough) return false;
