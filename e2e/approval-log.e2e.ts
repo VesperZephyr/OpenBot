@@ -1,6 +1,7 @@
 /**
- * An allow decision stays in the conversation that made it. Another conversation does not show it.
- * Always allow must still read as always allow after the run ends and the in-memory record is gone.
+ * An allow decision stays in the conversation that made it, including after the run ends.
+ * Restart still shows that decision from the Host log. Another conversation does not show it.
+ * Always allow still reads as always allow after the run ends and after restart.
  */
 import { expect, it } from "vitest";
 import { type AppHarness, launchApp } from "./harness.ts";
@@ -22,6 +23,9 @@ it("keeps an allowed action in that conversation after restart", async () => {
 		await card.waitFor();
 		await card.getByRole("button", { name: "Allow once", exact: true }).click();
 		await page.getByText("The note is kept.", { exact: true }).waitFor();
+		const finished = page.getByRole("group", { name: "Approval record" });
+		await finished.waitFor();
+		expect(await finished.innerText()).toContain("Allowed once");
 		await h.relaunch();
 		const reopened = h.page();
 		const again = (name: string) => reopened.locator(".bot-row").filter({ has: reopened.getByText(name, { exact: true }) });
@@ -55,7 +59,10 @@ it("keeps always allow on the record after the run ends", async () => {
 		await card.getByRole("button", { name: "Always allow", exact: true }).click();
 		await card.getByRole("group", { name: "Always allow" }).getByRole("button", { name: "Save rule and allow" }).click();
 		await page.getByText("The note is kept.", { exact: true }).waitFor();
-		// The run has finished. Restart drops the in-memory press so the label comes from approvals.list.
+		const finished = page.getByRole("group", { name: "Approval record" });
+		await finished.waitFor();
+		expect(await finished.innerText()).toContain("Set to always allow");
+		expect(await finished.innerText()).not.toContain("Allowed once");
 		await h.relaunch();
 		const reopened = h.page();
 		await reopened.locator(".bot-row").filter({ has: reopened.getByText("Ada", { exact: true }) }).click();
