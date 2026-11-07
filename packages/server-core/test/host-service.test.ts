@@ -209,6 +209,40 @@ describe("HostService", () => {
 		expect(events).toContain("bots.changed");
 	}, 15000);
 
+	it("deletes one direct conversation, clears only its approval records, and keeps the Bot", async () => {
+		const bot = await service.handle("bots.create", { requestId: "drop-chat", name: "Cedar" });
+		const other = await service.handle("bots.create", { requestId: "keep-chat", name: "Birch" });
+		const conversationId = await runtime.conversationKey(bot.botId);
+		const otherId = await runtime.conversationKey(other.botId);
+		const record = {
+			botId: bot.botId,
+			callId: "call",
+			tool: "local_exec",
+			args: {},
+			target: { kind: "local" as const, targetId: "mac" },
+			reason: "Runs a command on this Mac",
+			createdAt: 1,
+			state: "consumed" as const,
+			decision: "allow_once" as const,
+			decidedAt: 2,
+		};
+		await runtime.approvals().put({ ...record, approvalId: "gone", conversationId });
+		await runtime.approvals().put({ ...record, approvalId: "kept", botId: other.botId, conversationId: otherId });
+		await runtime.approvals().put({ ...record, approvalId: "bare", botId: bot.botId });
+		const removed = await service.handle("conversations.delete", { conversationKey: `bot:${bot.botId}` });
+		expect(removed.conversationId).toBe(conversationId);
+		expect(await service.handle("approvals.list", { conversationId })).toEqual([]);
+		expect(await service.handle("approvals.list", { conversationId: otherId })).toMatchObject([{ approvalId: "kept", conversationId: otherId }]);
+		expect(await runtime.approvals().get("bare")).toMatchObject({ approvalId: "bare" });
+		expect(await runtime.approvals().get("gone")).toBeUndefined();
+		expect((await service.handle("conversations.list", {})).find((row) => row.conversationKey === `bot:${bot.botId}`)?.deleted).toBe(true);
+		expect((await service.handle("conversations.list", {})).find((row) => row.conversationKey === `bot:${other.botId}`)?.deleted).toBeUndefined();
+		expect((await service.handle("bots.list", {})).some((item) => item.botId === bot.botId)).toBe(true);
+		const core = (await service.handle("bots.list", {})).find((item) => item.kind === "core");
+		await expect(service.handle("conversations.delete", { conversationKey: `bot:${core!.botId}` })).rejects.toThrow("The Core conversation cannot be deleted");
+		await expect(service.handle("messages.submit", { botId: bot.botId, requestId: "after-delete", text: "Hi" })).rejects.toThrow("Conversation is unavailable");
+	});
+
 	it("lists bounded summaries without loading histories and rejects read receipts for deleted Bots", async () => {
 		const bot = await service.handle("bots.create", { requestId: "index", name: "Reader" });
 		const snap = vi.spyOn(runtime, "snapshot");

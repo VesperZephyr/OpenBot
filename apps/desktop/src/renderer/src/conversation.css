@@ -434,6 +434,40 @@
 }
 
 /* Previews and read progress share one quiet row for both channel kinds. */
+.bot-row-line {
+	position: relative;
+	display: flex;
+	align-items: center;
+}
+.bot-row-line > .bot-row {
+	flex: 1;
+	min-width: 0;
+}
+.bot-row-delete {
+	position: absolute;
+	right: 6px;
+	z-index: 1;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	padding: 0;
+	border: 0;
+	border-radius: 6px;
+	background: var(--surface-raised);
+	color: var(--muted);
+	opacity: 0;
+}
+.bot-row-line:hover .bot-row-delete,
+.bot-row-line:has(.is-selected) .bot-row-delete,
+.bot-row-delete:focus {
+	opacity: 1;
+}
+.bot-row-delete:hover {
+	color: var(--attention);
+}
+
 .bot-row .roster-name {
 	min-width: 0;
 	overflow: hidden;

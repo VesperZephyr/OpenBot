@@ -108,6 +108,8 @@ export type ConversationSummary = {
 	readonly incomingCount: number;
 	readonly readThrough: number;
 	readonly unreadCount: number;
+	/** Set when the user deleted this conversation. The Bot or group identity is unchanged. */
+	readonly deleted?: boolean;
 };
 
 export type ConversationSearchHit = {
@@ -718,6 +720,11 @@ export type HostMethods = {
 	};
 	/** New topic: the Bot's next request starts from an empty context; memory and stored history stay. */
 	"conversations.reset": { params: { readonly botId: BotId }; result: null };
+	/**
+	 * Remove one direct conversation from the list and clear that conversation's approval records.
+	 * The Bot stays. Core cannot be removed from the list.
+	 */
+	"conversations.delete": { params: { readonly conversationKey: ConversationKey }; result: { readonly conversationId: string } };
 	"policy.get": { params: Record<string, never>; result: PolicySettings };
 	"policy.update": {
 		params: { readonly commandSetting?: CommandSetting; readonly readOnlyDefault?: boolean };
@@ -830,6 +837,7 @@ export const HOST_METHODS = [
 	"bots.memory.update",
 	"bots.memory.restore",
 	"conversations.reset",
+	"conversations.delete",
 	"policy.get",
 	"policy.update",
 	"policy.rules.delete",

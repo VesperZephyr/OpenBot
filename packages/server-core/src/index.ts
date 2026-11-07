@@ -369,6 +369,7 @@ export class HostService {
 			},
 			"messages.submit": async ({ botId, requestId, text, artifactIds, skills }) => {
 				if (text.trim() === "" && !artifactIds?.length && !skills?.length) throw new ProtocolError("invalid_request", "Message is empty");
+				if (await this.#runtime.conversationIndex().deleted(`bot:${botId}`)) throw new ProtocolError("not_found", "Conversation is unavailable");
 				const bot = await this.#liveBot(botId);
 				if (bot.model === undefined && (await this.#runtime.defaultModel()) === undefined) {
 					throw new ProtocolError("invalid_request", "Choose a model in Settings before messaging a Bot");
@@ -421,6 +422,19 @@ export class HostService {
                 await this.background.stopConversation(botId,await this.#runtime.conversationKey(botId));
 				await this.#runtime.reset(botId);
 				return null;
+			},
+			"conversations.delete": async ({ conversationKey }) => {
+				if (!conversationKey.startsWith("bot:")) throw new ProtocolError("invalid_request", "Only a direct conversation can be deleted");
+				const botId = conversationKey.slice(4);
+				const bot = await this.#liveBot(botId);
+				if (bot.kind === "core") throw new ProtocolError("invalid_request", "The Core conversation cannot be deleted");
+				const conversationId = await this.#runtime.conversationKey(botId);
+				await this.#runs.cancelMatching((run) => run.botId === botId && (!run.channelId || run.channelId === "direct"));
+				await this.background.stopConversation(botId, conversationId);
+				await this.#approvals.forgetConversation(conversationId);
+				await this.#runtime.conversationIndex().deleteConversation(conversationKey);
+				this.#emit({ type: "bots.changed", payload: {} });
+				return { conversationId };
 			},
 			"policy.get": () => this.#policy.get(),
  "policy.ask.create":input=>this.#policy.createAsk(input),
@@ -616,10 +630,11 @@ export class HostService {
 		try {
 			const result = await ([
 				"bots.templates.import",
-    "bots.create",
+				"bots.create",
 				"bots.update",
 				"bots.duplicate",
 				"bots.delete",
+				"conversations.delete",
 				"messages.submit",
 				"groups.change",
 				"groups.send",

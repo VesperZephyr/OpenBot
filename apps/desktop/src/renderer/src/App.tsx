@@ -33,7 +33,8 @@ import { Divider, RetryButton, retryTarget, Thinking } from "./TranscriptExtras"
 import { PendingMessages, StopButton, StoppedNote } from "./runs";
 import { ApprovalCard, TranscriptApprovals } from "./ApprovalCard";
 import { GroupView, GroupRow, GroupEditor } from "./Groups";
-import { ConfirmDeleteBot, DeleteBotItem, DuplicateBotItem } from "./BotLifecycle";
+import { ConfirmDeleteBot, ConfirmDeleteConversation, DeleteBotItem, DeleteConversationItem, DuplicateBotItem } from "./BotLifecycle";
+import { conversationRemoved } from "./conversation-delete";
 import { Onboarding } from "./features/onboarding/Onboarding";
 import { ProfileDetails } from "./features/details/ProfileDetails";
 import { toggleDetails, useDetailsOpen } from "./features/details/details-open";
@@ -188,7 +189,7 @@ export function App() {
 /** Core and pinned chats keep priority; all other conversations share recency ordering. */
 function chatEntries(state: Pick<ReturnType<typeof useStore.getState>, "bots" | "groups" | "summaries">) {
     const entries = [
-        ...state.bots.filter(bot => bot.status === "active").map(bot => ({ kind: "bot" as const, bot, key: `bot:${bot.botId}` as const, priority: bot.kind === "core" ? 2 : bot.pinned ? 1 : 0, at: bot.createdAt })),
+        ...state.bots.filter(bot => bot.status === "active" && !conversationRemoved(state.summaries, `bot:${bot.botId}`)).map(bot => ({ kind: "bot" as const, bot, key: `bot:${bot.botId}` as const, priority: bot.kind === "core" ? 2 : bot.pinned ? 1 : 0, at: bot.createdAt })),
         ...state.groups.map(group => ({ kind: "group" as const, group, key: `group:${group.groupId}` as const, priority: 0, at: group.createdAt })),
     ];
     return entries.toSorted((a, b) => b.priority - a.priority || recentTime(b.key, state.summaries, b.at) - recentTime(a.key, state.summaries, a.at) || a.key.localeCompare(b.key));
@@ -207,6 +208,7 @@ function Sidebar({ onNew, query, onQuery, searchOpen, onSearchOpen, onSettings }
 	const hidden = bots.filter(
 		(bot) =>
 			bot.status === "hidden" &&
+			!conversationRemoved(summaries, `bot:${bot.botId}`) &&
 			eligible(`bot:${bot.botId}`) &&
 			`${bot.name} ${bot.role}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
 	);
@@ -308,16 +310,25 @@ const ACTIVITY_LABEL: Record<BotSummary["activity"], string | undefined> = {
 
 function BotRow({ bot, selected }: { readonly bot: BotSummary; readonly selected: boolean }) {
 	const label = bot.activity === "unread" ? undefined : ACTIVITY_LABEL[bot.activity];
+	const [deleting, setDeleting] = useState(false);
 	return (
-		<button
-			type="button"
-			className={`bot-row ${selected ? "is-selected" : ""}`}
-			onClick={() => void openBot(bot.botId).catch(report)}
-			aria-current={selected ? "page" : undefined}
-		>
-			<Avatar bot={bot} working={bot.activity === "working"} />
-			<RosterPreview conversationKey={`bot:${bot.botId}`} name={bot.name} core={bot.kind === "core"} fallback={bot.role} activity={label} />
-		</button>
+		<div className="bot-row-line">
+			<button
+				type="button"
+				className={`bot-row ${selected ? "is-selected" : ""}`}
+				onClick={() => void openBot(bot.botId).catch(report)}
+				aria-current={selected ? "page" : undefined}
+			>
+				<Avatar bot={bot} working={bot.activity === "working"} />
+				<RosterPreview conversationKey={`bot:${bot.botId}`} name={bot.name} core={bot.kind === "core"} fallback={bot.role} activity={label} />
+			</button>
+			{bot.kind !== "core" && (
+				<button type="button" className="bot-row-delete" aria-label={t("Delete conversation")} onClick={() => setDeleting(true)}>
+					<InterfaceIcon name="close" size={14} />
+				</button>
+			)}
+			{deleting && <ConfirmDeleteConversation bot={bot} onClose={() => setDeleting(false)} />}
+		</div>
 	);
 }
 
@@ -864,6 +875,7 @@ function CodeObject({ object }: { readonly object: NonNullable<AppExecution["chi
 function BotMenu({ bot, onEdit, readCursor }: { readonly bot: BotSummary; readonly onEdit: () => void; readonly readCursor: number | undefined }) {
 	const [open, setOpen] = useState(false);
 	const [deleting, setDeleting] = useState(false);
+	const [deletingChat, setDeletingChat] = useState(false);
 	const menu = useRef<HTMLDivElement>(null);
 	useEffect(() => {
 		if (!open) return;
@@ -938,9 +950,11 @@ function BotMenu({ bot, onEdit, readCursor }: { readonly bot: BotSummary; readon
 					</button>
 					<ExportTemplateItem botId={bot.botId} onDone={() => setOpen(false)} />
 					<DuplicateBotItem bot={bot} onDone={() => setOpen(false)} />
+					{bot.kind !== "core" && <DeleteConversationItem onChoose={() => (setOpen(false), setDeletingChat(true))} />}
 					{bot.kind !== "core" && <DeleteBotItem onChoose={() => (setOpen(false), setDeleting(true))} />}
 				</div>
 			)}
+			{deletingChat && <ConfirmDeleteConversation bot={bot} onClose={() => setDeletingChat(false)} />}
 			{deleting && <ConfirmDeleteBot bot={bot} onClose={() => setDeleting(false)} />}
 		</div>
 	);
