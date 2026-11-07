@@ -4,12 +4,12 @@ import { hasPendingApproval } from "../src/renderer/src/composer-approval";
 import {
 	approvalChoices,
 	approvalRecordSnapshot,
+	clearConversationApprovals,
 	forgetApproval,
 	mergeApprovalRecords,
 	rememberApproval,
 	rememberTaskConversation,
 	resetApprovalRecords,
-	retireApprovalRecords,
 	settledApprovals,
 	type SettledApproval,
 } from "../src/renderer/src/approval-records";
@@ -82,15 +82,23 @@ describe("approval records", () => {
 		expect(merged).toMatchObject([{ approvalId: "stored", decision: "always_allow", action: "local_exec" }]);
 	});
 
-	it("clears a conversation when its run ends or a later user message arrives", () => {
-		rememberApproval(record({ approvalId: "kept", conversationId: "chat", decision: "allow_once", at: 50 }));
-		retireApprovalRecords({ conversationId: "chat", runActive: true, latestUserAt: 40 });
-		expect(settledApprovals("chat", [])).toHaveLength(1);
-		retireApprovalRecords({ conversationId: "chat", runActive: true, latestUserAt: 60 });
+	it("keeps the latest 32 records after the run ends", () => {
+		for (let i = 0; i < 40; i++) rememberApproval(record({ approvalId: `a${i}`, conversationId: "chat", decision: "allow_once", at: i }));
+		const kept = settledApprovals("chat", []);
+		expect(kept).toHaveLength(32);
+		expect(kept[0]?.approvalId).toBe("a8");
+		expect(kept[31]?.approvalId).toBe("a39");
+		expect(settledApprovals("chat", []).some((item) => item.approvalId === "a0")).toBe(false);
+	});
+
+	it("clears a deleted conversation's records and leaves the others", () => {
+		rememberApproval(record({ approvalId: "chat-row", conversationId: "chat", decision: "allow_once" }));
+		rememberApproval(record({ approvalId: "other-row", conversationId: "other", decision: "deny" }));
+		clearConversationApprovals(undefined);
+		expect(settledApprovals("chat", []).map((item) => item.approvalId)).toEqual(["chat-row"]);
+		clearConversationApprovals("chat");
 		expect(settledApprovals("chat", [])).toEqual([]);
-		rememberApproval(record({ approvalId: "done", conversationId: "chat", decision: "deny", at: 70 }));
-		retireApprovalRecords({ conversationId: "chat", runActive: false });
-		expect(settledApprovals("chat", [])).toEqual([]);
+		expect(settledApprovals("other", []).map((item) => item.approvalId)).toEqual(["other-row"]);
 	});
 
 	it("disables every approval choice while always-allow is in flight and marks that choice as loading", () => {

@@ -587,11 +587,10 @@ function HistoryTranscript({
 						row.content.item.runId === run.runId && row.content.item.category === "interrupted");
 				const retry = snapshot.messageMode && !snapshot.channelId && !snapshot.live && snapshot.retry?.outcomeId &&
 					!rows.some(row => row.id === snapshot.retry!.outcomeId) ? snapshot.retry : undefined;
-				const userAt = latestUserAt(snapshot.items);
 				return <>
 					<Transcript snapshot={{ ...snapshot, items: missingInterruption
 						? [{ kind: "outcome", id: `run-outcome:${run.runId}`, runId: run.runId, category: "interrupted" }]
-						: [] }} {...(userAt === undefined ? {} : { latestUserAt: userAt })} />
+						: [] }} />
 					{retry && <ol className="messages"><OutcomeRow item={{ id: retry.outcomeId!, category: "failed" }} retry={{ botId: snapshot.botId, ...retry }} /></ol>}
 				</>;
 			}}
@@ -599,13 +598,7 @@ function HistoryTranscript({
 	);
 }
 
-function latestUserAt(items: readonly TranscriptItem[]): number | undefined {
-	let latest: number | undefined;
-	for (const item of items) if (item.kind === "user" && item.at !== undefined && (latest === undefined || item.at > latest)) latest = item.at;
-	return latest;
-}
-
-function Transcript({ snapshot,historyOnly=false,latestUserAt:userAt,retryOverride }: { readonly snapshot: ConversationSnapshot;historyOnly?:boolean;latestUserAt?:number;retryOverride?:ReturnType<typeof retryTarget> }) {
+function Transcript({ snapshot,historyOnly=false,retryOverride }: { readonly snapshot: ConversationSnapshot;historyOnly?:boolean;retryOverride?:ReturnType<typeof retryTarget> }) {
 	const approvals = new Map(snapshot.approvals.map((approval) => [approval.callId, approval]));
 	const retry = retryOverride??(snapshot.channelId ? undefined : retryTarget(snapshot.items, snapshot.live !== undefined));
 	const item = (entry: TranscriptItem) =>
@@ -646,7 +639,7 @@ function Transcript({ snapshot,historyOnly=false,latestUserAt:userAt,retryOverri
 				),
 			)}
 			{!historyOnly&&<PendingMessages snapshot={snapshot} />}
-			<TranscriptApprovals snapshot={snapshot} historyOnly={historyOnly} {...(userAt === undefined ? {} : { latestUserAt: userAt })} />
+			<TranscriptApprovals snapshot={snapshot} historyOnly={historyOnly} />
  {!historyOnly&&!snapshot.channelId?.startsWith("routine_")&&!snapshot.messageMode&&snapshot.run?.state==="needs_attention"&&<InterruptedRun key={snapshot.run.runId} run={snapshot.run}/>}
             {!historyOnly&&(snapshot.live || snapshot.run?.state === "running" || snapshot.run?.state === "queued") && (
                 <li className="message message-assistant is-live"><LiveReply snapshot={snapshot} /></li>

@@ -3,6 +3,7 @@ import {
 	beginIdentityDraft,
 	discardIdentityDraft,
 	identityConfirmSurfaceMounted,
+	retainIdentityDrafts,
 	identityDirty,
 	identityDraftSnapshot,
 	patchIdentityDraft,
@@ -72,6 +73,20 @@ describe("identity draft", () => {
 		expect(identityDraftSnapshot("bee")?.confirming).toBe(false);
 		expect(discardIdentityDraft("bee")).toBeUndefined();
 		expect(identityDraftSnapshot("ada")?.name).toBe("Ada renamed");
+		expect(identityDraftSnapshot("bee")).toBeUndefined();
+	});
+
+	it("drops a deleted Bot's draft from the map and keeps the other Bot's draft", () => {
+		beginIdentityDraft(ada);
+		patchIdentityDraft("ada", { name: "Ada renamed" });
+		beginIdentityDraft(bee);
+		patchIdentityDraft("bee", { role: "Copy editor" });
+		expect(discardIdentityDraft("ada")).toBeUndefined();
+		expect(identityDraftSnapshot("ada")).toBeUndefined();
+		expect(identityDraftSnapshot("bee")?.role).toBe("Copy editor");
+		retainIdentityDrafts(["bee"]);
+		expect(identityDraftSnapshot("bee")?.name).toBe("Bee");
+		retainIdentityDrafts([]);
 		expect(identityDraftSnapshot("bee")).toBeUndefined();
 	});
 
