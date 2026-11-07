@@ -24,6 +24,9 @@ function fixture() {
 		pending: async () => [...rows.values()].filter((r) => r.state === "pending"),
 		decided: async () => [...rows.values()].filter((r) => r.decision === "allow_once" || r.decision === "deny" || (typeof r.decision === "object" && r.decision?.kind === "always_allow")),
 		prune: async () => {},
+		forgetConversation: async (conversationId) => {
+			for (const [id, record] of rows) if (record.conversationId === conversationId) rows.delete(id);
+		},
 	};
 	return { rows, store };
 }

@@ -41,6 +41,8 @@ export interface ApprovalStore {
 	 * result was committed before the Host could mark them consumed. Pending records are kept.
 	 */
 	prune(before: number): Promise<void>;
+	/** Delete every record for one conversation. Records with no conversationId are left in place. */
+	forgetConversation(conversationId: string): Promise<void>;
 }
 
 export function approvalStore(harness: Harness, context: Context): ApprovalStore {
@@ -69,6 +71,16 @@ export function approvalStore(harness: Harness, context: Context): ApprovalStore
 		prune: async (before) => {
 			const stale = Object.values(await all())
 				.filter((record) => record.state !== "pending" && (!record.binding || record.state === "consumed") && (record.decidedAt ?? record.createdAt) < before)
+				.map((record) => record.approvalId);
+			if (stale.length === 0) return;
+			await harness.commit(async (tx) => {
+				const doc = await tx.doc(ApprovalsDoc);
+				for (const approvalId of stale) delete doc.approvals[approvalId];
+			}, context);
+		},
+		forgetConversation: async (conversationId) => {
+			const stale = Object.values(await all())
+				.filter((record) => record.conversationId === conversationId)
 				.map((record) => record.approvalId);
 			if (stale.length === 0) return;
 			await harness.commit(async (tx) => {

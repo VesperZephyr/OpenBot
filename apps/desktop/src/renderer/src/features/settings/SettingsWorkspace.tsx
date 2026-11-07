@@ -16,6 +16,7 @@ import { ManagementHistory } from "../../BotManagement";
 import { t } from "../../i18n";
 import { api, closeSettings, holdOnboarding, refreshSettings, report, useStore, type View } from "../../store";
 import { ModelSelect } from "../../ModelSelect";
+import { providerCredentialStatus } from "./provider-credential-status";
 
 const SETTINGS_PAGES = [
 	["settings", "General", "settings"],
@@ -124,7 +125,7 @@ function Settings() {
 				{settings && (
 				<ModelSelect
 					value={settings.defaultModel}
-					emptyLabel={configured.length === 0 ? "Add an API key below first" : "Choose a model"}
+					emptyLabel={configured.length === 0 ? t("Add an API key below first") : t("Choose a model")}
 					onChange={(model) =>
 						void api["settings.update"]({ defaultModel: model ?? null })
 							.then(refreshSettings)
@@ -179,10 +180,7 @@ function Settings() {
 					{configured.map((provider) => (
 						<li key={provider.providerId}>
 							<span>{provider.name}</span>
-							<span className="muted">
-								{t(provider.keyStored ? "Key stored" : "Key from models.json")}
-								{provider.source === "config" && " · models.json"}
-							</span>
+							<span className="muted">{providerCredentialStatus(provider.keyStored, settings.language ?? "en")}</span>
 							{provider.keyStored && (
 								<button
 									type="button"
@@ -218,7 +216,8 @@ function Settings() {
 							.map((provider) => provider.name)
 							.join(", ")}
 						{t(". Save one above or fix its ")}
-						<code>apiKey</code>.
+						<code>apiKey</code>
+						{t(".")}
 					</p>
 				)}
 				{settings.modelConfig.errors.length > 0 && (

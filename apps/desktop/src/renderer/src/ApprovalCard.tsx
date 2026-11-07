@@ -14,7 +14,6 @@ import {
 	forgetApproval,
 	mergeApprovalRecords,
 	rememberApproval,
-	retireApprovalRecords,
 	subscribeApprovalRecords,
 	type ApprovalPress,
 	type SettledApproval,
@@ -62,34 +61,15 @@ export function ApprovalRecord({ record }: { readonly record: SettledApproval })
 	);
 }
 
-export function ApprovalRecordLifetime({
-	conversationId,
-	runActive,
-	latestUserAt,
-}: {
-	readonly conversationId: string | undefined;
-	readonly runActive: boolean;
-	readonly latestUserAt?: number;
-}) {
-	useEffect(() => {
-		retireApprovalRecords({ conversationId, runActive, ...(latestUserAt === undefined ? {} : { latestUserAt }) });
-	}, [conversationId, runActive, latestUserAt]);
-	return null;
-}
-
 export function SettledApprovals({
 	conversationId,
 	pending,
 	skipCallIds,
-	runActive,
-	latestUserAt,
 	listItem = false,
 }: {
 	readonly conversationId: string | undefined;
 	readonly pending: readonly string[];
 	readonly skipCallIds?: ReadonlySet<string>;
-	readonly runActive?: boolean;
-	readonly latestUserAt?: number;
 	readonly listItem?: boolean;
 }) {
 	const records = useSyncExternalStore(subscribeApprovalRecords, approvalRecordSnapshot, approvalRecordSnapshot);
@@ -111,10 +91,6 @@ export function SettledApprovals({
 			active = false;
 		};
 	}, [conversationId, records]);
-	useEffect(() => {
-		if (runActive === undefined) return;
-		retireApprovalRecords({ conversationId, runActive, ...(latestUserAt === undefined ? {} : { latestUserAt }) });
-	}, [conversationId, runActive, latestUserAt]);
 	const visible = mergeApprovalRecords(conversationId, records, remote, pending).filter((record) => !skipCallIds?.has(record.callId));
 	if (visible.length === 0) return null;
 	return (
@@ -135,22 +111,16 @@ export function SettledApprovals({
 export function TranscriptApprovals({
 	snapshot,
 	historyOnly = false,
-	latestUserAt: userAt,
 }: {
 	readonly snapshot: ConversationSnapshot;
 	readonly historyOnly?: boolean;
-	readonly latestUserAt?: number;
 }) {
 	if (historyOnly) return null;
-	const runActive =
-		snapshot.run !== undefined && snapshot.run.state !== "completed" && snapshot.run.state !== "failed" && snapshot.run.state !== "cancelled";
 	return (
 		<>
 			<SettledApprovals
 				conversationId={snapshot.conversationId}
 				pending={snapshot.approvals.map((approval) => approval.approvalId)}
-				runActive={runActive}
-				{...(userAt === undefined ? {} : { latestUserAt: userAt })}
 				listItem
 			/>
 			{snapshot.approvals.map((approval) => (
@@ -213,7 +183,7 @@ export function ApprovalCard({ approval }: { readonly approval: PendingApproval 
 		</pre>
 	);
 	const describedBy = skillChange || tool.startsWith("group_") || ["bot_create", "bot_update", "bot_delete"].includes(tool) ? scopeId : `${scopeId} ${argsId}`;
-	const label = (kind: ApprovalPress, text: string) => (choices[kind === "allow_once" ? "allow" : kind === "deny" ? "deny" : "always"].loading ? t("Loading") : text);
+	const label = (kind: ApprovalPress, text: string) => (choices[kind === "allow_once" ? "allow" : kind === "deny" ? "deny" : "always"].loading ? t("Submitting") : text);
 	return (
 		<ChoiceCard
 			className="approval"
