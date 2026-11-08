@@ -2,7 +2,7 @@ import { auditSpan } from "./audit-profile.ts";
 import { readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
-import { launchApp, type AppHarness } from "./harness.ts";
+import { captureScreenshot, launchApp, type AppHarness } from "./harness.ts";
 let h: AppHarness, core: string, textId: string, imageId: string;
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a/2cAAAAASUVORK5CYII=";
 const poll = (fn: () => Promise<any>) => expect.poll(fn, { timeout: 15000 });
@@ -426,7 +426,7 @@ it("opens a generated group Markdown and HTML pair with aligned controls and ret
 	}
 	await h.shot("08-group-reading-pair");
 	await h.page().getByRole("tab", { name: "radar-reading-with-a-long-shared-report-name.html", exact: true }).click();
-	await auditSpan("screenshot", "artifacts/08-group-html-page", () => page.screenshot({ path: join(h.run, "08-group-html-page.png") }));
+	await auditSpan("screenshot", "artifacts/08-group-html-page", () => captureScreenshot(page, join(h.run, "08-group-html-page.png")));
 	await h.page().getByRole("button", { name: "Close radar-reading-with-a-long-shared-report-name.html", exact: true }).click();
 	await poll(async () => page.isClosed()).toBe(true);
 	await h.page().getByRole("heading", { name: "Radar reading brief", exact: true }).waitFor();

@@ -13,6 +13,33 @@ import { runtimeEnvironment } from "./runtime.ts";
 import { ScriptedModel } from "./scripted-model.ts";
 
 export const repo = resolve(import.meta.dirname, "..");
+
+/**
+ * Electron on the macOS runner sometimes rejects `Page.captureScreenshot` after fonts are already loaded,
+ * while a hidden window is resizing or a dialog has just opened. The same call succeeds a frame or two later.
+ * Retry only that protocol error; a page that never becomes capturable still fails.
+ */
+export async function captureScreenshot(page: Page, path: string): Promise<void> {
+	const attempts = 4;
+	for (let attempt = 0; attempt < attempts; attempt++) {
+		try {
+			// The first capture keeps the default animation clock. A retry waits out CSS motion so the next frame is idle.
+			await page.screenshot(attempt === 0 ? { path } : { path, animations: "disabled" });
+			return;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			if (!message.includes("Unable to capture screenshot") || attempt === attempts - 1) throw error;
+			await page
+				.evaluate(
+					() =>
+						new Promise<void>((resolve) => {
+							requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+						}),
+				)
+				.catch(() => {});
+		}
+	}
+}
 // One Keychain service per checkout, so suites in parallel worktrees never share stored keys.
 const keychainService = `ai.openbot.e2e.${createHash("sha256").update(repo).digest("hex").slice(0, 8)}`;
 
@@ -155,7 +182,7 @@ export async function launchApp(name: string, options: HarnessOptions = {}): Pro
 			await writeFile(hostClockFile, String(Math.max(0, Math.ceil(at - Date.now()))));
 		},
 		shot: async (shotName) => {
-			await auditSpan("screenshot", `${name}/${shotName}`, () => requirePage().screenshot({ path: join(run, `${shotName}.png`) }));
+			await auditSpan("screenshot", `${name}/${shotName}`, () => captureScreenshot(requirePage(), join(run, `${shotName}.png`)));
 		},
 		send: async (text) => {
 			const composer = requirePage().getByRole("textbox", { name: /^Message / });
