@@ -121,8 +121,10 @@ export function BotIdentity({ botId, profileOpen }: { readonly botId: string; re
 	);
 }
 
-function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
-	const botId = bot.botId;
+export function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
+	// The draft, discard, and save stay on the Bot that opened this form, even if `bot` later names another Bot.
+	const [openedBot] = useState(bot);
+	const botId = openedBot.botId;
 	const draft = useSyncExternalStore(
 		subscribeIdentityDraft,
 		() => identityDraftSnapshot(botId),
@@ -131,19 +133,19 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState("");
 	useEffect(() => {
-		if (identityDraftSnapshot(bot.botId)) return;
-		beginIdentityDraft(bot);
-	}, [bot]);
+		if (identityDraftSnapshot(botId)) return;
+		beginIdentityDraft(openedBot);
+	}, [botId, openedBot]);
 	const finishDiscard = (): void => {
-		const pending = discardIdentityDraft(bot.botId);
+		const pending = discardIdentityDraft(botId);
 		onClose();
 		if (pending?.kind === "close") setDetailsOpen(false);
 		else if (pending?.kind === "bot") void openBot(pending.botId);
 	};
 	const requestClose = (): void => {
-		if (requestIdentityClose(bot.botId)) onClose();
+		if (requestIdentityClose(botId)) onClose();
 	};
-	if (!draft || draft.baseline.botId !== bot.botId) return null;
+	if (!draft) return null;
 	const { baseline, name, role, instructions, avatar, confirming, conflictRevision } = draft;
 	const generated =
 		avatar?.kind === "generated"
@@ -157,6 +159,19 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 						: defaultAvatar(baseline.botId);
 	const seed =
 		avatar?.kind === "generated" ? avatar.seed : baseline.avatar?.kind === "generated" ? baseline.avatar.seed : defaultAvatar(baseline.botId).seed;
+	let editorBot = bot;
+	if (bot.botId !== baseline.botId) {
+		const { avatar: _avatar, ...rest } = bot;
+		editorBot = {
+			...rest,
+			botId: baseline.botId,
+			name: baseline.name,
+			role: baseline.role,
+			instructions: baseline.instructions,
+			revision: baseline.revision,
+			...(baseline.avatar ? { avatar: baseline.avatar } : {}),
+		};
+	}
 	const onKeyDown = (event: KeyboardEvent): void => {
 		if (event.key !== "Escape") return;
 		event.preventDefault();
@@ -208,7 +223,7 @@ function IdentityForm({ bot, onClose }: { readonly bot: BotSummary; readonly onC
 	};
 	return (
 		<form className="identity-form" onSubmit={(event) => void save(event)} onKeyDown={onKeyDown}>
-			<AvatarEditor bot={{ ...bot, botId: baseline.botId }} role={role} value={avatar} onChange={(value) => patchIdentityDraft(baseline.botId, { avatar: value })} disabled={saving} />
+			<AvatarEditor bot={editorBot} role={role} value={avatar} onChange={(value) => patchIdentityDraft(baseline.botId, { avatar: value })} disabled={saving} />
 			<div className="identity-motifs" role="group" aria-label={t("Avatar motif")}>
 				{MOTIFS.map((motif) => (
 					<button key={motif} type="button" aria-pressed={generated?.motif === motif} disabled={saving} onClick={() => chooseMotif(motif)}>
