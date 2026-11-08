@@ -10,6 +10,7 @@ import { RadioCard } from "../../ui/boardui/components/base/radio/radio-card";
 import { readHostError } from "../../../../shared/api";
 import { api, connectModel, errorMessage, openBot, refreshBots, refreshSettings, report, useStore } from "../../store";
 import researchTemplate from "./research-bot.json" with { type: "json" };
+import { instructionsWithPersonality } from "./personality";
 import { FILE_PROMPT, RECOMMENDED_PROVIDERS, WEEK_PROMPT, recommendedModelId, systemLanguage } from "./recommended";
 import { PROVIDER_KEY_URLS } from "./provider-links";
 import "./onboarding.css";
@@ -45,6 +46,7 @@ export function Onboarding() {
 	const keyInput = useRef<HTMLInputElement>(null);
 	const modelSelect = useRef<HTMLSelectElement>(null);
 	const named = useRef(false);
+	const appliedPersonality = useRef("");
 	const languageApplied = useRef(false);
 	const alive = useRef(true);
 	const advanceTimer = useRef(0);
@@ -130,11 +132,13 @@ export function Onboarding() {
 			return;
 		}
 		const line = personality.trim();
+		const nextInstructions = instructionsWithPersonality(core.instructions, line, appliedPersonality.current);
 		const change: { name?: string; instructions?: string; avatar?: AvatarChange } = {};
 		if (nextName !== core.name) change.name = nextName;
-		if (line !== "") change.instructions = `${core.instructions}\n\n${line}`;
+		if (nextInstructions !== core.instructions) change.instructions = nextInstructions;
 		if (avatar) change.avatar = avatar;
 		if (change.name === undefined && change.instructions === undefined && change.avatar === undefined) {
+			appliedPersonality.current = line;
 			setStep(3);
 			return;
 		}
@@ -143,6 +147,7 @@ export function Onboarding() {
 		try {
 			await api["bots.update"]({ botId: core.botId, expectedRevision: core.revision, ...change });
 			await refreshBots();
+			appliedPersonality.current = line;
 			setStep(3);
 		} catch (error) {
 			const failure = readHostError(error);

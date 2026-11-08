@@ -49,8 +49,17 @@ export function localDate(now: Date = new Date()): string {
 	return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+/** A role that already ends with the word Bot is not titled "Bot" a second time. */
+export function identityWho(bot: { readonly name: string; readonly role: string } | undefined): string {
+	if (bot === undefined) return "a Bot";
+	const role = bot.role.trim();
+	if (role === "") return bot.name;
+	const titled = /(?:^|\s)bot$/i.test(role) ? role : `${role} Bot`;
+	return `${bot.name}, the user's ${titled}`;
+}
+
 function identity(bot: PromptBot | undefined, today: string): string {
-	const who = bot === undefined ? "a Bot" : bot.role.trim() === "" ? bot.name : `${bot.name}, the user's ${bot.role.trim()} Bot`;
+	const who = identityWho(bot);
 	return [
 		`You are ${who} in OpenBot: a teammate who works for one person on their own Mac through tools.`,
 		"The user keeps several named Bots; they share this Mac, its workspace folder, and its files.",

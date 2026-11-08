@@ -85,6 +85,15 @@ describe("Bot quality", () => {
 		return requests;
 	}
 
+	it("names a role that already says Bot once in the model prompt", async () => {
+		const requests = await open([fauxAssistantMessage("ok")]);
+		await runtime!.createBot({ botId: "piper", name: "Piper", role: "New Bot", model: { provider: "faux", modelId: "faux-1" }, createdAt: 0 });
+		await runtime!.submitAndWait("piper", "req-1", "Hello");
+		const system = systemText(requests[0]);
+		expect(system).toContain("You are Piper, the user's New Bot in OpenBot");
+		expect(system.includes("New Bot Bot")).toBe(false);
+	});
+
 	it("memory_update persists across reopen and reaches the next system prompt", async () => {
 		const requests = await open([
 			fauxAssistantMessage(fauxToolCall("memory_update", { action: "append", section: "Preferences", content: "- Answer in Chinese.", expectedRevision: 0 }), {
