@@ -1,14 +1,58 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { type AppHarness, createBot, launchApp } from "./harness.ts";
-import { viewportSize } from "./pilot-ui.ts";
+import { settingsScrollBeforeLanguageOpen, viewportSize } from "./pilot-ui.ts";
 let h: AppHarness;
+let windowSize = { width: 1280, height: 820 };
 const button = (name: string) => h.page().getByRole("button", {name, exact:true});
 const settings = () => h.page().getByRole("button", {name:/^Settings/}).click();
 const select = () => h.page().locator('.bot-row').filter({hasText:'Canvas'}).click();
-beforeAll(async () => { h = await launchApp('chat-interaction'); await createBot(h, 'Canvas'); }, 60000);
+beforeAll(async () => {
+    h = await launchApp('chat-interaction');
+    windowSize = await h.app().evaluate(({ BrowserWindow }) => {
+        const size = BrowserWindow.getAllWindows()[0]?.getSize();
+        return { width: size?.[0] ?? 1280, height: size?.[1] ?? 820 };
+    });
+    await createBot(h, 'Canvas');
+}, 60000);
+afterEach(async () => { await restoreSharedChat(); });
 afterAll(async () => { await h?.close(); });
+
+/** One app serves every test. A throw used to leave Settings open, and Back returns home after relaunch, so later composers never mount. */
+async function restoreSharedChat(): Promise<void> {
+    if (h === undefined) return;
+    const page = h.page();
+    if (page.isClosed()) return;
+    const composer = page.getByRole('textbox', { name: /^(Message Canvas|发送消息给 Canvas)$/ });
+    for (let attempt = 0; attempt < 4 && !(await composer.isVisible().catch(() => false)); attempt++) {
+        const popup = page.locator('[role="listbox"], [role="menu"], [role="dialog"]').first();
+        if (await popup.isVisible().catch(() => false)) {
+            await page.keyboard.press('Escape');
+            await h.nextFrame();
+            continue;
+        }
+        const back = page.getByRole('button', { name: /^(Back to chat|返回聊天)$/ });
+        if (await back.isVisible().catch(() => false)) {
+            await back.click();
+            await h.nextFrame();
+            continue;
+        }
+        const canvas = page.locator('.sidebar .bot-row').filter({ hasText: 'Canvas' }).first();
+        if (await canvas.isVisible().catch(() => false)) await canvas.click();
+        break;
+    }
+    await composer.waitFor({ timeout: 5000 }).catch(() => {});
+    const resized = await h.app().evaluate(({ BrowserWindow }, size) => {
+        const hostWindow = BrowserWindow.getAllWindows()[0];
+        if (!hostWindow) return false;
+        const [width, height] = hostWindow.getSize();
+        if (width === size.width && height === size.height) return false;
+        hostWindow.setSize(size.width, size.height);
+        return true;
+    }, windowSize);
+    if (resized) await h.nextFrame();
+}
 
 it('defaults to white under a dark OS, saves appearance, and keeps drafts through Settings destinations', async () => {
     await h.page().emulateMedia({colorScheme:'dark'});
@@ -33,8 +77,8 @@ it('defaults to white under a dark OS, saves appearance, and keeps drafts throug
     await expect.poll(() => h.page().locator('html').getAttribute('data-theme')).toBe('dark');
     const language = h.page().locator('#settings-language').getByRole('button', {name:/Language/});
     const settingsScroll = h.page().locator('.settings-content');
-    await settingsScroll.evaluate((element) => { element.scrollTop = 180; });
-    const scrollBefore = await settingsScroll.evaluate((element) => element.scrollTop);
+    // Sample after the snapshot settles. On a short placeholder page this clamps (CI saw 69); the full page then mounts and the click scrolls the trigger to 107.
+    const scrollBefore = await settingsScrollBeforeLanguageOpen(h.page(), 180);
     await language.click();
     await h.page().getByRole('listbox').waitFor();
     await h.page().emulateMedia({colorScheme:'light'});

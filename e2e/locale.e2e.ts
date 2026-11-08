@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { type AppHarness, launchApp } from "./harness.ts";
-import { chooseSettingsLanguage } from "./pilot-ui.ts";
+import { chooseSettingsLanguage, settingsScrollBeforeLanguageOpen } from "./pilot-ui.ts";
 let h: AppHarness;
 beforeAll(async () => { h = await launchApp("locale", { firstLaunch: true, locale: "en" }); }, 90_000);
 afterAll(async () => { await h?.close(); });
@@ -54,8 +54,7 @@ it("defaults to English, supports Chinese onboarding and persists language acros
   return writes;
  });
  const scroller = page.locator(".settings-content");
- await scroller.evaluate((element) => { element.scrollTop = 240; });
- const scrollBefore = await scroller.evaluate((element) => element.scrollTop);
+ const scrollBefore = await settingsScrollBeforeLanguageOpen(page, 240);
  await page.locator("#settings-language").getByRole("button", { name: /语言/ }).click();
  await page.getByRole("listbox").waitFor();
  await page.keyboard.press("Escape");

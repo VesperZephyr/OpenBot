@@ -2,8 +2,26 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
+import type { Locator } from "playwright-core";
 import { launchApp, type AppHarness } from "./harness.ts";
 let h: AppHarness;
+/**
+ * Credential copy renders in the placeholder section, then again after the settings snapshot replaces that node.
+ * `scrollIntoViewIfNeeded` keeps the detached node and throws instead of retrying. Scroll only once `#settings-language` exists.
+ */
+async function scrollSettledCredential(locator: Locator): Promise<void> {
+	await h.page().locator("#settings-language").waitFor();
+	await locator.waitFor();
+	for (let attempt = 0; attempt < 3; attempt++) {
+		try {
+			await locator.scrollIntoViewIfNeeded();
+			return;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			if (!message.includes("not attached to the DOM") || attempt === 2) throw error;
+		}
+	}
+}
 afterEach(async () => {
 	await h?.close();
 });
@@ -56,7 +74,7 @@ it("requires explicit migration, preserves model selection and shows bilingual r
 		.click();
 	// Settings swaps in a second credential section once its snapshot arrives. Wait for that section before scrolling.
 	await h.page().getByRole("heading", { name: "Default model", exact: true }).waitFor();
-	await h.page().getByRole("button", { name: "Migrate saved credentials", exact: true }).scrollIntoViewIfNeeded();
+	await scrollSettledCredential(h.page().getByRole("button", { name: "Migrate saved credentials", exact: true }));
 	await h.shot("01-migration-en");
 	expect(await h.api("credentials.status")).toMatchObject({ migrationRequired: 1 });
 	await h.relaunch();
@@ -72,7 +90,7 @@ it("requires explicit migration, preserves model selection and shows bilingual r
 	expect(await readFile(join(h.dataDirectory, "credentials-v2.json"), "utf8")).toContain("migration-model");
 	expect(await readFile(join(h.dataDirectory, "credentials.json"), "utf8")).not.toContain("migration-model");
 	await h.api("settings.update", { language: "zh-CN" });
-	await h.page().getByRole("heading", { name: "凭据存储", exact: true }).scrollIntoViewIfNeeded();
+	await scrollSettledCredential(h.page().getByRole("heading", { name: "凭据存储", exact: true }));
 	await h.shot("02-migration-zh");
 	await h.api("credentials.delete", { providerId: "migration-model" });
 });
@@ -87,10 +105,9 @@ it("reports denied native access without changing Keychain state or exposing a v
 		.getByRole("button", { name: /^Settings/ })
 		.click();
 	await h.page().getByRole("heading", { name: "Settings", exact: true }).waitFor();
-	await h
-		.page()
-		.getByText("Keychain access is unavailable. Unlock your Keychain or re-enter affected credentials.", { exact: true })
-		.scrollIntoViewIfNeeded();
+	await scrollSettledCredential(
+		h.page().getByText("Keychain access is unavailable. Unlock your Keychain or re-enter affected credentials.", { exact: true }),
+	);
 	await h.shot("03-denied-en");
 	expect(await h.page().locator("body").innerText()).not.toContain("B14E_DENIED_SENTINEL");
 });
