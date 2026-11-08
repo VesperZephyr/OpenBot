@@ -292,7 +292,10 @@ it("shows the approved welcome and conversation composition using real local pro
 	);
 	await h.page().getByRole("heading", { name: "Let’s make a little space." }).waitFor();
 	await poll(async () => (await h.api("conversations.snapshot", { botId: core })).run).toBeUndefined();
-	await h.page().locator(".sidebar").getByText("Working", { exact: true }).waitFor({ state: "hidden" });
+	// The working row shows "Working" on the activity label and again as the preview, so each is waited on instead of a sidebar-wide query.
+	const openBot = h.page().locator(".sidebar .bot-row").filter({ has: h.page().locator(".roster-name", { hasText: "OpenBot" }) });
+	await openBot.locator(".activity-text").getByText("Working", { exact: true }).waitFor({ state: "hidden" });
+	await openBot.locator(".bot-row-role").getByText("Working", { exact: true }).waitFor({ state: "hidden" });
 	await h.shot("07-reference-conversation");
 	await edit();
 	await h.page().getByRole("button", { name: "Generate options", exact: true }).click();
