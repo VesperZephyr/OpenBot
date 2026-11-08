@@ -77,6 +77,7 @@ export const RENDERER_METHODS = [
 	"bots.memory.restore",
 	"conversations.reset",
 	"conversations.delete",
+	"conversations.reopen",
 	"policy.get",
 	"policy.update",
 	"policy.rules.delete",

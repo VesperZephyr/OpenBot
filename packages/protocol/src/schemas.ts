@@ -216,6 +216,7 @@ export const HOST_PARAM_SCHEMAS = {
 			maxLength: 262,
 		}),
 	}),
+	"conversations.reopen": BotOnly,
 	"policy.get": NoParams,
 	"policy.update": strict({
 		commandSetting: Type.Optional(Type.Enum(["ask", "allow", "never"])),

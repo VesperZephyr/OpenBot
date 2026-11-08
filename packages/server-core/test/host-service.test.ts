@@ -243,6 +243,72 @@ describe("HostService", () => {
 		await expect(service.handle("messages.submit", { botId: bot.botId, requestId: "after-delete", text: "Hi" })).rejects.toThrow("Conversation is unavailable");
 	});
 
+	it("starts a new direct chat after conversation delete without restoring approvals or the old transcript", async () => {
+		await service.handle("settings.update", { defaultModel: SCRIPTED_MODEL });
+		const bot = await service.handle("bots.create", { requestId: "fresh-chat", name: "Cedar" });
+		const other = await service.handle("bots.create", { requestId: "fresh-other", name: "Birch" });
+		const conversationId = await runtime.conversationKey(bot.botId);
+		const otherId = await runtime.conversationKey(other.botId);
+		const record = {
+			botId: bot.botId,
+			callId: "call",
+			tool: "local_exec",
+			args: {},
+			target: { kind: "local" as const, targetId: "mac" },
+			reason: "Runs a command on this Mac",
+			createdAt: 1,
+			state: "consumed" as const,
+			decision: "allow_once" as const,
+			decidedAt: 2,
+		};
+		await runtime.approvals().put({ ...record, approvalId: "gone", conversationId });
+		await runtime.approvals().put({ ...record, approvalId: "kept", botId: other.botId, conversationId: otherId });
+		await service.handle("conversations.subscribe", { botId: bot.botId });
+		await service.handle("messages.submit", { botId: bot.botId, requestId: "old-thread", text: "OLD_THREAD_SENTINEL" });
+		await answeredWindow(bot.botId);
+		await vi.waitFor(async () => {
+			expect((await service.handle("conversations.search", { query: "OLD_THREAD_SENTINEL" })).items).toHaveLength(1);
+		}, { timeout: 10000 });
+		await service.handle("conversations.delete", { conversationKey: `bot:${bot.botId}` });
+		expect((await service.handle("bots.list", {})).some((item) => item.botId === bot.botId && item.status !== "deleted")).toBe(true);
+		await expect(service.handle("messages.submit", { botId: bot.botId, requestId: "while-deleted", text: "Still deleted" })).rejects.toThrow(
+			"Conversation is unavailable",
+		);
+		const core = (await service.handle("bots.list", {})).find((item) => item.kind === "core");
+		await expect(service.handle("conversations.delete", { conversationKey: `bot:${core!.botId}` })).rejects.toThrow("The Core conversation cannot be deleted");
+		await expect(service.handle("conversations.reopen", { botId: core!.botId })).rejects.toThrow("The Core conversation cannot be deleted");
+		await service.handle("conversations.reopen", { botId: bot.botId });
+		expect(await runtime.conversationKey(bot.botId)).toBe(conversationId);
+		expect(await service.handle("approvals.list", { conversationId })).toEqual([]);
+		expect(await service.handle("approvals.list", { conversationId: otherId })).toMatchObject([{ approvalId: "kept", conversationId: otherId }]);
+		const opened = (await service.handle("conversations.list", {})).find((row) => row.conversationKey === `bot:${bot.botId}`);
+		expect(opened?.deleted).toBeUndefined();
+		expect(opened?.latest).toBeUndefined();
+		expect(opened?.unreadCount).toBe(0);
+		expect((await service.handle("conversations.list", {})).find((row) => row.conversationKey === `bot:${other.botId}`)?.deleted).toBeUndefined();
+		const transcript = async () => {
+			const result = await service.handle("conversations.window", { conversationKey: `bot:${bot.botId}`, position: { kind: "latest" }, limit: 100 });
+			if (result.status !== "ready") throw Error(`History is ${result.status}`);
+			return JSON.stringify(result.window.rows);
+		};
+		await vi.waitFor(async () => {
+			expect(await transcript()).not.toContain("OLD_THREAD_SENTINEL");
+		}, { timeout: 10000 });
+		await vi.waitFor(async () => {
+			expect((await service.handle("conversations.search", { query: "OLD_THREAD_SENTINEL" })).items).toHaveLength(0);
+		}, { timeout: 10000 });
+		await service.handle("messages.submit", { botId: bot.botId, requestId: "new-thread", text: "NEW_THREAD_SENTINEL" });
+		await vi.waitFor(async () => {
+			const text = await transcript();
+			expect(text).toContain("NEW_THREAD_SENTINEL");
+			expect(text).not.toContain("OLD_THREAD_SENTINEL");
+		}, { timeout: 10000 });
+		await expect(service.handle("conversations.reopen", { botId: bot.botId })).rejects.toThrow("Conversation is unavailable");
+		await expect(service.handle("conversations.reopen", { botId: other.botId })).rejects.toThrow("Conversation is unavailable");
+		expect(await service.handle("approvals.list", { conversationId })).toEqual([]);
+		expect((await service.handle("bots.list", {})).some((item) => item.botId === bot.botId)).toBe(true);
+	}, 20000);
+
 	it("lists bounded summaries without loading histories and rejects read receipts for deleted Bots", async () => {
 		const bot = await service.handle("bots.create", { requestId: "index", name: "Reader" });
 		const snap = vi.spyOn(runtime, "snapshot");

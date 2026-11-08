@@ -22,6 +22,9 @@ port.on("message", async (request: HistoryRequest) => {
 			case "checkpoint":
 				value = store.checkpoint(request.partition);
 				break;
+			case "forget":
+				store.conceal(request.partition, request.key, request.checkpoint);
+				break;
 			case "compactionOrdinal":
 				value = store.compactionOrdinal(request.partition, request.rowId, request.head);
 				break;

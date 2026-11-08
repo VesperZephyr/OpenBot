@@ -725,6 +725,11 @@ export type HostMethods = {
 	 * The Bot stays. Core cannot be removed from the list.
 	 */
 	"conversations.delete": { params: { readonly conversationKey: ConversationKey }; result: { readonly conversationId: string } };
+	/**
+	 * Start an empty direct chat for a Bot whose conversation was deleted. The Bot, workspace files,
+	 * and conversation key stay. Older entries remain stored. Approval records cleared by delete stay cleared.
+	 */
+	"conversations.reopen": { params: { readonly botId: BotId }; result: null };
 	"policy.get": { params: Record<string, never>; result: PolicySettings };
 	"policy.update": {
 		params: { readonly commandSetting?: CommandSetting; readonly readOnlyDefault?: boolean };
@@ -838,6 +843,7 @@ export const HOST_METHODS = [
 	"bots.memory.restore",
 	"conversations.reset",
 	"conversations.delete",
+	"conversations.reopen",
 	"policy.get",
 	"policy.update",
 	"policy.rules.delete",

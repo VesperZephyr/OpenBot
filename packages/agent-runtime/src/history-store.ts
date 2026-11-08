@@ -182,6 +182,38 @@ export class HistoryStore {
 		if (ordinal >= head * 1024) throw Error("History ordinal exceeds limit");
 		return ordinal;
 	}
+	/** Drop the visible rows and search text for one direct chat and resume indexing after `checkpoint`. */
+	conceal(partition: string, key: ConversationKey, checkpoint: string): void {
+		if (checkpoint.length > 8192) throw Error("History checkpoint exceeds limit");
+		this.db.exec("BEGIN");
+		try {
+			this.db.prepare("DELETE FROM rows WHERE partition=?").run(partition);
+			this.db.prepare("DELETE FROM details WHERE partition=?").run(partition);
+			this.db.prepare("DELETE FROM tool_links WHERE partition=?").run(partition);
+			this.db.prepare("DELETE FROM staged_details WHERE partition=?").run(partition);
+			this.db.prepare("DELETE FROM staged_messages WHERE partition=?").run(partition);
+			this.db.prepare("DELETE FROM detail_refs WHERE partition=?").run(partition);
+			this.db.prepare("DELETE FROM messages WHERE conversation_key=?").run(key);
+			this.db
+				.prepare(
+					"INSERT INTO conversations(key,ready,checkpoint,message_count,incoming) VALUES(?,1,?,0,0) ON CONFLICT(key) DO UPDATE SET ready=1,checkpoint=excluded.checkpoint,message_count=0,incoming=0",
+				)
+				.run(key, checkpoint);
+			this.db
+				.prepare(
+					"INSERT INTO display_state(partition,revision,incoming,ready,checkpoint) VALUES(?,1,0,1,?) ON CONFLICT(partition) DO UPDATE SET revision=revision+1,incoming=0,ready=1,checkpoint=excluded.checkpoint",
+				)
+				.run(partition, checkpoint);
+			this.db.exec("COMMIT");
+		} catch (error) {
+			try {
+				this.db.exec("ROLLBACK");
+			} catch {
+				/* SQLite may already have rolled back a failed write. */
+			}
+			throw error;
+		}
+	}
 	checkpoint(partition: string): string | undefined {
 		return (this.db.prepare("SELECT checkpoint FROM display_state WHERE partition=?").get(partition) as { checkpoint: string } | undefined)
 			?.checkpoint;

@@ -22,7 +22,7 @@ import { composers } from "./useComposer";
 import { readHostError, type HostState } from "../../shared/api";
 import { setDetailsOpen } from "./features/details/details-open";
 import { identityConfirmSurfaceMounted, requestIdentityClose, retainIdentityDrafts } from "./features/details/identity-draft";
-import { planConversationDelete, type ListedConversation } from "./conversation-delete";
+import { directChatVisible, freshConversationSummary, planConversationDelete, type ListedConversation } from "./conversation-delete";
 import { hostCalls } from "./host-calls";
 import {
 	beginSettingsClose,
@@ -315,9 +315,25 @@ export async function openBot(botId: string, searchTarget?: SearchTarget): Promi
 
 function listedConversations(state: { readonly bots: readonly BotSummary[]; readonly groups: readonly Group[]; readonly summaries: Readonly<Record<string, ConversationSummary>> }): ListedConversation[] {
 	return [
-		...state.bots.filter((bot) => bot.status === "active" && state.summaries[`bot:${bot.botId}`]?.deleted !== true).map((bot) => ({ key: `bot:${bot.botId}` as const, core: bot.kind === "core" })),
+		...state.bots.filter((bot) => directChatVisible(bot, state.summaries, bot.botId)).map((bot) => ({ key: `bot:${bot.botId}` as const, core: bot.kind === "core" })),
 		...state.groups.filter((group) => state.summaries[`group:${group.groupId}`]?.deleted !== true).map((group) => ({ key: `group:${group.groupId}` as const })),
 	];
+}
+
+/** Confirmed start. The Host keeps the Bot and opens an empty direct chat; this drops the deleted preview and selects it. */
+export async function startConversation(botId: string): Promise<void> {
+	const view = useStore.getState().view;
+	if (view.kind === "bot" && view.botId !== botId && !requestIdentityClose(view.botId, { kind: "bot", botId }, { confirmVisible: identityConfirmSurfaceMounted() })) {
+		setDetailsOpen(true);
+		return;
+	}
+	await api["conversations.reopen"]({ botId });
+	const state = useStore.getState();
+	const key = `bot:${botId}` as const;
+	const current = state.summaries[key];
+	if (current?.deleted) useStore.setState({ summaries: { ...state.summaries, [key]: freshConversationSummary(current) } });
+	await openBot(botId);
+	await Promise.all([refreshBots(), refreshSummaries()]);
 }
 
 /** Confirmed delete. The Host clears that conversation's approval records; this drops the row and any ghost selection. */

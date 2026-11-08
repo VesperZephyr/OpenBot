@@ -26,6 +26,32 @@ export function conversationRemoved(
 	return summaries[key]?.deleted === true;
 }
 
+/** Active Bots whose direct chat is still in the list. */
+export function directChatVisible(
+	bot: { readonly status: string },
+	summaries: Readonly<Record<string, { readonly deleted?: boolean } | undefined>>,
+	botId: string,
+): boolean {
+	return bot.status === "active" && !conversationRemoved(summaries, `bot:${botId}`);
+}
+
+/** A specialist Bot whose direct chat was deleted. Hidden and active Bots both stay findable here. */
+export function awaitingNewChat(
+	bot: { readonly status: string; readonly kind?: string },
+	summaries: Readonly<Record<string, { readonly deleted?: boolean } | undefined>>,
+	botId: string,
+): boolean {
+	return bot.kind !== "core" && bot.status !== "deleted" && conversationRemoved(summaries, `bot:${botId}`);
+}
+
+/** Local view of a reopened chat: the deleted thread's preview and unread count are not the new chat. */
+export function freshConversationSummary<T extends { readonly incomingCount: number; readonly deleted?: boolean; readonly latest?: unknown }>(
+	summary: T,
+): Omit<T, "deleted" | "latest"> & { readonly readThrough: number; readonly unreadCount: number } {
+	const { deleted: _deleted, latest: _latest, ...rest } = summary;
+	return { ...rest, readThrough: summary.incomingCount, unreadCount: 0 };
+}
+
 /** Where to land after the open chat is removed. Core stays ahead of other remaining chats. */
 export function replacementChat(entries: readonly ListedConversation[]): ConversationView {
 	const next = entries.find((entry) => entry.core) ?? entries[0];

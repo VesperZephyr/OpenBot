@@ -6,7 +6,7 @@ import {
 	settledApprovals,
 	type SettledApproval,
 } from "../src/renderer/src/approval-records";
-import { planConversationDelete } from "../src/renderer/src/conversation-delete";
+import { awaitingNewChat, directChatVisible, freshConversationSummary, planConversationDelete } from "../src/renderer/src/conversation-delete";
 import {
 	beginIdentityDraft,
 	identityDraftSnapshot,
@@ -104,6 +104,53 @@ describe("conversation delete", () => {
 			view: { kind: "bot", botId: "ada" },
 			lastChat: { kind: "bot", botId: "ada" },
 		});
+		expect(identityDraftSnapshot("bee")).toMatchObject({ name: "Bee draft" });
+		expect(identityDraftSnapshot("ada")).toMatchObject({ name: "Ada" });
+	});
+
+	it("keeps a deleted specialist discoverable for a new chat, without restoring its approvals or other drafts", () => {
+		rememberApproval(record("ada-row", "ada-chat", "allow_once"));
+		rememberApproval(record("bee-row", "bee-chat", "deny"));
+		const bot = (botId: string, name: string) => ({ botId, name, role: "", instructions: "", revision: 1 });
+		beginIdentityDraft(bot("ada", "Ada"));
+		beginIdentityDraft(bot("bee", "Bee"));
+		patchIdentityDraft("bee", { name: "Bee draft" });
+		const summaries = {
+			"bot:ada": { deleted: true as const },
+			"bot:bee": {},
+			"bot:core": {},
+		};
+		planConversationDelete({
+			confirmed: true,
+			deletedKey: "bot:ada",
+			conversationId: "ada-chat",
+			entries,
+			view: { kind: "bot", botId: "ada" },
+			lastChat: { kind: "bot", botId: "ada" },
+		});
+		expect(directChatVisible({ status: "active" }, summaries, "ada")).toBe(false);
+		expect(awaitingNewChat({ status: "active", kind: "specialist" }, summaries, "ada")).toBe(true);
+		expect(awaitingNewChat({ status: "hidden", kind: "specialist" }, summaries, "ada")).toBe(true);
+		expect(directChatVisible({ status: "active" }, summaries, "bee")).toBe(true);
+		expect(awaitingNewChat({ status: "active", kind: "specialist" }, summaries, "bee")).toBe(false);
+		expect(awaitingNewChat({ status: "hidden", kind: "specialist" }, summaries, "bee")).toBe(false);
+		expect(awaitingNewChat({ status: "active", kind: "core" }, { "bot:core": { deleted: true } }, "core")).toBe(false);
+		expect(directChatVisible({ status: "deleted" }, summaries, "ada")).toBe(false);
+		const fresh = freshConversationSummary({
+			conversationKey: "bot:ada" as const,
+			incomingCount: 2,
+			readThrough: 0,
+			unreadCount: 2,
+			deleted: true as const,
+			latest: { id: "2", senderId: "ada", text: "Kept", at: 10 },
+		});
+		expect("deleted" in fresh).toBe(false);
+		expect("latest" in fresh).toBe(false);
+		expect(fresh.unreadCount).toBe(0);
+		expect(fresh.readThrough).toBe(2);
+		expect(fresh.incomingCount).toBe(2);
+		expect(settledApprovals("ada-chat", [])).toEqual([]);
+		expect(settledApprovals("bee-chat", []).map((item) => item.approvalId)).toEqual(["bee-row"]);
 		expect(identityDraftSnapshot("bee")).toMatchObject({ name: "Bee draft" });
 		expect(identityDraftSnapshot("ada")).toMatchObject({ name: "Ada" });
 	});

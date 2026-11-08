@@ -34,7 +34,7 @@ import { PendingMessages, StopButton, StoppedNote } from "./runs";
 import { ApprovalCard, TranscriptApprovals } from "./ApprovalCard";
 import { GroupView, GroupRow, GroupEditor } from "./Groups";
 import { ConfirmDeleteBot, ConfirmDeleteConversation, DeleteBotItem, DeleteConversationItem, DuplicateBotItem } from "./BotLifecycle";
-import { conversationRemoved } from "./conversation-delete";
+import { awaitingNewChat, conversationRemoved, directChatVisible } from "./conversation-delete";
 import { Onboarding } from "./features/onboarding/Onboarding";
 import { ProfileDetails } from "./features/details/ProfileDetails";
 import { toggleDetails, useDetailsOpen } from "./features/details/details-open";
@@ -45,7 +45,7 @@ import { conversationPresence, headerStatusLabel } from "./conversation-status";
 import { displayToolOutput } from "./tool-output";
 import { botGreeting, conversationExamples } from "./examples";
 import { composers } from "./useComposer";
-import { api, closeSettings, closeSettingsFromEscape, connect, createBot, openBot, openSettings, refreshBots, report, sendMessage, useStore } from "./store";
+import { api, closeSettings, closeSettingsFromEscape, connect, createBot, openBot, openSettings, refreshBots, report, sendMessage, startConversation, useStore } from "./store";
 
 export function App() {
 	useDialogFocus();
@@ -189,7 +189,7 @@ export function App() {
 /** Core and pinned chats keep priority; all other conversations share recency ordering. */
 function chatEntries(state: Pick<ReturnType<typeof useStore.getState>, "bots" | "groups" | "summaries">) {
     const entries = [
-        ...state.bots.filter(bot => bot.status === "active" && !conversationRemoved(state.summaries, `bot:${bot.botId}`)).map(bot => ({ kind: "bot" as const, bot, key: `bot:${bot.botId}` as const, priority: bot.kind === "core" ? 2 : bot.pinned ? 1 : 0, at: bot.createdAt })),
+        ...state.bots.filter(bot => directChatVisible(bot, state.summaries, bot.botId)).map(bot => ({ kind: "bot" as const, bot, key: `bot:${bot.botId}` as const, priority: bot.kind === "core" ? 2 : bot.pinned ? 1 : 0, at: bot.createdAt })),
         ...state.groups.map(group => ({ kind: "group" as const, group, key: `group:${group.groupId}` as const, priority: 0, at: group.createdAt })),
     ];
     return entries.toSorted((a, b) => b.priority - a.priority || recentTime(b.key, state.summaries, b.at) - recentTime(a.key, state.summaries, a.at) || a.key.localeCompare(b.key));
@@ -212,6 +212,13 @@ function Sidebar({ onNew, query, onQuery, searchOpen, onSearchOpen, onSettings }
 			eligible(`bot:${bot.botId}`) &&
 			`${bot.name} ${bot.role}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
 	);
+	const awaiting = bots
+		.filter(
+			(bot) =>
+				awaitingNewChat(bot, summaries, bot.botId) &&
+				`${bot.name} ${bot.role}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+		)
+		.toSorted((a, b) => a.createdAt - b.createdAt || a.botId.localeCompare(b.botId));
 	const selected = view.kind === "bot" ? view.botId : undefined;
 	const onboarding = useStore((state) => state.onboarding);
 
@@ -265,8 +272,14 @@ function Sidebar({ onNew, query, onQuery, searchOpen, onSearchOpen, onSettings }
                     {visible.map(entry => entry.kind === "bot"
                         ? <BotRow key={entry.key} bot={entry.bot} selected={entry.bot.botId === selected} />
                         : <GroupRow key={entry.key} group={entry.group} />)}
-                    {!visible.length && <p className="section-empty">{t(query || unreadOnly ? "No matching conversations" : "Create a Bot for a specific job")}</p>}
+                    {!visible.length && awaiting.length === 0 && <p className="section-empty">{t(query || unreadOnly ? "No matching conversations" : "Create a Bot for a specific job")}</p>}
                 </div>
+				{awaiting.length > 0 && (
+					<div className="section" aria-label={t("Start a chat")}>
+						<p className="section-title">{t("Start a chat · ")}{awaiting.length}</p>
+						{awaiting.map((bot) => <AwaitingChatRow key={bot.botId} bot={bot} />)}
+					</div>
+				)}
 				{hidden.length > 0 && (
 					<div className="section">
 						<button
@@ -307,6 +320,29 @@ const ACTIVITY_LABEL: Record<BotSummary["activity"], string | undefined> = {
 	unread: "Unread",
 	idle: undefined,
 };
+
+function AwaitingChatRow({ bot }: { readonly bot: BotSummary }) {
+	return (
+		<div className="bot-row-line">
+			<button
+				type="button"
+				className="bot-row"
+				onClick={() => void startConversation(bot.botId).catch(report)}
+				aria-label={t("Start a new chat with {name}", { name: bot.name })}
+			>
+				<Avatar bot={bot} />
+				<span className="bot-row-text">
+					<span className="bot-row-name">
+						<span className="roster-name">{bot.name}</span>
+					</span>
+					<span className="roster-preview-line">
+						<span className="bot-row-role">{t("New chat")}</span>
+					</span>
+				</span>
+			</button>
+		</div>
+	);
+}
 
 function BotRow({ bot, selected }: { readonly bot: BotSummary; readonly selected: boolean }) {
 	const label = bot.activity === "unread" ? undefined : ACTIVITY_LABEL[bot.activity];

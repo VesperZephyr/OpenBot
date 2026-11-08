@@ -436,6 +436,16 @@ export class HostService {
 				this.#emit({ type: "bots.changed", payload: {} });
 				return { conversationId };
 			},
+			"conversations.reopen": async ({ botId }) => {
+				const bot = await this.#liveBot(botId);
+				if (bot.kind === "core") throw new ProtocolError("invalid_request", "The Core conversation cannot be deleted");
+				const conversationId = await this.#runtime.conversationKey(botId);
+				await this.#runs.cancelMatching((run) => run.botId === botId && (!run.channelId || run.channelId === "direct"));
+				await this.background.stopConversation(botId, conversationId);
+				await this.#runtime.reopenDirect(botId);
+				this.#emit({ type: "bots.changed", payload: {} });
+				return null;
+			},
 			"policy.get": () => this.#policy.get(),
  "policy.ask.create":input=>this.#policy.createAsk(input),
  "policy.ask.delete":input=>this.#policy.deleteAsk(input),
@@ -635,6 +645,7 @@ export class HostService {
 				"bots.duplicate",
 				"bots.delete",
 				"conversations.delete",
+				"conversations.reopen",
 				"messages.submit",
 				"groups.change",
 				"groups.send",

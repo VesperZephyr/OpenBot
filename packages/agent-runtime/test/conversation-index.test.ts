@@ -128,3 +128,33 @@ it("keeps a deleted conversation deleted and leaves the other conversation", asy
 	expect((await row("bot:a")).deleted).toBe(true);
 	expect((await row("bot:b")).deleted).toBeUndefined();
 });
+
+it("starts a fresh preview after a deleted direct chat without restoring that transcript or the other chat", async () => {
+	const kept = snapshot([message("1", "user"), message("2", "assistant", "Kept")]);
+	await runtime.conversationIndex().projectDirect(kept);
+	await runtime.conversationIndex().projectDirect(snapshot([message("9", "user", "Other")], "b"));
+	const floor = directProjection(kept);
+	await runtime.conversationIndex().deleteConversation("bot:a");
+	await runtime.conversationIndex().projectDirect(snapshot([...kept.items, message("3", "assistant", "Later")]));
+	expect(await row("bot:a")).toMatchObject({ deleted: true, latest: { text: "Kept" } });
+	await runtime.conversationIndex().reopenConversation("bot:a", floor);
+	expect((await row("bot:a")).deleted).toBeUndefined();
+	expect((await row("bot:a")).latest).toBeUndefined();
+	expect(await row("bot:a")).toMatchObject({ incomingCount: floor.incomingCount, readThrough: floor.incomingCount, unreadCount: 0 });
+	await runtime.conversationIndex().projectDirect(kept);
+	expect((await row("bot:a")).latest).toBeUndefined();
+	await runtime.conversationIndex().projectDirect(snapshot([...kept.items, message("3", "assistant", "Again")]));
+	expect(await row("bot:a")).toMatchObject({ latest: { text: "Again" }, unreadCount: 1 });
+	expect((await row("bot:b")).deleted).toBeUndefined();
+	expect(await row("bot:b")).toMatchObject({ latest: { text: "Other" } });
+	await expect(runtime.conversationIndex().reopenConversation("bot:a", floor)).rejects.toThrow("Conversation is unavailable");
+	await expect(runtime.conversationIndex().reopenConversation("bot:b", directProjection(snapshot([message("9", "user", "Other")])))).rejects.toThrow(
+		"Conversation is unavailable",
+	);
+	await runtime.conversationIndex().markRead("bot:a", floor.incomingCount + 1);
+	await runtime.close();
+	runtime = await open();
+	expect((await row("bot:a")).deleted).toBeUndefined();
+	expect(await row("bot:a")).toMatchObject({ latest: { text: "Again" }, unreadCount: 0 });
+	expect(await row("bot:b")).toMatchObject({ latest: { text: "Other" } });
+});

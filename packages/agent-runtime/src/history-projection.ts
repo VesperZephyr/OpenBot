@@ -42,6 +42,13 @@ type Source = {
  taskId?: string;
 };
 type Checkpoint = { source: number | string; position: number; hash: string };
+type Conceal = {
+	conversationId: number;
+	key: ConversationKey;
+	resolve: () => void;
+	reject: (error: unknown) => void;
+	settled: boolean;
+};
 /** UTF-8 byte bound without splitting a surrogate pair. */
 export function* historyChunks(text: string, max = 32768): Generator<string> {
 	let part = "",
@@ -75,6 +82,8 @@ export class HistoryProjection {
 	#source = "";
 	#selected: string | undefined;
 	#reads = 0;
+	#conceals: Conceal[] = [];
+	#concealed = new Map<string, Conceal>();
 	private harness: Harness;
 	private context: Context;
 	private options: {
@@ -115,7 +124,7 @@ export class HistoryProjection {
 			.catch(() => this.failed())
 			.finally(() => {
 				this.#busy = false;
-				if (!this.#closed && !this.#unavailable && (this.#rescan || this.#dirty.size)) this.schedule();
+				if (!this.#closed && !this.#unavailable && (this.#rescan || this.#dirty.size || this.#conceals.length)) this.schedule();
 			});
 	}
 	private async open() {
@@ -147,7 +156,16 @@ export class HistoryProjection {
 	private async run() {
 		await yieldTurn();
 		if (!this.#worker) await this.open();
-		while (!this.#closed && (this.#rescan || this.#dirty.size)) {
+		while (!this.#closed && (this.#rescan || this.#dirty.size || this.#conceals.length)) {
+			while (this.#conceals.length && !this.#closed) {
+				const pending = this.#conceals.shift()!;
+				try {
+					await this.#conceal(pending);
+				} catch (error) {
+					this.#finishConceal(pending, error);
+				}
+			}
+			if (this.#closed || (!this.#rescan && !this.#dirty.size)) break;
 			const all = this.#rescan;
 			this.#rescan = false;
 			const dirty = this.#dirty;
@@ -163,7 +181,21 @@ export class HistoryProjection {
 					dirty.has(source.partition) ||
 					(source.conversationId !== undefined && dirty.has(source.conversationId))
 				) {
-					if (await this.project(source)) this.#validated.add(source.partition);
+					const projected = await this.project(source);
+					if (projected) {
+						this.#validated.add(source.partition);
+						const pending = this.#concealed.get(source.partition);
+						if (pending) {
+							this.#concealed.delete(source.partition);
+							this.#finishConceal(pending);
+						}
+					} else {
+						const pending = this.#concealed.get(source.partition);
+						if (pending && !this.#dirty.has(source.partition) && !this.#rescan) {
+							this.#concealed.delete(source.partition);
+							this.#finishConceal(pending, new ProtocolError("host_unavailable", "History is unavailable"));
+						}
+					}
 				}
 				await yieldTurn();
 			}
@@ -171,6 +203,7 @@ export class HistoryProjection {
 		this.options.changed();
 	}
 	private async failed() {
+		this.#rejectConceals(new ProtocolError("host_unavailable", "History is unavailable"));
 		await this.#worker?.close().catch(() => {});
 		this.#worker = undefined;
 		this.#validated.clear();
@@ -212,9 +245,72 @@ export class HistoryProjection {
 	}
 	async close() {
 		this.#closed = true;
+		this.#rejectConceals(new ProtocolError("host_unavailable", "History is unavailable"));
 		this.#stop();
 		await this.#line;
 		await this.#worker?.close();
+	}
+	/**
+	 * Hide the current direct transcript and resume the index after its last entry.
+	 * Resolves once that checkpoint has been read back, so a mismatch still rejects before the caller treats the chat as new.
+	 */
+	conceal(conversationId: number, key: ConversationKey): Promise<void> {
+		if (!key.startsWith("bot:")) return Promise.reject(new ProtocolError("invalid_request", "Only a direct conversation can be deleted"));
+		if (this.#closed || this.#unavailable) return Promise.reject(new ProtocolError("host_unavailable", "History is unavailable"));
+		return new Promise((resolve, reject) => {
+			this.#conceals.push({ conversationId, key, resolve, reject, settled: false });
+			this.schedule();
+		});
+	}
+	#finishConceal(pending: Conceal, error?: unknown) {
+		if (pending.settled) return;
+		pending.settled = true;
+		if (error === undefined) pending.resolve();
+		else pending.reject(error);
+	}
+	#rejectConceals(error: Error) {
+		for (const pending of this.#conceals.splice(0)) this.#finishConceal(pending, error);
+		for (const pending of this.#concealed.values()) this.#finishConceal(pending, error);
+		this.#concealed.clear();
+	}
+	async #conceal(pending: Conceal) {
+		if (!this.#worker) throw new ProtocolError("host_unavailable", "History is unavailable");
+		const conversation = await this.harness.conversation(pending.conversationId as ConversationId, this.context);
+		if (!conversation) throw new ProtocolError("not_found", "Conversation is unavailable");
+		let lastId: EntryId | undefined;
+		let cursor: Parameters<typeof conversation.entries>[2];
+		do {
+			const page = await conversation.entries({ order: "ascending" }, 256, cursor, this.context);
+			const tail = page.items.at(-1);
+			if (tail) lastId = tail.id;
+			cursor = page.next;
+		} while (cursor);
+		const entry = lastId
+			? (
+					await conversation.entries(
+						{ minEntryId: lastId, maxEntryId: lastId },
+						1,
+						undefined,
+						this.context,
+					)
+				).items[0]
+			: undefined;
+		if (lastId && !entry) throw new ProtocolError("not_found", "Conversation is unavailable");
+		const key = partition(pending.key);
+		const checkpoint = JSON.stringify(
+			entry ? { source: pending.conversationId, position: entry.id, hash: digest(entry) } : { source: pending.conversationId, position: 0, hash: "" },
+		);
+		await this.call({ method: "forget", partition: key, key: pending.key, checkpoint });
+		this.#sources.set(key, {
+			key: pending.key,
+			partition: key,
+			conversationId: pending.conversationId,
+			botId: pending.key.slice(4),
+		});
+		this.#validated.delete(key);
+		this.#concealed.set(key, pending);
+		this.dirty(pending.conversationId);
+		this.dirty(key);
 	}
 	private async call<T>(command: Parameters<HistoryClient["call"]>[0]): Promise<T> {
 		if (!this.#worker) throw Error("History is unavailable");
