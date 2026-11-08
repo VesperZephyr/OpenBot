@@ -6,7 +6,7 @@ import { t } from "./i18n";
 import type { BotSummary } from "@openbot/protocol";
 import { useState } from "react";
 import { discardIdentityDraft } from "./features/details/identity-draft";
-import { api, openBot, refreshBots, report, useStore } from "./store";
+import { api, deleteConversation, openBot, refreshBots, report, useStore } from "./store";
 
 export function DuplicateBotItem({ bot, onDone }: { readonly bot: BotSummary; readonly onDone: () => void }) {
 	const duplicate = async (): Promise<void> => {
@@ -27,6 +27,46 @@ export function DuplicateBotItem({ bot, onDone }: { readonly bot: BotSummary; re
 export function DeleteBotItem({ onChoose }: { readonly onChoose: () => void }) {
 	return (
 		<button type="button" role="menuitem" className="is-destructive" onClick={onChoose}>{t("Delete…")}</button>
+	);
+}
+
+export function DeleteConversationItem({ onChoose }: { readonly onChoose: () => void }) {
+	return (
+		<button type="button" role="menuitem" className="is-destructive" onClick={onChoose}>{t("Delete conversation…")}</button>
+	);
+}
+
+export function ConfirmDeleteConversation({ bot, onClose }: { readonly bot: BotSummary; readonly onClose: () => void }) {
+	const [busy, setBusy] = useState(false);
+	const confirm = async (): Promise<void> => {
+		setBusy(true);
+		try {
+			await deleteConversation(bot.botId);
+			onClose();
+		} catch (error) {
+			report(error);
+			setBusy(false);
+		}
+	};
+	return (
+		<div className="dialog-backdrop" onMouseDown={onClose}>
+			<div
+				className="dialog"
+				role="alertdialog"
+				aria-labelledby="delete-conversation-title"
+				onMouseDown={(event) => event.stopPropagation()}
+				onKeyDown={(event) => event.key === "Escape" && onClose()}
+			>
+				<h2 id="delete-conversation-title">{t("Delete conversation with {name}?", { name: bot.name })}</h2>
+				<p className="muted">
+					{t("Stops this chat and removes it from the list. This conversation's approval records are cleared. The Bot stays, and files it saved in the workspace stay where they are.")}
+				</p>
+				<div className="dialog-actions">
+					<button type="button" data-dialog-close onClick={onClose} autoFocus>{t("Cancel")}</button>
+					<button type="button" className="danger" disabled={busy} onClick={() => void confirm()}>{t("Delete conversation")}</button>
+				</div>
+			</div>
+		</div>
 	);
 }
 

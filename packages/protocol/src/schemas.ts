@@ -210,6 +210,12 @@ export const HOST_PARAM_SCHEMAS = {
 	"bots.memory.update": strict({ botId: Id, content: Type.String(), expectedRevision: Type.Integer({ minimum: 0 }) }),
 	"bots.memory.restore": strict({ botId: Id, revision: Type.Integer({ minimum: 0 }), expectedRevision: Type.Integer({ minimum: 0 }) }),
 	"conversations.reset": BotOnly,
+	"conversations.delete": strict({
+		conversationKey: Type.TemplateLiteral([Type.Union([Type.Literal("bot:"), Type.Literal("group:")]), Type.String()], {
+			pattern: "^(bot|group):.+$",
+			maxLength: 262,
+		}),
+	}),
 	"policy.get": NoParams,
 	"policy.update": strict({
 		commandSetting: Type.Optional(Type.Enum(["ask", "allow", "never"])),
