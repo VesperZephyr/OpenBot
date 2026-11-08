@@ -80,3 +80,92 @@ it("Always allow commits its resulting revision with the exact approval", async 
 			}),
 	).rejects.toThrow("authority changed");
 });
+
+it("rejects a second policy write until the pending change is reconciled", async () => {
+	const store = runtime.policy();
+	await store.bind("mac");
+	const raced = await Promise.allSettled([store.update({ commandSetting: "allow" }), store.update({ readOnlyDefault: false })]);
+	expect(raced[0]?.status).toBe("fulfilled");
+	expect(raced[1]?.status).toBe("rejected");
+	if (raced[1]?.status !== "rejected") return;
+	expect(raced[1].reason).toMatchObject({ code: "request_conflict", message: "Permission changes need reconciliation first" });
+	const pending = await store.settings();
+	expect(pending).toMatchObject({
+		commandSetting: "allow",
+		readOnlyDefault: true,
+		revision: 1,
+		reconciliation: { id: "policy:1", state: "pending" },
+	});
+	const rule = { id: "r", targetId: "mac", revision: 2, createdAt: 0, predicate: { tool: "local_exec" as const, program: "git" } };
+	await expect(store.createAsk(rule, "ask", pending.revision)).rejects.toMatchObject({
+		code: "request_conflict",
+		message: "Permission changes need reconciliation first",
+	});
+	await expect(store.addGrant({ id: "g", path: "/outside", access: "read", createdAt: 0 })).rejects.toMatchObject({
+		code: "request_conflict",
+		message: "Permission changes need reconciliation first",
+	});
+	expect(await store.grants()).toEqual([]);
+	expect((await store.settings()).askFirst).toEqual([]);
+	await expect(store.settleChange("policy:other", true)).rejects.toMatchObject({
+		code: "request_conflict",
+		message: "Permission change identity changed",
+	});
+	expect((await store.settings()).reconciliation?.state).toBe("pending");
+	await store.settleChange("policy:1", false);
+	expect((await store.settings()).reconciliation?.state).toBe("attention");
+	await expect(store.update({ readOnlyDefault: false })).rejects.toMatchObject({
+		code: "request_conflict",
+		message: "Permission changes need reconciliation first",
+	});
+	expect((await store.settings()).readOnlyDefault).toBe(true);
+	await store.settleChange("policy:1", true);
+	const lifted = await store.update({ readOnlyDefault: false });
+	expect(lifted).toMatchObject({ commandSetting: "allow", readOnlyDefault: false, revision: 2 });
+});
+
+it("rejects a dispatch record whose policy revision is already stale", async () => {
+	const store = runtime.policy();
+	await store.bind("mac");
+	await store.update({ commandSetting: "allow" });
+	const current = await store.settings();
+	expect(current).toMatchObject({ revision: 1, reconciliation: { state: "pending" } });
+	const operation = { botId: "b", conversationId: "1", tool: "local_exec", argsJson: "{}", revision: 0 };
+	await expect(store.remember({ ...operation, id: "stale" })).rejects.toMatchObject({
+		code: "request_conflict",
+		message: "Permission changed before dispatch",
+		details: { currentRevision: 1 },
+	});
+	expect(await store.operations()).toEqual([]);
+	await store.remember({ ...operation, id: "current", revision: current.revision });
+	expect(await store.operations()).toEqual([{ ...operation, id: "current", revision: 1 }]);
+	expect((await store.settings()).revision).toBe(1);
+});
+
+it("rejects a stale Ask first revision, a reused request, and a mismatched target", async () => {
+	const store = runtime.policy();
+	await store.bind("mac");
+	const git = { id: "git", targetId: "mac", revision: 1, createdAt: 0, predicate: { tool: "local_exec" as const, program: "git" } };
+	await store.createAsk(git, "create-git", 0);
+	await store.settleChange((await store.pendingChange())!.reconciliation.id, true);
+	await expect(
+		store.createAsk({ ...git, id: "npm", predicate: { tool: "local_exec", program: "npm" } }, "create-npm", 0),
+	).rejects.toMatchObject({
+		code: "request_conflict",
+		message: "Policy changed. Reload before saving your draft.",
+		details: { currentRevision: 1 },
+	});
+	await expect(store.deleteAsk("git", "create-git", 1)).rejects.toMatchObject({
+		code: "request_conflict",
+		message: "This policy request has different contents",
+	});
+	await expect(store.createAsk({ ...git, id: "foreign", targetId: "other" }, "wrong-target", 1)).rejects.toMatchObject({
+		code: "invalid_request",
+		message: "Policy target mismatch",
+	});
+	const kept = await store.settings();
+	expect(kept.revision).toBe(1);
+	expect(kept.askFirst.map((rule) => rule.id)).toEqual(["git"]);
+	await store.createAsk({ ...git, id: "npm", predicate: { tool: "local_exec", program: "npm" } }, "wrong-target", 1);
+	expect((await store.settings()).askFirst.map((rule) => rule.id)).toEqual(["git", "npm"]);
+});
