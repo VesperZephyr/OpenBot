@@ -100,12 +100,32 @@ export function conversationIndexStore(harness: Harness, context: Context) {
 		async deleted(key: ConversationKey): Promise<boolean> {
 			return (await read())[key]?.deleted === true;
 		},
-		/** Hide one conversation. A later projection must not bring it back. */
+		/** Hide one conversation. A later projection must not bring it back until `reopenConversation`. */
 		async deleteConversation(key: ConversationKey): Promise<void> {
 			await harness.commit(async (tx) => {
 				const record = (await tx.doc(ConversationIndexDoc)).records[key];
 				if (!record) throw new ProtocolError("not_found", "Conversation is unavailable");
 				record.deleted = true;
+			}, context);
+		},
+		/**
+		 * The deleted preview stays gone. Counts remain so a replay of that transcript does not become the new preview.
+		 * A later projection is visible only when the transcript grows past this floor.
+		 */
+		async reopenConversation(key: ConversationKey, floor: { messageCount: number; incomingCount: number }): Promise<void> {
+			if (
+				!Number.isSafeInteger(floor.messageCount) ||
+				!Number.isSafeInteger(floor.incomingCount) ||
+				floor.messageCount < 0 ||
+				floor.incomingCount < 0 ||
+				floor.incomingCount > floor.messageCount
+			)
+				throw new ProtocolError("invalid_request", "Conversation is unavailable");
+			await harness.commit(async (tx) => {
+				const doc = await tx.doc(ConversationIndexDoc);
+				const record = doc.records[key];
+				if (!record?.deleted) throw new ProtocolError("not_found", "Conversation is unavailable");
+				doc.records[key] = { messageCount: floor.messageCount, incomingCount: floor.incomingCount, readThrough: floor.incomingCount };
 			}, context);
 		},
 		async markRead(key: ConversationKey, through: number): Promise<boolean> {

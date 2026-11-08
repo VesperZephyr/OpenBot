@@ -3,6 +3,7 @@ import type { HistoryBatch } from "./history-store.ts";
 export type HistoryCommand =
 	| { method: "apply"; batch: HistoryBatch }
 	| { method: "checkpoint"; partition: string }
+	| { method: "forget"; partition: string; key: ConversationKey; checkpoint: string }
 	| { method: "compactionOrdinal"; partition: string; rowId: string; head: number }
 	| { method: "link"; partition: string; rowId: string }
 	| { method: "stageDetail" | "stageMessage"; partition: string; rowId: string; part: number; text: string }

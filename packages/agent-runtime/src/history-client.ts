@@ -52,7 +52,7 @@ export class HistoryClient {
 		signal?.throwIfAborted();
 		if (Buffer.byteLength(JSON.stringify(command)) > 512 * 1024) throw Error("History request exceeds limit");
 		const search = command.method === "search" || command.method === "context";
-		const write = command.method === "apply" || command.method === "stageDetail" || command.method === "stageMessage";
+		const write = command.method === "apply" || command.method === "stageDetail" || command.method === "stageMessage" || command.method === "forget";
 		if (search ? this.#searches >= 4 : write ? this.#writes >= 2 : this.#controls >= 8) throw Error("History is busy");
 		if (search) this.#searches++;
 		else if (write) this.#writes++;

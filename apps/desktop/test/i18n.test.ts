@@ -29,6 +29,10 @@ it("translates settings empty states, the model file sentence, and approval copy
  expect(translate("zh-CN", "Delete conversation with {name}?", { name: "Cedar" })).toBe("删除与 Cedar 的会话？");
  expect(translate("zh-CN", "Stops this chat and removes it from the list. This conversation's approval records are cleared. The Bot stays, and files it saved in the workspace stay where they are.")).toBe("将停止此会话，并从列表中移除。该会话的授权记录会被清除。Bot 会保留，已保存到工作区的文件也会留在原处。");
  expect(translate("zh-CN", "The Core conversation cannot be deleted")).toBe("核心会话不可删除");
+ expect(translate("zh-CN", "Start a chat")).toBe("开始会话");
+ expect(translate("zh-CN", "Start a chat · ")).toBe("开始会话 · ");
+ expect(translate("zh-CN", "New chat")).toBe("新会话");
+ expect(translate("zh-CN", "Start a new chat with {name}", { name: "Cedar" })).toBe("与 Cedar 开始新会话");
  expect(translate("en", "Loading")).toBe("Loading");
  expect(translate("zh-CN", "Loading")).toBe("加载中");
  expect(translate("en", "Submitting")).toBe("Submitting");

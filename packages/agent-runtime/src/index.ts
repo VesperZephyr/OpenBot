@@ -91,7 +91,7 @@ import { MemoryBook } from "./memory-book.ts";
 import { buildConfiguredProviders, type ConfigEnvironment, type ModelConfigStatus } from "./model-config.ts";
 import { botSections } from "./prompt.ts";
 import { normalizeQuery } from "./conversation-search.ts";
-import { conversationIndexStore, projectConversation } from "./conversation-index.ts";
+import { conversationIndexStore, directProjection, projectConversation } from "./conversation-index.ts";
 import { groupStore, detachGroupBot } from "./groups.ts";
 import { ManagementDoc, managementStore } from "./management.ts";
 import type { PriceStamp } from "./usage.ts";
@@ -1168,6 +1168,21 @@ export class BotRuntime {
 	async reset(botId: BotId, channelId = "direct"): Promise<void> {
 		const conversation = await this.#conversation(await this.#contextRecord(botId, channelId));
 		await conversation.reset(undefined, this.#context);
+	}
+
+	/**
+	 * A deleted direct chat becomes an empty one on the same Bot. Older entries stay stored.
+	 * The visible transcript and preview start empty, and the next request starts from an empty model context.
+	 */
+	async reopenDirect(botId: BotId): Promise<void> {
+		const key = `bot:${botId}` as const;
+		if (!(await this.conversationIndex().deleted(key))) throw new ProtocolError("not_found", "Conversation is unavailable");
+		if (!this.#historyProjection) throw new ProtocolError("host_unavailable", "History is unavailable");
+		const record = await this.#requireRecord(botId);
+		await this.reset(botId);
+		const floor = directProjection(await this.snapshot(botId, "direct"));
+		await this.#historyProjection.conceal(record.conversationId, key);
+		await this.conversationIndex().reopenConversation(key, floor);
 	}
 
 	async memory(botId: BotId): Promise<string> {
