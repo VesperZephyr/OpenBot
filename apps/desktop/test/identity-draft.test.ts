@@ -2,14 +2,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	beginIdentityDraft,
 	discardIdentityDraft,
-	identityConfirmSurfaceMounted,
 	retainIdentityDrafts,
 	identityDirty,
 	identityDraftSnapshot,
 	patchIdentityDraft,
 	requestIdentityClose,
 	resetIdentityDraft,
-	setIdentityConfirmSurfaceMounted,
 } from "../src/renderer/src/features/details/identity-draft";
 
 const ada = { botId: "ada", name: "Ada", role: "Writer", instructions: "Write.", revision: 1 };
@@ -88,13 +86,5 @@ describe("identity draft", () => {
 		expect(identityDraftSnapshot("bee")?.name).toBe("Bee");
 		retainIdentityDrafts([]);
 		expect(identityDraftSnapshot("bee")).toBeUndefined();
-	});
-
-	it("reports whether the confirm surface is mounted", () => {
-		expect(identityConfirmSurfaceMounted()).toBe(false);
-		setIdentityConfirmSurfaceMounted(true);
-		expect(identityConfirmSurfaceMounted()).toBe(true);
-		resetIdentityDraft();
-		expect(identityConfirmSurfaceMounted()).toBe(false);
 	});
 });

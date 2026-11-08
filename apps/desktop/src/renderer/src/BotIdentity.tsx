@@ -15,13 +15,12 @@ import {
 	patchIdentityDraft,
 	replaceIdentityDraft,
 	requestIdentityClose,
-	setIdentityConfirmSurfaceMounted,
 	subscribeIdentityDraft,
 } from "./features/details/identity-draft";
 import { ProfileConflictNotice } from "./features/details/profile-conflict";
 import { readHostError } from "../../shared/api";
 import { t } from "./i18n";
-import { api, openBot, refreshBots, report, useStore } from "./store";
+import { api, openBot, refreshBots, report, setIdentityConfirmSurfaceMounted, useStore } from "./store";
 
 const MOTIFS = ["leaf", "glasses", "cap"] as const;
 const MOTIF_LABEL: Record<(typeof MOTIFS)[number], string> = { leaf: "Leaf", glasses: "Glasses", cap: "Cap" };
