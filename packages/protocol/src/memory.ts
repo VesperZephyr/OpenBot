@@ -46,3 +46,17 @@ export type MemorySourceEvidence = {
 
 export const SHARED_MEMORY_LIMIT_BYTES = 4096;
 export const MEMORY_NOTE_LIMIT = 128;
+
+export type MemorySnapshot = {
+	readonly content: string;
+	readonly revision: number;
+	readonly source: "legacy" | "user" | "model" | "restore";
+	readonly updatedAt: number | null;
+	readonly restoredFrom?: number;
+	readonly notes?: readonly MemoryNote[];
+};
+export type MemoryState = MemorySnapshot & { readonly notes: readonly MemoryNote[]; readonly history: readonly MemorySnapshot[] };
+export const MEMORY_HISTORY_LIMIT = 20;
+
+/** Largest Bot memory, in UTF-8 bytes of Markdown. */
+export const MEMORY_LIMIT_BYTES = 8192;

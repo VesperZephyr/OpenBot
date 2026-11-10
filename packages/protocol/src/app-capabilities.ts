@@ -1,10 +1,10 @@
 /** Pure application contracts shared by desktop adapters, the router and Pi registration. */
 import { Type, type Static, type TSchema } from "typebox";
-import type { ToolDefinition } from "./index.ts";
+import type { ToolDefinition } from "./tools.ts";
 
 const strict = <T extends Record<string, TSchema>>(properties: T) => Type.Object(properties, { additionalProperties: false });
 const id = Type.String({ minLength: 1, maxLength: 2048 });
-const key = Type.Unsafe<import("./index.ts").ConversationKey>(Type.String({ pattern: "^(bot|group):.+$", maxLength: 2048 }));
+const key = Type.Unsafe<import("./conversations.ts").ConversationKey>(Type.String({ pattern: "^(bot|group):.+$", maxLength: 2048 }));
 const cursor = Type.Optional(Type.String({ minLength: 1, maxLength: 4096, description: "Opaque nextCursor from the previous result in this Run. Omit or pass null for the first page. Never invent a cursor." }));
 const count = Type.Integer({ minimum: 0 });
 const preview = strict({ id, senderId: id, text: Type.String(), at: Type.Number() });

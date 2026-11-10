@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import type { GeneratedAvatar } from "./avatars.ts";
-import type { ModelRef, ThinkingLevel } from "./index.ts";
+import type { ModelRef, ThinkingLevel } from "./models.ts";
 import type { SkillRef } from "./skills.ts";
 
 export const TEMPLATE_LIMITS = {

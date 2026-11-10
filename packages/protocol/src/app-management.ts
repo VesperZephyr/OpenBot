@@ -1,6 +1,6 @@
 /** Shared schemas for the original management tools and their Code Mode aliases. */
 import { Type, type TSchema } from "typebox";
-import type { ToolDefinition } from "./index.ts";
+import type { ToolDefinition } from "./tools.ts";
 const string = (description: string) => ({ type: "string", description });
 const integer = (description: string) => ({ type: "integer", minimum: 1, description });
 const object = (properties: Record<string, unknown>, required: readonly string[]) => ({

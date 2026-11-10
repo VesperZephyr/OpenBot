@@ -1,10 +1,8 @@
-import type {
-  LiveRun,
-  PendingApproval,
-  ArtifactRef,
-  RunRecord,
-  SkillRef,
-} from "./index.ts";
+import type { ArtifactRef } from "./artifacts.ts";
+import type { PendingApproval } from "./approvals.ts";
+import type { LiveRun } from "./conversations.ts";
+import type { RunRecord } from "./runs.ts";
+import type { SkillRef } from "./skills.ts";
 
 export const LOCAL_TASK_LIMITS = {
   active: 32,
