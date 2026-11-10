@@ -1,12 +1,12 @@
-import { SkillReview } from "./Skills";
+import { SkillReview } from "./previews/skill-review";
 import { validSkillOperation, type SkillChange } from "@openbot/protocol";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { legacyManagementName, type ApprovalDecision, type ApprovalDecisionLog, type ConversationSnapshot, type PendingApproval } from "@openbot/protocol";
 import { api, report, useStore } from "./store";
 import { t } from "./i18n";
 import { AlwaysAllow } from "./AlwaysAllow";
-import { ManagementPreview } from "./BotManagement";
-import { GroupPreview } from "./GroupPreview";
+import { ManagementPreview } from "./previews/management-preview";
+import { GroupPreview } from "./previews/group-preview";
 import { ChoiceCard } from "./ui/ChoiceCard";
 import {
 	approvalChoices,

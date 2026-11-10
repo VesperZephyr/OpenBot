@@ -1,5 +1,5 @@
-import { useStore } from "./store";
-import { t } from "./i18n";
+import { useStore } from "../store";
+import { t } from "../i18n";
 export function GroupPreview({ args, action }: { args: Record<string, unknown>; action: string }) {
 	const bots = useStore((s) => s.bots);
 	const groups = useStore((s) => s.groups);

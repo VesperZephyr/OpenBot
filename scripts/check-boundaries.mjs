@@ -170,12 +170,48 @@ export function checkProcessUiImports(desktopSrc) {
 	return errors;
 }
 
+const approvalFeatureModules = new Set(["Skills", "BotManagement", "GroupPreview"]);
+
+function isApprovalFeatureModule(resolved) {
+	const parts = resolved.split(/[\\/]/).filter((part) => part !== "");
+	const last = parts[parts.length - 1] ?? "";
+	const stem = last.replace(/\.(tsx|ts|jsx|js|mjs|cjs)$/, "");
+	if (approvalFeatureModules.has(stem)) return true;
+	const parent = parts[parts.length - 2];
+	return stem === "index" && parent !== undefined && approvalFeatureModules.has(parent);
+}
+
+export function checkApprovalUiImports(rendererSrc) {
+	const errors = [];
+	const remedy = "move the shared preview into a neutral module or pass it from the caller";
+	const entry = join(rendererSrc, "ApprovalCard.tsx");
+	if (!existsSync(entry)) return [`${relative(root, rendererSrc) || rendererSrc}: ApprovalCard.tsx is missing`];
+	const files = [entry, join(rendererSrc, "AlwaysAllow.tsx"), join(rendererSrc, "approval-records.ts"), join(rendererSrc, "composer-approval.ts")].filter((file) =>
+		existsSync(file),
+	);
+	// Include neutral previews so a re-export cannot restore the feature import under the card.
+	const previews = join(rendererSrc, "previews");
+	if (existsSync(previews) && statSync(previews).isDirectory()) files.push(...sourceFiles(previews));
+	for (const file of files) {
+		for (const spec of specifiers(readFileSync(file, "utf8"))) {
+			if (!spec.startsWith(".")) continue;
+			const resolved = resolve(resolveRelative(file, spec));
+			if (!isApprovalFeatureModule(resolved)) continue;
+			errors.push(
+				`${relative(root, file)}: ${spec} imports a feature module (${relative(root, resolved) || resolved}). Approval UI cannot import Skills, BotManagement, or GroupPreview. ${remedy}`,
+			);
+		}
+	}
+	return errors;
+}
+
 const invokedDirectly = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invokedDirectly) {
 	const errors = [
 		...packageBoundaryErrors(),
 		...checkRendererUi(join(root, "apps/desktop/src/renderer/src/ui"), join(root, "apps/desktop/src/renderer/src/InterfaceIcon.tsx")),
 		...checkProcessUiImports(join(root, "apps/desktop/src")),
+		...checkApprovalUiImports(join(root, "apps/desktop/src/renderer/src")),
 	];
 	if (errors.length > 0) {
 		for (const error of errors) console.error(error);
