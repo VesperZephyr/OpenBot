@@ -4,7 +4,7 @@
  * it in Settings applies without a restart.
  */
 import type { ToolOutcome } from "@openbot/protocol";
-import type { SecretStore } from "./index.ts";
+import type { SecretStore } from "./host-ports.ts";
 
 export type SearchResult = {
 	readonly title: string;

@@ -1,4 +1,6 @@
-import type { ArtifactRef, ConversationSnapshot, SkillRef } from "./index.ts";
+import type { ArtifactRef } from "./artifacts.ts";
+import type { ConversationSnapshot } from "./conversations.ts";
+import type { SkillRef } from "./skills.ts";
 export const ROUTINE_LIMITS = { perBot: 50, active: 500, identities: 1024, receipts: 4096, history: 20, text: 16384 } as const;
 export type RoutineSchedule =
 	| { readonly kind: "interval"; readonly minutes: number }

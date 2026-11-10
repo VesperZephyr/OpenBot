@@ -9,7 +9,8 @@ import { type Static, type TSchema, Type } from "typebox";
 import { Compile, type Validator } from "typebox/compile";
 import type { TLocalizedValidationError } from "typebox/error";
 import { APP_SEARCH_INPUT } from "./app-capabilities.ts";
-import { type HostMethod, type HostParams, MODEL_APIS } from "./index.ts";
+import { type HostMethod, type HostParams } from "./host-methods.ts";
+import { MODEL_APIS } from "./models.ts";
 
 const Id = Type.String({ minLength: 1, maxLength: 256 });
 const NoParams = Type.Object({}, { additionalProperties: false });

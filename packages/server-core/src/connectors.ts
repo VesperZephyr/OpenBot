@@ -19,7 +19,7 @@ import {
 } from "@openbot/protocol";
 import type { ManagementCall } from "./bot-management.ts";
 import type { ApprovalBook, Decision } from "./approvals.ts";
-import type { SecretStore } from "./index.ts";
+import type { SecretStore } from "./host-ports.ts";
 export interface ConnectorPort {
 	request(requestId: string, operation: ConnectorControl, revision: number): Promise<ConnectorConnection>;
 }

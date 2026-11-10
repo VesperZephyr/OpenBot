@@ -1,4 +1,5 @@
-import type { ConversationKey, GroupPost, TranscriptItem } from "./index.ts";
+import type { ConversationKey, TranscriptItem } from "./conversations.ts";
+import type { GroupPost } from "./groups.ts";
 export type TimelinePosition = { kind: "latest" } | { kind: "around"; rowId: string } | { kind: "cursor"; cursor: string };
 export type TimelineRow = {
 	id: string;
