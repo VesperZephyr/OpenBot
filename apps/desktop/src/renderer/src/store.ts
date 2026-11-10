@@ -21,7 +21,7 @@ import { create } from "zustand";
 import { composers } from "./useComposer";
 import { readHostError, type HostState } from "../../shared/api";
 import { setDetailsOpen } from "./features/details/details-open";
-import { identityConfirmSurfaceMounted, requestIdentityClose, retainIdentityDrafts } from "./features/details/identity-draft";
+import { requestIdentityClose, retainIdentityDrafts } from "./features/details/identity-draft";
 import { directChatVisible, freshConversationSummary, planConversationDelete, type ListedConversation } from "./conversation-delete";
 import { hostCalls } from "./host-calls";
 import {
@@ -76,6 +76,8 @@ type State = {
 	notice: string | undefined;
 	/** First-launch setup: `undefined` until the first roster and settings arrive, then decided once. */
 	onboarding: boolean | undefined;
+	/** True while the wide-layout card that can show the discard confirmation is mounted. */
+	identityConfirmSurfaceMounted: boolean;
 };
 
 function restoredTaskView(): TaskView | undefined {
@@ -104,6 +106,7 @@ export const useStore = create<State>(() => ({
 	showHidden: false,
 	notice: undefined,
 	onboarding: undefined,
+	identityConfirmSurfaceMounted: false,
 }));
 
 useStore.subscribe((state, previous) => {
@@ -298,6 +301,15 @@ function scheduleSettingsFocus(focus: FocusDescriptor | undefined, destination: 
 		})) return;
 		restoreDescribedFocus(focus, (selector) => focusSource(document.querySelector(selector)));
 	}));
+}
+
+export function setIdentityConfirmSurfaceMounted(mounted: boolean): void {
+	if (useStore.getState().identityConfirmSurfaceMounted === mounted) return;
+	useStore.setState({ identityConfirmSurfaceMounted: mounted });
+}
+
+function identityConfirmSurfaceMounted(): boolean {
+	return useStore.getState().identityConfirmSurfaceMounted;
 }
 
 export async function openBot(botId: string, searchTarget?: SearchTarget): Promise<void> {

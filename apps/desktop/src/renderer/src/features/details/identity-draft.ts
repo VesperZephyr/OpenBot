@@ -25,7 +25,6 @@ export type IdentityDraft = {
 };
 
 const drafts = new Map<string, IdentityDraft>();
-let confirmSurfaceMounted = false;
 const listeners = new Set<() => void>();
 
 function publish(botId: string, next: IdentityDraft | undefined): void {
@@ -44,18 +43,8 @@ export function subscribeIdentityDraft(listener: () => void): () => void {
 }
 
 export function resetIdentityDraft(): void {
-	confirmSurfaceMounted = false;
 	drafts.clear();
 	for (const listener of listeners) listener();
-}
-
-/** True while the wide-layout card that can show the discard confirmation is mounted. */
-export function identityConfirmSurfaceMounted(): boolean {
-	return confirmSurfaceMounted;
-}
-
-export function setIdentityConfirmSurfaceMounted(mounted: boolean): void {
-	confirmSurfaceMounted = mounted;
 }
 
 export function sameGenerated(change: AvatarChange | undefined, current: BotAvatar | undefined): boolean {
