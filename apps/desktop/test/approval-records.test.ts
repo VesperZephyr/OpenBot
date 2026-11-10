@@ -94,11 +94,21 @@ describe("approval records", () => {
 	it("clears a deleted conversation's records and leaves the others", () => {
 		rememberApproval(record({ approvalId: "chat-row", conversationId: "chat", decision: "allow_once" }));
 		rememberApproval(record({ approvalId: "other-row", conversationId: "other", decision: "deny" }));
+		expect(rememberTaskConversation("task-chat", [approval("chat")])).toBe("chat");
+		expect(rememberTaskConversation("task-chat-again", [approval("chat")])).toBe("chat");
+		expect(rememberTaskConversation("task-other", [approval("other")])).toBe("other");
 		clearConversationApprovals(undefined);
 		expect(settledApprovals("chat", []).map((item) => item.approvalId)).toEqual(["chat-row"]);
+		expect(rememberTaskConversation("task-chat", [])).toBe("chat");
 		clearConversationApprovals("chat");
 		expect(settledApprovals("chat", [])).toEqual([]);
 		expect(settledApprovals("other", []).map((item) => item.approvalId)).toEqual(["other-row"]);
+		expect(rememberTaskConversation("task-chat", [])).toBeUndefined();
+		expect(rememberTaskConversation("task-chat-again", [])).toBeUndefined();
+		expect(rememberTaskConversation("task-other", [])).toBe("other");
+		expect(rememberTaskConversation("task-later", [])).toBeUndefined();
+		expect(rememberTaskConversation("task-later", [approval("chat-next")])).toBe("chat-next");
+		expect(rememberTaskConversation("task-chat", [])).toBeUndefined();
 	});
 
 	it("disables every approval choice while always-allow is in flight and marks that choice as loading", () => {

@@ -2,11 +2,18 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	approvalRecordSnapshot,
 	rememberApproval,
+	rememberTaskConversation,
 	resetApprovalRecords,
 	settledApprovals,
 	type SettledApproval,
 } from "../src/renderer/src/approval-records";
-import { awaitingNewChat, directChatVisible, freshConversationSummary, planConversationDelete } from "../src/renderer/src/conversation-delete";
+import {
+	awaitingNewChat,
+	conversationKeyOf,
+	directChatVisible,
+	freshConversationSummary,
+	planConversationDelete,
+} from "../src/renderer/src/conversation-delete";
 import {
 	beginIdentityDraft,
 	identityDraftSnapshot,
@@ -46,6 +53,17 @@ describe("conversation delete", () => {
 		expect(cancelled.view).toEqual({ kind: "bot", botId: "ada" });
 		expect(settledApprovals("ada-chat", []).map((item) => item.approvalId)).toEqual(["ada-row"]);
 		expect(settledApprovals("bee-chat", []).map((item) => item.approvalId)).toEqual(["bee-row"]);
+		expect(rememberTaskConversation("task-ada", [{ conversationId: "ada-chat" }])).toBe("ada-chat");
+		const stillThere = planConversationDelete({
+			confirmed: false,
+			deletedKey: "bot:ada",
+			conversationId: "ada-chat",
+			entries,
+			view: { kind: "bot", botId: "ada" },
+			lastChat: { kind: "bot", botId: "ada" },
+		});
+		expect(stillThere.deleted).toBe(false);
+		expect(rememberTaskConversation("task-ada", [])).toBe("ada-chat");
 	});
 
 	it("removes the conversation, clears only its approval records, and leaves the open chat when another chat was selected", () => {
@@ -153,5 +171,37 @@ describe("conversation delete", () => {
 		expect(settledApprovals("bee-chat", []).map((item) => item.approvalId)).toEqual(["bee-row"]);
 		expect(identityDraftSnapshot("bee")).toMatchObject({ name: "Bee draft" });
 		expect(identityDraftSnapshot("ada")).toMatchObject({ name: "Ada" });
+	});
+
+	it("drops a deleted conversation from task lookups when the same bot key starts a new chat", () => {
+		rememberApproval(record("ada-row", "ada-chat", "allow_once"));
+		rememberApproval(record("bee-row", "bee-chat", "deny"));
+		expect(rememberTaskConversation("task-ada", [{ conversationId: "ada-chat" }])).toBe("ada-chat");
+		expect(rememberTaskConversation("task-ada-shared", [{ conversationId: "ada-chat" }])).toBe("ada-chat");
+		expect(rememberTaskConversation("task-bee", [{ conversationId: "bee-chat" }])).toBe("bee-chat");
+		const deletedKey = "bot:ada" as const;
+		expect(conversationKeyOf({ kind: "bot", botId: "ada" })).toBe(deletedKey);
+		const removed = planConversationDelete({
+			confirmed: true,
+			deletedKey,
+			conversationId: "ada-chat",
+			entries,
+			view: { kind: "bot", botId: "ada" },
+			lastChat: { kind: "bot", botId: "ada" },
+		});
+		expect(removed.deleted).toBe(true);
+		expect(settledApprovals("ada-chat", [])).toEqual([]);
+		expect(settledApprovals("bee-chat", []).map((item) => item.approvalId)).toEqual(["bee-row"]);
+		expect(approvalRecordSnapshot()).toHaveLength(1);
+		expect(conversationKeyOf({ kind: "bot", botId: "ada" })).toBe(deletedKey);
+		expect(rememberTaskConversation("task-ada", [])).toBeUndefined();
+		expect(rememberTaskConversation("task-ada-shared", [])).toBeUndefined();
+		expect(rememberTaskConversation("task-later", [])).toBeUndefined();
+		expect(rememberTaskConversation("task-bee", [])).toBe("bee-chat");
+		expect(rememberTaskConversation("task-later", [{ conversationId: "ada-next" }])).toBe("ada-next");
+		expect(rememberTaskConversation("task-ada", [])).toBeUndefined();
+		expect(rememberTaskConversation("task-bee", [])).toBe("bee-chat");
+		expect(settledApprovals("bee-chat", []).map((item) => item.approvalId)).toEqual(["bee-row"]);
+		expect(settledApprovals(undefined, [])).toEqual([]);
 	});
 });
