@@ -89,9 +89,12 @@ export function settledForCall(conversationId: string | undefined, callId: strin
 	return settledList.find((record) => record.conversationId === conversationId && record.callId === callId);
 }
 
-/** Remove one conversation's log. A missing id matches nothing, so other conversations stay. */
+/** Remove one conversation's log and every task lookup that still names it. A missing id matches nothing, so other conversations stay. */
 export function clearConversationApprovals(conversationId: string | undefined) {
 	if (!conversationId) return;
+	for (const [taskId, remembered] of taskConversations) {
+		if (remembered === conversationId) taskConversations.delete(taskId);
+	}
 	publish(settledList.filter((record) => record.conversationId !== conversationId));
 }
 
