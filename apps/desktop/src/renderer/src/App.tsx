@@ -11,14 +11,15 @@ import { presentError } from "../../shared/i18n";
 import { useEffect, useState } from "react";
 import { GroupView, GroupEditor } from "./Groups";
 import { Onboarding } from "./features/onboarding/Onboarding";
-import { toggleDetails, useDetailsOpen } from "./features/details/details-open";
+import { useDetailsOpen } from "./features/details/details-open";
 import { SettingsWorkspace, type SettingsDestination } from "./features/settings/SettingsWorkspace";
 import { Home } from "./features/home/Home";
 import { NewBotDialog } from "./features/new-bot/NewBotDialog";
 import { Conversation } from "./features/conversation/Conversation";
 import { HistoryTranscript } from "./features/transcript/HistoryTranscript";
-import { Sidebar, chatEntries } from "./features/sidebar/Sidebar";
-import { closeSettings, closeSettingsFromEscape, connect, openBot, openSettings, report, useStore } from "./store";
+import { Sidebar } from "./features/sidebar/Sidebar";
+import { useGlobalShortcuts } from "./features/shortcuts/use-global-shortcuts";
+import { closeSettings, connect, openSettings, useStore } from "./store";
 
 export function App() {
 	useDialogFocus();
@@ -42,49 +43,16 @@ export function App() {
 	const [query, setQuery] = useState("");
 	const [searchOpen, setSearchOpen] = useState(false);
 	useEffect(() => { if (searchOpen) document.querySelector<HTMLInputElement>(".conversation-search")?.focus(); }, [searchOpen]);
-	useEffect(() => {
-		const onKey = (event: KeyboardEvent): void => {
-			closeSettingsFromEscape(event);
-		};
-		document.addEventListener("keydown", onKey, true);
-		return () => document.removeEventListener("keydown", onKey, true);
-	}, []);
-
 	useEffect(() => connect(), []);
-
-	useEffect(() => {
-		const onKey = (event: globalThis.KeyboardEvent): void => {
-			if ((!event.metaKey && !event.ctrlKey) || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
-			if (event.key === "k") {
-				event.preventDefault();
-				setSearchOpen(true);
-				document.querySelector<HTMLInputElement>(".conversation-search")?.focus();
-				return;
-			}
-			if (event.key === "n") {
-				event.preventDefault();
-				setNewMenu(true);
-			} else if (event.key === ",") {
-				event.preventDefault();
-				openSettings();
-			} else if (event.shiftKey && event.key.toLowerCase() === "i") {
-				event.preventDefault();
-				if (useStore.getState().view.kind === "bot") toggleDetails();
-			} else if (/^[1-9]$/.test(event.key)) {
-                const entry = chatEntries(useStore.getState())[Number(event.key) - 1];
-                if (entry) {
-                    event.preventDefault();
-                    if (entry.kind === "bot") void openBot(entry.bot.botId).catch(report);
-                    else {
-						closeSettings();
-						useStore.setState({ view: { kind: "group", groupId: entry.group.groupId }, searchTarget: undefined });
-					}
-                }
-			}
-		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
-	}, []);
+	useGlobalShortcuts({
+		openSearch() {
+			setSearchOpen(true);
+			document.querySelector<HTMLInputElement>(".conversation-search")?.focus();
+		},
+		openNewMenu() {
+			setNewMenu(true);
+		},
+	});
 
 	return (
 		<div className="app">
