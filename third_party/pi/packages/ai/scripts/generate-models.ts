@@ -2327,7 +2327,7 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 		// Process MiniMax models
 		const minimaxVariants = [
 			{ key: "minimax", provider: "minimax", baseUrl: "https://api.minimax.io/anthropic" },
-			{ key: "minimax-cn", provider: "minimax-cn", baseUrl: "https://api.minimaxi.com/anthropic" },
+			{ key: "minimax-cn", provider: "minimax-cn", baseUrl: "https://api.minimax.cn/anthropic" },
 		] as const;
 
 		for (const { key, provider, baseUrl } of minimaxVariants) {
@@ -3114,7 +3114,7 @@ async function generateModels() {
 		}
 	}
 
-	const minimaxDirectSupportedIds = new Set(["MiniMax-M2.7", "MiniMax-M2.7-highspeed", "MiniMax-M3"]);
+	const minimaxDirectSupportedIds = new Set(["MiniMax-M3.1-Flash", "MiniMax-M3"]);
 
 	for (let i = allModels.length - 1; i >= 0; i--) {
 		const candidate = allModels[i];

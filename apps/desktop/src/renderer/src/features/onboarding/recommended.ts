@@ -1,17 +1,18 @@
 /** Static recommendations. A card is hidden when models.list does not include its provider id. */
 export const RECOMMENDED_PROVIDERS = [
 	{ id: "minimax", name: "MiniMax", blurb: "Long context" },
+	{ id: "minimax-cn", name: "MiniMax CN", blurb: "China endpoint" },
 	{ id: "deepseek", name: "DeepSeek", blurb: "General chat" },
 	{ id: "openrouter", name: "OpenRouter", blurb: "Many models" },
 	{ id: "anthropic", name: "Anthropic", blurb: "Long-form writing" },
 	{ id: "openai", name: "OpenAI", blurb: "General use" },
 ] as const;
 
-export const MINIMAX_DEFAULT_MODEL = "MiniMax-M3";
+export const MINIMAX_DEFAULT_MODEL = "MiniMax-M3.1-Flash";
 
-/** MiniMax opens on M3 when that catalog entry exists. Every other provider keeps the first listed model. */
+/** MiniMax opens on the current flagship when that catalog entry exists. Every other provider keeps the first listed model. */
 export function recommendedModelId(providerId: string, modelIds: readonly string[]): string {
-	if (providerId === "minimax" && modelIds.includes(MINIMAX_DEFAULT_MODEL)) return MINIMAX_DEFAULT_MODEL;
+	if ((providerId === "minimax" || providerId === "minimax-cn") && modelIds.includes(MINIMAX_DEFAULT_MODEL)) return MINIMAX_DEFAULT_MODEL;
 	return modelIds[0] ?? "";
 }
 
