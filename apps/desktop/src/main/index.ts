@@ -18,6 +18,7 @@ import { registerIpc } from "./ipc";
 import { resolveLoginPath } from "./login-path";
 import { translate, type Language } from "../shared/i18n";
 import { desktopTestMode } from "./test-mode";
+import { verifyInboxUpdate } from "./update-artifact";
 import { ignoreDetachedConsole, watchForOrphaning } from "./process-guards";
 
 ignoreDetachedConsole([process.stdout, process.stderr]);
@@ -280,6 +281,11 @@ void app.whenReady().then(async () => {
 	powerMonitor.on("unlock-screen", () => void nativeLifecycle.update({ locked: false }));
 
 	hostEnvironment.PATH = await resolveLoginPath(process.env);
+	try {
+		await verifyInboxUpdate(dataDirectory, (message) => console.error(`[openbot] ${message}`));
+	} catch {
+		console.error("[openbot] update was not staged");
+	}
 	try {
   await backups.recover();
  } catch {

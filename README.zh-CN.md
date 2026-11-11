@@ -21,7 +21,7 @@ OpenBot 目前服务于**一个人、一台 Mac**。你可以为每个 Bot 设�
 
 </details>
 
-**当前状态：**面向 Apple 芯片 Mac 的 MVP 验收候选版本。核心工作流及部分增强功能已经实现，新版界面验证见上方记录，发布验证另见 [MVP 验收记录](docs/acceptance/mvp-2026-10-19.md)。本地开发 DMG 使用临时签名；Developer ID 签名、公证、全新环境安装验收和原生生命周期验证仍是正式发布前的关卡。
+**当前状态：**面向 Apple 芯片 Mac 的 MVP 验收候选版本。核心工作流及部分增强功能已经实现，新版界面验证见上方记录，发布验证另见 [MVP 验收记录](docs/acceptance/mvp-2026-10-19.md)。本地 DMG 使用临时签名，未公证；[安装说明](#安装-macos-dmg)涵盖 Gatekeeper 与校验和。Developer ID 签名、公证、全新环境安装验收和原生生命周期验证仍是正式发布前的关卡。
 
 [快速开始](#快速开始) · [现在能做什么](#现在能做什么) · [模型配置](#模型配置) · [开发与测试](#开发与测试) · [路线图](docs/development-roadmap.md)
 
@@ -125,13 +125,53 @@ OpenBot 必须保持运行，Mac 需要处于唤醒状态。睡眠或重启后�
 
 [集成工作流验收](docs/acceptance/workflow-2026-10-20.md)覆盖 CRM 记录、报告、精确审批、审核过的技能和定时复用，并验证重启、限流及结果不确定的写入。记录区分了自动化检查、真实模型试验和公网资料抓取的限制。
 
-### 构建本地应用
+### 安装 macOS DMG
+
+DMG 没有使用 Developer ID 签名，也没有公证。macOS Gatekeeper 会在打开应用前发出警告。本地打包使用临时签名；文件一旦被下载或复制到另一台 Mac，这种签名不能满足 Gatekeeper 的检查。
+
+#### 在本地构建
+
+在已克隆的仓库中，先满足[从源码运行](#从源码运行)的前置条件，然后执行：
 
 ```sh
+pnpm install
+pnpm run build:pi
 pnpm run package
 ```
 
-arm64 DMG 会输出到 `apps/desktop/dist/`。安装包包含 Node、Host Runtime、执行器和必要的 Pi 资源，安装后不依赖开发环境的 Node 或 pnpm。未配置签名凭据时，这条命令生成的是**临时签名的开发构建**，并非经过公证的公开发布版。已验证的具体范围见[验收记录](docs/acceptance/mvp-2026-10-19.md)。
+`pnpm run package` 会构建桌面应用，准备捆绑的 Node、Host Runtime 和执行器，再调用 electron-builder（`apps/desktop/scripts/package.mjs`）。arm64 DMG 写入 `apps/desktop/dist/OpenBot-<version>-arm64.dmg`。版本默认取 `apps/desktop/package.json` 中的 `0.0.0`。当 `OPENBOT_VERSION` 是 `1.2.3` 或 `1.2.3-b14f.1` 这样的语义化版本时，用它覆盖默认版本；发布标签 `v1.2.3` 对应的版本是 `1.2.3`。
+
+未设置 `CSC_LINK` 或 `CSC_NAME` 时，脚本会设置 `CSC_IDENTITY_AUTO_DISCOVERY=false` 和临时身份（`identity: "-"`），并且不会公证。该 DMG 已包含 Node 和运行时，安装后的应用不需要开发环境中的 Node 或 pnpm。它不是经过公证的公开发布版。临时签名包的检查范围见[验收记录](docs/acceptance/mvp-2026-10-19.md)。
+
+#### 校验下载
+
+在准备打开 DMG 的 Mac 上执行：
+
+```sh
+shasum -a 256 OpenBot-<version>-arm64.dmg
+```
+
+把输出的 SHA-256 与该下载旁公布的校验和对比。对于刚构建的文件，对 `apps/desktop/dist/OpenBot-<version>-arm64.dmg` 执行同一命令即可得到这些字节的哈希。两者不一致时，不要安装该文件。
+
+#### Gatekeeper 拦截时如何打开
+
+1. 打开 DMG，把 **OpenBot** 拖到“应用程序”。
+2. 如果 DMG 是这台 Mac 构建的，且文件没有被下载过，直接打开 `OpenBot.app` 通常可以成功，因为没有设置 Gatekeeper 的隔离标记。
+3. 如果 macOS 警告无法验证 OpenBot，在访达中按住 Control 并点击该应用，选择“打开”，再确认“打开”。
+4. 如果对话框只能关闭警告，请打开“系统设置 → 隐私与安全性”。在“安全性”中，对这次被拦截的 OpenBot 启动选择“仍要打开”，然后确认“打开”。macOS 13 及更新版本使用“系统设置”。
+5. 如果 macOS 提示应用已损坏，或在选择“仍要打开”后仍拒绝打开，说明隔离属性还在。确认校验和一致后，清除该属性，再从“应用程序”打开：
+
+```sh
+xattr -dr com.apple.quarantine /Applications/OpenBot.app
+```
+
+只对已经核对过校验和的副本执行这条命令。它不会给应用做公证，也不能证明下一次下载的文件相同。不要关闭整台 Mac 的 Gatekeeper。
+
+#### 已签名的更新文件
+
+正式更新可以在 DMG 旁附带 `OpenBot-<version>-arm64-update.json`。其中的 `sha256` 就是上面的校验和。该签名覆盖这份清单，不是 Apple Developer ID 签名，也不会让 Gatekeeper 直接放行应用。
+
+OpenBot 不会自行下载或替换自己。启动时它在 `~/Library/Application Support/OpenBot/update-inbox/` 查找唯一的 `*-update.json` 以及清单中写明的 DMG。桌面端用内嵌公钥验证签名。只有签名和校验和都匹配时，才会把文件复制到 `update-staging/`。缺少签名、使用其他密钥签名，或 DMG 被改动时，更新会被拒绝；已安装的应用、对话和钥匙串项目保持原样。文件进入暂存目录并不等于已经安装。替换应用、迁移数据，以及在迁移失败后回滚，仍是单独的发布工作。
 
 ## 模型配置
 
@@ -187,6 +227,16 @@ pnpm run e2e:headed  # 明确显示测试窗口，便于调试
 pnpm run dev:debug   # 使用日常开发数据启动应用，CDP 端口为 9339
 pnpm run package     # 准备运行时、验证并打包 arm64 桌面应用
 ```
+
+为更新清单签名时，从 `OPENBOT_UPDATE_SIGNING_KEY` 读取 PKCS#8 ed25519 私钥，并在 DMG 旁写入 `OpenBot-<version>-arm64-update.json`。私钥不是仓库文件。未设置该变量时，命令以状态码 2 退出，且不会写出文件：
+
+```sh
+OPENBOT_VERSION=1.2.3 OPENBOT_UPDATE_SIGNING_KEY="$(cat /path/outside/the/repo/update-key.pem)" \
+  node --experimental-strip-types --disable-warning=ExperimentalWarning \
+  apps/desktop/src/main/sign-update-cli.ts apps/desktop/dist/OpenBot-1.2.3-arm64.dmg
+```
+
+`node scripts/generate-update-signing-key.mjs --private-out /path/outside/the/repo/update-key.pem` 会打印对应的公钥，并拒绝把私钥写进本仓库。将私钥存为 GitHub Actions 密钥 `OPENBOT_UPDATE_SIGNING_KEY`，并用打印出的公钥替换 `EMBEDDED_UPDATE_PUBLIC_KEY`。发布工作流在密钥未设置时跳过清单签名；密钥已设置但签名失败时，该步骤失败并且不会发布安装包。详见 [B14f](docs/tasks/b14f-signed-updates.md)。
 
 安装依赖或修改 Pi 后，执行 `pnpm run build:pi`。普通应用修改不需要重新构建 Pi。设置 `CI=true` 时，安装会使用冻结的锁文件；有意更新依赖后，应执行 `pnpm install --no-frozen-lockfile` 并提交更新后的锁文件。
 

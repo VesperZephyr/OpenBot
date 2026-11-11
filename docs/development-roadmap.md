@@ -112,7 +112,7 @@ The delivery rationale is to produce a useful report, retain its reviewed method
 
 Templates, history scaling, backup/restore and credential ownership have their own contracts: [B13e](tasks/b13e-bot-templates.md), [B14c](tasks/b14c-history-scaling.md), [B14d](tasks/b14d-backup-restore.md), [B14e](tasks/b14e-main-credentials.md). Read their status there.
 
-**B14f signed updates — planning brief, not ready for implementation.** Prerequisites are B14d backup/restore, B14e credential ownership and available signing certificates. The spec must define artifact verification, migration failure recovery and rollback-compatible data strategy. Acceptance must reject invalid update artifacts, preserve state and credentials across a packaged upgrade/relaunch, and retain a restorable snapshot after failed migration. Developer ID/notarization evidence is separate from ad-hoc builds. This does not authorize release publication.
+**B14f signed updates.** [B14f](tasks/b14f-signed-updates.md) specifies ed25519 verification of an update manifest before desktop main stages a DMG. The DMG stays without Developer ID signing or notarization, so the spec does not use Apple code signing for that check. Migration failure recovery, rollback, credential continuity across a packaged upgrade, and release publication remain outstanding. Developer ID/notarization evidence stays separate from ad-hoc builds.
 
 ## 7. P3: browser, desktop and demonstration (deferred)
 

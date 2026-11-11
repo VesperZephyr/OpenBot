@@ -14,11 +14,11 @@ This is the active delivery queue, not a release history. Task status, contracts
 | [B13e: Bot templates](tasks/b13e-bot-templates.md) | Owner review and merge of the implementation candidate; acceptance is linked from the spec |
 | [B27c: bounded memory selection and retrieval](tasks/b27c-bounded-memory-retrieval.md) | Review the verified implementation in [PR #77](https://github.com/VesperZephyr/OpenBot/pull/77); the spec links actual-product quality and usage evidence |
 | [B28b: Optional AI activity phrasing](tasks/b28b-generated-activity.md) | Depends on B28a; review bounded inference/accounting and default-off evaluation contracts separately |
+| [B14f: Signed update artifacts](tasks/b14f-signed-updates.md) | In review on `feat/unsigned-dmg-signed-updates-4579`. Artifact signatures only; Developer ID install, migration, and rollback remain open |
 
 ## Next
 
-1. **B14f: signed updates.** Prepare a ready spec after the template increment. Use B14d backup/restore and B14e credential identity as prerequisites; settle update verification, migration failure and rollback behavior. The [planning brief](development-roadmap.md#6-p2-broader-access-and-maintainability) does not authorize implementation or release publication.
-2. **Native release gates.** Track clean installation, Developer ID signing/notarization, credential continuity and physical lifecycle evidence separately from feature completion. [G0](development-roadmap.md#4-p0-closeout-and-dependable-execution) defines the gate; [I2](tasks/i2-mvp-acceptance.md) links the captured MVP evidence.
+1. **Native release gates.** Track clean installation, Developer ID signing/notarization, credential continuity and physical lifecycle evidence separately from feature completion. [G0](development-roadmap.md#4-p0-closeout-and-dependable-execution) defines the gate; [I2](tasks/i2-mvp-acceptance.md) links the captured MVP evidence. [B14f](tasks/b14f-signed-updates.md) covers update-artifact signatures only and does not close this gate.
 
 Prerequisites normally merge before dependent implementation. Each implementation needs a ready spec with resolved contracts and acceptance. The owner merges; queue position alone does not authorize scope expansion.
 

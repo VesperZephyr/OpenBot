@@ -6,6 +6,9 @@ name: Release
 #   APPLE_API_KEY_P8            App Store Connect API key (.p8 contents) for notarization
 #   APPLE_API_KEY_ID, APPLE_API_ISSUER
 # Without the certificate secrets the job fails instead of publishing an ad-hoc build.
+# Update-artifact integrity is separate. OPENBOT_UPDATE_SIGNING_KEY is a PKCS#8 ed25519 private key.
+# When that secret is unset, manifest signing is skipped and no signature file is published.
+# When it is set, signing must succeed or the job fails closed and does not publish the DMG.
 on:
   push:
     tags: ["v*"]
@@ -62,8 +65,23 @@ jobs:
           codesign --verify --strict --verbose=2 "$app/Contents/Resources/node"
           spctl --assess --type execute --verbose "$app"
           xcrun stapler validate "$app"
+      - name: Sign the update manifest
+        env:
+          OPENBOT_UPDATE_SIGNING_KEY: ${{ secrets.OPENBOT_UPDATE_SIGNING_KEY }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [ -z "$OPENBOT_UPDATE_SIGNING_KEY" ]; then
+            echo "OPENBOT_UPDATE_SIGNING_KEY is not set. Skipping update-artifact signing; no signature file will be published."
+            exit 0
+          fi
+          OPENBOT_VERSION="${TAG#v}" node --experimental-strip-types --disable-warning=ExperimentalWarning apps/desktop/src/main/sign-update-cli.ts apps/desktop/dist/OpenBot-*.dmg
       - name: Publish the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" apps/desktop/dist/*.dmg --repo "$GITHUB_REPOSITORY" --title "OpenBot $TAG" --generate-notes --verify-tag
+        run: |
+          files=(apps/desktop/dist/*.dmg)
+          if compgen -G "apps/desktop/dist/*-update.json" > /dev/null; then
+            files+=(apps/desktop/dist/*-update.json)
+          fi
+          gh release create "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" --title "OpenBot $TAG" --generate-notes --verify-tag

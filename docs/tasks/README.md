@@ -141,6 +141,7 @@ Candidate revision, acceptance checks and outcomes, and remaining limits; or lin
 - [B14c: Bounded history reading and persistent search](b14c-history-scaling.md)
 - [B14d: Consistent local backup and restore](b14d-backup-restore.md)
 - [B14e: Desktop-Owned Keychain Credentials](b14e-main-credentials.md)
+- [B14f: Signed update artifacts](b14f-signed-updates.md)
 - [B15a: Bounded File Inputs and Result Artifacts](b15a-bounded-artifacts.md)
 - [B15b: Durable Background Command Completion](b15b-background-completion.md)
 
