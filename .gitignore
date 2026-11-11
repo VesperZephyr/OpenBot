@@ -8,5 +8,7 @@ out/
 coverage/
 .env
 .env.*
+# Update-signing private keys. The public key is embedded in source; the secret is OPENBOT_UPDATE_SIGNING_KEY.
+update-signing-private.pem
 e2e/.run/
 apps/desktop/.cache/

@@ -74,7 +74,7 @@ Use [README setup and usage](../README.md), [AGENTS.md verification](../AGENTS.m
 | --- | --- | --- |
 | Credential references at desktop startup | Explicit supported behavior for `$NAME`, Keychain and `!command`, without broad environment import | Focused credential follow-up; gap above |
 | Runtime compatibility | Validate development and bundled Node compatibility against repository pins; do not maintain another version list in docs | Runtime or packaging update; `.node-version` and packaging configuration own versions |
-| Signed updates | Artifact verification, credential continuity, migration failure and rollback policy; electron-updater/GitHub Releases is the planning direction | B14f requires its own ready spec; [roadmap](development-roadmap.md#6-p2-broader-access-and-maintainability) |
+| Signed updates | Credential continuity, migration failure, and rollback across a packaged upgrade. Artifact signatures are specified in [B14f](tasks/b14f-signed-updates.md); the DMG remains without Developer ID signing | Developer ID release evidence and a migration/rollback design |
 | Transcription | On-device only or optional configured endpoint; permission and privacy model | Phase 3 design |
 
 Resolved choices belong to their original design records: [B1 receipt storage](tasks/b1-durable-approvals.md), [B7 IPC schemas](tasks/b7-desktop-mvp.md), [B4 search provider](tasks/b4-web-research.md), and [B14e credential ownership](tasks/b14e-main-credentials.md). Do not keep them in an open-decision checklist.

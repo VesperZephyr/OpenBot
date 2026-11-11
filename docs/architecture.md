@@ -203,6 +203,8 @@ Only one Host owns the Pi store. Enforce a single application instance and exclu
 
 Pi's Node SQLite adapter uses `node:sqlite`; verify it in the packaged application as well as the development checkout. Desktop packaging must include the selected Pi packages, their runtime assets, the Node binary, and native helpers. The Host's and executor's JavaScript lives outside `app.asar` because the standalone Node cannot read ASAR archives; it is still covered by the application's code signature.
 
+**Update artifacts (B14f).** The distributed DMG stays without a Developer ID signature and without notarization. Update integrity is a detached ed25519 signature over a canonical manifest (product, version, platform, arch, artifact name, size, and SHA-256). Desktop main verifies that signature with the embedded public key before copying a DMG from `update-inbox/` into `update-staging/`. A missing signature, a signature from another key, or a DMG whose bytes differ from the manifest is refused and is not copied. This check does not replace the installed app, migrate local data, roll back a failed migration, or preserve Keychain access across Developer ID identities. The private key is the `OPENBOT_UPDATE_SIGNING_KEY` CI secret and is not stored in the repository. electron-updater is not used. See [B14f](tasks/b14f-signed-updates.md).
+
 ## 4. Repository Layout and Module Boundaries
 
 ### 4.1 Layout
@@ -692,7 +694,7 @@ Toolchain and libraries, as of 2026-10-15:
 | --- | --- | --- |
 | Shell | Electron 44 | Bundles Chromium 152 and Node 24.18; requires macOS 13 or later. Tauri, Electrobun, and a native Swift shell were rejected: each leaves Node supervision, login items, or power assertions to the application, and WebKit rendering differs from the Chromium that the executor drives |
 | Build | electron-vite 5 | 6.0.0 was released on 2026-10-15; adopt it after it settles. Electron Forge 8 is the first-party alternative |
-| Package, sign, update | electron-builder 26 with electron-updater 6 | Built-in fuses, universal builds, nested-binary signing, and update manifests with staged rollouts |
+| Package, sign, update | electron-builder 26 | Built-in fuses and nested-binary signing. Update integrity is the B14f ed25519 manifest verified in desktop main; electron-updater is not used. Developer ID signing stays a separate release gate |
 | Renderer | React 19, Zustand for conversation stores, TanStack Query for settings and rosters | |
 | Transcript | TanStack Virtual (`anchorTo: "end"`), Streamdown for streaming Markdown, AI Elements components adapted as source | All MIT or Apache-2.0. The Virtuoso message list is commercial; assistant-ui is pre-1.0 and has cloud dependencies |
 
