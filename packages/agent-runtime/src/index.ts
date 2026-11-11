@@ -1,4 +1,5 @@
-import { ProviderDoc, type EntryId as PiEntryId } from "@earendil-works/pi-durable";
+import { AgentDoc, ProviderDoc, type EntryId as PiEntryId } from "@earendil-works/pi-durable";
+import { minimaxModelReplacement } from "./minimax-model.ts";
 import { TaskModelGate } from "./task-model-gate.ts";
 import { selectiveMemory } from "./memory-retrieval.ts";
 import { syncMemoryTools } from "./memory-offering.ts";
@@ -394,10 +395,18 @@ export class BotRuntime {
 		try {
 			await harness.commit(async (tx) => {
 				await tx.doc(AppExecutionsDoc);
+				const settings = await tx.doc(SettingsDoc);
+				const nextDefault = minimaxModelReplacement(settings.defaultModel);
+				if (nextDefault) settings.defaultModel = nextDefault;
 				const profiles = await tx.doc(BotsDoc);
 				validateTemplateReceipts((await tx.doc(TemplateImportsDoc)).receipts, profiles.bots);
 				for (const record of Object.values(profiles.bots)) {
-					await configure(tx, record.conversationId as PiConversationId, {
+					const nextBot = minimaxModelReplacement(record.model);
+					if (nextBot) record.model = nextBot;
+					const conversationId = record.conversationId as PiConversationId;
+					const nextAgent = minimaxModelReplacement((await tx.doc(AgentDoc, conversationId)).model);
+					await configure(tx, conversationId, {
+						...(nextAgent ? { model: nextAgent } : {}),
 						instructions: revisionedInstructions(record.instructions, record.revision ?? 1),
 						tools: (await tx.doc(MessageModeDoc, String(record.conversationId), null)).entryId ? null : { remove: (bot.tools ?? []).filter(tool => tool.name === "send_message") },
 						extensions: [bot, connectors, ...(record.kind === "core" ? [core, app] : [])],
@@ -412,10 +421,15 @@ export class BotRuntime {
                         const registered=(await tx.doc(LocalTasksDoc)).entries.some(e=>e.taskId===channel.taskId);
                         const task=(await tx.doc(LocalTaskDoc,channel.taskId!,null)).task;
                         if(!registered || bots[channel.botId]?.kind!=="core" || !task || task.botId!==channel.botId || task.channelId!==channel.channelId || task.conversationId!==channel.conversationId)throw new Error("Invalid task channel ownership");
-                        await configure(tx,channel.conversationId as PiConversationId,{tools:(bot.tools??[]).filter(t=>LOCAL_TASK_TOOLS.some(name=>name===t.name)),extensions:[bot]});
+                        const conversationId = channel.conversationId as PiConversationId;
+                        const nextTask = minimaxModelReplacement((await tx.doc(AgentDoc, conversationId)).model);
+                        await configure(tx,conversationId,{...(nextTask ? { model: nextTask } : {}),tools:(bot.tools??[]).filter(t=>LOCAL_TASK_TOOLS.some(name=>name===t.name)),extensions:[bot]});
                         continue;
                     }
-					await configure(tx, channel.conversationId as PiConversationId, {
+					const conversationId = channel.conversationId as PiConversationId;
+					const nextChannel = minimaxModelReplacement((await tx.doc(AgentDoc, conversationId)).model);
+					await configure(tx, conversationId, {
+						...(nextChannel ? { model: nextChannel } : {}),
 						tools: !channel.channelId.startsWith("routine_") && (await tx.doc(MessageModeDoc, String(channel.conversationId), null)).entryId ? null : { remove: (bot.tools ?? []).filter(tool => tool.name === "send_message") },
 						extensions: [
 							bot,
