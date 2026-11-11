@@ -21,7 +21,7 @@ OpenBot is currently built for **one person on one Mac**. Give your Bots names, 
 
 </details>
 
-**Status:** MVP acceptance candidate for macOS on Apple silicon. The core workflow and several enhancement batches are implemented; the desktop design verification is linked above, alongside separate [MVP release evidence](docs/acceptance/mvp-2026-10-19.md). Local development DMGs are ad-hoc signed. Developer ID signing, notarization, clean-install acceptance and native lifecycle checks are still release gates.
+**Status:** MVP acceptance candidate for macOS on Apple silicon. The core workflow and several enhancement batches are implemented; the desktop design verification is linked above, alongside separate [MVP release evidence](docs/acceptance/mvp-2026-10-19.md). A local DMG is ad-hoc signed and is not notarized; [installing it](#install-the-macos-dmg) covers Gatekeeper and the checksum. Developer ID signing, notarization, clean-install acceptance and native lifecycle checks are still release gates.
 
 [Get started](#get-started) · [What it does](#what-it-does) · [Model setup](#model-setup) · [Development](#development) · [Roadmap](docs/development-roadmap.md)
 
@@ -125,13 +125,53 @@ For a competitor radar, create Domestic Hunter and International Hunter and put 
 
 The [integrated workflow acceptance](docs/acceptance/workflow-2026-10-20.md) exercises CRM records, reports, exact approvals, reviewed skills and routine reuse, including restart, rate limits and uncertain writes. Its evidence separates automated checks, a real-model trial and the live-retrieval limitation.
 
-### Build a local app
+### Install the macOS DMG
+
+The DMG is not Developer ID signed and not notarized. macOS Gatekeeper warns before it will open the app. A local package is ad-hoc signed, which does not satisfy that check once the file is downloaded or copied to another Mac.
+
+#### Build it locally
+
+From a checkout, with the same prerequisites as [Run from source](#run-from-source):
 
 ```sh
+pnpm install
+pnpm run build:pi
 pnpm run package
 ```
 
-The arm64 DMG is written to `apps/desktop/dist/`. It bundles Node, the Host Runtime, the executor and required Pi assets; the installed app does not need your development Node or pnpm. Without signing credentials, this command produces an **ad-hoc development build**, not a notarized public release. See the [acceptance record](docs/acceptance/mvp-2026-10-19.md) for exactly what was checked.
+`pnpm run package` builds the desktop app, stages the bundled Node, Host Runtime and executor, then runs electron-builder (`apps/desktop/scripts/package.mjs`). The arm64 DMG is written to `apps/desktop/dist/OpenBot-<version>-arm64.dmg`. The version defaults to `0.0.0` in `apps/desktop/package.json`. `OPENBOT_VERSION` overrides it when the value is a semantic version such as `1.2.3` or `1.2.3-b14f.1`; the release tag `v1.2.3` is published as version `1.2.3`.
+
+Without `CSC_LINK` or `CSC_NAME`, the script sets `CSC_IDENTITY_AUTO_DISCOVERY=false` and an ad-hoc identity (`identity: "-"`), and it does not notarize. That DMG bundles Node and the runtime, so the installed app does not need a development Node or pnpm. It is not a notarized public release. See the [acceptance record](docs/acceptance/mvp-2026-10-19.md) for what an ad-hoc package has been checked for.
+
+#### Check the download
+
+On the Mac where you will open the DMG:
+
+```sh
+shasum -a 256 OpenBot-<version>-arm64.dmg
+```
+
+Compare the printed SHA-256 with the checksum published next to that download. For a file you just built, the same command on `apps/desktop/dist/OpenBot-<version>-arm64.dmg` prints the hash of those bytes. If the hashes differ, do not install the file.
+
+#### Open it when Gatekeeper blocks it
+
+1. Open the DMG and drag **OpenBot** to **Applications**.
+2. If this Mac built the DMG and the file was never downloaded, opening `OpenBot.app` often works because Gatekeeper's quarantine flag is not set.
+3. If macOS warns that Apple cannot verify OpenBot, Control-click the app in Finder, choose **Open**, then choose **Open**.
+4. If that dialog only lets you dismiss the warning, open **System Settings → Privacy & Security**. Under Security, choose **Open Anyway** next to the blocked OpenBot launch, then confirm **Open**. macOS 13 and later use System Settings for this control.
+5. If macOS reports that the app is damaged, or it still refuses to open after **Open Anyway**, the quarantine attribute is still attached. After the checksum matches, clear it and open the app from Applications:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/OpenBot.app
+```
+
+Clear that attribute only on a copy whose checksum you verified. The command does not notarize the app, and it does not prove the next download is the same file. Do not turn Gatekeeper off for the whole Mac.
+
+#### Signed update files
+
+A published update can include `OpenBot-<version>-arm64-update.json` next to the DMG. Its `sha256` field is the checksum above. The signature covers that manifest; it is not an Apple Developer ID signature, and it does not make Gatekeeper accept the app.
+
+OpenBot does not download or replace itself. On startup it looks in `~/Library/Application Support/OpenBot/update-inbox/` for one `*-update.json` file and the DMG named inside it. The desktop verifies the signature with the public key embedded in the app. Only a matching signature and checksum are copied to `update-staging/`. A missing signature, a signature from another key, or a changed DMG is refused, and the installed app, conversations, and Keychain items stay as they are. Staging a file does not install it. Replacing the app, migrating data, and rolling a failed migration back are still separate release work.
 
 ## Model setup
 
@@ -187,6 +227,16 @@ pnpm run e2e:headed  # explicitly show test windows for debugging
 pnpm run dev:debug   # normal development app with CDP on port 9339
 pnpm run package     # stage, verify and package the arm64 desktop app
 ```
+
+Signing an update manifest reads the PKCS#8 ed25519 private key from `OPENBOT_UPDATE_SIGNING_KEY` and writes `OpenBot-<version>-arm64-update.json` beside the DMG. The private key is not a repository file. Without the variable the command exits 2 and writes nothing:
+
+```sh
+OPENBOT_VERSION=1.2.3 OPENBOT_UPDATE_SIGNING_KEY="$(cat /path/outside/the/repo/update-key.pem)" \
+  node --experimental-strip-types --disable-warning=ExperimentalWarning \
+  apps/desktop/src/main/sign-update-cli.ts apps/desktop/dist/OpenBot-1.2.3-arm64.dmg
+```
+
+`node scripts/generate-update-signing-key.mjs --private-out /path/outside/the/repo/update-key.pem` prints the matching public key and refuses to write the private key inside this checkout. Put the private key in the GitHub Actions secret `OPENBOT_UPDATE_SIGNING_KEY`, and replace `EMBEDDED_UPDATE_PUBLIC_KEY` with the printed public key. The release workflow skips manifest signing when the secret is unset and fails closed when the secret is set but signing fails. See [B14f](docs/tasks/b14f-signed-updates.md).
 
 Build vendored Pi with `pnpm run build:pi` after installation or a Pi change. Ordinary app changes do not require rebuilding it. With `CI=true`, installation uses the frozen lockfile; intentional dependency changes require `pnpm install --no-frozen-lockfile` and the updated lockfile.
 
