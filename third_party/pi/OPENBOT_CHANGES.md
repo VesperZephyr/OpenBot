@@ -21,7 +21,9 @@ These are OpenBot workspace settings, not edits to vendored files.
 
 ## Source Patches
 
-None.
+| ID | Change | Files | Validation |
+| --- | --- | --- | --- |
+| OB-MINIMAX-1 | Point the direct MiniMax catalogs at the current public text models. International stays on the Anthropic-compatible endpoint `https://api.minimax.io/anthropic`. China moves from the previous catalog host `api.minimaxi.com` to the host in the current China model guide, `https://api.minimax.cn/anthropic`. Catalog ids are `MiniMax-M3.1-Flash` and `MiniMax-M3`. Retired M2.7 ids are removed. `MiniMax-M3.1-Flash` sets `forceAdaptiveThinking` and `thinkingLevelMap.off: null` because that model rejects `thinking.type: "disabled"`. A later `generate-models` run can drop `MiniMax-M3.1-Flash` unless models.dev lists it; re-apply this catalog after hydrating. | `packages/ai/scripts/generate-models.ts`, `packages/ai/src/providers/minimax-cn.ts`, `packages/ai/src/providers/data/minimax.json`, `packages/ai/src/providers/data/minimax-cn.json`, `packages/ai/src/providers/data/.manifest.json` | `check:model-data`; OpenBot `minimax-preset` unit test |
 
 ## Known Test Differences
 

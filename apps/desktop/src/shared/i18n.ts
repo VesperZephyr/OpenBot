@@ -1074,6 +1074,7 @@ export const chinese: Readonly<Record<string, string>> = {
 	"Choose a provider and paste an API key. The key stays in the macOS Keychain.": "选择服务商并粘贴 API Key。Key 只保存在 macOS 钥匙串中。",
 	"Get API key": "获取 API Key",
 	"Long context": "长上下文",
+	"China endpoint": "中国节点",
 	"General chat": "通用对话",
 	"Many models": "多个模型",
 	"Long-form writing": "长文写作",

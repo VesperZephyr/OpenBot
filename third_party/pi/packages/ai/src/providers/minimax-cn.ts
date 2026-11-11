@@ -7,7 +7,7 @@ export function minimaxCnProvider(): Provider<"anthropic-messages"> {
 	return createProvider({
 		id: "minimax-cn",
 		name: "MiniMax CN",
-		baseUrl: "https://api.minimaxi.com/anthropic",
+		baseUrl: "https://api.minimax.cn/anthropic",
 		auth: { apiKey: envApiKeyAuth("MiniMax CN API key", ["MINIMAX_CN_API_KEY"]) },
 		models: Object.values(MINIMAX_CN_MODELS),
 		api: anthropicMessagesApi(),
