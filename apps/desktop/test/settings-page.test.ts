@@ -197,17 +197,20 @@ describe("full-page settings close", () => {
 		expect(store.useStore.getState().view).toBe(chat);
 	});
 
-	it("does not close the page when Escape is pressed in an input or textarea", () => {
+	it("blurs an input or textarea on Escape and does not close the page", () => {
 		store.openSettings("skills");
 		for (const tagName of ["INPUT", "TEXTAREA"]) {
 			let prevented = false;
+			let blurred = false;
+			const target = element(tagName, "Draft");
 			store.closeSettingsFromEscape(escapeEvent({
-				target: element(tagName, "Draft"),
+				target: { ...target, blur() { blurred = true; } },
 				preventDefault() {
 					prevented = true;
 				},
 			}));
-			expect(prevented).toBe(false);
+			expect(prevented).toBe(true);
+			expect(blurred).toBe(true);
 			expect(store.useStore.getState().view).toEqual({ kind: "skills" });
 		}
 	});

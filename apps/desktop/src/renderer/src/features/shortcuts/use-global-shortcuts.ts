@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { toggleDetails } from "../details/details-open";
 import { chatEntries } from "../sidebar/Sidebar";
+import { blurSettingsEscapeTarget } from "../../settings-page";
 import { closeSettings, openBot, openSettings, report, useStore } from "../../store";
 import { mapGlobalShortcut, type ChatShortcutEntry, type GlobalShortcutAction } from "./map-global-shortcut";
 
@@ -44,6 +45,8 @@ function perform(action: GlobalShortcutAction, handlers: GlobalShortcutHandlers)
 		case "close-settings":
 			closeSettings();
 			return;
+		case "blur-settings-field":
+			return;
 	}
 }
 
@@ -61,9 +64,13 @@ export function useGlobalShortcuts(handlers: GlobalShortcutHandlers): void {
 		const onCapture = (event: KeyboardEvent): void => {
 			if (event.key !== "Escape") return;
 			const decision = mapGlobalShortcut(event, context());
-			if (decision.action?.type !== "close-settings") return;
+			if (decision.action?.type !== "close-settings" && decision.action?.type !== "blur-settings-field") return;
 			if (decision.preventDefault) event.preventDefault();
 			if (decision.stopPropagation) event.stopPropagation();
+			if (decision.action.type === "blur-settings-field") {
+				blurSettingsEscapeTarget(event.target);
+				return;
+			}
 			perform(decision.action, handlersRef.current);
 		};
 		const onBubble = (event: KeyboardEvent): void => {

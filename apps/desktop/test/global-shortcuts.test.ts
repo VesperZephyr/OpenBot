@@ -34,8 +34,12 @@ function context(patch: Partial<GlobalShortcutContext> = {}): GlobalShortcutCont
 	};
 }
 
-function field(tagName: string, closest: GlobalKeyTarget["closest"] = () => null): GlobalKeyTarget {
-	return { tagName, closest };
+function field(
+	tagName: string,
+	closest: GlobalKeyTarget["closest"] = () => null,
+	matches: GlobalKeyTarget["matches"] = () => false,
+): GlobalKeyTarget {
+	return { tagName, closest, matches };
 }
 
 function consumed(action: GlobalShortcutAction): GlobalShortcutDecision {
@@ -184,7 +188,7 @@ describe("global shortcut mapping", () => {
 		expect(mapGlobalShortcut(key({ key: "Escape", keyCode: 229 }), context({ view: { kind: "settings" } }))).toEqual(IGNORE);
 	});
 
-	it("leaves Escape to inputs, textareas, search, and the file workspace", () => {
+	it("blurs inputs and textareas, leaves an open select its Escape, and still closes from a collapsed select", () => {
 		const search = field("INPUT", (selector) => (selector.includes("conversation-search") ? search : null));
 		const reader = field("ASIDE", (selector) => (selector.includes("file-workspace") ? reader : null));
 		const open = context({
@@ -195,9 +199,17 @@ describe("global shortcut mapping", () => {
 		});
 		expect(mapGlobalShortcut(key({ key: "Escape", target: search }), open)).toEqual(IGNORE);
 		expect(mapGlobalShortcut(key({ key: "Escape", target: reader }), open)).toEqual(IGNORE);
+		const blur = { preventDefault: true, stopPropagation: true, action: { type: "blur-settings-field" as const } };
 		for (const tagName of ["INPUT", "TEXTAREA"]) {
-			expect(mapGlobalShortcut(key({ key: "Escape", target: field(tagName) }), open)).toEqual(IGNORE);
+			expect(mapGlobalShortcut(key({ key: "Escape", target: field(tagName) }), open)).toEqual(blur);
 		}
+		const popup = field("SELECT", () => null, (selector) => selector === ":open");
+		expect(mapGlobalShortcut(key({ key: "Escape", target: popup }), open)).toEqual(IGNORE);
+		expect(mapGlobalShortcut(key({ key: "Escape", target: field("SELECT") }), context({ view: { kind: "skills" } }))).toEqual({
+			preventDefault: true,
+			stopPropagation: true,
+			action: { type: "close-settings" },
+		});
 		expect(mapGlobalShortcut(key({ key: "Escape", target: field("BUTTON") }), context({ view: { kind: "skills" } }))).toEqual({
 			preventDefault: true,
 			stopPropagation: true,

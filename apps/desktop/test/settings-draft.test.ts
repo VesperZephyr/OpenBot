@@ -165,11 +165,11 @@ describe("settings drafts survive close until the user confirms", () => {
 		await typeInto(workflow, drafted);
 		workflow.focus();
 		await pressEscape(workflow);
+		expect(document.activeElement).not.toBe(workflow);
 		expect(loaded.store?.useStore.getState().view).toEqual({ kind: "routines" });
 		expect(confirmDialog()).toBeNull();
 		expect(workflow.value).toBe(drafted);
 
-		workflow.blur();
 		await pressEscape(document.body);
 		expect(loaded.store?.useStore.getState().view).toEqual({ kind: "routines" });
 		expect(confirmDialog()?.textContent).toContain("Discard these edits?");
@@ -190,6 +190,32 @@ describe("settings drafts survive close until the user confirms", () => {
 		});
 		expect(loaded.store?.useStore.getState().view).toEqual({ kind: "bot", botId: "ada" });
 		expect(container?.querySelector("textarea")).toBeNull();
+	});
+
+	it("collapses an open select on Escape and leaves a collapsed select to the close path", async () => {
+		await show("routines");
+		await act(async () => {
+			buttonNamed("New routine").click();
+		});
+		await typeInto(workflowField(), "Keep the weekly close.");
+		const select = container?.querySelector('select[aria-label="Frequency"]');
+		if (!(select instanceof HTMLSelectElement)) throw new Error("missing frequency select");
+		let open = true;
+		const matches = select.matches.bind(select);
+		select.matches = ((selector: string) => (selector === ":open" ? open : matches(selector))) as typeof select.matches;
+		select.addEventListener("keydown", (event) => {
+			if (event.key === "Escape" && !event.defaultPrevented) open = false;
+		});
+		select.focus();
+		await pressEscape(select);
+		expect(open).toBe(false);
+		expect(document.activeElement).toBe(select);
+		expect(confirmDialog()).toBeNull();
+		expect(loaded.store?.useStore.getState().view).toEqual({ kind: "routines" });
+		await pressEscape(select);
+		expect(confirmDialog()?.textContent).toContain("Discard these edits?");
+		expect(loaded.store?.useStore.getState().view).toEqual({ kind: "routines" });
+		expect(workflowField().value).toBe("Keep the weekly close.");
 	});
 
 	it("closes a routine page that has no workflow changes", async () => {
@@ -237,10 +263,10 @@ describe("settings drafts survive close until the user confirms", () => {
 		await typeInto(steps, drafted);
 		steps.focus();
 		await pressEscape(steps);
+		expect(document.activeElement).not.toBe(steps);
 		expect(confirmDialog()).toBeNull();
 		expect(loaded.store?.useStore.getState().view).toEqual({ kind: "skills" });
 
-		steps.blur();
 		await pressEscape(document.body);
 		expect(loaded.store?.useStore.getState().view).toEqual({ kind: "skills" });
 		expect(steps.value).toBe(drafted);
@@ -280,10 +306,10 @@ describe("settings drafts survive close until the user confirms", () => {
 			await typeInto(field, "sk-live-secret");
 			field.focus();
 			await pressEscape(field);
+			expect(document.activeElement).not.toBe(field);
 			expect(loaded.store?.useStore.getState().view).toEqual({ kind: "settings" });
 			expect(confirmDialog()).toBeNull();
 			expect(field.value).toBe("sk-live-secret");
-			field.blur();
 			await pressEscape(document.body);
 			expect(loaded.store?.useStore.getState().view).toEqual({ kind: "settings" });
 			expect(field.value).toBe("sk-live-secret");

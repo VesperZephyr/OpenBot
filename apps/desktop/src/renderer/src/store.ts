@@ -31,7 +31,8 @@ import {
 	isSettingsView,
 	restoreDescribedFocus,
 	retainSettingsFocus,
-	settingsEscapeCloses,
+	blurSettingsEscapeTarget,
+	settingsEscapeKind,
 	settingsFocusLost,
 	shouldRestoreSettingsFocus,
 	type FocusDescriptor,
@@ -280,10 +281,17 @@ export function closeSettings(andThen?: () => void): boolean {
 	return true;
 }
 
-/** Escape on a settings page uses the same close as Back. Popups and dialogs keep the key. */
+/** Escape on a settings page uses the same close as Back. A text field blurs first; popups and an open select keep the key. */
 export function closeSettingsFromEscape(event: SettingsEscapeEvent): void {
 	if (!isSettingsView(useStore.getState().view)) return;
-	if (!settingsEscapeCloses(event, (selector) => document.querySelector(selector))) return;
+	const kind = settingsEscapeKind(event, (selector) => document.querySelector(selector));
+	if (kind === "blur") {
+		event.preventDefault();
+		event.stopPropagation();
+		blurSettingsEscapeTarget(event.target);
+		return;
+	}
+	if (kind !== "close") return;
 	event.preventDefault();
 	event.stopPropagation();
 	closeSettings();
