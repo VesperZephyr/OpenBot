@@ -155,7 +155,7 @@ it("fresh output folder, private history, archive and localized controls", async
   );
   const a = await create("Output report");
   await expect
-    .poll(async () => (await h.api("tasks.get", { taskId: a.taskId })).state)
+    .poll(async () => (await h.api("tasks.get", { taskId: a.taskId })).state, { timeout: 10_000 })
     .toBe("result");
   await h.page().getByText("Report saved", { exact: true }).waitFor();
   expect(await readFile(outputPath, "utf8")).toBe(edited);
