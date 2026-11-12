@@ -149,6 +149,7 @@ it("composes approved Bot and group lifecycle with exact nested receipts and rev
 	expect((await runtime.groups().list())[0]?.status).toBe("dissolved");
 	expect((await runtime.listBots()).filter((b) => b.kind === "specialist")[0]?.status).toBe("deleted");
 	expect(parent.execution!.deadline - parent.execution!.admittedAt).toBeLessThanOrEqual(600000);
+	expect(parent.execution!.deadline - parent.execution!.admittedAt).toBe(600000);
 }, 15000);
 it("denial latches admission even with caught failures and queued calls; committed objects remain", async () => {
 	const h = await setup(
