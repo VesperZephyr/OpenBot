@@ -337,13 +337,12 @@ export async function openBot(botId: string, searchTarget?: SearchTarget): Promi
 		setDetailsOpen(true);
 		return;
 	}
-	let pending: Promise<void> | undefined;
 	const go = (): void => {
 		useStore.setState({ view: { kind: "bot", botId }, searchTarget });
-		pending = conversationRead.request();
+		// Discard can run this after openBot has returned, so the caller's catch no longer covers the read.
+		void conversationRead.request().catch(report);
 	};
-	if (!closeSettings(go)) return;
-	await pending;
+	closeSettings(go);
 }
 
 function listedConversations(state: { readonly bots: readonly BotSummary[]; readonly groups: readonly Group[]; readonly summaries: Readonly<Record<string, ConversationSummary>> }): ListedConversation[] {

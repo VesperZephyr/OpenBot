@@ -335,4 +335,40 @@ describe("settings drafts survive close until the user confirms", () => {
 		});
 		expect(loaded.store?.useStore.getState().view).toEqual({ kind: "bot", botId: "bee" });
 	});
+
+	it("reports a rejected conversation read when Discard finishes opening the Bot", async () => {
+		const store = loaded.store;
+		if (!store) throw new Error("store was not loaded");
+		const calls = store.api as unknown as Record<string, (params: never) => Promise<unknown>>;
+		const subscribe = calls["conversations.subscribe"];
+		const rejections: unknown[] = [];
+		const onRejection = (reason: unknown): void => {
+			rejections.push(reason);
+		};
+		process.on("unhandledRejection", onRejection);
+		calls["conversations.subscribe"] = async () => {
+			throw new Error("Could not open the conversation");
+		};
+		try {
+			await show("routines");
+			await act(async () => {
+				buttonNamed("New routine").click();
+			});
+			await typeInto(workflowField(), "Do not lose this workflow.");
+			await act(async () => {
+				void store.openBot("bee").catch(store.report);
+			});
+			expect(store.useStore.getState().view).toEqual({ kind: "routines" });
+			await act(async () => {
+				buttonNamed("Discard").click();
+			});
+			await new Promise((resolve) => setImmediate(resolve));
+			expect(rejections.map((reason) => (reason instanceof Error ? reason.message : String(reason)))).toEqual([]);
+			expect(store.useStore.getState().notice).toBe("Could not open the conversation");
+			expect(store.useStore.getState().view).toEqual({ kind: "bot", botId: "bee" });
+		} finally {
+			process.off("unhandledRejection", onRejection);
+			calls["conversations.subscribe"] = subscribe ?? (async () => undefined);
+		}
+	});
 });
