@@ -37,8 +37,9 @@ function perform(action: GlobalShortcutAction, handlers: GlobalShortcutHandlers)
 			void openBot(action.botId).catch(report);
 			return;
 		case "open-group":
-			closeSettings();
-			useStore.setState({ view: { kind: "group", groupId: action.groupId }, searchTarget: undefined });
+			closeSettings(() => {
+				useStore.setState({ view: { kind: "group", groupId: action.groupId }, searchTarget: undefined });
+			});
 			return;
 		case "close-settings":
 			closeSettings();

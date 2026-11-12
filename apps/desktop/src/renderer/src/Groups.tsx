@@ -127,8 +127,9 @@ export function GroupRow({ group: g }: { group: Group }) {
 			aria-current={view.kind === "group" && view.groupId === g.groupId ? "page" : undefined}
             className={`bot-row group-nav ${view.kind === "group" && view.groupId === g.groupId ? "is-selected" : ""}`}
 			onClick={() => {
-				closeSettings();
-				useStore.setState({ view: { kind: "group", groupId: g.groupId }, searchTarget: undefined });
+				closeSettings(() => {
+					useStore.setState({ view: { kind: "group", groupId: g.groupId }, searchTarget: undefined });
+				});
 			}}
 		>
 			<GroupAvatar memberIds={g.memberIds} />
@@ -174,7 +175,9 @@ export function GroupEditor({ group: liveGroup, onClose }: { group?: Group; onCl
 							fields: { name: name.trim(), objective, memberIds: members, leadBotId: lead },
 						});
 						await refreshGroups();
-						useStore.setState({ view: { kind: "group", groupId: result.groupId } });
+						closeSettings(() => {
+							useStore.setState({ view: { kind: "group", groupId: result.groupId } });
+						});
 						onClose();
 					} catch (error) {
 						report(error);

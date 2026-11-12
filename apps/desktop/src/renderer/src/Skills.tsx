@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { validSkillDocument, type SkillDocument, type SkillDetail, type SkillChange } from "@openbot/protocol";
+import { setSettingsDraftDirty } from "./settings-draft";
 import { api, errorMessage, refreshSkills, useStore } from "./store";
 import { t } from "./i18n";
 import { labels, SkillReview } from "./previews/skill-review";
@@ -14,6 +15,10 @@ const blank: SkillDocument = {
 	output: "",
 	approvalBoundaries: "",
 };
+function skillChanged(draft: SkillDocument | undefined, baseline: SkillDocument | undefined): boolean {
+	if (!draft || !baseline) return false;
+	return (Object.keys(blank) as (keyof SkillDocument)[]).some((key) => draft[key] !== baseline[key]);
+}
 export function SkillLibrary() {
 	const skills = useStore((s) => s.skills),
 		host = useStore((s) => s.host);
@@ -24,6 +29,16 @@ export function SkillLibrary() {
 		[busy, setBusy] = useState(false),
 		[error, setError] = useState<string>();
 	const [draftRevision, setDraftRevision] = useState(0);
+	const skillBaseline = useRef<SkillDocument | undefined>(undefined);
+	const openDraft = (document: SkillDocument): void => {
+		const copy = { ...document };
+		skillBaseline.current = { ...copy };
+		setDraft(copy);
+	};
+	useEffect(() => {
+		setSettingsDraftDirty("skills", skillChanged(draft, skillBaseline.current));
+	}, [draft]);
+	useEffect(() => () => setSettingsDraftDirty("skills", false), []);
 	const request = useRef<{ id: string; fingerprint: string } | undefined>(undefined),
 		generation = useRef(0);
 	const reload = () => void refreshSkills().catch((e) => setError(errorMessage(e)));
@@ -49,6 +64,7 @@ export function SkillLibrary() {
 		setError(undefined);
 		setSelected(name);
 		setDraft(undefined);
+		skillBaseline.current = undefined;
 		setReview(undefined);
 		request.current = undefined;
 	};
@@ -70,6 +86,7 @@ export function SkillLibrary() {
 			const name = review.name;
 			setReview(undefined);
 			setDraft(undefined);
+			skillBaseline.current = undefined;
 			request.current = undefined;
 			setSelected(name);
 			await refreshSkills();
@@ -91,7 +108,7 @@ export function SkillLibrary() {
 					onClick={() => {
 						choose();
 						setDraftRevision(0);
-						setDraft({ ...blank });
+						openDraft({ ...blank });
 					}}
 				>
 					{t("New skill")}
@@ -199,7 +216,7 @@ export function SkillLibrary() {
 									disabled={!detail.current.available && !detail.current.deleted}
 									onClick={() => {
 										setDraftRevision(detail.current.revision);
-										setDraft({ ...detail.current.document });
+										openDraft(detail.current.document);
 									}}
 								>
 									{t(detail.current.deleted ? "Restore as new version" : "Edit skill")}

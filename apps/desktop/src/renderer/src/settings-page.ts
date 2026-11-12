@@ -34,7 +34,7 @@ export type SettingsEscapeEvent = {
 	readonly key: string;
 	readonly isComposing: boolean;
 	readonly keyCode?: number;
-	readonly target: EventTarget | { closest?(selector: string): unknown } | null;
+	readonly target: EventTarget | { closest?(selector: string): unknown; readonly tagName?: string } | null;
 	preventDefault(): void;
 	stopPropagation(): void;
 };
@@ -110,7 +110,7 @@ export function shouldRestoreSettingsFocus(options: {
 	return options.returned && !options.onboarding && !options.stillOnSettings && options.lost;
 }
 
-/** Escape closes the settings page only when no open popup, dialog, or sidebar field already owns it. */
+/** Escape closes the settings page only when no open popup, dialog, or text field already owns it. */
 export function settingsEscapeCloses(event: SettingsEscapeEvent, query: (selector: string) => unknown): boolean {
 	if (event.key !== "Escape" || event.isComposing || event.keyCode === 229) return false;
 	if (targetOwnsEscape(event.target)) return false;
@@ -118,7 +118,9 @@ export function settingsEscapeCloses(event: SettingsEscapeEvent, query: (selecto
 }
 
 function targetOwnsEscape(target: SettingsEscapeEvent["target"]): boolean {
-	if (target === null || typeof target !== "object" || !("closest" in target) || typeof target.closest !== "function") return false;
+	if (target === null || typeof target !== "object") return false;
+	if ("tagName" in target && typeof target.tagName === "string" && (target.tagName.toUpperCase() === "INPUT" || target.tagName.toUpperCase() === "TEXTAREA")) return true;
+	if (!("closest" in target) || typeof target.closest !== "function") return false;
 	return target.closest(".conversation-search, .file-workspace") != null;
 }
 

@@ -184,7 +184,7 @@ describe("global shortcut mapping", () => {
 		expect(mapGlobalShortcut(key({ key: "Escape", keyCode: 229 }), context({ view: { kind: "settings" } }))).toEqual(IGNORE);
 	});
 
-	it("leaves Escape to the search field and file workspace, and still closes from a composer", () => {
+	it("leaves Escape to inputs, textareas, search, and the file workspace", () => {
 		const search = field("INPUT", (selector) => (selector.includes("conversation-search") ? search : null));
 		const reader = field("ASIDE", (selector) => (selector.includes("file-workspace") ? reader : null));
 		const open = context({
@@ -195,9 +195,10 @@ describe("global shortcut mapping", () => {
 		});
 		expect(mapGlobalShortcut(key({ key: "Escape", target: search }), open)).toEqual(IGNORE);
 		expect(mapGlobalShortcut(key({ key: "Escape", target: reader }), open)).toEqual(IGNORE);
-		expect(
-			mapGlobalShortcut(key({ key: "Escape", target: field("TEXTAREA") }), context({ view: { kind: "skills" } })),
-		).toEqual({
+		for (const tagName of ["INPUT", "TEXTAREA"]) {
+			expect(mapGlobalShortcut(key({ key: "Escape", target: field(tagName) }), open)).toEqual(IGNORE);
+		}
+		expect(mapGlobalShortcut(key({ key: "Escape", target: field("BUTTON") }), context({ view: { kind: "skills" } }))).toEqual({
 			preventDefault: true,
 			stopPropagation: true,
 			action: { type: "close-settings" },

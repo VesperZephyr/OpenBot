@@ -119,6 +119,9 @@ describe("settings focus descriptor", () => {
 		const reader = element("ASIDE", "Files");
 		reader.closest = (selector) => (selector.includes("file-workspace") ? reader : null);
 		expect(settingsEscapeCloses(escapeEvent({ target: reader }), () => null)).toBe(false);
+		expect(settingsEscapeCloses(escapeEvent({ target: element("INPUT", "API key") }), () => null)).toBe(false);
+		expect(settingsEscapeCloses(escapeEvent({ target: element("TEXTAREA", "Workflow") }), () => null)).toBe(false);
+		expect(settingsEscapeCloses(escapeEvent({ target: element("BUTTON", "Back to chat") }), () => null)).toBe(true);
 	});
 });
 
@@ -192,6 +195,21 @@ describe("full-page settings close", () => {
 		expect(settingsReturnFocus()).toEqual(remembered);
 		store.closeSettings();
 		expect(store.useStore.getState().view).toBe(chat);
+	});
+
+	it("does not close the page when Escape is pressed in an input or textarea", () => {
+		store.openSettings("skills");
+		for (const tagName of ["INPUT", "TEXTAREA"]) {
+			let prevented = false;
+			store.closeSettingsFromEscape(escapeEvent({
+				target: element(tagName, "Draft"),
+				preventDefault() {
+					prevented = true;
+				},
+			}));
+			expect(prevented).toBe(false);
+			expect(store.useStore.getState().view).toEqual({ kind: "skills" });
+		}
 	});
 
 	it("does not close the page when Escape belongs to a listbox or the view is already chat", () => {
