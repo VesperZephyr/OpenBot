@@ -127,6 +127,26 @@ it("keeps a deleted conversation deleted and leaves the other conversation", asy
 	runtime = await open();
 	expect((await row("bot:a")).deleted).toBe(true);
 	expect((await row("bot:b")).deleted).toBeUndefined();
+	await runtime.conversationIndex().projectDirect(
+		snapshot([message("1", "user"), message("2", "assistant", "Kept"), message("4", "assistant", "Restored")]),
+	);
+	expect(await row("bot:a")).toMatchObject({ deleted: true, latest: { text: "Kept" } });
+	expect((await row("bot:b")).deleted).toBeUndefined();
+});
+
+it("seals a direct chat that has no index record and does not write a preview back after restart", async () => {
+	expect((await runtime.conversationIndex().list()).some((item) => item.conversationKey === "bot:unindexed")).toBe(false);
+	await runtime.conversationIndex().deleteConversation("bot:unindexed");
+	expect(await row("bot:unindexed")).toMatchObject({ deleted: true, incomingCount: 0, readThrough: 0, unreadCount: 0 });
+	expect((await row("bot:unindexed")).latest).toBeUndefined();
+	await runtime.conversationIndex().projectDirect(snapshot([message("1", "assistant", "Old preview")], "unindexed"));
+	expect((await row("bot:unindexed")).latest).toBeUndefined();
+	await runtime.close();
+	runtime = await open();
+	await runtime.conversationIndex().projectDirect(snapshot([message("1", "assistant", "Old preview"), message("2", "user", "Again")], "unindexed"));
+	expect(await row("bot:unindexed")).toMatchObject({ deleted: true, incomingCount: 0, unreadCount: 0 });
+	expect((await row("bot:unindexed")).latest).toBeUndefined();
+	expect((await row("bot:a")).deleted).toBeUndefined();
 });
 
 it("starts a fresh preview after a deleted direct chat without restoring that transcript or the other chat", async () => {

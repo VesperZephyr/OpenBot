@@ -100,11 +100,18 @@ export function conversationIndexStore(harness: Harness, context: Context) {
 		async deleted(key: ConversationKey): Promise<boolean> {
 			return (await read())[key]?.deleted === true;
 		},
-		/** Hide one conversation. A later projection must not bring it back until `reopenConversation`. */
+		/**
+		 * Hide one conversation. A missing row is created already deleted so cleanup can be retried.
+		 * A later projection must not bring it back until `reopenConversation`.
+		 */
 		async deleteConversation(key: ConversationKey): Promise<void> {
 			await harness.commit(async (tx) => {
-				const record = (await tx.doc(ConversationIndexDoc)).records[key];
-				if (!record) throw new ProtocolError("not_found", "Conversation is unavailable");
+				const doc = await tx.doc(ConversationIndexDoc);
+				const record = doc.records[key];
+				if (!record) {
+					doc.records[key] = { messageCount: 0, incomingCount: 0, readThrough: 0, deleted: true };
+					return;
+				}
 				record.deleted = true;
 			}, context);
 		},
