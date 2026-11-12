@@ -310,6 +310,10 @@ export class RunScheduler {
 			const requestedSkills = skillReferences(options.skills ?? []);
 			const skills = await this.#resolveSkills(composeRoleSkills(roleSkills, requestedSkills));
 			const message = { requestId, text, requestedSkills, roleSkills, ...(skills.length ? { skills } : {}), ...(attachments.length ? { attachments } : {}) };
+			// Background completions admit on this line and are not on the Host bot queue. A direct
+			// conversation deleted before this section must not gain a Run after cancelMatching.
+			if (channelId === "direct" && (await this.#runtime.conversationIndex().deleted(`bot:${botId}`)))
+				throw new ProtocolError("not_found", "Conversation is unavailable");
 			const candidate = options.separate ? undefined : this.active(botId, channelId);
 			const current = (candidate?.origin ?? "user") === (options.origin ?? "user") ? candidate : undefined;
 			if (current?.state === "queued") {
@@ -373,6 +377,7 @@ export class RunScheduler {
 	}
 
 	async cancelMatching(matches: (run: StoredRun) => boolean): Promise<void> {
+		// Same line as submit, so a direct enqueue is in this scan or sees the deleted row first.
 		const running = await this.#serial(async () => {
 			const runs = [...this.#runs.values()].filter(matches);
 			for (const run of runs) if (run.state === "queued") await this.#put({ ...run, state: "cancelled", endedAt: this.#now() });

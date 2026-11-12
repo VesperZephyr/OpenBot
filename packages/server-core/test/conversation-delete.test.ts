@@ -196,4 +196,32 @@ describe("deleteConversation concurrency", () => {
 		expect(await runsFor("after-retry")).toEqual([]);
 		expect(events).toEqual(["bots.changed", "bots.changed"]);
 	});
+
+	it("does not enqueue a direct background completion after cancel has finished", async () => {
+		const release = Promise.withResolvers<void>();
+		const entered = Promise.withResolvers<void>();
+		const wrapped = vi.mocked(scheduler.submit).getMockImplementation()!;
+		vi.mocked(scheduler.submit).mockImplementation(async (id, requestId, text, options) => {
+			if (requestId === "completion:job") {
+				entered.resolve();
+				await release.promise;
+			}
+			return wrapped(id, requestId, text, options);
+		});
+		const pending = scheduler.submit(botId, "completion:job", "Summarize the final outcome", {
+			origin: "background",
+			separate: true,
+		});
+		try {
+			await entered.promise;
+			await runtime.conversationIndex().deleteConversation(key());
+			await scheduler.cancelMatching((run) => run.botId === botId && (!run.channelId || run.channelId === "direct"));
+		} finally {
+			release.resolve();
+		}
+		await expect(pending).rejects.toThrow("Conversation is unavailable");
+		expect(await runsFor("completion:job")).toEqual([]);
+		expect(book.forBot(botId).some((row) => row.approvalId === RACING_APPROVAL)).toBe(false);
+		expect((await runtime.runsStore().get(existingRunId))?.state ?? "cancelled").toBe("cancelled");
+	});
 });

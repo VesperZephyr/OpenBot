@@ -290,10 +290,17 @@ export class BackgroundTasks {
 						await store.update(record.invocationId, { state: "ready", receipt }, input);
 						continue;
 					}
-					const admitted = await this.options.runs.submit(record.botId, `completion:${record.invocationId}`, input, {
-						origin: "background",
-						separate: true,
-					});
+					let admitted: { runId: string };
+					try {
+						admitted = await this.options.runs.submit(record.botId, `completion:${record.invocationId}`, input, {
+							origin: "background",
+							separate: true,
+						});
+					} catch (error) {
+						if (!(error instanceof ProtocolError) || error.code !== "not_found") throw error;
+						await store.update(record.invocationId, { state: "suppressed", reason: "The originating task is no longer eligible" });
+						continue;
+					}
 					await store.update(record.invocationId, { state: "queued", continuationRunId: admitted.runId });
 					await port.inspect([receipt], true);
 					await store.update(record.invocationId, { acknowledged: true });

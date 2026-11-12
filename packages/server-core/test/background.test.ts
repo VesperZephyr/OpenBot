@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { BotRuntime, type StoredRun } from "@openbot/agent-runtime";
 import { SCRIPTED_MODEL, scriptedModels } from "@openbot/agent-runtime/testing";
-import type { BackgroundTaskReceipt } from "@openbot/protocol";
+import { ProtocolError, type BackgroundTaskReceipt } from "@openbot/protocol";
 import { BackgroundTasks } from "../src/background.ts";
 import type { ManagementCall } from "../src/bot-management.ts";
 import type { RunScheduler } from "../src/runs.ts";
@@ -148,6 +148,15 @@ it("reconciles a crash after admission with the same logical request", async () 
 	await service.sweep();
 	expect(submit.mock.calls[0]![1]).toBe(submit.mock.calls[1]![1]);
 	expect((await runtime.runsStore().list()).filter((r) => r.origin === "background")).toHaveLength(1);
+});
+it("suppresses a direct completion when admission finds the conversation deleted", async () => {
+	await subscribe();
+	await completed();
+	submit.mockReset();
+	submit.mockRejectedValueOnce(new ProtocolError("not_found", "Conversation is unavailable"));
+	await service.sweep();
+	expect((await runtime.background().get(receipt.invocationId))?.state).toBe("suppressed");
+	expect(submit).toHaveBeenCalledTimes(1);
 });
 it("persists Stop before cancellation and rejects a late success without resurrecting the task", async () => {
 	await subscribe();
