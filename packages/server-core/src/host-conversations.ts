@@ -148,13 +148,18 @@ export async function deleteConversation(host: ConversationHost, params: HostPar
 	const botId = conversationKey.slice(4);
 	const bot = await host.liveBot(botId);
 	if (bot.kind === "core") throw new ProtocolError("invalid_request", "The Core conversation cannot be deleted");
-	const conversationId = await host.runtime.conversationKey(botId);
-	await host.runs.cancelMatching((run) => run.botId === botId && (!run.channelId || run.channelId === "direct"));
-	await host.background.stopConversation(botId, conversationId);
-	await host.approvals.forgetConversation(conversationId);
+	// Seal the index before cleanup. A submit during cancel, stop, or forget already sees this
+	// conversation as deleted, and a cleanup failure stays deleted so a retry can finish it.
 	await host.runtime.conversationIndex().deleteConversation(conversationKey);
-	host.emit({ type: "bots.changed", payload: {} });
-	return { conversationId };
+	try {
+		const conversationId = await host.runtime.conversationKey(botId);
+		await host.runs.cancelMatching((run) => run.botId === botId && (!run.channelId || run.channelId === "direct"));
+		await host.background.stopConversation(botId, conversationId);
+		await host.approvals.forgetConversation(conversationId);
+		return { conversationId };
+	} finally {
+		host.emit({ type: "bots.changed", payload: {} });
+	}
 }
 
 export async function reopenConversation(host: ConversationHost, params: HostParams<"conversations.reopen">): Promise<null> {
