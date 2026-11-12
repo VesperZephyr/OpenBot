@@ -1,4 +1,4 @@
-import { isSettingsView, settingsEscapeCloses, type SettingsEscapeEvent } from "../../settings-page";
+import { isSettingsView, settingsEscapeKind, type SettingsEscapeEvent } from "../../settings-page";
 
 /**
  * A key event reduced to the fields the global shortcuts read.
@@ -19,6 +19,8 @@ export type GlobalKeyTarget = {
 	readonly tagName?: string;
 	readonly isContentEditable?: boolean;
 	closest?(selector: string): unknown;
+	matches?(selector: string): boolean;
+	blur?(): void;
 };
 
 /** One row of the unfiltered chat list, in the order `chatEntries` already returns. */
@@ -39,7 +41,8 @@ export type GlobalShortcutAction =
 	| { readonly type: "toggle-details" }
 	| { readonly type: "open-bot"; readonly botId: string }
 	| { readonly type: "open-group"; readonly groupId: string }
-	| { readonly type: "close-settings" };
+	| { readonly type: "close-settings" }
+	| { readonly type: "blur-settings-field" };
 
 export type GlobalShortcutDecision = {
 	readonly preventDefault: boolean;
@@ -70,7 +73,9 @@ function asEscapeEvent(event: GlobalKeyEvent): SettingsEscapeEvent {
 
 function mapEscape(event: GlobalKeyEvent, context: GlobalShortcutContext): GlobalShortcutDecision {
 	if (!isSettingsView(context.view)) return IGNORE;
-	if (!settingsEscapeCloses(asEscapeEvent(event), context.escapeQuery)) return IGNORE;
+	const kind = settingsEscapeKind(asEscapeEvent(event), context.escapeQuery);
+	if (kind === "blur") return { preventDefault: true, stopPropagation: true, action: { type: "blur-settings-field" } };
+	if (kind !== "close") return IGNORE;
 	return { preventDefault: true, stopPropagation: true, action: { type: "close-settings" } };
 }
 

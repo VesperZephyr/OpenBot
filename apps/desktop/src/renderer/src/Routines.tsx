@@ -1,6 +1,7 @@
 import { ReportInputsEditor, ReportInputsSummary, ReportInputResult } from "./RoutineInputs";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ConversationSnapshot, Routine, RoutineChange, RoutineDetail, RoutineFields, RoutineSchedule } from "@openbot/protocol";
+import { setSettingsDraftDirty } from "./settings-draft";
 import { api, errorMessage, refreshRoutines, refreshSkills, useStore } from "./store";
 import { t } from "./i18n";
 import { ArtifactCard } from "./ArtifactCard";
@@ -8,6 +9,9 @@ import { Markdown } from "./markdown";
 import "./routines.css";
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+function routineDraftKey(fields: RoutineFields, owner: string): string {
+	return JSON.stringify({ owner, fields });
+}
 const empty = (): RoutineFields => ({
 	name: "",
 	instructions: "",
@@ -30,12 +34,23 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 		bots = useStore((s) => s.bots),
 		skills = useStore((s) => s.skills),
 		host = useStore((s) => s.host.status);
+	const initialDraft: RoutineFields | undefined = proposal
+		? proposal.fields
+		: initialGroup
+			? { ...empty(), reportTo: { groupId: initialGroup.groupId, groupRevision: initialGroup.deliveryRevision ?? initialGroup.revision } }
+			: undefined;
+	const initialBot = scopedBotId ?? (initialGroup ? bots.find((b) => b.status === "active" && initialGroup.memberIds.includes(b.botId))?.botId ?? "" : "");
 	const [selected, setSelected] = useState<string | undefined>(view.kind === "routines" ? view.routineId : undefined),
 		[occurrence, setOccurrence] = useState<string | undefined>(view.kind === "routines" ? view.occurrenceId : undefined),
 		[detail, setDetail] = useState<RoutineDetail>();
-	const [draft, setDraft] = useState<RoutineFields | undefined>(() => proposal ? proposal.fields : initialGroup ? { ...empty(), reportTo: { groupId: initialGroup.groupId, groupRevision: initialGroup.deliveryRevision ?? initialGroup.revision } } : undefined),
-		[botId, setBotId] = useState(() => scopedBotId ?? (initialGroup ? bots.find((b) => b.status === "active" && initialGroup.memberIds.includes(b.botId))?.botId ?? "" : "")),
+	const [draft, setDraft] = useState(initialDraft),
+		[botId, setBotId] = useState(initialBot),
 		[revision, setRevision] = useState(0);
+	const routineBaseline = useRef(initialDraft ? routineDraftKey(initialDraft, initialBot) : undefined);
+	useEffect(() => {
+		setSettingsDraftDirty("routines", draft !== undefined && routineDraftKey(draft, botId) !== routineBaseline.current);
+	}, [draft, botId]);
+	useEffect(() => () => setSettingsDraftDirty("routines", false), []);
 	const [review, setReview] = useState<RoutineChange | undefined>(() => proposal ? { action: "create", ...proposal } : undefined),
 		[confirmTest, setConfirmTest] = useState(false),
 		[busy, setBusy] = useState(false),
@@ -96,18 +111,20 @@ export function RoutinesPanel({ renderTranscript }: { renderTranscript: (snapsho
 		setOccurrence(undefined);
 		if (id !== selected || occurrence !== undefined) setDetail(undefined);
 		setDraft(undefined);
+		routineBaseline.current = undefined;
 		setReview(undefined);
 		setConfirmTest(false);
 		testRequest.current = undefined;
 		setError(undefined);
 	};
 	const edit = (r?: Routine) => {
-		setDraft(
-			r ? { name: r.name, instructions: r.instructions, schedule: r.schedule, catchUpHours: r.catchUpHours, skills: r.skills,
-				...(r.reportInputs ? { reportInputs: { ...r.reportInputs, sources: r.reportInputs.sources.map((ref) => ({ ...ref, revision: (() => { const source = list?.routines.find((s) => s.routineId === ref.routineId); return source ? source.executionRevision ?? source.revision : ref.revision; })() })) } } : {}),
-				...(r.reportTo ? { reportTo: { ...r.reportTo, groupRevision: (() => { const group = groups.find((g) => g.groupId === r.reportTo?.groupId); return group ? group.deliveryRevision ?? group.revision : r.reportTo.groupRevision; })() } } : {}) } : empty(),
-		);
-		setBotId(r?.botId ?? scopedBotId ?? bots.find((b) => b.status === "active")?.botId ?? "");
+		const next = r ? { name: r.name, instructions: r.instructions, schedule: r.schedule, catchUpHours: r.catchUpHours, skills: r.skills,
+			...(r.reportInputs ? { reportInputs: { ...r.reportInputs, sources: r.reportInputs.sources.map((ref) => ({ ...ref, revision: (() => { const source = list?.routines.find((s) => s.routineId === ref.routineId); return source ? source.executionRevision ?? source.revision : ref.revision; })() })) } } : {}),
+			...(r.reportTo ? { reportTo: { ...r.reportTo, groupRevision: (() => { const group = groups.find((g) => g.groupId === r.reportTo?.groupId); return group ? group.deliveryRevision ?? group.revision : r.reportTo.groupRevision; })() } } : {}) } : empty();
+		const nextBot = r?.botId ?? scopedBotId ?? bots.find((b) => b.status === "active")?.botId ?? "";
+		routineBaseline.current = routineDraftKey(next, nextBot);
+		setDraft(next);
+		setBotId(nextBot);
 		setRevision(r?.revision ?? 0);
 		setReview(undefined);
 	};

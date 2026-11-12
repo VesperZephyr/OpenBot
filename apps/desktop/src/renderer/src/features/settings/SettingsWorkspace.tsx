@@ -1,4 +1,4 @@
-import { type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect, useState } from "react";
+import { type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 import type { ConversationSnapshot } from "@openbot/protocol";
 import { BackupSettings } from "../../BackupSettings";
 import { AppearanceSelect } from "../../appearance";
@@ -15,6 +15,7 @@ import { ModelSetup } from "../../ModelSetup";
 import { ManagementHistory } from "../../BotManagement";
 import { t } from "../../i18n";
 import { api, closeSettings, holdOnboarding, refreshSettings, report, useStore, type View } from "../../store";
+import { discardSettingsDraft, keepSettingsDraft, setSettingsDraftDirty, settingsCloseConfirming, subscribeSettingsDraft } from "../../settings-draft";
 import { ModelSelect } from "../../ModelSelect";
 import { providerCredentialStatus } from "./provider-credential-status";
 
@@ -38,6 +39,19 @@ export function SettingsWorkspace({
 	readonly onSelect: (kind: SettingsDestination) => void;
 	readonly renderTranscript: (snapshot: ConversationSnapshot, occurrenceId: string) => ReactNode;
 }) {
+	const confirming = useSyncExternalStore(subscribeSettingsDraft, settingsCloseConfirming, settingsCloseConfirming);
+	useEffect(() => {
+		if (!confirming) return;
+		const onKey = (event: KeyboardEvent): void => {
+			if (event.key !== "Escape" || event.isComposing || event.keyCode === 229) return;
+			if (document.querySelector('[role="listbox"], [role="menu"], [role="dialog"], .dialog-backdrop')) return;
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			keepSettingsDraft();
+		};
+		document.addEventListener("keydown", onKey, true);
+		return () => document.removeEventListener("keydown", onKey, true);
+	}, [confirming]);
 	const movePage = (event: ReactKeyboardEvent<HTMLElement>): void => {
 		if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
 		const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(.back-to-chat)")];
@@ -50,6 +64,15 @@ export function SettingsWorkspace({
 	};
 	return (
 		<div className="settings-workspace">
+			{confirming && (
+				<div className="settings-discard" role="alertdialog" aria-label={t("Discard these edits?")}>
+					<p>{t("Discard these edits?")}</p>
+					<div className="settings-discard-actions">
+						<button type="button" data-dialog-close onClick={keepSettingsDraft}>{t("Keep editing")}</button>
+						<button type="button" onClick={discardSettingsDraft}>{t("Discard")}</button>
+					</div>
+				</div>
+			)}
 			<nav className="settings-navigation" aria-label={t("Settings navigation")} onKeyDown={movePage}>
 				<button className="back-to-chat" aria-label={t("Back to chat")} onClick={onBack}>
 					← {t("Back to chat")}
@@ -83,6 +106,10 @@ function Settings() {
 	}, []);
 	const [providerId, setProviderId] = useState("openai");
 	const [apiKey, setApiKey] = useState("");
+	useEffect(() => {
+		setSettingsDraftDirty("provider-api-key", apiKey.trim() !== "");
+	}, [apiKey]);
+	useEffect(() => () => setSettingsDraftDirty("provider-api-key", false), []);
 	const configured = settings?.providers.filter((provider) => provider.configured) ?? [];
 
 	const saveKey = async (event: FormEvent): Promise<void> => {
@@ -133,7 +160,7 @@ function Settings() {
 					}
 				/>
 				)}
-				<button type="button" onClick={() => { closeSettings(); holdOnboarding(); }}>{t("Open the setup wizard again")}</button>
+				<button type="button" onClick={() => { closeSettings(() => holdOnboarding()); }}>{t("Open the setup wizard again")}</button>
 			</div>
 			{settings ? (
 			<>
@@ -149,7 +176,7 @@ function Settings() {
 			</div>
 			<div className="settings-group">
 				<h2>{t("Connect a model")}</h2>
-				<ModelSetup />
+				<ModelSetup reportUnsavedKey />
 			</div>
 
 			<div className="settings-group">

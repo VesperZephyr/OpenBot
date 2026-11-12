@@ -1,5 +1,6 @@
 import { t } from "./i18n";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
+import { setSettingsDraftDirty } from "./settings-draft";
 import { api, refreshSettings, report, useStore } from "./store";
 
 /** Must match the Host's `TAVILY_PROVIDER_ID`; the renderer cannot import server code. */
@@ -9,6 +10,10 @@ const TAVILY_PROVIDER_ID = "search:tavily";
 export function WebSearchSettings() {
 	const configured = useStore((state) => state.settings?.webSearch.configured ?? false);
 	const [apiKey, setApiKey] = useState("");
+	useEffect(() => {
+		setSettingsDraftDirty("tavily-api-key", apiKey.trim() !== "");
+	}, [apiKey]);
+	useEffect(() => () => setSettingsDraftDirty("tavily-api-key", false), []);
 
 	const save = async (event: FormEvent): Promise<void> => {
 		event.preventDefault();

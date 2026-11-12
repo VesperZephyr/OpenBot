@@ -1,16 +1,21 @@
 import { t } from "./i18n";
 import { MODEL_APIS, type ModelApi, type ModelRef } from "@openbot/protocol";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
+import { setSettingsDraftDirty } from "./settings-draft";
 import { connectModel, errorMessage, useStore } from "./store";
 
 /** Shared setup path: catalog metadata never implies credentials or a successful connection. */
-export function ModelSetup({ onDone, initialSource = "builtin" }: { readonly onDone?: () => void; readonly initialSource?: "builtin" | "custom" }) {
+export function ModelSetup({ onDone, initialSource = "builtin", reportUnsavedKey = false }: { readonly onDone?: () => void; readonly initialSource?: "builtin" | "custom"; readonly reportUnsavedKey?: boolean }) {
 	const settings = useStore((state) => state.settings);
 	const models = useStore((state) => state.models);
 	const [source, setSource] = useState<"builtin" | "custom">(initialSource);
 	const [provider, setProvider] = useState("openai");
 	const [modelId, setModelId] = useState("");
 	const [key, setKey] = useState("");
+	useEffect(() => {
+		setSettingsDraftDirty("model-api-key", reportUnsavedKey && key.trim() !== "");
+	}, [reportUnsavedKey, key]);
+	useEffect(() => () => setSettingsDraftDirty("model-api-key", false), []);
 	const [custom, setCustom] = useState({ name: "", baseUrl: "", modelId: "", api: "openai-completions" as ModelApi });
 	const [installed, setInstalled] = useState("");
 	const [busy, setBusy] = useState(false);

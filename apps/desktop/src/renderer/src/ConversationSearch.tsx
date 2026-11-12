@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ConversationSearchHit, ConversationSearchResult } from "@openbot/protocol";
-import { api, openBot, report, useStore } from "./store";
+import { api, closeSettings, openBot, report, useStore } from "./store";
 import { t } from "./i18n";
 
 export async function openSearchResult(hit: ConversationSearchHit): Promise<void> {
@@ -12,7 +12,9 @@ export async function openSearchResult(hit: ConversationSearchHit): Promise<void
 		await openBot(id, target);
 	} else {
 		if (!state.groups.some((g) => g.groupId === id)) throw new Error("Search result is no longer available");
-		useStore.setState({ searchTarget: target, view: { kind: "group", groupId: id } });
+		closeSettings(() => {
+			useStore.setState({ searchTarget: target, view: { kind: "group", groupId: id } });
+		});
 	}
 }
 

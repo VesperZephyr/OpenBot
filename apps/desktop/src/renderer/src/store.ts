@@ -24,13 +24,15 @@ import { setDetailsOpen } from "./features/details/details-open";
 import { requestIdentityClose, retainIdentityDrafts } from "./features/details/identity-draft";
 import { directChatVisible, freshConversationSummary, planConversationDelete, type ListedConversation } from "./conversation-delete";
 import { hostCalls } from "./host-calls";
+import { requestSettingsClose } from "./settings-draft";
 import {
 	beginSettingsClose,
 	isChatView,
 	isSettingsView,
 	restoreDescribedFocus,
 	retainSettingsFocus,
-	settingsEscapeCloses,
+	blurSettingsEscapeTarget,
+	settingsEscapeKind,
 	settingsFocusLost,
 	shouldRestoreSettingsFocus,
 	type FocusDescriptor,
@@ -246,27 +248,50 @@ export function holdOnboarding(): void {
 	useStore.setState({ onboarding: true });
 }
 
-export function openSettings(page: SettingsPage = "settings"): void {
-	const view: View =
-		page === "routines" ? { kind: "routines" }
+function settingsView(page: SettingsPage): View {
+	return page === "routines" ? { kind: "routines" }
 		: page === "skills" ? { kind: "skills" }
 		: page === "connectors" ? { kind: "connectors" }
 		: { kind: "settings" };
-	useStore.setState({ view });
 }
 
-export function closeSettings(): void {
+export function openSettings(page: SettingsPage = "settings"): void {
+	const next = settingsView(page);
+	const current = useStore.getState().view;
+	if (isSettingsView(current) && JSON.stringify(current) !== JSON.stringify(next) && !requestSettingsClose(() => openSettings(page))) return;
+	useStore.setState({ view: next });
+}
+
+/** Close the settings page. `andThen` runs only after the page actually leaves, including a confirmed discard. */
+export function closeSettings(andThen?: () => void): boolean {
 	const state = useStore.getState();
+	if (!isSettingsView(state.view)) {
+		andThen?.();
+		return true;
+	}
+	if (!requestSettingsClose(() => closeSettings(andThen))) return false;
 	const closed = beginSettingsClose(state.view, state.lastChat);
-	if (!closed) return;
+	if (!closed) {
+		andThen?.();
+		return true;
+	}
 	useStore.setState({ view: closed.view });
 	scheduleSettingsFocus(closed.focus, closed.view);
+	andThen?.();
+	return true;
 }
 
-/** Escape on a settings page uses the same close as Back. Popups and dialogs keep the key. */
+/** Escape on a settings page uses the same close as Back. A text field blurs first; popups and an open select keep the key. */
 export function closeSettingsFromEscape(event: SettingsEscapeEvent): void {
 	if (!isSettingsView(useStore.getState().view)) return;
-	if (!settingsEscapeCloses(event, (selector) => document.querySelector(selector))) return;
+	const kind = settingsEscapeKind(event, (selector) => document.querySelector(selector));
+	if (kind === "blur") {
+		event.preventDefault();
+		event.stopPropagation();
+		blurSettingsEscapeTarget(event.target);
+		return;
+	}
+	if (kind !== "close") return;
 	event.preventDefault();
 	event.stopPropagation();
 	closeSettings();
@@ -320,9 +345,12 @@ export async function openBot(botId: string, searchTarget?: SearchTarget): Promi
 		setDetailsOpen(true);
 		return;
 	}
-	closeSettings();
-	useStore.setState({ view: { kind: "bot", botId }, searchTarget });
-	await conversationRead.request();
+	const go = (): void => {
+		useStore.setState({ view: { kind: "bot", botId }, searchTarget });
+		// Discard can run this after openBot has returned, so the caller's catch no longer covers the read.
+		void conversationRead.request().catch(report);
+	};
+	closeSettings(go);
 }
 
 function listedConversations(state: { readonly bots: readonly BotSummary[]; readonly groups: readonly Group[]; readonly summaries: Readonly<Record<string, ConversationSummary>> }): ListedConversation[] {

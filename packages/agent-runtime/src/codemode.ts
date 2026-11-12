@@ -155,6 +155,8 @@ export function appCodemode(
 				}, BACKGROUND_CONTEXT);
 				throw Error("Code Mode cannot resume this execution");
 			}
+			const deadlineMs = parsed.options.timeoutMs ?? maxDeadline;
+			const admittedAt = Date.now();
 			const record = await api.commit(async (tx) => {
 				const doc = await tx.doc(AppExecutionsDoc);
 				doc.executions[key] ??= {
@@ -170,10 +172,10 @@ export function appCodemode(
 					limits: {
 						...APP_CODE_LIMITS,
 						outputTokens: parsed.options.maxOutputTokens ?? 2000,
-						deadlineMs: parsed.options.timeoutMs ?? maxDeadline,
+						deadlineMs,
 					},
-					admittedAt: Date.now(),
-					deadline: Date.now() + (parsed.options.timeoutMs ?? maxDeadline),
+					admittedAt,
+					deadline: admittedAt + deadlineMs,
 					state: "admitted",
 					children: [],
 				};

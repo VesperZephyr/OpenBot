@@ -34,10 +34,20 @@ export type SettingsEscapeEvent = {
 	readonly key: string;
 	readonly isComposing: boolean;
 	readonly keyCode?: number;
-	readonly target: EventTarget | { closest?(selector: string): unknown } | null;
+	readonly target: EventTarget | SettingsEscapeTarget | null;
 	preventDefault(): void;
 	stopPropagation(): void;
 };
+
+export type SettingsEscapeTarget = {
+	closest?(selector: string): unknown;
+	matches?(selector: string): boolean;
+	blur?(): void;
+	readonly tagName?: string;
+};
+
+/** Close the page, blur a text field, or leave the key for a popup or an open select. */
+export type SettingsEscapeKind = "close" | "blur" | "ignore";
 
 const ESCAPE_OWNED_BY = '[role="listbox"], [role="menu"], [role="dialog"], [role="alertdialog"], .dialog-backdrop';
 
@@ -110,16 +120,46 @@ export function shouldRestoreSettingsFocus(options: {
 	return options.returned && !options.onboarding && !options.stillOnSettings && options.lost;
 }
 
-/** Escape closes the settings page only when no open popup, dialog, or sidebar field already owns it. */
+/**
+ * First Escape in a text field blurs it. An open select keeps the key so its popup can collapse.
+ * The next Escape, with the popup closed, uses the normal close path.
+ */
+export function settingsEscapeKind(event: SettingsEscapeEvent, query: (selector: string) => unknown): SettingsEscapeKind {
+	if (event.key !== "Escape" || event.isComposing || event.keyCode === 229) return "ignore";
+	if (targetOwnsEscape(event.target)) return "ignore";
+	const tag = targetTag(event.target);
+	if (tag === "INPUT" || tag === "TEXTAREA") return "blur";
+	if (tag === "SELECT" && selectPopupOpen(event.target)) return "ignore";
+	if (query(ESCAPE_OWNED_BY) != null) return "ignore";
+	return "close";
+}
+
+/** Escape closes the settings page only when no open popup, dialog, text field, or select popup already owns it. */
 export function settingsEscapeCloses(event: SettingsEscapeEvent, query: (selector: string) => unknown): boolean {
-	if (event.key !== "Escape" || event.isComposing || event.keyCode === 229) return false;
-	if (targetOwnsEscape(event.target)) return false;
-	return query(ESCAPE_OWNED_BY) == null;
+	return settingsEscapeKind(event, query) === "close";
+}
+
+export function blurSettingsEscapeTarget(target: SettingsEscapeEvent["target"]): void {
+	if (target !== null && typeof target === "object" && "blur" in target && typeof target.blur === "function") target.blur();
 }
 
 function targetOwnsEscape(target: SettingsEscapeEvent["target"]): boolean {
 	if (target === null || typeof target !== "object" || !("closest" in target) || typeof target.closest !== "function") return false;
 	return target.closest(".conversation-search, .file-workspace") != null;
+}
+
+function targetTag(target: SettingsEscapeEvent["target"]): string {
+	if (target === null || typeof target !== "object" || !("tagName" in target) || typeof target.tagName !== "string") return "";
+	return target.tagName.toUpperCase();
+}
+
+function selectPopupOpen(target: SettingsEscapeEvent["target"]): boolean {
+	if (target === null || typeof target !== "object" || !("matches" in target) || typeof target.matches !== "function") return false;
+	try {
+		return target.matches(":open");
+	} catch {
+		return false;
+	}
 }
 
 function escapeAttr(value: string): string {
